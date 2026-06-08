@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCOS — Task Management Workflow | Enhanced Construction Task Module</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: #f8fafc;
+      color: #0b1c2e;
+      padding: 28px 20px 72px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      text-align: center;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #0f2b3d 0%, #1b5a7a 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .sub {
+      text-align: center;
+      font-size: 14px;
+      color: #4a627a;
+      margin-bottom: 32px;
+      border-bottom: 1px solid #e2edf2;
+      display: inline-block;
+      width: auto;
+      margin-left: auto;
+      margin-right: auto;
+      padding-bottom: 10px;
+    }
+
+    .sec {
+      background: #ffffff;
+      border-radius: 28px;
+      padding: 24px 24px 28px;
+      margin-bottom: 32px;
+      max-width: 920px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.02);
+      border: 1px solid #eef2f8;
+      transition: box-shadow 0.1s ease;
+    }
+
+    .sec h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #0f2b3d;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .sec h2 span {
+      color: #5b7c9c;
+      font-weight: 400;
+      font-size: 13px;
+    }
+
+    svg {
+      display: block;
+      margin: 0 auto;
+      width: 100%;
+      height: auto;
+      border-radius: 20px;
+    }
+
+    svg text {
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* node styles — refined for task mgmt */
+    .task-open rect { fill: #fef9e3; stroke: #e6b12e; stroke-width: 0.8; }
+    .task-open text { fill: #8a6300; font-size: 11px; font-weight: 500; }
+
+    .task-assigned rect { fill: #e8f0fe; stroke: #2c6e9e; stroke-width: 0.8; }
+    .task-assigned text { fill: #1a4972; font-size: 11px; }
+
+    .task-progress rect { fill: #e1f5fe; stroke: #0288d1; stroke-width: 0.8; }
+    .task-progress text { fill: #01579b; font-size: 11px; }
+
+    .task-pending rect { fill: #fff3e0; stroke: #f39c12; stroke-width: 0.8; }
+    .task-pending text { fill: #b45f06; font-size: 11px; }
+
+    .task-approved rect { fill: #e0f2e9; stroke: #2e7d64; stroke-width: 0.8; }
+    .task-approved text { fill: #1a5a48; font-size: 11px; }
+
+    .task-rejected rect { fill: #fef0f0; stroke: #c0392b; stroke-width: 0.8; }
+    .task-rejected text { fill: #a52618; font-size: 11px; }
+
+    .task-completed rect { fill: #d9f0e3; stroke: #2c6e49; stroke-width: 0.8; }
+    .task-completed text { fill: #1f543a; font-size: 11px; }
+
+    .action-box rect { fill: #f8fafc; stroke: #b9cadb; stroke-width: 0.5; stroke-dasharray: 4 2; }
+    .decision rect { fill: #faf0e6; stroke: #cf9e6b; stroke-width: 0.8; }
+    .decision text { fill: #9e5e2a; font-size: 11px; }
+
+    .ar { fill: none; stroke: #9aaebf; stroke-width: 0.7; marker-end: url(#arrow); }
+    .ar-dash { fill: none; stroke: #adc0d0; stroke-width: 0.7; stroke-dasharray: 5 3; marker-end: url(#arrow); }
+    .ar-red { fill: none; stroke: #e07c6c; stroke-width: 0.7; marker-end: url(#arrowRed); }
+    .ar-green { fill: none; stroke: #4c9f70; stroke-width: 0.7; marker-end: url(#arrowGreen); }
+
+    .lbl { font-size: 9.5px; fill: #5c6f87; font-weight: 500; background-color: rgba(255,255,240,0.7); }
+    .note { font-size: 10px; fill: #6d8aac; font-style: italic; }
+    .st { font-size: 14px; font-weight: 700; fill: #1e3a5f; }
+    .formula { font-family: 'Courier New', monospace; font-size: 9.5px; fill: #2c6e9e; font-weight: 500; }
+    .remark-bg { font-size: 9.5px; fill: #c2410c; font-weight: 500; }
+  </style>
+</head>
+<body>
+<h1>⚙️ DCOS — Task Management Module (Enhanced)</h1>
+<p class="sub">Construction execution workflow · WBS-driven · Assignee ↔ Receiver · 100% progress required for approval</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9aaebf"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e07c6c"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4c9f70"/>
+    </marker>
+  </defs>
+</svg>
+
+<!-- ========== SECTION 1 : TASK LIFECYCLE ========== -->
+<div class="sec">
+  <h2>📌 1 · Task Lifecycle (Fixed) <span>— Overlap fixed, progress 100% mandatory</span></h2>
+  <svg viewBox="0 0 800 580" width="100%">
+    <!-- OPEN -->
+    <g class="task-open" transform="translate(320,12)"><rect x="0" y="0" width="160" height="34" rx="10"/><text x="80" y="21" text-anchor="middle" style="font-weight:600">OPEN (Draft)</text></g>
+    <line x1="400" y1="46" x2="400" y2="66" class="ar"/>
+
+    <!-- ASSIGNED (fixed overlap: text moved below) -->
+    <g class="task-assigned" transform="translate(295,68)"><rect x="0" y="0" width="210" height="38" rx="10"/><text x="105" y="17" text-anchor="middle" style="font-weight:600">ASSIGNED</text><text x="105" y="32" text-anchor="middle" style="font-size:9px; fill:#2c6e9e;">Receiver notified</text></g>
+    <line x1="400" y1="106" x2="400" y2="124" class="ar"/>
+
+    <!-- Decision: accept or reject assignment -->
+    <g class="decision" transform="translate(278,126)"><rect x="0" y="0" width="244" height="30" rx="15"/><text x="122" y="19" text-anchor="middle">Receiver accepts task ?</text></g>
+    <!-- reject branch -->
+    <line x1="278" y1="141" x2="120" y2="141" class="ar-red"/>
+    <text class="lbl" x="160" y="135">reject</text>
+    <g class="task-rejected" transform="translate(30,126)"><rect x="0" y="0" width="90" height="30" rx="6"/><text x="45" y="19" text-anchor="middle">Re-assign</text></g>
+    <path d="M 75 156 L 75 85 L 295 85" class="ar-dash"/>
+    
+    <!-- accept path -->
+    <line x1="400" y1="156" x2="400" y2="174" class="ar"/>
+    <text class="lbl" x="408" y="170">accept</text>
+
+    <!-- IN PROGRESS + remark: receiver updates progress -->
+    <g class="task-progress" transform="translate(275,176)"><rect x="0" y="0" width="250" height="38" rx="10"/><text x="125" y="17" text-anchor="middle" style="font-weight:600">IN PROGRESS</text><text x="125" y="32" text-anchor="middle" style="font-size:9px; fill:#0288d1;">Receiver updates progress %</text></g>
+    <!-- remark inside graphic -->
+    <text class="remark-bg" x="530" y="200">📈 Receiver can update progress (0% → 100%)</text>
+    <line x1="400" y1="214" x2="400" y2="232" class="ar"/>
+
+    <!-- progress 100% validation gate -->
+    <g class="decision" transform="translate(260,234)"><rect x="0" y="0" width="280" height="30" rx="15"/><text x="140" y="19" text-anchor="middle">Progress = 100% ? (mandatory)</text></g>
+    <line x1="540" y1="249" x2="620" y2="249" class="ar-red"/>
+    <text class="lbl" x="555" y="243">no → keep working</text>
+    <path d="M 660 249 L 660 195 L 525 195" class="ar-dash"/>
+    <line x1="400" y1="264" x2="400" y2="282" class="ar"/>
+    <text class="lbl" x="408" y="278">yes (100%)</text>
+
+    <!-- PENDING APPROVAL -->
+    <g class="task-pending" transform="translate(275,284)"><rect x="0" y="0" width="250" height="34" rx="10"/><text x="125" y="21" text-anchor="middle" style="font-weight:600">PENDING APPROVAL</text></g>
+    <line x1="400" y1="318" x2="400" y2="336" class="ar"/>
+
+    <!-- APPROVAL decision with reason requirement -->
+    <g class="decision" transform="translate(248,338)"><rect x="0" y="0" width="304" height="34" rx="17"/><text x="152" y="22" text-anchor="middle">Approve or Reject ? (Reason required)</text></g>
+
+    <!-- REJECTED branch with reason -->
+    <line x1="552" y1="355" x2="630" y2="355" class="ar-red"/>
+    <text class="lbl" x="565" y="349">reject + reason</text>
+    <g class="task-rejected" transform="translate(632,338)"><rect x="0" y="0" width="130" height="34" rx="8"/><text x="65" y="21" text-anchor="middle">REJECTED</text></g>
+    <path d="M 697 372 L 697 195 L 525 195" class="ar-dash"/>
+    <text class="lbl" x="640" y="260">return with comment</text>
+
+    <!-- APPROVED branch with reason -->
+    <line x1="400" y1="372" x2="400" y2="394" class="ar-green"/>
+    <text class="lbl" x="408" y="388">approve + reason</text>
+    <g class="task-approved" transform="translate(305,396)"><rect x="0" y="0" width="190" height="34" rx="10"/><text x="95" y="21" text-anchor="middle">APPROVED</text></g>
+    <line x1="400" y1="430" x2="400" y2="448" class="ar"/>
+    <g class="task-completed" transform="translate(300,450)"><rect x="0" y="0" width="200" height="34" rx="17"/><text x="100" y="21" text-anchor="middle">COMPLETED / CLOSED</text></g>
+
+    <text class="note" x="30" y="520">📌 Receiver must set progress = 100% before moving to PENDING APPROVAL. Approve/Reject actions require mandatory reason.</text>
+    <text class="note" x="30" y="540">✅ Only assignee or department manager can approve/reject with detailed feedback.</text>
+  </svg>
+</div>
+
+<!-- ========== SECTION 2 : CREATE & ASSIGN (NO DEPENDENCIES FIRST) ========== -->
+<div class="sec">
+  <h2>📋 2 · Task Creation &amp; Assignment <span>— Assignee/PM &amp; Department Manager · Assign person, plan dates</span></h2>
+  <svg viewBox="0 0 800 580" width="100%">
+    <!-- Task creation: assignee + dept manager -->
+    <g class="task-open" transform="translate(250,12)"><rect x="0" y="0" width="300" height="40" rx="12"/><text x="150" y="17" text-anchor="middle" style="font-weight:700">Task Creation</text><text x="150" y="33" text-anchor="middle" style="font-size:9.5px">Assignee / PM  ·  Department Manager</text></g>
+    <line x1="400" y1="52" x2="400" y2="72" class="ar"/>
+
+    <!-- Fill details (no dependencies first) -->
+    <g class="action-box" transform="translate(180,74)"><rect x="0" y="0" width="440" height="46" rx="10"/><text x="220" y="20" text-anchor="middle" style="font-weight:600; fill:#1f5a7e">1. Fill basic details (NO dependencies yet)</text><text x="220" y="38" text-anchor="middle" style="font-size:9.5px; fill:#4f6f8f">Title · Discipline · Task type · Priority · WBS · Description (optional attachments)</text></g>
+    <line x1="400" y1="120" x2="400" y2="140" class="ar"/>
+
+    <!-- Assign receiver + plan dates -->
+    <g class="task-assigned" transform="translate(170,142)"><rect x="0" y="0" width="460" height="46" rx="10"/><text x="230" y="20" text-anchor="middle" style="font-weight:700">2. Assign receiver &amp; schedule</text><text x="230" y="38" text-anchor="middle" style="font-size:9.5px">Select person to receive task · Planned Start Date · Planned Finish Date</text></g>
+    <text class="remark-bg" x="640" y="168">👥 Assignee selects receiver</text>
+    <line x1="400" y1="188" x2="400" y2="208" class="ar"/>
+
+    <!-- validation: dates & person chosen -->
+    <g class="decision" transform="translate(248,210)"><rect x="0" y="0" width="304" height="30" rx="15"/><text x="152" y="19" text-anchor="middle">Receiver &amp; dates valid ?</text></g>
+    <line x1="552" y1="225" x2="620" y2="225" class="ar-red"/>
+    <text class="lbl" x="565" y="219">no</text>
+    <g class="task-rejected" transform="translate(622,210)"><rect x="0" y="0" width="110" height="30" rx="6"/><text x="55" y="19" text-anchor="middle">Adjust dates</text></g>
+    <path d="M 677 225 L 677 163 L 630 163" class="ar-dash"/>
+    <line x1="400" y1="240" x2="400" y2="258" class="ar"/>
+    <text class="lbl" x="408" y="254">yes</text>
+
+    <!-- Final assignment step -->
+    <g class="task-assigned" transform="translate(255,260)"><rect x="0" y="0" width="290" height="38" rx="10"/><text x="145" y="17" text-anchor="middle" style="font-weight:600">Task assigned to receiver</text><text x="145" y="32" text-anchor="middle" style="font-size:9px">Email notification + task visible on dashboard</text></g>
+    <line x1="400" y1="298" x2="400" y2="318" class="ar"/>
+
+    <!-- Receiver accept decision (as before but integrated) -->
+    <g class="decision" transform="translate(278,320)"><rect x="0" y="0" width="244" height="30" rx="15"/><text x="122" y="19" text-anchor="middle">Receiver accepts ?</text></g>
+    <line x1="278" y1="335" x2="120" y2="335" class="ar-red"/>
+    <text class="lbl" x="160" y="329">reject → re-assign</text>
+    <line x1="400" y1="350" x2="400" y2="370" class="ar"/>
+    <text class="lbl" x="408" y="364">accept</text>
+    <g class="task-progress" transform="translate(310,372)"><rect x="0" y="0" width="180" height="30" rx="8"/><text x="90" y="19" text-anchor="middle">IN PROGRESS start</text></g>
+
+    <!-- extra note -->
+    <text class="note" x="30" y="440">📌 Task dependencies are added later (after creation) to avoid complexity during initial setup.</text>
+    <text class="note" x="30" y="460">📌 Assignee (PM/Dept Manager) sets the receiver, planned start/finish, then the assigned user can begin execution.</text>
+    <text class="formula" x="30" y="500">⚡ Assignment intelligence: Workload check available before finalizing receiver.</text>
+  </svg>
+</div>
+
+<!-- ========== SECTION 3 : PROGRESS UPDATE & 100% GATE ========== -->
+<div class="sec">
+  <h2>📊 3 · Progress Updates &amp; 100% Mandatory Gate <span>— Receiver tracks &amp; completes</span></h2>
+  <svg viewBox="0 0 800 500" width="100%">
+    <g class="task-progress" transform="translate(275,12)"><rect x="0" y="0" width="250" height="34" rx="10"/><text x="125" y="21" text-anchor="middle" style="font-weight:600">IN PROGRESS (active)</text></g>
+    <line x1="400" y1="46" x2="400" y2="66" class="ar"/>
+
+    <!-- receiver updates progress interactive -->
+    <g class="action-box" transform="translate(120,68)"><rect x="0" y="0" width="560" height="58" rx="10"/><text x="280" y="24" text-anchor="middle" style="font-weight:700; fill:#1f5a7e">Receiver updates progress &amp; uploads evidence</text>
+    <text x="280" y="44" text-anchor="middle" style="font-size:10px">Progress slider (0% → 100%) + photos, documents, comments</text>
+    <text x="280" y="58" text-anchor="middle" style="font-size:9px; fill:#c2410c;">📌 System enforces 100% before allowing submit for approval</text>
+    </g>
+    <line x1="400" y1="126" x2="400" y2="148" class="ar"/>
+
+    <!-- gate check -->
+    <g class="decision" transform="translate(260,150)"><rect x="0" y="0" width="280" height="34" rx="17"/><text x="140" y="22" text-anchor="middle">Progress = 100% &amp; docs complete ?</text></g>
+    <line x1="260" y1="167" x2="120" y2="167" class="ar-red"/>
+    <text class="lbl" x="140" y="161">no (blocked)</text>
+    <g class="task-progress" transform="translate(20,150)"><rect x="0" y="0" width="100" height="34" rx="6"/><text x="50" y="21" text-anchor="middle">Update more</text></g>
+    <path d="M 70 184 L 70 90 L 275 90" class="ar-dash"/>
+
+    <line x1="540" y1="167" x2="620" y2="167" class="ar-green"/>
+    <text class="lbl" x="555" y="161">yes (ready)</text>
+    <g class="task-pending" transform="translate(622,150)"><rect x="0" y="0" width="150" height="34" rx="10"/><text x="75" y="21" text-anchor="middle">PENDING APPROVAL</text></g>
+
+    <!-- timeline example -->
+    <rect x="40" y="240" width="720" height="100" rx="14" fill="#f9fcff" stroke="#cbdde9" stroke-width="0.8"/>
+    <text x="60" y="262" style="font-weight:700; fill:#1e3a5f">⏱️ Task timeline example (audit trail)</text>
+    <text x="60" y="284" style="font-size:10.5px; fill:#2c5a77">09:00 Task assigned by Liheng (PM) → Receiver: Kosal</text>
+    <text x="60" y="302" style="font-size:10.5px; fill:#2c5a77">09:15 Kosal accepted | 11:30 Progress 40% + site photo | 14:20 Progress 75%</text>
+    <text x="60" y="320" style="font-size:10.5px; fill:#2c5a77">17:00 Progress 100%, all docs uploaded → Submitted for approval</text>
+
+    <text class="formula" x="40" y="370">🚦 Receiver cannot submit to PENDING APPROVAL unless progress = 100% and required attachments exist.</text>
+    <text class="note" x="40" y="395">Field teams can partially update progress at any time; live sync with assignee dashboard.</text>
+  </svg>
+</div>
+
+<!-- ========== SECTION 4 : APPROVAL & REJECTION WITH REASON ========== -->
+<div class="sec">
+  <h2>✅ 4 · Approve / Reject (Mandatory Reason) <span>— Full audit trail &amp; rework loop</span></h2>
+  <svg viewBox="0 0 800 480" width="100%">
+    <g class="task-pending" transform="translate(300,12)"><rect x="0" y="0" width="200" height="34" rx="10"/><text x="100" y="21" text-anchor="middle" style="font-weight:600">PENDING APPROVAL</text></g>
+    <line x1="400" y1="46" x2="400" y2="68" class="ar"/>
+
+    <!-- Assignee / Dept Manager reviews -->
+    <g class="decision" transform="translate(250,70)"><rect x="0" y="0" width="300" height="34" rx="17"/><text x="150" y="22" text-anchor="middle">Approve or Reject ? (Reason required)</text></g>
+
+    <!-- APPROVE branch with reason field -->
+    <line x1="250" y1="87" x2="140" y2="87" class="ar-green"/>
+    <text class="lbl" x="160" y="81">APPROVE + reason</text>
+    <g class="task-approved" transform="translate(40,72)"><rect x="0" y="0" width="100" height="34" rx="8"/><text x="50" y="21" text-anchor="middle">APPROVED</text></g>
+    <line x1="90" y1="106" x2="90" y2="130" class="ar"/>
+    <g class="task-completed" transform="translate(25,132)"><rect x="0" y="0" width="130" height="34" rx="17"/><text x="65" y="21" text-anchor="middle">COMPLETED</text></g>
+    <text class="note" x="30" y="188">📝 Reason stored: e.g., "Quality check passed, all docs verified"</text>
+
+    <!-- REJECT branch with reason required -->
+    <line x1="550" y1="87" x2="630" y2="87" class="ar-red"/>
+    <text class="lbl" x="565" y="81">REJECT + reason</text>
+    <g class="task-rejected" transform="translate(632,72)"><rect x="0" y="0" width="130" height="34" rx="8"/><text x="65" y="21" text-anchor="middle">REJECTED</text></g>
+    <line x1="697" y1="106" x2="697" y2="140" class="ar"/>
+    <g class="task-progress" transform="translate(627,142)"><rect x="0" y="0" width="140" height="34" rx="8"/><text x="70" y="21" text-anchor="middle">RETURN TO IN PROGRESS</text></g>
+    <path d="M 697 176 L 697 210 L 525 210 L 525 91" class="ar-dash"/>
+    <text class="lbl" x="590" y="225">rework &amp; resubmit</text>
+    <text class="remark-bg" x="600" y="195">Rejection reason: mandatory comment with required corrections</text>
+
+    <!-- reason container box -->
+    <rect x="40" y="280" width="720" height="70" rx="14" fill="#fff6eb" stroke="#e6b12e" stroke-width="0.8"/>
+    <text x="60" y="302" style="font-weight:800; fill:#b85c00">📢 Approval / Rejection reason rules</text>
+    <text x="60" y="322" style="font-size:10.5px; fill:#9b5e2c">Both Approve and Reject actions require a mandatory reason text (min 10 characters).</text>
+    <text x="60" y="340" style="font-size:10.5px; fill:#9b5e2c">Audit log stores decision, timestamp, user, and reason. Reject reason automatically sent to receiver.</text>
+
+    <text class="formula" x="40" y="390">⚡ Only Assignee or Department Manager can perform approval/rejection. Multi-level approval chain optional per task type.</text>
+  </svg>
+</div>
+
+<!-- ========== SECTION 5 : ASSIGNEE & RECEIVER DASHBOARDS & ALERTS ========== -->
+<div class="sec">
+  <h2>🎛️ 5 · Dashboards &amp; Smart Alerts <span>— Real-time operational control</span></h2>
+  <svg viewBox="0 0 800 540" width="100%">
+    <!-- Assignee left panel -->
+    <g transform="translate(20,20)">
+      <rect x="0" y="0" width="360" height="220" rx="16" fill="#f6faff" stroke="#cbdbe9" stroke-width="0.9"/>
+      <text x="20" y="30" style="font-weight:800; font-size:14px; fill:#1e3a5f">👔 ASSIGNEE / DEPT MANAGER</text>
+      <circle cx="30" cy="52" r="6" fill="#e6b12e"/><text x="44" y="56" style="font-size:11px; fill:#2c3e50">Open drafts (editable)</text>
+      <circle cx="30" cy="76" r="6" fill="#2c6e9e"/><text x="44" y="80" style="font-size:11px; fill:#2c3e50">Assigned tasks (awaiting accept)</text>
+      <circle cx="30" cy="100" r="6" fill="#0288d1"/><text x="44" y="104" style="font-size:11px; fill:#2c3e50">In progress (track progress)</text>
+      <circle cx="30" cy="124" r="6" fill="#f39c12"/><text x="44" y="128" style="font-size:11px; fill:#2c3e50">Pending approval</text>
+      <circle cx="30" cy="148" r="6" fill="#c0392b"/><text x="44" y="152" style="font-size:11px; fill:#2c3e50">Overdue / delayed</text>
+      <text x="20" y="180" style="font-size:10.5px; fill:#4b6b8f">📌 Bulk assign, modify schedule, add dependencies later</text>
+      <text x="20" y="198" style="font-size:10.5px; fill:#4b6b8f">⚡ Escalate tasks &amp; workload analyzer</text>
+    </g>
+
+    <!-- Receiver right panel -->
+    <g transform="translate(420,20)">
+      <rect x="0" y="0" width="360" height="220" rx="16" fill="#fefcf5" stroke="#e0cfb1" stroke-width="0.9"/>
+      <text x="20" y="30" style="font-weight:800; font-size:14px; fill:#7a5c2e">👷 RECEIVER DASHBOARD</text>
+      <text x="20" y="56" style="font-size:11.5px; font-weight:600; fill:#c0392b">🔴 Urgent (due today)</text>
+      <text x="20" y="78" style="font-size:11.5px; font-weight:600; fill:#e6a017">🟡 Due this week</text>
+      <text x="20" y="100" style="font-size:11.5px; font-weight:600; fill:#2e7d64">🟢 Ready to start (assigned)</text>
+      <text x="20" y="122" style="font-size:11.5px; font-weight:600; fill:#0288d1">📈 In progress (update %)</text>
+      <text x="20" y="144" style="font-size:11.5px; font-weight:600; fill:#888">⚫ Blocked / dependency issue</text>
+      <text x="20" y="174" style="font-size:10px; fill:#7b6b4a">📲 Mobile card: update progress, upload photos, submit when 100%</text>
+      <text x="20" y="194" style="font-size:10px; fill:#7b6b4a">🔔 Alerts: new assignment, due soon, rejection reason</text>
+    </g>
+
+    <!-- alert engine -->
+    <rect x="20" y="265" width="760" height="110" rx="16" fill="#fff0e6" stroke="#e6b12e" stroke-width="0.9"/>
+    <text x="40" y="290" style="font-weight:800; font-size:14px; fill:#b85c00">🚨 Proactive Alert Engine</text>
+    <text x="40" y="314" style="font-size:11px; fill:#9b5e2c">🔔 If receiver workload > 80% → warning before assignment</text>
+    <text x="40" y="334" style="font-size:11px; fill:#9b5e2c">📅 Task overdue (past planned finish) → critical alert to assignee &amp; receiver</text>
+    <text x="40" y="354" style="font-size:11px; fill:#9b5e2c">🧩 Dependency conflict detected (if added later) → blocker flag + notification</text>
+    
+    <!-- mobile example -->
+    <g transform="translate(40, 400)">
+      <rect x="0" y="0" width="720" height="58" rx="14" fill="#1f2d3d" stroke="#3a526b" stroke-width="0.7"/>
+      <text x="20" y="26" style="font-size:13px; font-weight:600; fill:#fff">📱 Mobile Task Card | L05 Slab Concrete Pour</text>
+      <text x="20" y="46" style="font-size:11px; fill:#bfd9ff">Due: Today · Priority: High · Progress: 45% [ UPDATE ] [ UPLOAD ] [ SUBMIT ]</text>
+    </g>
+  </svg>
+</div>
+
+<!-- ========== SECTION 6 : DATA MODEL & SYSTEM SETUP ========== -->
+<div class="sec">
+  <h2>🗄️ 6 · Core Data Model &amp; Admin Setup <span>— fields, roles, configuration</span></h2>
+  <svg viewBox="0 0 800 400" width="100%">
+    <rect x="40" y="20" width="720" height="140" rx="16" fill="#f4f9fc" stroke="#9ab3cc" stroke-width="0.8"/>
+    <text x="60" y="48" style="font-weight:800; fill:#25597a; font-size:14px">📂 tasks table (core fields)</text>
+    <text x="60" y="74" style="font-size:10.5px; font-family: monospace;">id | task_code | title | discipline | priority | status | progress (%) | assignee_id | receiver_id | reviewer_id | wbs_id</text>
+    <text x="60" y="96" style="font-size:10.5px; font-family: monospace;">planned_start | planned_finish | actual_start | actual_finish | attachments | approval_reason | audit_log</text>
+    <text x="60" y="118" style="font-size:10.5px; fill:#3c6e8f">📌 approval_reason field stores mandatory reason for approve/reject decisions.</text>
+    <text x="60" y="138" style="font-size:10.5px; fill:#3c6e8f">✔️ System ensures progress = 100% before status changes to PENDING APPROVAL.</text>
+
+    <g class="task-open" transform="translate(290,190)"><rect x="0" y="0" width="220" height="36" rx="10"/><text x="110" y="23" text-anchor="middle" style="font-weight:600">Admin / PMO Configuration</text></g>
+    <line x1="400" y1="226" x2="180" y2="256" class="ar"/>
+    <g class="task-assigned" transform="translate(50,248)"><rect x="0" y="0" width="220" height="44" rx="8"/><text x="110" y="18" text-anchor="middle" style="font-weight:600">Task Types &amp; Workflows</text><text x="110" y="34" text-anchor="middle" style="font-size:9px">Inspection, design, procurement, QA/QC</text></g>
+    <line x1="400" y1="226" x2="580" y2="256" class="ar"/>
+    <g class="task-progress" transform="translate(530,248)"><rect x="0" y="0" width="220" height="44" rx="8"/><text x="110" y="18" text-anchor="middle" style="font-weight:600">Approval Levels</text><text x="110" y="34" text-anchor="middle" style="font-size:9px">Single or multi-level approver chains</text></g>
+
+    <text class="formula" x="40" y="350" style="font-size:11px;">🎯 Final goal: The operational brain of project execution — WBS-driven, construction logic first, real-time accountability</text>
+  </svg>
+</div>
+</body>
+</html>

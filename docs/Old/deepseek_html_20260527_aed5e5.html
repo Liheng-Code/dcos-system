@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>DCOS Project Setup Wizard | Workflow Visualisation</title>
+    <!-- Google Fonts & Simple styling for clean professional look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #f1f5f9;
+            font-family: 'Inter', sans-serif;
+            color: #0f172a;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* header */
+        .header {
+            margin-bottom: 2rem;
+        }
+        .badge-header {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #eef2ff;
+            color: #1e40af;
+            border-radius: 40px;
+            padding: 0.25rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #0f172a 0%, #2d3a5e 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+        .sub {
+            color: #475569;
+            margin-top: 0.25rem;
+            font-size: 1rem;
+            border-left: 4px solid #cbd5e1;
+            padding-left: 1rem;
+        }
+
+        /* workflow cards */
+        .workflow-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.75rem;
+            margin-bottom: 3rem;
+        }
+        .card {
+            background: white;
+            border-radius: 2rem;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.02), 0 2px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e9eef3;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 30px -12px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            background: #fafcff;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #edf2f7;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .card-header h3 {
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .step-tag {
+            background: #f1f5f9;
+            border-radius: 2rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #334155;
+        }
+        .flow-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+        }
+        .flow-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: #f8fafc;
+            border-radius: 1.25rem;
+            padding: 0.6rem 1rem;
+            border-left: 3px solid;
+            transition: 0.1s;
+        }
+        .step-number {
+            width: 28px;
+            height: 28px;
+            background: white;
+            border-radius: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.8rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .step-title {
+            font-weight: 600;
+            flex: 1;
+        }
+        .pill-badge {
+            background: #e6f0ff;
+            border-radius: 30px;
+            padding: 0.2rem 0.7rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #1e4a8a;
+        }
+        .diagram-block {
+            background: #fefce8;
+            border-radius: 1.5rem;
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid #fef9c3;
+        }
+        hr {
+            margin: 1rem 0;
+            border: 0;
+            height: 1px;
+            background: #e2e8f0;
+        }
+        .template-visual {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .template-row {
+            background: #f8fafc;
+            border-radius: 1rem;
+            padding: 0.8rem;
+            border-left: 4px solid #3b82f6;
+        }
+        .assignment-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #5b6e8c;
+            font-size: 0.85rem;
+        }
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .info-note {
+            background: #eef2ff;
+            border-radius: 1rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            color: #1e3a8a;
+        }
+        .badge-status {
+            display: inline-block;
+            background: #e2e8f0;
+            border-radius: 30px;
+            padding: 0.2rem 0.6rem;
+            font-size: 0.7rem;
+        }
+        @media (max-width: 780px) {
+            body { padding: 1rem; }
+            .two-col { grid-template-columns: 1fr; }
+        }
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- header section -->
+    <div class="header">
+        <div class="badge-header">
+            ⚡ DCOS Platform · Project Lifecycle
+        </div>
+        <h1>📐 Project Setup Wizard: <br>Design & Assign Workflow</h1>
+        <div class="sub">
+            Visual breakdown of the 11-step configuration, stakeholder template assignment, company mapping, and activation logic.
+        </div>
+    </div>
+
+    <!-- MAIN WORKFLOW: 3 COLUMNS representing the core design & assignment flow -->
+    <div class="workflow-grid">
+        <!-- CARD 1: Step Progression & modular setup -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-tag">🧩 PHASE 1</span>
+                <h3>✨ Sequential wizard design</h3>
+            </div>
+            <div class="card-body">
+                <p style="font-size:0.85rem; margin-bottom: 1rem; color:#2d3a5e;">The wizard follows a logical project build-up: from <strong>Basic Info</strong> → <strong>Contract</strong> → <strong>Stakeholders</strong> → <strong>Team</strong> → <strong>Calendar</strong> → <strong>WBS</strong> → <strong>Numbering</strong> → <strong>Approval flows</strong> → <strong>Budget</strong> → <strong>Notifications</strong> → <strong>Activation</strong>.</p>
+                <div class="flow-list">
+                    <div class="flow-item" style="border-left-color: #3b82f6;"><span class="step-number">1</span><span class="step-title">Basic Info</span><span class="pill-badge">Code, type, location</span></div>
+                    <div class="flow-item" style="border-left-color: #3b82f6;"><span class="step-number">2</span><span class="step-title">Contract</span><span class="pill-badge">Value, dates, retention</span></div>
+                    <div class="flow-item" style="border-left-color: #f97316;"><span class="step-number">3</span><span class="step-title">Stakeholders</span><span class="pill-badge">⭐ Template engine</span></div>
+                    <div class="flow-item" style="border-left-color: #10b981;"><span class="step-number">4</span><span class="step-title">Team</span><span class="pill-badge">Roles & members</span></div>
+                    <div class="flow-item" style="border-left-color: #8b5cf6;"><span class="step-number">5</span><span class="step-title">Calendar</span><span class="pill-badge">Working days, holidays</span></div>
+                    <div class="flow-item" style="border-left-color: #ec489a;"><span class="step-number">6</span><span class="step-title">WBS</span><span class="pill-badge">Template / Manual / Import</span></div>
+                    <div class="flow-item" style="border-left-color: #14b8a6;"><span class="step-number">7</span><span class="step-title">Numbering</span><span class="pill-badge">Doc format, discipline</span></div>
+                    <div class="flow-item" style="border-left-color: #f43f5e;"><span class="step-number">8</span><span class="step-title">Approval</span><span class="pill-badge">Drawing, RFI, PR flows</span></div>
+                    <div class="flow-item" style="border-left-color: #eab308;"><span class="step-number">9</span><span class="step-title">Budget</span><span class="pill-badge">Contract value, limits</span></div>
+                    <div class="flow-item" style="border-left-color: #a855f7;"><span class="step-number">10</span><span class="step-title">Notification</span><span class="pill-badge">Telegram + in-app rules</span></div>
+                    <div class="flow-item" style="border-left-color: #059669;"><span class="step-number">11</span><span class="step-title">Activate</span><span class="pill-badge">Validation checklist</span></div>
+                </div>
+                <div class="info-note" style="margin-top: 1rem;">
+                    ⚙️ Each step is isolated, data is persisted before final activation. React motion transitions ensure smooth navigation.
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD 2: STAKEHOLDER TEMPLATE ENGINE - Assignment & Mapping (core design) -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-tag">🏗️ PHASE 2</span>
+                <h3>🧬 Stakeholder template design & assignment</h3>
+            </div>
+            <div class="card-body">
+                <p style="font-size:0.8rem; margin-bottom: 1rem;"><strong>Reusable company placeholders → Teams → Mapped to real entities</strong><br> The wizard empowers project admins to create master templates and assign them instantly.</p>
+                
+                <div class="template-visual">
+                    <div class="template-row">
+                        <div style="display:flex; justify-content:space-between;"><b>📁 Standard High-Rise Project</b><span class="badge-status">template</span></div>
+                        <div style="font-size:0.7rem; color:#475569;">Owner | Consultant | Main Contractor | Subcontractor</div>
+                        <div class="assignment-arrow" style="margin: 6px 0;">⬇️ apply template ⬇️</div>
+                        <div style="background:#e6f0ff; border-radius: 12px; padding: 5px 8px; font-size:0.75rem;">
+                            <span>✅ "Client/Owner" → <strong>GDT Group</strong> (mapped)</span><br>
+                            <span>✅ "Consultant" → <strong>ABC Consultant Co., Ltd.</strong></span><br>
+                            <span>✅ "Main Contractor" → <strong>Your Company</strong></span>
+                        </div>
+                    </div>
+                    <div class="template-row">
+                        <div style="display:flex; justify-content:space-between;"><b>🛣️ Infrastructure Project</b><span class="badge-status">template</span></div>
+                        <div style="font-size:0.7rem;">Government Authority + Consultant supervision teams</div>
+                    </div>
+                </div>
+                <hr>
+                <div class="two-col">
+                    <div>
+                        <span style="font-weight:600; font-size:0.8rem;">🏷️ Company placeholders</span>
+                        <ul style="margin-top: 8px; font-size:0.75rem; list-style: none; padding-left:0;">
+                            <li>• Owner placeholder → mapped to real client</li>
+                            <li>• Consultant placeholder → mapped to engineering firm</li>
+                            <li>• Subcontractor placeholder → can be selected later</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <span style="font-weight:600; font-size:0.8rem;">👥 Teams & permission rules</span>
+                        <ul style="margin-top: 8px; font-size:0.75rem;">
+                            <li>Client Approval Team → Final approval</li>
+                            <li>Design Review Team → Drawing review</li>
+                            <li>QA/QC Team → Inspection control</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="diagram-block" style="margin-top: 1rem;">
+                    <span style="font-weight:600;">🔄 Assignment workflow:</span><br>
+                    <span style="font-size:0.7rem;">1. Select template → 2. Choose company placeholder → 3. Map existing company from directory → 4. Apply → system creates project-specific stakeholder records (teams, permissions). Templates stay as master data.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD 3: VALIDATION + ACTIVATION + PROJECT REGISTER INTERACTION -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-tag">✅ PHASE 3</span>
+                <h3>🔒 Validation & Activation logic</h3>
+            </div>
+            <div class="card-body">
+                <p style="font-size:0.85rem; margin-bottom: 12px;">Project cannot be activated until all mandatory checklist items are ✅. The UI displays real-time progress and validation summary.</p>
+                <div style="background:#f1f5f9; border-radius: 1rem; padding: 12px; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span style="font-weight:500;">⚡ Required checklist</span><span class="pill-badge">2 incomplete items</span></div>
+                    <div class="flow-item" style="background:white;"><span>✅ Project code created</span><span>✔️</span></div>
+                    <div class="flow-item" style="background:white;"><span>✅ Client assigned</span><span>✔️</span></div>
+                    <div class="flow-item" style="background:#fff3e3; border-left-color:#f97316;"><span>⚠️ Project manager assigned</span><span>❗</span></div>
+                    <div class="flow-item" style="background:white;"><span>✅ Project calendar configured</span><span>✔️</span></div>
+                    <div class="flow-item" style="background:#fff3e3; border-left-color:#f97316;"><span>⚠️ Document numbering rule configured</span><span>❗</span></div>
+                    <div class="flow-item" style="background:white;"><span>✅ WBS setup selected</span><span>✔️</span></div>
+                </div>
+                <div class="info-note" style="background:#e6f7ec;">
+                    🚀 Activation button is disabled until all validation items are satisfied → triggers project "Active" status, setup completion % updates in summary panel.
+                </div>
+                <div style="margin-top: 1rem; background:#ffffff; border:1px solid #e2e8f0; border-radius: 1rem; padding: 0.8rem;">
+                    <div style="display:flex; justify-content: space-between;"><span><strong>Selected project in register</strong> → <span style="background:#eef2ff; padding:0 6px; border-radius:20px;">24GDTT · GDT Tower</span></span><span>completion: 72%</span></div>
+                    <div style="height: 6px; background:#e2e8f0; border-radius: 10px; margin: 8px 0;"><div style="width:72%; background:#2c5f2d; height:6px; border-radius:10px;"></div></div>
+                    <p style="font-size:0.75rem;">Click project row → wizard dynamic step data reflects selected project context (template, budget, etc).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DESIGN FLOW EXTENDED: VISUAL REPRESENTATION OF ASSIGNMENT JOURNEY from template library to project -->
+    <div class="card" style="margin-bottom: 2rem;">
+        <div class="card-header">
+            <h3>📌 End-to-end assignment: From Template Library to Project Activation</h3>
+            <span class="step-tag">visual mapping</span>
+        </div>
+        <div class="card-body">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; align-items: flex-start;">
+                <div style="flex: 1; min-width: 180px;">
+                    <div style="background:#f1f5f9; border-radius: 1.2rem; padding: 1rem; text-align: center;">
+                        <span style="font-weight:700;">🏛️ Master Template DB</span>
+                        <div style="margin-top: 0.5rem; font-size:0.75rem;">High-Rise Template<br>Infra Template<br>Commercial Fit-out</div>
+                    </div>
+                </div>
+                <div style="font-size: 1.5rem;">→</div>
+                <div style="flex: 1; background:#fefce8; border-radius: 1.2rem; padding: 1rem;">
+                    <span style="font-weight:700;">🧩 "Apply Template to Project"</span>
+                    <ul style="font-size:0.75rem; margin-top: 8px;">
+                        <li>Select Template (Standard High-Rise) → Preview company placeholders</li>
+                        <li>Map placeholder "Client/Owner" to real company (GDT Group)</li>
+                        <li>Map "Consultant" → ABC Consultant Co., Ltd.</li>
+                        <li>Map "Main Contractor" → Internal company</li>
+                    </ul>
+                </div>
+                <div style="font-size: 1.5rem;">→</div>
+                <div style="flex: 1; background:#e6f7ec; border-radius: 1.2rem; padding: 1rem;">
+                    <span style="font-weight:700;">✅ Project-specific stakeholder records</span>
+                    <div style="font-size:0.7rem; margin-top: 8px;">- Client Approval Team (4 members)<br>- Site Inspection Team (5 members)<br>- QA/QC Team (6 members)<br>Permissions & roles copied from template.</div>
+                </div>
+            </div>
+            <hr>
+            <div class="two-col" style="margin-top: 0.5rem;">
+                <div>
+                    <span style="font-weight:600;">✍️ Team assignment (Step 4)</span>
+                    <p style="font-size:0.7rem;">After stakeholders are mapped, assign individual internal users to Project Director, Project Manager, QS Manager, etc. Role-based responsibility scopes.</p>
+                </div>
+                <div>
+                    <span style="font-weight:600;">📅 Calendar & WBS configuration</span>
+                    <p style="font-size:0.7rem;">Define working days + public holidays (Cambodia calendar), choose WBS template (Building → Level → Zone). Project numbering format: PROJ-DISC-DOC-SEQ-REV</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional explanatory section: how stakeholders template engine works more deeply -->
+    <div class="card">
+        <div class="card-header">
+            <h3>🔁 Deep dive: Stakeholder Template Workspace (React logic)</h3>
+            <span class="step-tag">architecture insight</span>
+        </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 1rem;">
+                <div class="info-note" style="background:#fff">
+                    <span style="font-weight:700;">🎨 Left panel: Template library</span>
+                    <p style="margin-top: 4px; font-size:0.75rem;">Users see saved templates (predefined company placeholders + team definitions). Clicking a template loads its structure.</p>
+                    <div class="badge-status">"Create once, reuse across projects"</div>
+                </div>
+                <div class="info-note" style="background:#fff">
+                    <span style="font-weight:700;">🖼️ Middle panel: Structure preview</span>
+                    <p style="font-size:0.75rem;">List all placeholders (Owner, Consultant, Contractor). Each holds team templates (Design Review, Construction Team). Admins can edit inline.</p>
+                </div>
+                <div class="info-note" style="background:#fff">
+                    <span style="font-weight:700;">🎯 Right panel: Assign to project</span>
+                    <p style="font-size:0.75rem;">Final mapping of placeholder → real companies. After “Apply Template”, data transforms into project-linked stakeholder groups, synced with user directory.</p>
+                </div>
+            </div>
+            <div class="diagram-block" style="margin-top: 1rem; background:#faf5ff;">
+                🔍 <strong>Implementation note:</strong> The component uses useState to manage selected template, selectedCompanyIndex, and dynamically renders teams. Mapping changes, company selection and permission preview — all built to maintain clean separation between master templates and runtime project data.
+            </div>
+        </div>
+    </div>
+
+    <!-- Extra visualization: 3 column layout overall (from code) and interaction summary -->
+    <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+            <h3>🖥️ UI Layout: Project Register + Setup Wizard + Summary Panel</h3>
+        </div>
+        <div class="card-body">
+            <div class="two-col">
+                <div>
+                    <span style="font-weight:600;">📋 Left panel: Project Register</span>
+                    <ul style="margin-left: 1rem; font-size:0.8rem;">
+                        <li>Table of projects (code, name, status)</li>
+                        <li>Search & filtering, row selection updates active step context</li>
+                        <li>Total projects / Active / Tender metrics</li>
+                    </ul>
+                </div>
+                <div>
+                    <span style="font-weight:600;">⚙️ Center: Wizard Steps</span>
+                    <ul style="margin-left: 1rem; font-size:0.8rem;">
+                        <li>Dynamic step buttons with icons (completed/done/in progress)</li>
+                        <li>motion animation sliding between steps</li>
+                        <li>Step-specific content (Basic info, contract, stakeholder template, etc)</li>
+                    </ul>
+                </div>
+                <div>
+                    <span style="font-weight:600;">📊 Right: Setup Summary</span>
+                    <ul style="margin-left: 1rem; font-size:0.8rem;">
+                        <li>Current project card with completion % bar</li>
+                        <li>Validation checklist (real-time status)</li>
+                        <li>Activation and report buttons</li>
+                    </ul>
+                </div>
+            </div>
+            <hr>
+            <div style="background: #f0f4fe; border-radius: 1rem; padding: 0.8rem; margin-top: 0.5rem;">
+                💡 <strong>Assignment flow summary:</strong><br>
+                1. Project manager selects project from register → 2. Navigates through wizard steps (Basic info → contract) → 3. In stakeholder step, choose pre-defined template & map actual companies/teams. 4. Configure team members, WBS, numbering rules, budget, approval workflows. 5. Validation checklist updates automatically as steps are completed. 6. Once all criteria met, Activate Project button becomes enabled → project moves to “Active” state within the register.
+            </div>
+        </div>
+    </div>
+
+    <!-- footer with reference -->
+    <footer>
+        🚀 DCOS Project Setup Wizard – Visual workflow based on React component (Steps: 11, template-driven stakeholder assignment, validation-driven activation). Demonstrates design & assignment logic for construction ERP.
+    </footer>
+</div>
+</body>
+</html>
