@@ -1,0 +1,131 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { Search, Plus, Loader2, Eye } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
+interface InvoiceMatch {
+  id: string;
+  po_id: string;
+  invoice_ref: string;
+  invoice_date: string;
+  invoice_amount: number;
+  matched_po_amount: number;
+  matched_gr_amount: number;
+  variance_amount: number;
+  status: string;
+  created_at: string;
+  procurement_pos: { po_number: string } | null;
+  procurement_suppliers: { supplier_name: string } | null;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: "bg-gray-500/10 text-gray-500 border-gray-200",
+  matched: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
+  variance_detected: "bg-red-500/10 text-red-600 border-red-200",
+  approved: "bg-blue-500/10 text-blue-600 border-blue-200",
+  rejected: "bg-orange-500/10 text-orange-600 border-orange-200",
+};
+
+export function InvoiceMatchList() {
+  const router = useRouter();
+  const [matches, setMatches] = useState<InvoiceMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const fetchMatches = useCallback(() => {
+    const supabase = createClient();
+    let query = supabase
+      .from("procurement_invoice_matches")
+      .select("*, procurement_pos(po_number), procurement_suppliers(supplier_name)")
+      .order("created_at", { ascending: false });
+
+    if (search) {
+      query = query.or(`invoice_ref.ilike.%${search}%,procurement_pos.po_number.ilike.%${search}%`);
+    }
+    if (statusFilter) {
+      query = query.eq("status", statusFilter);
+    }
+
+    query.then(({ data }) => {
+      if (data) setMatches(data as unknown as InvoiceMatch[]);
+      setLoading(false);
+    });
+  }, [search, statusFilter]);
+
+  useEffect(() => { fetchMatches(); }, [fetchMatches]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search invoices..." className="pl-8" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="flex h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="matched">Matched</option>
+            <option value="variance_detected">Variance Detected</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <Button onClick={() => router.push("/dashboard/procurement/invoice-matches/new")} className="gap-2">
+          <Plus className="h-4 w-4" /> New Invoice Match
+        </Button>
+      </div>
+
+      <div className="rounded-lg border">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Invoice Ref</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">PO</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Supplier</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Invoice Amt</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Variance</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matches.length === 0 ? (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground text-sm">No invoice matches found.</td></tr>
+            ) : (
+              matches.map(m => (
+                <tr key={m.id} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="px-4 py-3 text-sm font-medium">{m.invoice_ref}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{m.procurement_pos?.po_number ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">{m.procurement_suppliers?.supplier_name ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-right">${m.invoice_amount.toLocaleString()}</td>
+                  <td className={`px-4 py-3 text-sm text-right font-medium ${Math.abs(m.variance_amount) > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    ${m.variance_amount.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className={STATUS_COLORS[m.status] ?? ""} variant="outline">
+                      {m.status.replace(/_/g, " ")}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/procurement/invoice-matches/${m.id}`)}>
+                      <Eye className="h-4 w-4 mr-1" /> View
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
