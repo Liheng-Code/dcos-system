@@ -158,7 +158,7 @@ interface ChecklistStatusRow {
     label: string;
     document_type: string;
     is_mandatory: boolean;
-  } | null;
+  }[] | null;
 }
 
 interface AssignmentRow {
@@ -1201,8 +1201,8 @@ export default function EmployeeDetailPage() {
                 {checklistStatuses.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No checklist status generated yet.</p> : checklistStatuses.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                     <div>
-                      <p className="text-sm font-medium">{item.employee_document_checklist_items?.label ?? "Document"}</p>
-                      <p className="text-xs text-muted-foreground">{item.employee_document_checklist_items?.is_mandatory ? "Mandatory" : "Optional"}</p>
+                      <p className="text-sm font-medium">{item.employee_document_checklist_items?.[0]?.label ?? "Document"}</p>
+                      <p className="text-xs text-muted-foreground">{item.employee_document_checklist_items?.[0]?.is_mandatory ? "Mandatory" : "Optional"}</p>
                     </div>
                     <Badge variant="outline" className="capitalize">{labelize(item.status)}</Badge>
                   </div>
