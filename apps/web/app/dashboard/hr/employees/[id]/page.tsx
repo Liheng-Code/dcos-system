@@ -169,7 +169,7 @@ interface AssignmentRow {
   start_date: string;
   end_date: string | null;
   status: string;
-  projects: { project_name: string | null; project_code: string | null } | null;
+  projects: { project_name: string | null; project_code: string | null }[] | null;
 }
 
 type AssignmentQueryRow = Omit<AssignmentRow, "allocation_percent"> & {
@@ -1233,7 +1233,7 @@ export default function EmployeeDetailPage() {
                 <table className="w-full text-sm">
                   <thead><tr className="border-b bg-muted/30 text-xs text-muted-foreground"><th className="px-4 py-2.5 text-left font-medium">Project</th><th className="px-4 py-2.5 text-left font-medium">Role</th><th className="px-4 py-2.5 text-right font-medium">Allocation</th><th className="px-4 py-2.5 text-left font-medium">Period</th><th className="px-4 py-2.5 text-center font-medium">Status</th></tr></thead>
                   <tbody className="divide-y divide-border">{projectAssignments.map((assignment) => (
-                    <tr key={assignment.id}><td className="px-4 py-3"><p className="font-medium">{assignment.projects?.project_name ?? "Project"}</p><p className="text-xs text-muted-foreground">{assignment.projects?.project_code ?? assignment.project_id}</p></td><td className="px-4 py-3 text-muted-foreground">{assignment.role_in_project ?? "-"}</td><td className="px-4 py-3 text-right tabular-nums">{assignment.allocation_percent}%</td><td className="px-4 py-3 text-muted-foreground">{fmtDate(assignment.start_date)} - {assignment.end_date ? fmtDate(assignment.end_date) : "Current"}</td><td className="px-4 py-3 text-center"><Badge variant="outline" className="capitalize">{labelize(assignment.status)}</Badge></td></tr>
+                    <tr key={assignment.id}><td className="px-4 py-3"><p className="font-medium">{assignment.projects?.[0]?.project_name ?? "Project"}</p><p className="text-xs text-muted-foreground">{assignment.projects?.[0]?.project_code ?? assignment.project_id}</p></td><td className="px-4 py-3 text-muted-foreground">{assignment.role_in_project ?? "-"}</td><td className="px-4 py-3 text-right tabular-nums">{assignment.allocation_percent}%</td><td className="px-4 py-3 text-muted-foreground">{fmtDate(assignment.start_date)} - {assignment.end_date ? fmtDate(assignment.end_date) : "Current"}</td><td className="px-4 py-3 text-center"><Badge variant="outline" className="capitalize">{labelize(assignment.status)}</Badge></td></tr>
                   ))}</tbody>
                 </table>
               )}
