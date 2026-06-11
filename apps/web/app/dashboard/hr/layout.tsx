@@ -30,6 +30,7 @@ import {
   ListChecks,
   PieChart,
   ClipboardList,
+  Clock,
 } from "lucide-react";
 
 // ── Payroll sub-nav (shown only when inside /hr/payroll) ─────────────────────
@@ -70,6 +71,37 @@ const PAYROLL_ADMIN_GROUPS = [
   },
 ];
 
+// ── OT sub-nav (shown only when inside /hr/overtime) ──────────────────────────
+const OT_GROUPS = [
+  {
+    label: null,
+    items: [
+      { href: "/dashboard/hr/overtime",             label: "OT Dashboard",      icon: LayoutDashboard },
+      { href: "/dashboard/hr/overtime/apply",        label: "Apply for OT",     icon: Clock },
+      { href: "/dashboard/hr/overtime/my-requests",  label: "My Requests",      icon: FileText },
+      { href: "/dashboard/hr/overtime/notifications",label: "Notifications",    icon: Bell },
+      { href: "/dashboard/hr/overtime/approval-chain",label: "My Approval Chain", icon: GitBranch },
+    ],
+  },
+  {
+    label: "APPROVAL",
+    items: [
+      { href: "/dashboard/hr/overtime/approvals",   label: "Approvals",        icon: CheckSquare },
+    ],
+  },
+  {
+    label: "ADMIN CONFIG",
+    items: [
+      { href: "/dashboard/hr/overtime/analytics",    label: "Analytics",       icon: BarChart2 },
+      { href: "/dashboard/hr/overtime/audit",         label: "Audit Log",      icon: ClipboardList },
+      { href: "/dashboard/hr/overtime/approval-chains",label: "All Chains",    icon: GitBranch },
+      { href: "/dashboard/hr/overtime/rates",        label: "OT Rates",        icon: DollarSign },
+      { href: "/dashboard/hr/overtime/limits",       label: "OT Limits",       icon: Shield },
+      { href: "/dashboard/hr/overtime/level-config", label: "Level Eligibility", icon: Users2 },
+    ],
+  },
+];
+
 // ── Leave sub-nav (shown only when inside /hr/leave) ─────────────────────────
 
 const LEAVE_GROUPS = [
@@ -99,9 +131,10 @@ const LEAVE_GROUPS = [
       { href: "/dashboard/hr/leave/admin",          label: "Leave Types",       icon: Settings },
       { href: "/dashboard/hr/leave/approval-chains",label: "Approval Chains",   icon: GitBranch },
       { href: "/dashboard/hr/leave/admin",          label: "Team Capacity",     icon: Users },
-      { href: "/dashboard/hr/leave/admin",          label: "Seniority Rules",   icon: Award },
+      { href: "/dashboard/hr/leave/seniority-rules",label: "Seniority Rules",   icon: Award },
+      { href: "/dashboard/hr/leave/probation-policy",label: "Probation Policy", icon: Shield },
       { href: "/dashboard/hr/leave/reports",        label: "Leave Reports",     icon: BarChart2 },
-      { href: "/dashboard/hr/leave/admin",          label: "Year-end Run",      icon: RefreshCw },
+      { href: "/dashboard/administration/year-end", label: "Year-end Run",      icon: RefreshCw },
     ],
   },
 ];
@@ -118,9 +151,12 @@ export default function HRLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const inLeave = pathname.startsWith("/dashboard/hr/leave");
   const inPayroll = pathname.startsWith("/dashboard/hr/payroll");
+  const inOvertime = pathname.startsWith("/dashboard/hr/overtime");
   const [perms, setPerms] = useState<HrPermissions | null>(null);
   const [approvalCount, setApprovalCount] = useState(0);
   const [myPendingCount, setMyPendingCount] = useState(0);
+  const [otNotifCount, setOtNotifCount] = useState(0);
+  const [otApprovalCount, setOtApprovalCount] = useState(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -151,13 +187,29 @@ export default function HRLayout({ children }: { children: ReactNode }) {
           .then(({ count }) => {
             if (count !== null) setMyPendingCount(count);
           });
+        supabase
+          .from("overtime_notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("recipient_id", uid)
+          .eq("is_read", false)
+          .then(({ count }) => {
+            if (count !== null) setOtNotifCount(count);
+          });
+        supabase
+          .from("overtime_approvals")
+          .select("id", { count: "exact", head: true })
+          .eq("approver_id", uid)
+          .eq("status", "pending")
+          .then(({ count }) => {
+            if (count !== null) setOtApprovalCount(count);
+          });
       }
     });
   }, []);
 
-  // Outside leave/payroll sections, the main sidebar's HR Management folder
+  // Outside leave/payroll/overtime sections, the main sidebar's HR Management folder
   // provides navigation — no second sidebar needed.
-  if (!inLeave && !inPayroll) {
+  if (!inLeave && !inPayroll && !inOvertime) {
     return <>{children}</>;
   }
 
@@ -222,6 +274,77 @@ export default function HRLayout({ children }: { children: ReactNode }) {
               </nav>
             </div>{/* end nav card */}
           </div>{/* end sticky */}
+        </aside>
+        <main className="flex-1 min-w-0">{children}</main>
+      </div>
+    );
+  }
+
+  // ── OT sub-nav ────────────────────────────────────────────────────────────
+  if (inOvertime) {
+    const visibleOtGroups = OT_GROUPS
+      .map((group) => {
+        if (group.label === "APPROVAL" && !perms?.isApprover) return null;
+        if (group.label === "ADMIN CONFIG" && !perms?.canAdmin) return null;
+        return group;
+      })
+      .filter(Boolean) as typeof OT_GROUPS;
+    const allOtItems = visibleOtGroups.flatMap((g) => g.items);
+    const activeItem = allOtItems.find((item) => pathname === item.href);
+
+    return (
+      <div className="flex items-start gap-4 p-0">
+        <aside className="w-52 flex-shrink-0">
+          <div className="sticky top-0">
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="mb-1 flex items-center gap-2">
+                <Link href="/dashboard/hr/dashboard" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+                <span className="text-xs text-muted-foreground font-medium">OT Management</span>
+              </div>
+              {activeItem && (
+                <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
+              )}
+              {!activeItem && <div className="mb-4" />}
+              <nav className="flex flex-col gap-0.5">
+                {visibleOtGroups.map((group, gi) => (
+                  <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+                    {group.label && (
+                      <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        {group.label}
+                      </p>
+                    )}
+                    {group.items.map((item) => {
+                      const isActive = pathname === item.href;
+                      const Icon = item.icon;
+                      const count = item.label === "Notifications" ? otNotifCount : item.label === "Approvals" ? otApprovalCount : 0;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={cn(
+                            "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
+                            isActive
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                          {count > 0 && (
+                            <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
+                              {count}
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
+              </nav>
+            </div>
+          </div>
         </aside>
         <main className="flex-1 min-w-0">{children}</main>
       </div>

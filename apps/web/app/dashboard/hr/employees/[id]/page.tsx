@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { STANDARD_POSITION_GROUPS, isStandardPositionName } from "@/lib/hr/standard-positions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,10 @@ import {
   AlertCircle,
   XCircle,
   KeyRound,
+  ClipboardCheck,
+  FolderTree,
+  MapPin,
+  PackageCheck,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -45,6 +50,8 @@ interface Profile {
   employee_id: string | null;
   user_code: string | null;
   full_name: string;
+  khmer_name: string | null;
+  english_name: string | null;
   email: string;
   role: string;
   avatar_url: string | null;
@@ -53,6 +60,12 @@ interface Profile {
   nationality: string | null;
   phone: string | null;
   address: string | null;
+  current_address: string | null;
+  permanent_address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_address: string | null;
   job_title: string | null;
   department: string | null;
   level: string | null;
@@ -62,10 +75,44 @@ interface Profile {
   position_id: string | null;
   grade: string | null;
   employment_type: string | null;
+  employment_category: string | null;
   join_date: string | null;
-  end_date: string | null;
   work_location: string | null;
+  company: string | null;
+  division: string | null;
+  section: string | null;
+  cost_center: string | null;
+  contract_start_date: string | null;
+  contract_end_date: string | null;
+  seniority_start_date: string | null;
+  labor_category: string | null;
+  leave_group: string | null;
+  payroll_group: string | null;
+  attendance_site: string | null;
+  shift_group: string | null;
+  national_id_number: string | null;
+  national_id_expiry: string | null;
+  passport_number: string | null;
+  passport_expiry: string | null;
+  visa_number: string | null;
+  visa_expiry: string | null;
+  work_permit_number: string | null;
+  work_permit_expiry: string | null;
+  tax_identification_number: string | null;
+  employment_contract_number: string | null;
+  rfid_card: string | null;
+  fingerprint_id: string | null;
+  face_recognition_id: string | null;
+  door_access_group: string | null;
+  parking_access: string | null;
+  shirt_size: string | null;
+  pant_size: string | null;
+  safety_shoe_size: string | null;
+  helmet_size: string | null;
+  vest_size: string | null;
   suspended_reason: string | null;
+  probation_status: string | null;
+  probation_end_date: string | null;
   first_login_at: string | null;
   last_login_at: string | null;
   password_changed_at: string | null;
@@ -80,6 +127,54 @@ interface AuditLog {
   created_at: string;
   actor: { full_name: string } | null;
 }
+
+interface HrHistoryLog {
+  id: string;
+  change_type: string;
+  field_name: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  reason: string | null;
+  effective_date: string | null;
+  approval_reference: string | null;
+  created_at: string;
+  actor: { full_name: string } | null;
+}
+
+interface EmployeeDocumentRow {
+  id: string;
+  document_type: string;
+  document_name: string;
+  expiry_date: string | null;
+  verified: boolean | null;
+}
+
+interface ChecklistStatusRow {
+  id: string;
+  status: string;
+  waived_reason: string | null;
+  document_id: string | null;
+  employee_document_checklist_items: {
+    label: string;
+    document_type: string;
+    is_mandatory: boolean;
+  } | null;
+}
+
+interface AssignmentRow {
+  id: string;
+  project_id: string;
+  role_in_project: string | null;
+  allocation_percent: number;
+  start_date: string;
+  end_date: string | null;
+  status: string;
+  projects: { project_name: string | null; project_code: string | null } | null;
+}
+
+type AssignmentQueryRow = Omit<AssignmentRow, "allocation_percent"> & {
+  allocation_percent: number | string;
+};
 
 interface PayrollProfile {
   id?: string;
@@ -172,18 +267,6 @@ const PAYROLL_STATUS: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
   paid: "bg-green-100 text-green-800",
 };
-
-function ProfileBadge({ complete, label }: { complete: boolean; label: string }) {
-  return complete ? (
-    <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-      <CheckCircle2 className="h-3.5 w-3.5" /> {label}
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
-      <AlertCircle className="h-3.5 w-3.5" /> {label}
-    </span>
-  );
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -290,6 +373,10 @@ export default function EmployeeDetailPage() {
   // Local editable form for profile
   const [profileForm, setProfileForm] = useState<Partial<Profile>>({});
 
+  // Probation confirmation
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
   // System Access tab state
   const [sysRoles, setSysRoles] = useState<Role[]>([]);
   const [assignedRoles, setAssignedRoles] = useState<string[]>([]);
@@ -297,6 +384,10 @@ export default function EmployeeDetailPage() {
 
   // Audit log state
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [hrHistoryLogs, setHrHistoryLogs] = useState<HrHistoryLog[]>([]);
+  const [employeeDocuments, setEmployeeDocuments] = useState<EmployeeDocumentRow[]>([]);
+  const [checklistStatuses, setChecklistStatuses] = useState<ChecklistStatusRow[]>([]);
+  const [projectAssignments, setProjectAssignments] = useState<AssignmentRow[]>([]);
   const [refreshAudit, setRefreshAudit] = useState(0);
 
   useEffect(() => {
@@ -319,13 +410,24 @@ export default function EmployeeDetailPage() {
         .eq("employee_id", id)
         .order("created_at", { ascending: false })
         .limit(12),
-    ]).then(([pRes, allRes, ppRes, tpRes, npRes, baRes, ssRes, psRes]) => {
+      supabase.from("employee_documents")
+        .select("id, document_type, document_name, expiry_date, verified")
+        .eq("employee_id", id)
+        .order("document_type"),
+      supabase.from("employee_document_checklist_status")
+        .select("id, status, waived_reason, document_id, employee_document_checklist_items(label, document_type, is_mandatory)")
+        .eq("employee_id", id),
+      supabase.from("employee_project_assignments")
+        .select("id, project_id, role_in_project, allocation_percent, start_date, end_date, status, projects(project_name, project_code)")
+        .eq("employee_id", id)
+        .order("start_date", { ascending: false }),
+    ]).then(([pRes, allRes, ppRes, tpRes, npRes, baRes, ssRes, psRes, docRes, checklistRes, assignmentRes]) => {
       if (pRes.error || !pRes.data) { router.push("/dashboard/hr/employees"); return; }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const p = pRes.data as any;
       setProfile(p);
-      setProfileForm(p);
+      setProfileForm({ ...p, current_address: p.current_address ?? p.address ?? null });
       setSysForm({ role: p.role ?? "viewer", status: p.status ?? "pending", suspended_reason: p.suspended_reason ?? "" });
       setAllProfiles((allRes.data ?? []) as { id: string; full_name: string }[]);
 
@@ -373,27 +475,63 @@ export default function EmployeeDetailPage() {
         status: e.status,
       })));
 
+      setEmployeeDocuments((docRes.data ?? []) as EmployeeDocumentRow[]);
+      setChecklistStatuses((checklistRes.data ?? []) as ChecklistStatusRow[]);
+      setProjectAssignments(((assignmentRes.data ?? []) as AssignmentQueryRow[]).map((row) => ({
+        ...row,
+        allocation_percent: Number(row.allocation_percent),
+      })) as AssignmentRow[]);
+
       setLoading(false);
     });
   }, [id, router]);
 
   // ── Save handlers ────────────────────────────────────────────────────────
 
+  async function saveProfileSection(updates: Record<string, unknown>, successMessage: string, reason?: string) {
+    setSaving(true);
+    const res = await fetch(`/api/hr/employees/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        updates,
+        reason: reason ?? "Employee Master profile update",
+        effective_date: new Date().toISOString().slice(0, 10),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || "Failed to save employee profile");
+      setSaving(false);
+      return false;
+    }
+    toast.success(successMessage);
+    const supabase = createClient();
+    const { data: refreshed } = await supabase.from("profiles").select("*").eq("id", id).single();
+    if (refreshed) {
+      setProfile(refreshed as Profile);
+      setProfileForm(refreshed as Profile);
+    }
+    setRefreshAudit((n) => n + 1);
+    setSaving(false);
+    return true;
+  }
+
   async function savePersonal() {
     if (!profile) return;
-    setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("profiles").update({
+    await saveProfileSection({
       full_name: profileForm.full_name,
+      khmer_name: profileForm.khmer_name || null,
       gender: profileForm.gender || null,
       date_of_birth: profileForm.date_of_birth || null,
       phone: profileForm.phone || null,
-      email: profileForm.email,
-      address: profileForm.address || null,
       nationality: profileForm.nationality || null,
-    }).eq("id", id);
-    if (error) { toast.error(error.message); } else { toast.success("Personal info saved"); setProfile((p) => p ? { ...p, ...profileForm } : p); }
-    setSaving(false);
+      current_address: profileForm.current_address || profileForm.address || null,
+      emergency_contact_name: profileForm.emergency_contact_name || null,
+      emergency_contact_relationship: profileForm.emergency_contact_relationship || null,
+      emergency_contact_phone: profileForm.emergency_contact_phone || null,
+      emergency_contact_address: profileForm.emergency_contact_address || null,
+    }, "Personal info saved");
   }
 
   async function saveEmployment() {
@@ -410,11 +548,23 @@ export default function EmployeeDetailPage() {
       job_title: profileForm.job_title || null,
       level: profileForm.level || null,
       employment_type: profileForm.employment_type || null,
+      employment_category: profileForm.employment_category || null,
+      grade: profileForm.grade || null,
+      email: profileForm.email,
       join_date: profileForm.join_date || null,
-      end_date: (profileForm as Record<string, unknown>).end_date as string || null,
+      work_location: profileForm.work_location || null,
+      company: profileForm.company || null,
+      division: profileForm.division || null,
+      section: profileForm.section || null,
+      cost_center: profileForm.cost_center || null,
+      contract_start_date: profileForm.contract_start_date || null,
+      contract_end_date: profileForm.contract_end_date || null,
+      seniority_start_date: profileForm.seniority_start_date || null,
+      labor_category: profileForm.labor_category || null,
       report_to: profileForm.report_to || null,
       status: systemStatus,
-      work_location: (profileForm as Record<string, unknown>).work_location as string || null,
+      probation_status: (profileForm as Record<string, unknown>).probation_status as string || null,
+      probation_end_date: (profileForm as Record<string, unknown>).probation_end_date as string || null,
     }).eq("id", id);
     if (error) {
       toast.error(error.message);
@@ -437,10 +587,119 @@ export default function EmployeeDetailPage() {
       } else {
         toast.success("Employment info saved");
       }
-      setProfile((p) => p ? { ...p, ...profileForm, status: systemStatus } : p);
+      const { data: refreshed } = await supabase.from("profiles").select("*").eq("id", id).single();
+      if (refreshed) {
+        setProfile(refreshed as Profile);
+        setProfileForm(refreshed as Profile);
+      }
       setSysForm((f) => ({ ...f, status: systemStatus }));
     }
     setSaving(false);
+  }
+
+  async function saveCompliance() {
+    if (!profile) return;
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("profiles").update({
+      national_id_number: profileForm.national_id_number || null,
+      national_id_expiry: profileForm.national_id_expiry || null,
+      passport_number: profileForm.passport_number || null,
+      passport_expiry: profileForm.passport_expiry || null,
+      visa_number: profileForm.visa_number || null,
+      visa_expiry: profileForm.visa_expiry || null,
+      work_permit_number: profileForm.work_permit_number || null,
+      work_permit_expiry: profileForm.work_permit_expiry || null,
+      tax_identification_number: profileForm.tax_identification_number || null,
+      employment_contract_number: profileForm.employment_contract_number || null,
+    }).eq("id", id);
+    if (error) toast.error(error.message);
+    else toast.success("Compliance info saved");
+    setSaving(false);
+  }
+
+  async function saveAttendanceAssets() {
+    if (!profile) return;
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("profiles").update({
+      leave_group: profileForm.leave_group || null,
+      payroll_group: profileForm.payroll_group || null,
+      attendance_site: profileForm.attendance_site || null,
+      shift_group: profileForm.shift_group || null,
+      rfid_card: profileForm.rfid_card || null,
+      fingerprint_id: profileForm.fingerprint_id || null,
+      face_recognition_id: profileForm.face_recognition_id || null,
+      door_access_group: profileForm.door_access_group || null,
+      parking_access: profileForm.parking_access || null,
+      shirt_size: profileForm.shirt_size || null,
+      pant_size: profileForm.pant_size || null,
+      safety_shoe_size: profileForm.safety_shoe_size || null,
+      helmet_size: profileForm.helmet_size || null,
+      vest_size: profileForm.vest_size || null,
+    }).eq("id", id);
+    if (error) toast.error(error.message);
+    else toast.success("Leave, attendance, asset, and access setup saved");
+    setSaving(false);
+  }
+
+  async function runLifecycleAction(action: string, label: string) {
+    if (!profile) return;
+    const reason = window.prompt(`Reason for ${label.toLowerCase()}:`);
+    if (reason === null) return;
+    setSaving(true);
+    const res = await fetch(`/api/hr/employees/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        reason: reason.trim() || label,
+        effective_date: new Date().toISOString().slice(0, 10),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || `Failed to ${label.toLowerCase()}`);
+    } else {
+      toast.success(label);
+      const supabase = createClient();
+      const { data: refreshed } = await supabase.from("profiles").select("*").eq("id", id).single();
+      if (refreshed) {
+        setProfile(refreshed as Profile);
+        setProfileForm(refreshed as Profile);
+        setSysForm((f) => ({ ...f, status: (refreshed as Profile).status }));
+      }
+      setRefreshAudit((n) => n + 1);
+    }
+    setSaving(false);
+  }
+
+  async function confirmProbation() {
+    setConfirming(true);
+    const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const { error } = await supabase.from("profiles").update({
+      probation_status: "completed",
+      confirmation_date: new Date().toISOString().split("T")[0],
+      confirmed_by: userData?.user?.id ?? null,
+    }).eq("id", id);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Probation confirmed successfully");
+      setProfileForm((p) => ({
+        ...p,
+        probation_status: "completed",
+        confirmation_date: new Date().toISOString().split("T")[0],
+      }));
+      setProfile((p) => p ? {
+        ...p,
+        probation_status: "completed",
+        confirmation_date: new Date().toISOString().split("T")[0],
+      } : p);
+      setShowConfirmDialog(false);
+    }
+    setConfirming(false);
   }
 
   async function savePayrollProfile() {
@@ -524,7 +783,10 @@ export default function EmployeeDetailPage() {
     if (!id) return;
     fetch(`/api/hr/employees/${id}`)
       .then((r) => r.json())
-      .then(({ logs }) => { if (logs) setAuditLogs(logs as AuditLog[]); })
+      .then(({ logs, history }) => {
+        if (logs) setAuditLogs(logs as AuditLog[]);
+        if (history) setHrHistoryLogs(history as HrHistoryLog[]);
+      })
       .catch(() => {});
   }, [id, refreshAudit]);
 
@@ -609,6 +871,7 @@ export default function EmployeeDetailPage() {
   const isArchived = profile.status === "archived";
 
   return (
+    <>
     <div className="space-y-6">
       {/* Archived read-only banner */}
       {isArchived && (
@@ -618,40 +881,73 @@ export default function EmployeeDetailPage() {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" asChild className="mt-0.5">
-          <Link href="/dashboard/hr/employees"><ArrowLeft className="h-4 w-4" /></Link>
-        </Button>
-        <div className="flex flex-1 items-center gap-4">
-          <Avatar className="h-14 w-14">
-            <AvatarImage src={profile.avatar_url ?? undefined} />
-            <AvatarFallback className="text-lg">{initials(profile.full_name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <h2 className="text-2xl font-bold tracking-tight">{profile.full_name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {profile.employee_id ?? "—"} · {profile.job_title ?? labelize(profile.department)} · {profile.email}
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              <Badge variant="outline" className={cn("capitalize text-xs", STATUS_BADGE[profile.status] ?? "")}>
-                {profile.status}
-              </Badge>
-              <ProfileBadge complete={hasPayrollProfile} label="Payroll Profile" />
-              <ProfileBadge complete={hasTaxProfile} label="Tax Profile" />
-              <ProfileBadge complete={hasNSSFProfile} label="NSSF Profile" />
-              <ProfileBadge complete={hasBankAccount} label="Bank Account" />
+      <div className="rounded-xl border border-border bg-gradient-to-br from-background via-background to-muted/30 p-5">
+        <div className="flex items-start gap-4">
+          <Button variant="ghost" size="icon" asChild className="-ml-2 mt-0.5 shrink-0">
+            <Link href="/dashboard/hr/employees"><ArrowLeft className="h-4 w-4" /></Link>
+          </Button>
+          <div className="flex flex-1 items-center gap-4">
+            <div className="relative">
+              <Avatar className="h-16 w-16 ring-2 ring-border ring-offset-2 ring-offset-background">
+                <AvatarImage src={profile.avatar_url ?? undefined} />
+                <AvatarFallback className="text-lg bg-primary/10 text-primary">{initials(profile.full_name)}</AvatarFallback>
+              </Avatar>
+              <div className={cn(
+                "absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-background",
+                profile.status === "active" ? "bg-emerald-500" : "bg-amber-400"
+              )} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-2xl font-bold tracking-tight">{profile.full_name}</h2>
+              <p className="text-sm text-muted-foreground">
+                {profile.employee_id ?? "—"} · {profile.job_title ?? labelize(profile.department)} · {profile.email}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Badge variant="outline" className={cn("capitalize text-xs", STATUS_BADGE[profile.status] ?? "")}>
+                  {profile.status}
+                </Badge>
+              </div>
             </div>
           </div>
+          {/* Profile completion mini-bar */}
+          <div className="hidden sm:flex sm:items-center sm:gap-3">
+            {[
+              { label: "Payroll", ok: hasPayrollProfile },
+              { label: "Tax", ok: hasTaxProfile },
+              { label: "NSSF", ok: hasNSSFProfile },
+              { label: "Bank", ok: hasBankAccount },
+            ].map(({ label, ok }) => (
+              <div key={label} className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5">
+                <div className={cn("h-2 w-2 rounded-full", ok ? "bg-emerald-500" : "bg-amber-300")} />
+                <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
+        {!isArchived && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("submit", "Submitted for approval")}>Submit</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("approve", "Approved")}>Approve</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("activate", "Activated")}>Activate</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("suspend", "Suspended")}>Suspend</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("resign", "Resigned")}>Resign</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("terminate", "Terminated")}>Terminate</Button>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runLifecycleAction("archive", "Archived")}>Archive</Button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="personal">
-        <TabsList className="flex h-auto flex-wrap gap-1 bg-transparent p-0 border-b border-border rounded-none pb-0">
+        <TabsList className="flex h-auto flex-wrap gap-1 bg-muted/40 p-1.5 rounded-xl border border-border">
           {[
             { value: "personal", icon: User, label: "Personal Info" },
             { value: "employment", icon: Briefcase, label: "Employment" },
             { value: "system-access", icon: KeyRound, label: "System Access" },
+            { value: "compliance", icon: Shield, label: "Compliance" },
+            { value: "documents", icon: ClipboardCheck, label: "Documents" },
+            { value: "assignments", icon: FolderTree, label: "Assignments" },
+            { value: "attendance-assets", icon: MapPin, label: "Leave / Assets" },
             { value: "payroll", icon: DollarSign, label: "Payroll Profile" },
             { value: "tax", icon: Receipt, label: "Tax Profile" },
             { value: "nssf", icon: Shield, label: "NSSF Profile" },
@@ -663,7 +959,7 @@ export default function EmployeeDetailPage() {
             <TabsTrigger
               key={value}
               value={value}
-              className="flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-muted-foreground/10 data-[active]:bg-emerald-50 data-[active]:text-emerald-700 data-[active]:shadow-sm data-[active]:ring-1 data-[active]:ring-emerald-200"
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
@@ -681,6 +977,9 @@ export default function EmployeeDetailPage() {
               <Field label="Full Name (English)">
                 <Input value={profileForm.full_name ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, full_name: e.target.value }))} />
               </Field>
+              <Field label="Khmer Name">
+                <Input value={profileForm.khmer_name ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, khmer_name: e.target.value }))} />
+              </Field>
               <Field label="Gender">
                 <NativeSelect value={profileForm.gender ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, gender: v }))} placeholder="—">
                   <option value="male">Male</option>
@@ -696,14 +995,26 @@ export default function EmployeeDetailPage() {
               <Field label="Phone">
                 <Input value={profileForm.phone ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} />
               </Field>
-              <Field label="Email">
-                <Input type="email" value={profileForm.email ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))} />
-              </Field>
               <div className="md:col-span-2">
-                <Field label="Address">
-                  <Input value={profileForm.address ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, address: e.target.value }))} />
+                <Field label="Current Address">
+                  <Input
+                    value={profileForm.current_address ?? profileForm.address ?? ""}
+                    onChange={(e) => setProfileForm((p) => ({ ...p, current_address: e.target.value }))}
+                  />
                 </Field>
               </div>
+              <Field label="Emergency Contact">
+                <Input value={profileForm.emergency_contact_name ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, emergency_contact_name: e.target.value }))} />
+              </Field>
+              <Field label="Emergency Relationship">
+                <Input value={profileForm.emergency_contact_relationship ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, emergency_contact_relationship: e.target.value }))} />
+              </Field>
+              <Field label="Emergency Phone">
+                <Input value={profileForm.emergency_contact_phone ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, emergency_contact_phone: e.target.value }))} />
+              </Field>
+              <Field label="Emergency Address">
+                <Input value={profileForm.emergency_contact_address ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, emergency_contact_address: e.target.value }))} />
+              </Field>
               <div className="md:col-span-2 flex justify-end">
                 <Button onClick={savePersonal} disabled={saving || isArchived} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
@@ -720,12 +1031,39 @@ export default function EmployeeDetailPage() {
               <CardTitle className="text-sm font-semibold">Employment Information</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <Field label="Employee ID (HR Assigned)">
+                  <Input value={profileForm.employee_id ?? ""} disabled placeholder="Generated after join date is saved" />
+                </Field>
+              </div>
               <Field label="Department">
-                <Input value={profileForm.department ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, department: e.target.value }))} />
+                <NativeSelect value={profileForm.department ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, department: v }))} placeholder="Select department">
+                  {["Management", "Architecture", "Structure", "MEP", "Procurement", "Quantity Surveying", "Construction", "Account & Finance", "HR & Admin"].map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </NativeSelect>
               </Field>
               <Field label="Job Title / Position">
-                <Input value={profileForm.job_title ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, job_title: e.target.value }))} />
+                <NativeSelect value={profileForm.job_title ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, job_title: v }))} placeholder="Select position">
+                  {profileForm.job_title && !isStandardPositionName(profileForm.job_title) && (
+                    <option value={profileForm.job_title}>{profileForm.job_title} (Current)</option>
+                  )}
+                  {STANDARD_POSITION_GROUPS.map(({ group, positions }) => (
+                    <optgroup key={group} label={group}>
+                      {positions.map((position) => (
+                        <option key={position.code} value={position.name}>
+                          {position.code} - {position.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </NativeSelect>
               </Field>
+              <div className="md:col-span-2">
+                <Field label="Email">
+                  <Input type="email" value={profileForm.email ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))} />
+                </Field>
+              </div>
               <Field label="Line Manager">
                 <NativeSelect value={profileForm.report_to ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, report_to: v }))} placeholder="—">
                   {allProfiles.filter((p) => p.id !== id).map((p) => (
@@ -735,22 +1073,88 @@ export default function EmployeeDetailPage() {
               </Field>
               <Field label="Employment Type">
                 <NativeSelect value={profileForm.employment_type ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, employment_type: v }))} placeholder="—">
-                  {["permanent", "contract", "probation", "intern"].map((t) => (
+                  {["permanent", "contract", "temporary", "intern"].map((t) => (
                     <option key={t} value={t}>{labelize(t)}</option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="Grade">
+                <NativeSelect value={profileForm.grade ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, grade: v }))} placeholder="—">
+                  {["L1", "L2", "L3", "L4", "L5", "L6"].map((g) => (
+                    <option key={g} value={g}>{g}</option>
                   ))}
                 </NativeSelect>
               </Field>
               <Field label="Join Date">
                 <Input type="date" value={profileForm.join_date ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, join_date: e.target.value }))} />
               </Field>
-              <Field label="End Date">
-                <Input type="date" value={(profileForm as Record<string, unknown>).end_date as string ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, end_date: e.target.value }))} />
-              </Field>
               <Field label="Work Location">
                 <NativeSelect value={(profileForm as Record<string, unknown>).work_location as string ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, work_location: v }))} placeholder="—">
                   {["office", "site", "hybrid"].map((l) => <option key={l} value={l}>{labelize(l)}</option>)}
                 </NativeSelect>
               </Field>
+              <Field label="Company">
+                <Input value={profileForm.company ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, company: e.target.value }))} />
+              </Field>
+              <Field label="Division">
+                <Input value={profileForm.division ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, division: e.target.value }))} />
+              </Field>
+              <Field label="Section">
+                <Input value={profileForm.section ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, section: e.target.value }))} />
+              </Field>
+              <Field label="Cost Center">
+                <Input value={profileForm.cost_center ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, cost_center: e.target.value }))} />
+              </Field>
+              <Field label="Employment Category">
+                <NativeSelect value={profileForm.employment_category ?? ""} onChange={(v) => setProfileForm((p) => ({ ...p, employment_category: v }))} placeholder="Select category">
+                  {["executive", "management", "professional", "technical", "administration", "site_staff", "labor", "intern"].map((c) => <option key={c} value={c}>{labelize(c)}</option>)}
+                </NativeSelect>
+              </Field>
+              <Field label="Labor Category">
+                <Input value={profileForm.labor_category ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, labor_category: e.target.value }))} />
+              </Field>
+              <Field label="Contract Start Date">
+                <Input type="date" value={profileForm.contract_start_date ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, contract_start_date: e.target.value }))} />
+              </Field>
+              <Field label="Contract End Date">
+                <Input type="date" value={profileForm.contract_end_date ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, contract_end_date: e.target.value }))} />
+              </Field>
+              <Field label="Seniority Start Date">
+                <Input type="date" value={profileForm.seniority_start_date ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, seniority_start_date: e.target.value }))} />
+              </Field>
+              <Field label="Probation Status">
+                <NativeSelect value={profileForm.probation_status ?? "not_applicable"} onChange={(v) => setProfileForm((p) => ({ ...p, probation_status: v }))}>
+                  {["not_applicable", "active", "completed", "extended", "failed"].map((s) => <option key={s} value={s}>{labelize(s)}</option>)}
+                </NativeSelect>
+              </Field>
+              <Field label="Probation End Date">
+                <Input type="date" value={profileForm.probation_end_date ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, probation_end_date: e.target.value }))} />
+              </Field>
+              {profileForm.probation_status === "active" && (
+                <div className="md:col-span-2">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-amber-800">Probation In Progress</p>
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {profileForm.probation_end_date
+                            ? `Probation ends ${fmtDate(profileForm.probation_end_date)}`
+                            : "No probation end date set"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setShowConfirmDialog(true)}
+                        className="shrink-0 gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Confirm Probation
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <Field label="Status">
                 <NativeSelect value={profileForm.status ?? "active"} onChange={(v) => setProfileForm((p) => ({ ...p, status: v }))}>
                   {["active", "inactive", "resigned", "terminated"].map((s) => <option key={s} value={s}>{labelize(s)}</option>)}
@@ -766,6 +1170,100 @@ export default function EmployeeDetailPage() {
         </TabsContent>
 
         {/* ── System Access ─────────────────────────────────────────────── */}
+        <TabsContent value="compliance" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Cambodia Compliance Profile</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="National ID Number"><Input value={profileForm.national_id_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, national_id_number: e.target.value }))} /></Field>
+              <Field label="National ID Expiry"><Input type="date" value={profileForm.national_id_expiry ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, national_id_expiry: e.target.value }))} /></Field>
+              <Field label="Passport Number"><Input value={profileForm.passport_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, passport_number: e.target.value }))} /></Field>
+              <Field label="Passport Expiry"><Input type="date" value={profileForm.passport_expiry ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, passport_expiry: e.target.value }))} /></Field>
+              <Field label="Visa Number"><Input value={profileForm.visa_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, visa_number: e.target.value }))} /></Field>
+              <Field label="Visa Expiry"><Input type="date" value={profileForm.visa_expiry ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, visa_expiry: e.target.value }))} /></Field>
+              <Field label="Work Permit Number"><Input value={profileForm.work_permit_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, work_permit_number: e.target.value }))} /></Field>
+              <Field label="Work Permit Expiry"><Input type="date" value={profileForm.work_permit_expiry ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, work_permit_expiry: e.target.value }))} /></Field>
+              <Field label="TIN"><Input value={profileForm.tax_identification_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, tax_identification_number: e.target.value }))} /></Field>
+              <Field label="Employment Contract Number"><Input value={profileForm.employment_contract_number ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, employment_contract_number: e.target.value }))} /></Field>
+              <div className="md:col-span-2 flex justify-end">
+                <Button onClick={saveCompliance} disabled={saving || isArchived} className="gap-2">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Compliance</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-semibold">Document Checklist</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {checklistStatuses.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No checklist status generated yet.</p> : checklistStatuses.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium">{item.employee_document_checklist_items?.label ?? "Document"}</p>
+                      <p className="text-xs text-muted-foreground">{item.employee_document_checklist_items?.is_mandatory ? "Mandatory" : "Optional"}</p>
+                    </div>
+                    <Badge variant="outline" className="capitalize">{labelize(item.status)}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-semibold">Uploaded Documents</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                {employeeDocuments.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No documents uploaded yet.</p> : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b bg-muted/30 text-xs text-muted-foreground"><th className="px-4 py-2.5 text-left font-medium">Document</th><th className="px-4 py-2.5 text-left font-medium">Expiry</th><th className="px-4 py-2.5 text-center font-medium">Verified</th></tr></thead>
+                    <tbody className="divide-y divide-border">{employeeDocuments.map((doc) => (
+                      <tr key={doc.id}><td className="px-4 py-3"><p className="font-medium">{doc.document_name}</p><p className="text-xs text-muted-foreground">{labelize(doc.document_type)}</p></td><td className="px-4 py-3 text-muted-foreground">{fmtDate(doc.expiry_date)}</td><td className="px-4 py-3 text-center">{doc.verified ? <CheckCircle2 className="mx-auto h-4 w-4 text-emerald-600" /> : <AlertCircle className="mx-auto h-4 w-4 text-amber-500" />}</td></tr>
+                    ))}</tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="assignments" className="mt-6">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Project / WBS Assignment</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              {projectAssignments.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">No active project assignments.</p> : (
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/30 text-xs text-muted-foreground"><th className="px-4 py-2.5 text-left font-medium">Project</th><th className="px-4 py-2.5 text-left font-medium">Role</th><th className="px-4 py-2.5 text-right font-medium">Allocation</th><th className="px-4 py-2.5 text-left font-medium">Period</th><th className="px-4 py-2.5 text-center font-medium">Status</th></tr></thead>
+                  <tbody className="divide-y divide-border">{projectAssignments.map((assignment) => (
+                    <tr key={assignment.id}><td className="px-4 py-3"><p className="font-medium">{assignment.projects?.project_name ?? "Project"}</p><p className="text-xs text-muted-foreground">{assignment.projects?.project_code ?? assignment.project_id}</p></td><td className="px-4 py-3 text-muted-foreground">{assignment.role_in_project ?? "-"}</td><td className="px-4 py-3 text-right tabular-nums">{assignment.allocation_percent}%</td><td className="px-4 py-3 text-muted-foreground">{fmtDate(assignment.start_date)} - {assignment.end_date ? fmtDate(assignment.end_date) : "Current"}</td><td className="px-4 py-3 text-center"><Badge variant="outline" className="capitalize">{labelize(assignment.status)}</Badge></td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="attendance-assets" className="mt-6">
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-sm font-semibold"><PackageCheck className="h-4 w-4" /> Leave, Attendance, Asset & Access Setup</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Leave Group"><Input value={profileForm.leave_group ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, leave_group: e.target.value }))} /></Field>
+              <Field label="Payroll Group"><Input value={profileForm.payroll_group ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, payroll_group: e.target.value }))} /></Field>
+              <Field label="Attendance Site"><Input value={profileForm.attendance_site ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, attendance_site: e.target.value }))} /></Field>
+              <Field label="Shift / Work Calendar"><Input value={profileForm.shift_group ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, shift_group: e.target.value }))} /></Field>
+              <Field label="RFID Card"><Input value={profileForm.rfid_card ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, rfid_card: e.target.value }))} /></Field>
+              <Field label="Fingerprint ID"><Input value={profileForm.fingerprint_id ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, fingerprint_id: e.target.value }))} /></Field>
+              <Field label="Face Recognition ID"><Input value={profileForm.face_recognition_id ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, face_recognition_id: e.target.value }))} /></Field>
+              <Field label="Door Access Group"><Input value={profileForm.door_access_group ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, door_access_group: e.target.value }))} /></Field>
+              <Field label="Parking Access"><Input value={profileForm.parking_access ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, parking_access: e.target.value }))} /></Field>
+              <Field label="Shirt Size"><Input value={profileForm.shirt_size ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, shirt_size: e.target.value }))} /></Field>
+              <Field label="Pant Size"><Input value={profileForm.pant_size ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, pant_size: e.target.value }))} /></Field>
+              <Field label="Safety Shoe Size"><Input value={profileForm.safety_shoe_size ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, safety_shoe_size: e.target.value }))} /></Field>
+              <Field label="Helmet Size"><Input value={profileForm.helmet_size ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, helmet_size: e.target.value }))} /></Field>
+              <Field label="Vest Size"><Input value={profileForm.vest_size ?? ""} onChange={(e) => setProfileForm((p) => ({ ...p, vest_size: e.target.value }))} /></Field>
+              <div className="md:col-span-2 flex justify-end"><Button onClick={saveAttendanceAssets} disabled={saving || isArchived} className="gap-2">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Setup</Button></div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="system-access" className="mt-6">
           <div className="space-y-4">
             {/* Onboarding Checklist */}
@@ -1239,8 +1737,90 @@ export default function EmployeeDetailPage() {
               )}
             </CardContent>
           </Card>
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Employee Master HR History</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {hrHistoryLogs.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <History className="h-8 w-8 opacity-30" />
+                  <p className="text-sm">No HR history events yet.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                      <th className="px-4 py-2.5 text-left font-medium">Change</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Field</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Reason</th>
+                      <th className="px-4 py-2.5 text-left font-medium">By</th>
+                      <th className="px-4 py-2.5 text-left font-medium">When</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {hrHistoryLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-muted/20">
+                        <td className="px-4 py-3 font-medium">{labelize(log.change_type)}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{labelize(log.field_name)}</td>
+                        <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{log.reason ?? log.approval_reference ?? "-"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{log.actor?.full_name ?? "System"}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(log.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
+
+      {/* ── Probation confirmation dialog ──────────────────── */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowConfirmDialog(false)}>
+          <div className="bg-background rounded-xl shadow-xl w-96 max-w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">Confirm Probation</h3>
+              <button type="button" onClick={() => setShowConfirmDialog(false)} className="text-muted-foreground hover:text-foreground">
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Confirm that <strong>{profile?.full_name}</strong> has completed their probation period.
+              </p>
+              <div className="rounded-lg bg-muted/50 px-3 py-2.5 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Probation Status</span>
+                  <span className="font-medium text-amber-600">Active</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">End Date</span>
+                  <span className="font-medium">{fmtDate(profileForm.probation_end_date)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">New Status</span>
+                  <span className="font-medium text-emerald-600">Completed</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This action will mark the employee as probation completed, record the confirmation date, and unlock their leave balance.
+              </p>
+            </div>
+            <div className="mt-5 flex gap-2 justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowConfirmDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="button" size="sm" onClick={confirmProbation} disabled={confirming} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+                {confirming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

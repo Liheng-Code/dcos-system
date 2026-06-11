@@ -14,7 +14,7 @@ const ADMIN_LINKS = [
   { href: "/dashboard/administration/leave-types",    label: "Leave Types",     icon: Settings },
   { href: "/dashboard/hr/leave/approval-chains",       label: "Approval Chains", icon: GitBranch },
   { href: "/dashboard/administration/team-capacity",  label: "Team Capacity",   icon: Users },
-  { href: "/dashboard/administration/seniority-rules", label: "Seniority Rules", icon: TrendingUp },
+  { href: "/dashboard/hr/leave/seniority-rules", label: "Seniority Rules", icon: TrendingUp },
   { href: "/dashboard/hr/leave/reports",               label: "Leave Reports",   icon: BarChart2 },
   { href: "/dashboard/administration/year-end",       label: "Year-End Run",    icon: Calendar },
   { href: "/dashboard/hr/leave/public-holidays",       label: "Public Holidays", icon: Globe },
@@ -280,41 +280,43 @@ export default function LeaveDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="leave-page-header flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Leave Balance</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            View your leave balances for the current year
-          </p>
+      <section className="space-y-3">
+        {/* Header */}
+        <div className="leave-page-header flex items-start justify-between">
+          <div className="-ml-[4rem]">
+            <h2 className="text-2xl font-bold tracking-tight">Leave Balance</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              View your leave balances for the current year
+            </p>
+          </div>
+          <Button onClick={() => router.push("/dashboard/hr/leave/apply")} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Apply Leave
+          </Button>
         </div>
-        <Button onClick={() => router.push("/dashboard/hr/leave/apply")} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Apply Leave
-        </Button>
-      </div>
 
-      {/* Balance cards */}
-      {loading ? (
-        <div className="py-12 text-center text-muted-foreground">Loading balances...</div>
-      ) : displayRows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No active leave types configured. Contact HR to set up leave types.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {displayRows.map((row) => (
-            <BalanceCard
-              key={row.leave_type_id}
-              row={row}
-              pendingDays={pendingMap[row.leave_type_id] ?? 0}
-              href={`/dashboard/hr/leave/my-requests?type=${row.leave_type_id}`}
-            />
-          ))}
-        </div>
-      )}
+        {/* Balance cards */}
+        {loading ? (
+          <div className="py-12 text-center text-muted-foreground">Loading balances...</div>
+        ) : displayRows.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No active leave types configured. Contact HR to set up leave types.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            {displayRows.map((row) => (
+              <BalanceCard
+                key={row.leave_type_id}
+                row={row}
+                pendingDays={pendingMap[row.leave_type_id] ?? 0}
+                href={`/dashboard/hr/leave/my-requests?type=${row.leave_type_id}`}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Who's on Leave Today */}
       <WhoIsOnLeaveToday />

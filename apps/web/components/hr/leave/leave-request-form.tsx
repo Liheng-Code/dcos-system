@@ -9,14 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   format,
-  addDays,
   eachDayOfInterval,
   isBefore,
   isAfter,
   isSunday,
   getYear,
 } from "date-fns";
-import { CalendarDays, FileText, Users, Paperclip, Plus, X, Info } from "lucide-react";
+import { CalendarDays, FileText, Users, Paperclip, Plus, X, Info, Lock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 interface LeaveType {
@@ -45,6 +44,7 @@ interface LeaveBalance {
 interface Profile {
   id: string;
   full_name: string;
+  department?: string;
 }
 
 interface CurrentUser extends Profile {
@@ -52,6 +52,17 @@ interface CurrentUser extends Profile {
   join_date?: string;
   department?: string;
   gender?: string;
+  probation_status?: string;
+  probation_end_date?: string;
+  employment_type?: string;
+}
+
+interface EmploymentPolicy {
+  allowed: boolean;
+  requires_hr: boolean;
+  requires_attachment: boolean;
+  monthly_accrual: boolean;
+  usable: boolean;
 }
 
 interface Props {
@@ -90,6 +101,7 @@ function getDefaultDaySelections(
 export default function LeaveRequestForm({ onSuccess, onCancel, title, description }: Props) {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [employmentPolicy, setEmploymentPolicy] = useState<EmploymentPolicy | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [publicHolidays, setPublicHolidays] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -120,6 +132,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [conflictDates, setConflictDates] = useState<string[]>([]);
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const balanceModalDismissed = useRef(false);
   const [validationError, setValidationError] = useState<ValidationError>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -165,6 +179,23 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     [daySelections, requestableDates],
   );
   const isSingleHalfDayRequest = halfDaySelections.length === 1 && daysRequested === 0.5;
+  const isBalanceTracked = !!selectedType && !selectedType.is_replacement_leave;
+  const availableBalance = selectedBalance?.remaining_days ?? selectedType?.max_days_per_year ?? 0;
+  const isOverBalance = isBalanceTracked && daysRequested > availableBalance;
+  const balanceShortfall = isOverBalance ? daysRequested - availableBalance : 0;
+  const balanceRatio = isBalanceTracked && availableBalance > 0
+    ? Math.min(daysRequested / availableBalance, 1)
+    : 0;
+
+  // ── Auto-show balance modal when balance exceeded ─────────
+  useEffect(() => {
+    if (isOverBalance && !balanceModalDismissed.current) {
+      setShowBalanceModal(true);
+    }
+    if (!isOverBalance) {
+      balanceModalDismissed.current = false;
+    }
+  }, [isOverBalance]);
 
   // ── Initial data load ─────────────────────────────────────
   useEffect(() => {
@@ -186,7 +217,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
       if (userRes.data.user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, full_name, email, join_date, department, gender")
+          .select("id, full_name, email, join_date, department, gender, probation_status, probation_end_date, employment_type")
           .eq("id", userRes.data.user.id)
           .single();
         setCurrentUser(profile);
@@ -247,12 +278,26 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     const supabase = createClient();
     supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, department")
       .neq("id", currentUser?.id ?? "")
       .order("full_name")
       .then(({ data }) => setAllProfiles(data || []));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTeammatePicker]);
+
+  // ── Employment policy fetch (probation check) ─────────────
+  useEffect(() => {
+    if (!currentUser || !selectedTypeId) { setEmploymentPolicy(null); return; }
+    const supabase = createClient();
+    supabase
+      .from("leave_employment_policy")
+      .select("allowed, requires_hr, requires_attachment, monthly_accrual, usable")
+      .eq("employment_type", currentUser.employment_type ?? "permanent")
+      .eq("probation_status", currentUser.probation_status ?? "not_applicable")
+      .eq("leave_type_id", selectedTypeId)
+      .maybeSingle()
+      .then(({ data }) => setEmploymentPolicy(data || null));
+  }, [currentUser, selectedTypeId]);
 
   // ── Validation ────────────────────────────────────────────
   const validate = (): ValidationError => {
@@ -268,15 +313,17 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
         return `This leave type is only available for ${selectedType.gender_restriction} employees.`;
     }
 
-    if (selectedType.probation_required && currentUser?.join_date) {
-      const probationEnd = addDays(new Date(currentUser.join_date), 180);
-      if (isBefore(new Date(), probationEnd))
-        return "You must complete your probation period (6 months) before applying for this leave type.";
+    if (currentUser?.probation_status === "active" && employmentPolicy) {
+      if (!employmentPolicy.allowed)
+        return `${selectedType.leave_name} cannot be used during probation period. Please contact HR.`;
+      if (employmentPolicy.requires_hr)
+        return `${selectedType.leave_name} requires HR approval during probation period. Your request will be flagged for HR review.`;
     }
 
-    if (!selectedType.is_replacement_leave && selectedBalance) {
-      if (daysRequested > selectedBalance.remaining_days)
-        return `Insufficient balance. You have ${selectedBalance.remaining_days} days remaining.`;
+    if (!selectedType.is_replacement_leave) {
+      const effectiveRemaining = selectedBalance?.remaining_days ?? 0;
+      if (daysRequested > effectiveRemaining)
+        return `Insufficient balance. You have ${effectiveRemaining} day${effectiveRemaining !== 1 ? 's' : ''} remaining.`;
     }
 
     if (selectedType.max_days_per_request > 0 && daysRequested > selectedType.max_days_per_request)
@@ -679,7 +726,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
                       key={tm.id}
                       className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium"
                     >
-                      {tm.full_name}
+                      {tm.full_name}{tm.department ? ` · ${tm.department}` : ""}
                       <button
                         type="button"
                         onClick={() => removeTeammate(tm.id)}
@@ -803,6 +850,40 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
           </CardContent>
         </Card>
 
+        {/* Balance indicator */}
+        {isBalanceTracked && daysRequested > 0 && (
+          <Card className={`rounded-xl py-0 shadow-sm ${isOverBalance ? 'border-red-300' : ''}`}>
+            <CardContent className="px-5 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Leave Balance
+                </p>
+                <p className={`text-xs font-medium ${isOverBalance ? 'text-red-600' : 'text-muted-foreground'}`}>
+                  {employmentPolicy?.monthly_accrual && !employmentPolicy?.usable ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="h-3 w-3 text-amber-600" />
+                      {availableBalance} day{availableBalance !== 1 ? 's' : ''} accrued (locked)
+                    </span>
+                  ) : (
+                    <>{availableBalance} day{availableBalance !== 1 ? 's' : ''} remaining</>
+                  )}
+                </p>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${isOverBalance ? 'bg-red-500' : balanceRatio > 0.75 ? 'bg-amber-500' : 'bg-primary'}`}
+                  style={{ width: `${balanceRatio * 100}%` }}
+                />
+              </div>
+              {isOverBalance && (
+                <p className="mt-1.5 text-xs text-red-600 font-medium">
+                  Requesting {daysRequested} day{daysRequested !== 1 ? 's' : ''} — exceeds your balance by {balanceShortfall} day{balanceShortfall !== 1 ? 's' : ''}. Reduce your date range or contact HR.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Validation error */}
         {validationError && (
           <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
@@ -848,8 +929,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
                   <p className="text-[10px] text-muted-foreground mb-1">Remaining</p>
                   <p className="text-2xl font-bold leading-none">
                     {selectedType ? (
-                      <span className={((selectedBalance?.remaining_days ?? selectedType.max_days_per_year) - daysRequested) < 0 ? "text-red-500" : "text-muted-foreground"}>
-                        {(selectedBalance?.remaining_days ?? selectedType.max_days_per_year) - daysRequested}
+                      <span className={(availableBalance - daysRequested) < 0 ? "text-red-500" : "text-muted-foreground"}>
+                        {availableBalance - daysRequested}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">-</span>
@@ -858,8 +939,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
                 </div>
               </div>
 
-              <Button type="submit" disabled={submitting} className="w-full mb-2">
-                {submitting ? "Submitting..." : "Submit request"}
+              <Button type="submit" disabled={submitting || isOverBalance} className="w-full mb-2">
+                {submitting ? "Submitting..." : isOverBalance ? "Insufficient Balance" : "Submit request"}
               </Button>
               <Button
                 type="button"
@@ -911,6 +992,28 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
         </div>
       )}
 
+      {/* ── Insufficient balance dialog ──────────────────── */}
+      {showBalanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-xl shadow-xl w-96 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <X className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-900">Insufficient Leave Balance</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-5">
+              Apply leave days exceeding leave balance. Contact HR.
+            </p>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => { setShowBalanceModal(false); balanceModalDismissed.current = true; }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Teammate picker modal ──────────────────────────── */}
       {showTeammatePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowTeammatePicker(false)}>
@@ -923,14 +1026,17 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
             </div>
             <Input
               autoFocus
-              placeholder="Search by name..."
+              placeholder="Search by name or department..."
               value={pickerQuery}
               onChange={(e) => setPickerQuery(e.target.value)}
               className="mb-3 h-9 text-sm"
             />
             <div className="overflow-y-auto flex-1 space-y-0.5">
               {allProfiles
-                .filter((p) => p.full_name.toLowerCase().includes(pickerQuery.toLowerCase()))
+                .filter((p) =>
+                  p.full_name.toLowerCase().includes(pickerQuery.toLowerCase()) ||
+                  (p.department && p.department.toLowerCase().includes(pickerQuery.toLowerCase()))
+                )
                 .map((p) => (
                   <label
                     key={p.id}
@@ -944,7 +1050,12 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
                         )
                       }
                     />
-                    {p.full_name}
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate">{p.full_name}</span>
+                      {p.department && (
+                        <span className="block text-[10px] text-muted-foreground truncate">{p.department}</span>
+                      )}
+                    </div>
                   </label>
                 ))}
               {allProfiles.length === 0 && (

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { format } from "date-fns";
+import { format, eachDayOfInterval, parseISO } from "date-fns";
 
 interface LeaveRequest {
   id: string;
@@ -125,6 +125,35 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     });
   };
 
+  // ── Attendance Sync Helpers ──────────────────────────────
+  const syncAttendanceForLeave = async (supabase: ReturnType<typeof createClient>, employeeId: string, startDate: string, endDate: string) => {
+    const dates = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
+    const records = dates.map((d) => ({
+      employee_id: employeeId,
+      attendance_date: format(d, "yyyy-MM-dd"),
+      attendance_type: "LEAVE",
+      verified: true,
+    }));
+    // Upsert to handle partial overlaps safely
+    for (const rec of records) {
+      await supabase.from("attendance_records").upsert(rec, {
+        onConflict: "employee_id, attendance_date",
+        ignoreDuplicates: false,
+      });
+    }
+  };
+
+  const rollbackAttendanceForLeave = async (supabase: ReturnType<typeof createClient>, employeeId: string, startDate: string, endDate: string) => {
+    const dates = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
+    const dateStrings = dates.map((d) => format(d, "yyyy-MM-dd"));
+    await supabase
+      .from("attendance_records")
+      .delete()
+      .eq("employee_id", employeeId)
+      .in("attendance_date", dateStrings)
+      .eq("attendance_type", "LEAVE");
+  };
+
   // ── Approve ───────────────────────────────────────────────
   const handleApprove = async () => {
     if (!request) return;
@@ -192,6 +221,9 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
             .eq("id", balance.id);
         }
 
+        // Sync attendance: mark leave dates as LEAVE type
+        await syncAttendanceForLeave(supabase, request.employee_id, request.start_date, request.end_date);
+
         // Notify employee ②
         await queueNotification(
           "request_approved",
@@ -249,24 +281,16 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     if (!request) return;
     setActionLoading(true);
     setActionError(null);
-    const supabase = createClient();
 
     try {
-      await supabase.from("leave_requests").update({
-        status: "withdrawn",
-        withdrawal_date: new Date().toISOString(),
-      }).eq("id", requestId);
+      const res = await fetch("/api/hr/leave/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
 
-      // Notify all approvers ④
-      const allApproverIds = [request.approver_1_id, request.approver_2_id].filter((id): id is string => !!id);
-      for (const approverId of [...new Set(allApproverIds)]) {
-        await queueNotification(
-          "request_withdrawn",
-          approverId,
-          `${request.profiles.full_name} Withdrew Their Leave Request`,
-          `${request.profiles.full_name} has withdrawn their leave request for ${format(new Date(request.start_date), "dd MMM yyyy")}.`
-        );
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to withdraw request.");
 
       onStatusChange();
       onClose();
@@ -283,25 +307,16 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     if (!request) return;
     setActionLoading(true);
     setActionError(null);
-    const supabase = createClient();
 
     try {
-      await supabase.from("leave_requests").update({
-        status: "pending_cancellation",
-        cancellation_reason: cancelReason,
-        cancellation_date: new Date().toISOString(),
-      }).eq("id", requestId);
+      const res = await fetch("/api/hr/leave/cancel-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, reason: cancelReason }),
+      });
 
-      // Notify all approvers ⑤
-      const allApproverIds = [request.approver_1_id, request.approver_2_id].filter((id): id is string => !!id);
-      for (const approverId of [...new Set(allApproverIds)]) {
-        await queueNotification(
-          "cancellation_requested",
-          approverId,
-          `${request.profiles.full_name} Requests Leave Cancellation`,
-          `${request.profiles.full_name} is requesting to cancel their approved leave from ${format(new Date(request.start_date), "dd MMM yyyy")}. Reason: ${cancelReason}`
-        );
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to request cancellation.");
 
       onStatusChange();
       onClose();
@@ -324,6 +339,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
         await supabase.from("leave_requests").update({
           status: "withdrawn",
           cancellation_approved_by: currentUserId,
+          payroll_reversal_needed: true,
         }).eq("id", requestId);
 
         // Restore balance (carried-over first)
@@ -344,9 +360,12 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
           }).eq("id", balance.id);
         }
 
+        // Rollback attendance records marked as LEAVE for these dates
+        await rollbackAttendanceForLeave(supabase, request.employee_id, request.start_date, request.end_date);
+
         // Notify approver ⑥ + employee
         await queueNotification("cancellation_approved", currentUserId, "Leave Cancellation Processed", "You approved a leave cancellation.");
-        await queueNotification("request_withdrawn", request.employee_id, "Your Leave Has Been Cancelled", `Your ${request.leave_types.leave_name} leave cancellation has been approved. ${request.days_requested} day(s) returned to your balance.`);
+        await queueNotification("request_withdrawn", request.employee_id, "Your Leave Has Been Cancelled", `Your ${request.leave_types.leave_name} leave cancellation has been approved. ${request.days_requested} day(s) returned to your balance. Attendance records have been rolled back.`);
       } else {
         // Reject cancellation — revert to approved
         await supabase.from("leave_requests").update({ status: "approved" }).eq("id", requestId);

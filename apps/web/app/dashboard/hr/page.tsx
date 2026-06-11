@@ -59,6 +59,13 @@ const HR_MODULES = [
     color: "bg-cyan-50 text-cyan-600",
   },
   {
+    title: "OT Management",
+    description: "Overtime requests, approvals, and analytics",
+    href: "/dashboard/hr/overtime",
+    icon: Clock,
+    color: "bg-indigo-50 text-indigo-600",
+  },
+  {
     title: "Documents",
     description: "Upload and manage employee documents",
     href: "/dashboard/hr/documents",

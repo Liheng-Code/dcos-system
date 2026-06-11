@@ -6,3 +6,5 @@ dist/
 .next/
 .temp/
 .branches/
+.opencode
+docs/env local.md

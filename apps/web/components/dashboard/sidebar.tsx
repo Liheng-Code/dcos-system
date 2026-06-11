@@ -80,29 +80,31 @@ interface SidebarProps {
 export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [projectOpen, setProjectOpen] = useState(true);
-  const [reportingOpen, setReportingOpen] = useState(true);
-  const [tenderOpen, setTenderOpen] = useState(true);
-  const [docOpen, setDocOpen] = useState(true);
-  const [designOpen, setDesignOpen] = useState(true);
-  const [arcOpen, setArcOpen] = useState(true);
-  const [strOpen, setStrOpen] = useState(true);
-  const [mepOpen, setMepOpen] = useState(true);
-  const [planningOpen, setPlanningOpen] = useState(true);
-  const [procurementOpen, setProcurementOpen] = useState(true);
-  const [hrOpen, setHrOpen] = useState(true);
-  const [qsOpen, setQsOpen] = useState(true);
-  const [qsGroupOpen, setQsGroupOpen] = useState(true);
-  const [accountOpen, setAccountOpen] = useState(true);
-  const [siteOpen, setSiteOpen] = useState(true);
-  const [hseOpen, setHseOpen] = useState(true);
-  const [adminOpen, setAdminOpen] = useState(true);
-  const [subcontractorOpen, setSubcontractorOpen] = useState(true);
-  const [contractAdminOpen, setContractAdminOpen] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(true);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [reportingOpen, setReportingOpen] = useState(false);
+  const [tenderOpen, setTenderOpen] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
+  const [designOpen, setDesignOpen] = useState(false);
+  const [arcOpen, setArcOpen] = useState(false);
+  const [strOpen, setStrOpen] = useState(false);
+  const [mepOpen, setMepOpen] = useState(false);
+  const [planningOpen, setPlanningOpen] = useState(false);
+  const [procurementOpen, setProcurementOpen] = useState(false);
+  const [hrOpen, setHrOpen] = useState(false);
+  const [qsOpen, setQsOpen] = useState(false);
+  const [qsGroupOpen, setQsGroupOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [siteOpen, setSiteOpen] = useState(false);
+  const [hseOpen, setHseOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [subcontractorOpen, setSubcontractorOpen] = useState(false);
+  const [contractAdminOpen, setContractAdminOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { unreadCount } = useTaskAlerts();
   const [approvalCount, setApprovalCount] = useState(0);
   const [myPendingCount, setMyPendingCount] = useState(0);
+  const [otApprovalCount, setOtApprovalCount] = useState(0);
+  const [otNotifCount, setOtNotifCount] = useState(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -135,6 +137,22 @@ export function Sidebar({ collapsed }: SidebarProps) {
         .then(({ count }) => {
           if (count !== null) setMyPendingCount(count);
         });
+      supabase
+        .from("overtime_approvals")
+        .select("id", { count: "exact", head: true })
+        .eq("approver_id", uid)
+        .eq("status", "pending")
+        .then(({ count }) => {
+          if (count !== null) setOtApprovalCount(count);
+        });
+      supabase
+        .from("overtime_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", uid)
+        .eq("is_read", false)
+        .then(({ count }) => {
+          if (count !== null) setOtNotifCount(count);
+        });
     });
   }, []);
 
@@ -146,8 +164,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
   type Icon = LucideIcon;
 
   // ── Standard nav item ─────────────────────────────────────────────────────
-  function NavItem({ href, label, icon: Icon, exact }: {
-    href: string; label: string; icon: Icon; exact?: boolean;
+  function NavItem({ href, label, icon: Icon, exact, badge }: {
+    href: string; label: string; icon: Icon; exact?: boolean; badge?: number;
   }) {
     const active = isActive(href, exact);
 
@@ -169,6 +187,14 @@ export function Sidebar({ collapsed }: SidebarProps) {
             collapsed ? "absolute right-1 top-1" : "ml-auto",
           )}>
             {approvalCount + myPendingCount > 9 ? "9+" : approvalCount + myPendingCount}
+          </span>
+        )}
+        {badge !== undefined && badge > 0 && (
+          <span className={cn(
+            "inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-5 text-white",
+            collapsed ? "absolute right-1 top-1" : "ml-auto",
+          )}>
+            {badge > 9 ? "9+" : badge}
           </span>
         )}
       </>
@@ -492,6 +518,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
               <NavItem href="/dashboard/hr/payroll" label="Payroll" icon={DollarSign} />
 
               <NavItem href="/dashboard/hr/timesheet"   label="Timesheet"             icon={CheckSquare} />
+              <NavItem href="/dashboard/hr/overtime"   label="OT Management"         icon={Clock} badge={otApprovalCount + otNotifCount} />
               <NavItem href="/dashboard/hr/training"    label="Training & Competency"  icon={Award} />
               <NavItem href="/dashboard/hr/performance" label="Performance"            icon={TrendingUp} />
               <NavItem href="/dashboard/hr/recruitment" label="Recruitment"            icon={UserCheck} />

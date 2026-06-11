@@ -34,12 +34,12 @@ export async function POST(request: NextRequest) {
 
   const updateFields: Record<string, unknown> = {};
   if (full_name) updateFields.full_name = full_name;
-  if (profileFields.employee_id != null) updateFields.employee_id = profileFields.employee_id;
   if (profileFields.gender != null) updateFields.gender = profileFields.gender;
   if (profileFields.date_of_birth != null) updateFields.date_of_birth = profileFields.date_of_birth;
   if (profileFields.nationality != null) updateFields.nationality = profileFields.nationality;
   if (profileFields.phone != null) updateFields.phone = profileFields.phone;
   if (profileFields.address != null) updateFields.address = profileFields.address;
+  if (profileFields.current_address != null) updateFields.current_address = profileFields.current_address;
   if (profileFields.department != null) updateFields.department = profileFields.department;
   if (profileFields.job_title != null) updateFields.job_title = profileFields.job_title;
   if (profileFields.level != null) updateFields.level = profileFields.level;
@@ -47,8 +47,11 @@ export async function POST(request: NextRequest) {
   if (profileFields.employment_type != null) updateFields.employment_type = profileFields.employment_type;
   if (profileFields.work_location != null) updateFields.work_location = profileFields.work_location;
   if (profileFields.join_date != null) updateFields.join_date = profileFields.join_date;
-  // Default to 'pending' until the employee completes first login
-  updateFields.status = profileFields.status ?? "pending";
+  if (profileFields.probation_status != null) updateFields.probation_status = profileFields.probation_status;
+  if (profileFields.probation_end_date != null) updateFields.probation_end_date = profileFields.probation_end_date;
+  // Employee ID is assigned by database trigger from join_date and is read-only afterwards.
+  // Default to draft/pending workflow unless the caller explicitly passes a valid status.
+  updateFields.status = profileFields.status ?? "draft";
   if (profileFields.role != null) updateFields.role = profileFields.role;
 
   if (Object.keys(updateFields).length > 0) {
@@ -58,5 +61,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ id: newId, employee_id: profileFields.employee_id ?? null }, { status: 201 });
+  const { data: created } = await supabase.from("profiles").select("employee_id").eq("id", newId).maybeSingle();
+
+  return NextResponse.json({ id: newId, employee_id: created?.employee_id ?? null }, { status: 201 });
 }

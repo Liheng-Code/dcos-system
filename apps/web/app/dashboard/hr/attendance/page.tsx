@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { BarChart2, Calendar, Clock, LogIn, MapPin, QrCode, Search, Settings2, Users } from "lucide-react";
 import { format } from "date-fns";
+
+interface TodayStatus {
+  checked_in: boolean;
+  checked_out: boolean;
+  attendance_type: string | null;
+  check_in_time: string | null;
+  shift: { name: string; start_time: string | null; end_time: string | null } | null;
+}
 
 interface AttendanceRecord {
   id: string;
@@ -22,13 +32,27 @@ interface AttendanceRecord {
   };
 }
 
+function formatTime(t: string | null) {
+  if (!t) return "—";
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
 export default function AttendancePage() {
+  const router = useRouter();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [todayStats, setTodayStats] = useState({ present: 0, absent: 0, late: 0, leave: 0 });
+  const [myStatus, setMyStatus] = useState<TodayStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
+    // Fetch current user's today status
+    fetch("/api/hr/attendance/today")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => data && setMyStatus(data));
+
     const supabase = createClient();
 
     // Fetch today's attendance stats
@@ -84,9 +108,61 @@ export default function AttendancePage() {
           <h2 className="text-2xl font-bold tracking-tight">Attendance Management</h2>
           <p className="text-muted-foreground">Track employee attendance and absences</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" /> Record Attendance
+        <Button className="gap-2" onClick={() => router.push("/dashboard/hr/attendance/checkin")}>
+          <LogIn className="h-4 w-4" /> Check In
         </Button>
+      </div>
+
+      {/* My today status */}
+      {myStatus && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <Clock className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">My Status Today</p>
+                  <p className="text-xs text-muted-foreground">
+                    {myStatus.shift ? myStatus.shift.name : "No shift assigned"}
+                    {myStatus.check_in_time ? ` · Checked in ${formatTime(myStatus.check_in_time)}` : " · Not checked in"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {myStatus.checked_in ? (
+                  <Badge variant={myStatus.attendance_type === "LATE" ? "destructive" : "default"}>
+                    {myStatus.attendance_type === "LATE" ? "Late" : myStatus.attendance_type ?? "Present"}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Not checked in</Badge>
+                )}
+                <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/hr/attendance/checkin")}>
+                  {myStatus.checked_in && !myStatus.checked_out ? "Check Out" : myStatus.checked_in ? "View" : "Check In"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sub-module navigation cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { label: "Check-in",      icon: LogIn,    href: "/dashboard/hr/attendance/checkin",    desc: "Clock in/out" },
+          { label: "My Attendance", icon: Calendar,  href: "/dashboard/hr/attendance/my",         desc: "Personal history" },
+          { label: "Supervisor",    icon: Users,     href: "/dashboard/hr/attendance/supervisor", desc: "Mark team" },
+          { label: "Shifts",        icon: Settings2, href: "/dashboard/hr/attendance/shifts",     desc: "Manage schedules" },
+          { label: "Sites & QR",    icon: QrCode,    href: "/dashboard/hr/attendance/sites",      desc: "QR codes" },
+          { label: "Reports",       icon: BarChart2, href: "/dashboard/hr/attendance/reports",    desc: "Analytics" },
+        ].map(nav => (
+          <Card key={nav.label} className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => router.push(nav.href)}>
+            <CardContent className="pt-4 pb-3 flex flex-col items-center text-center gap-1.5">
+              <nav.icon className="h-5 w-5 text-muted-foreground" />
+              <p className="text-sm font-medium">{nav.label}</p>
+              <p className="text-xs text-muted-foreground">{nav.desc}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

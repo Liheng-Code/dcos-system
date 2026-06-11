@@ -16,39 +16,77 @@ interface ReportRow {
   carried_over: number;
 }
 
+interface RelatedDepartment {
+  name?: string | null;
+}
+
+interface RelatedProfile {
+  full_name?: string | null;
+  employee_id?: string | null;
+  departments?: RelatedDepartment | RelatedDepartment[] | null;
+}
+
+interface RelatedLeaveType {
+  leave_name?: string | null;
+}
+
+interface LeaveBalanceReportRecord {
+  allocated_days: number | null;
+  used_days: number | null;
+  remaining_days: number | null;
+  carried_over_days: number | null;
+  profiles: RelatedProfile | RelatedProfile[] | null;
+  leave_types: RelatedLeaveType | RelatedLeaveType[] | null;
+}
+
+function firstRelated<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
 export default function LeaveReportsPage() {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const currentYear = new Date().getFullYear();
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("leave_balances")
-      .select(`
-        allocated_days, used_days, remaining_days, carried_over_days,
-        profiles(full_name, employee_id, departments(name)),
-        leave_types(leave_name)
-      `)
-      .eq("fiscal_year", currentYear)
-      .order("profiles(full_name)")
-      .then(({ data }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setRows((data || []).map((r: any) => ({
-          employee_name: (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles)?.full_name || "—",
-          employee_id_code: (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles)?.employee_id || "—",
-          department: (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles)?.departments?.[0]?.name || (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles)?.departments?.name || "—",
-          leave_type: (Array.isArray(r.leave_types) ? r.leave_types[0] : r.leave_types)?.leave_name || "—",
-          allocated: r.allocated_days,
-          used: r.used_days,
-          remaining: r.remaining_days,
-          carried_over: r.carried_over_days,
-        })));
-        setLoading(false);
-      });
-  }, []);
+    const timer = window.setTimeout(() => {
+      const supabase = createClient();
+      supabase
+        .from("leave_balances")
+        .select(`
+          allocated_days, used_days, remaining_days, carried_over_days,
+          profiles(full_name, employee_id, departments(name)),
+          leave_types(leave_name)
+        `)
+        .eq("fiscal_year", currentYear)
+        .then(({ data }) => {
+          const mappedRows = ((data || []) as LeaveBalanceReportRecord[])
+            .map((r) => {
+              const profile = firstRelated(r.profiles);
+              const department = firstRelated(profile?.departments);
+              const leaveType = firstRelated(r.leave_types);
 
-  // Summary totals per leave type
+              return {
+                employee_name: profile?.full_name || "-",
+                employee_id_code: profile?.employee_id || "-",
+                department: department?.name || "-",
+                leave_type: leaveType?.leave_name || "-",
+                allocated: r.allocated_days ?? 0,
+                used: r.used_days ?? 0,
+                remaining: r.remaining_days ?? 0,
+                carried_over: r.carried_over_days ?? 0,
+              };
+            })
+            .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+
+          setRows(mappedRows);
+          setLoading(false);
+        });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [currentYear]);
+
   const byType = rows.reduce<Record<string, { used: number; allocated: number; count: number }>>((acc, r) => {
     if (!acc[r.leave_type]) acc[r.leave_type] = { used: 0, allocated: 0, count: 0 };
     acc[r.leave_type].used += r.used;
@@ -63,11 +101,10 @@ export default function LeaveReportsPage() {
         <BarChart2 className="h-6 w-6 text-muted-foreground" />
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Leave Reports</h2>
-          <p className="text-muted-foreground">Organisation-wide leave utilisation — {currentYear}</p>
+          <p className="text-muted-foreground">Organisation-wide leave utilisation - {currentYear}</p>
         </div>
       </div>
 
-      {/* Summary cards */}
       {!loading && Object.keys(byType).length > 0 && (
         <div className="grid gap-3 md:grid-cols-3">
           {Object.entries(byType).map(([type, stats]) => (
@@ -87,7 +124,7 @@ export default function LeaveReportsPage() {
                   </div>
                 </div>
                 {stats.allocated > 0 && (
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-primary"
                       style={{ width: `${Math.min((stats.used / stats.allocated) * 100, 100)}%` }}
@@ -100,7 +137,6 @@ export default function LeaveReportsPage() {
         </div>
       )}
 
-      {/* Detail table */}
       <Card>
         <CardContent className="pt-4">
           {loading ? (
@@ -112,28 +148,28 @@ export default function LeaveReportsPage() {
               <table className="w-full text-sm">
                 <thead className="border-b border-border bg-muted/50">
                   <tr>
-                    <th className="text-left py-3 px-4 font-medium">Employee</th>
-                    <th className="text-left py-3 px-4 font-medium">Department</th>
-                    <th className="text-left py-3 px-4 font-medium">Leave Type</th>
-                    <th className="text-center py-3 px-4 font-medium">Allocated</th>
-                    <th className="text-center py-3 px-4 font-medium">Carried Over</th>
-                    <th className="text-center py-3 px-4 font-medium">Used</th>
-                    <th className="text-center py-3 px-4 font-medium">Remaining</th>
+                    <th className="px-4 py-3 text-left font-medium">Employee</th>
+                    <th className="px-4 py-3 text-left font-medium">Department</th>
+                    <th className="px-4 py-3 text-left font-medium">Leave Type</th>
+                    <th className="px-4 py-3 text-center font-medium">Allocated</th>
+                    <th className="px-4 py-3 text-center font-medium">Carried Over</th>
+                    <th className="px-4 py-3 text-center font-medium">Used</th>
+                    <th className="px-4 py-3 text-center font-medium">Remaining</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-border hover:bg-muted/30">
-                      <td className="py-3 px-4">
+                    <tr key={`${r.employee_id_code}-${r.leave_type}-${i}`} className="border-b border-border hover:bg-muted/30">
+                      <td className="px-4 py-3">
                         <p className="font-medium">{r.employee_name}</p>
                         <p className="text-xs text-muted-foreground">{r.employee_id_code}</p>
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground">{r.department}</td>
-                      <td className="py-3 px-4">{r.leave_type}</td>
-                      <td className="py-3 px-4 text-center">{r.allocated}</td>
-                      <td className="py-3 px-4 text-center text-blue-600">{r.carried_over || 0}</td>
-                      <td className="py-3 px-4 text-center">{r.used}</td>
-                      <td className={`py-3 px-4 text-center font-medium ${r.remaining <= 0 ? "text-red-600" : "text-green-600"}`}>
+                      <td className="px-4 py-3 text-muted-foreground">{r.department}</td>
+                      <td className="px-4 py-3">{r.leave_type}</td>
+                      <td className="px-4 py-3 text-center">{r.allocated}</td>
+                      <td className="px-4 py-3 text-center text-blue-600">{r.carried_over || 0}</td>
+                      <td className="px-4 py-3 text-center">{r.used}</td>
+                      <td className={`px-4 py-3 text-center font-medium ${r.remaining <= 0 ? "text-red-600" : "text-green-600"}`}>
                         {r.remaining}
                       </td>
                     </tr>

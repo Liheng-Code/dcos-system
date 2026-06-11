@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { STANDARD_POSITION_GROUPS } from "@/lib/hr/standard-positions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -72,25 +73,25 @@ export default function NewEmployeePage() {
   const [allEmployees, setAllEmployees] = useState<{ id: string; full_name: string }[]>([]);
 
   const [showPassword, setShowPassword] = useState(false);
-  const [generatedPassword, setGeneratedPassword] = useState("");
-
   const [form, setForm] = useState({
     full_name: "",
     email: "",
     password: "",
-    employee_id: "",
     gender: "",
+
     date_of_birth: "",
     nationality: "",
     phone: "",
-    address: "",
+    current_address: "",
     department: "",
     job_title: "",
     report_to: "",
     employment_type: "",
     work_location: "",
     join_date: "",
-    status: "pending",
+    status: "draft",
+    probation_status: "not_applicable",
+    probation_end_date: "",
   });
 
   useEffect(() => {
@@ -107,12 +108,12 @@ export default function NewEmployeePage() {
 
   function generatePassword() {
     const pw = crypto.randomUUID().slice(0, 12) + "Ab1!";
-    setGeneratedPassword(pw);
     setForm((f) => ({ ...f, password: pw }));
   }
 
   useEffect(() => {
-    generatePassword();
+    const timer = window.setTimeout(generatePassword, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function set(field: string, value: string) {
@@ -147,18 +148,19 @@ export default function NewEmployeePage() {
           full_name: form.full_name.trim(),
           email: form.email.trim().toLowerCase(),
           password: form.password || undefined,
-          employee_id: form.employee_id.trim() || null,
           gender: form.gender || null,
           date_of_birth: form.date_of_birth || null,
           nationality: form.nationality.trim() || null,
           phone: form.phone.trim() || null,
-          address: form.address.trim() || null,
+          current_address: form.current_address.trim() || null,
           department: form.department.trim() || null,
           job_title: form.job_title.trim() || null,
           report_to: form.report_to || null,
           employment_type: form.employment_type || null,
           work_location: form.work_location || null,
           join_date: form.join_date || null,
+          probation_status: form.probation_status || null,
+          probation_end_date: form.probation_end_date || null,
           status: form.status,
         }),
       });
@@ -306,9 +308,9 @@ export default function NewEmployeePage() {
             <Input type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="e.g. +855 12 345 678" />
           </Field>
           <div className="md:col-span-2">
-            <Field label="Address">
-              <Input value={form.address} onChange={(e) => set("address", e.target.value)} placeholder="e.g. #123, Street 456, Phnom Penh" />
-            </Field>
+          <Field label="Current Address">
+            <Input value={form.current_address} onChange={(e) => set("current_address", e.target.value)} placeholder="e.g. #123, Street 456, Phnom Penh" />
+          </Field>
           </div>
         </CardContent>
       </Card>
@@ -322,14 +324,21 @@ export default function NewEmployeePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="Employee ID">
-            <Input value={form.employee_id} onChange={(e) => set("employee_id", e.target.value)} placeholder="e.g. EMP-001" />
-          </Field>
           <Field label="Department *">
             <Input value={form.department} onChange={(e) => set("department", e.target.value)} placeholder="e.g. Engineering" required />
           </Field>
           <Field label="Job Title / Position *">
-            <Input value={form.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="e.g. Site Engineer" required />
+            <NativeSelect value={form.job_title} onChange={(v) => set("job_title", v)} placeholder="Select position">
+              {STANDARD_POSITION_GROUPS.map(({ group, positions }) => (
+                <optgroup key={group} label={group}>
+                  {positions.map((position) => (
+                    <option key={position.code} value={position.name}>
+                      {position.code} - {position.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </NativeSelect>
           </Field>
           <Field label="Line Manager">
             <NativeSelect value={form.report_to} onChange={(v) => set("report_to", v)} placeholder="—">
@@ -340,7 +349,7 @@ export default function NewEmployeePage() {
           </Field>
           <Field label="Employment Type *">
             <NativeSelect value={form.employment_type} onChange={(v) => set("employment_type", v)} placeholder="—">
-              {["permanent", "contract", "probation", "intern"].map((t) => (
+              {["permanent", "contract", "temporary", "intern"].map((t) => (
                 <option key={t} value={t}>{labelize(t)}</option>
               ))}
             </NativeSelect>
@@ -352,10 +361,19 @@ export default function NewEmployeePage() {
           </Field>
           <Field label="Join Date">
             <Input type="date" value={form.join_date} onChange={(e) => set("join_date", e.target.value)} />
+            <p className="mt-1 text-xs text-muted-foreground">Employee ID will be auto-generated after saving</p>
+          </Field>
+          <Field label="Probation Status">
+            <NativeSelect value={form.probation_status} onChange={(v) => set("probation_status", v)}>
+              {["not_applicable", "active", "completed", "extended", "failed"].map((s) => <option key={s} value={s}>{labelize(s)}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label="Probation End Date">
+            <Input type="date" value={form.probation_end_date} onChange={(e) => set("probation_end_date", e.target.value)} />
           </Field>
           <Field label="Status">
             <NativeSelect value={form.status} onChange={(v) => set("status", v)}>
-              {["pending", "active", "inactive"].map((s) => <option key={s} value={s}>{labelize(s)}</option>)}
+              {["draft", "pending_approval", "active", "inactive"].map((s) => <option key={s} value={s}>{labelize(s)}</option>)}
             </NativeSelect>
           </Field>
         </CardContent>
