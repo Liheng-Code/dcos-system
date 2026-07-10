@@ -57,7 +57,6 @@ import {
   Smartphone,
   FileSignature,
   BookTemplate,
-  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -82,7 +81,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [reportingOpen, setReportingOpen] = useState(false);
-  const [tenderOpen, setTenderOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
   const [designOpen, setDesignOpen] = useState(false);
   const [arcOpen, setArcOpen] = useState(false);
@@ -91,14 +89,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const [planningOpen, setPlanningOpen] = useState(false);
   const [procurementOpen, setProcurementOpen] = useState(false);
   const [hrOpen, setHrOpen] = useState(false);
-  const [qsOpen, setQsOpen] = useState(false);
   const [qsGroupOpen, setQsGroupOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [siteOpen, setSiteOpen] = useState(false);
   const [hseOpen, setHseOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
-  const [subcontractorOpen, setSubcontractorOpen] = useState(false);
-  const [contractAdminOpen, setContractAdminOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { unreadCount } = useTaskAlerts();
   const [approvalCount, setApprovalCount] = useState(0);
@@ -389,68 +384,30 @@ export function Sidebar({ collapsed }: SidebarProps) {
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Quantity Surveying" open={qsGroupOpen} onToggle={() => setQsGroupOpen(!qsGroupOpen)} />
           {(collapsed || qsGroupOpen) && (
-            <div className={cn(!collapsed && "ml-2 border-l border-border/50 pl-1")}>
-
-              {/* Tendering */}
-              <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Tendering" open={tenderOpen} onToggle={() => setTenderOpen(!tenderOpen)} />
-                {(collapsed || tenderOpen) && (
-                  <>
-                    <NavItem href="/dashboard/tenders"                 label="Dashboard"        icon={LayoutDashboard} />
-                    <NavItem href="/dashboard/tenders/register"        label="Tender Register"  icon={FileText} />
-                    <NavItem href="/dashboard/tenders/cost-estimation"  label="Cost Estimation"   icon={Calculator} />
-                    <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
-                    <NavItem href="/dashboard/tenders/submissions"      label="Submissions"       icon={FileSearch} />
-                    <NavItem href="/dashboard/tenders/bid-evaluation"   label="Bid Evaluation"    icon={Award} />
-                  </>
-                )}
-              </div>
-
-              {/* QS & Cost */}
-              <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="QS & Cost" open={qsOpen} onToggle={() => setQsOpen(!qsOpen)} />
-                {(collapsed || qsOpen) && (
-                  <>
-                    <NavItem href="/dashboard/qs/boq"          label="BOQ"              icon={DollarSign} />
-                    <NavItem href="/dashboard/qs/cost-library"  label="Cost Library"      icon={BookTemplate} />
-                    <NavItem href="/dashboard/qs/variations"    label="Variation Orders"  icon={GitBranch}  />
-                    <NavItem href="/dashboard/qs/claims"        label="Progress Claims"   icon={FileText}   />
-                    <NavItem href="/dashboard/qs/retention"     label="Retention"         icon={Shield}     />
-                    <NavItem href="/dashboard/qs/payments"      label="Payment Vouchers"  icon={CreditCard} />
-                  </>
-                )}
-              </div>
-
-              {/* Contract Admin */}
-              <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Contract Admin" open={contractAdminOpen} onToggle={() => setContractAdminOpen(!contractAdminOpen)} />
-                {(collapsed || contractAdminOpen) && (
-                  <>
-                    <NavItem href="/dashboard/contracts"                       label="Dashboard"             icon={LayoutDashboard} />
-                    <NavItem href="/dashboard/contracts/register"              label="Contract Register"     icon={FileSignature} />
-                    <NavItem href="/dashboard/contracts/notices"               label="Notices"               icon={AlertTriangle} />
-                    <NavItem href="/dashboard/contracts/employer-instructions" label="Employer Instructions" icon={ScrollText} />
-                    <NavItem href="/dashboard/contracts/correspondence"        label="Correspondence"        icon={MessageSquare} />
-                    <NavItem href="/dashboard/contracts/entitlements"          label="Entitlements"          icon={Shield} />
-                  </>
-                )}
-              </div>
-
-              {/* Subcontractors */}
-              <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Subcontractors" open={subcontractorOpen} onToggle={() => setSubcontractorOpen(!subcontractorOpen)} />
-                {(collapsed || subcontractorOpen) && (
-                  <>
-                    <NavItem href="/dashboard/subcontractors"                     label="Dashboard"           icon={LayoutDashboard} />
-                    <NavItem href="/dashboard/subcontractors/ipcs"                label="Sub-IPCs"            icon={FileText} />
-                    <NavItem href="/dashboard/subcontractors/back-charges"        label="Back Charges"        icon={AlertTriangle} />
-                    <NavItem href="/dashboard/subcontractors/performance-notices" label="Performance Notices" icon={FileWarning} />
-                    <NavItem href="/dashboard/subcontractors/variations"          label="Variations"          icon={GitBranch} />
-                  </>
-                )}
-              </div>
-
-            </div>
+            <>
+              <NavItem href="/dashboard/qs/boq"                    label="BOQ"                  icon={DollarSign} />
+              <NavItem href="/dashboard/qs?tab=cost-control"        label="Cost Control"          icon={BarChart2} />
+              <NavItem href="/dashboard/qs?tab=contingency"        label="Contingency"           icon={Shield} />
+              <NavItem href="/dashboard/qs/evm"                    label="Earned Value"          icon={TrendingUp} />
+              <NavItem href="/dashboard/qs?tab=portfolio"          label="Portfolio"             icon={Briefcase} />
+              <NavItem href="/dashboard/qs?tab=audit"              label="Audit Log"             icon={History} />
+              <NavItem href="/dashboard/qs?tab=currency"           label="Currency"              icon={DollarSign} />
+              <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
+              <NavItem href="/dashboard/qs/claims"                 label="Progress Claims"       icon={FileText} />
+              <NavItem href="/dashboard/qs/variations"             label="Variations"            icon={GitBranch} />
+              <NavItem href="/dashboard/subcontractors/back-charges"        label="Back Charges"        icon={AlertTriangle} />
+              <NavItem href="/dashboard/subcontractors/performance-notices" label="Performance Notices" icon={FileWarning} />
+              <NavItem href="/dashboard/tenders/register"          label="Tender Register"       icon={FileSearch} />
+              <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
+              <NavItem href="/dashboard/tenders/tender-management" label="Tender Management"     icon={ClipboardList} />
+              <NavItem href="/dashboard/tenders/submissions"       label="Submissions"           icon={Send} />
+              <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"        icon={Award} />
+              <NavItem href="/dashboard/contracts/register"        label="Contract Register"     icon={FileSignature} />
+              <NavItem href="/dashboard/contracts/notices"         label="Notices"               icon={AlertTriangle} />
+              <NavItem href="/dashboard/contracts/employer-instructions" label="Employer Instructions" icon={ScrollText} />
+              <NavItem href="/dashboard/contracts/correspondence"  label="Correspondence"        icon={MessageSquare} />
+              <NavItem href="/dashboard/contracts/entitlements"    label="Entitlements"          icon={Shield} />
+            </>
           )}
         </div>
 
