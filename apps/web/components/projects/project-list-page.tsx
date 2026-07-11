@@ -47,7 +47,11 @@ export function ProjectListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showNamingCreate, setShowNamingCreate] = useState(false);
   const [teamProject, setTeamProject] = useState<Project | null>(null);
+<<<<<<< HEAD
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+=======
+  const [viewMode, setViewMode] = useState<"list" | "card">("card");
+>>>>>>> 252fdf0 (UI enhancements: sidebar redesign, S-Curve progress, card view, budget codes edit + collapse)
 
   function fetchProjects() {
     const supabase = createClient();
@@ -152,6 +156,30 @@ export function ProjectListPage() {
               {projects.length} project{projects.length !== 1 ? "s" : ""}
             </p>
             <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "flex items-center gap-1 rounded-l-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+                    viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <List className="h-3.5 w-3.5" />
+                  List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("card")}
+                  className={cn(
+                    "flex items-center gap-1 rounded-r-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+                    viewMode === "card" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Cards
+                </button>
+              </div>
               <Button onClick={() => setShowNamingCreate(true)} size="sm" variant="outline">
                 <Plus className="mr-1.5 h-4 w-4" />
                 New (Template)
@@ -236,6 +264,7 @@ export function ProjectListPage() {
             </div>
           </div>
 
+<<<<<<< HEAD
           {viewMode === "card" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.length === 0 ? (
@@ -330,6 +359,9 @@ export function ProjectListPage() {
               )}
             </div>
           ) : (
+=======
+          {viewMode === "list" ? (
+>>>>>>> 252fdf0 (UI enhancements: sidebar redesign, S-Curve progress, card view, budget codes edit + collapse)
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead>
@@ -404,6 +436,88 @@ export function ProjectListPage() {
                 </tbody>
               </table>
             </div>
+<<<<<<< HEAD
+=======
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.length === 0 ? (
+                <div className="col-span-full py-12 text-center text-sm text-muted-foreground">
+                  No projects found
+                </div>
+              ) : (
+                filtered.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelected(p)}
+                    className="group cursor-pointer rounded-xl border border-border bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/30"
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                          {p.project_name}
+                        </h3>
+                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{p.project_code}</p>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        STATUS_COLORS[p.project_status] ?? "bg-muted text-muted-foreground border-border",
+                      )}>
+                        {STATUS_LABELS[p.project_status] ?? p.project_status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+
+                    <div className="mb-3 flex items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {TYPE_LABELS[p.project_type] ?? p.project_type}
+                      </span>
+                      {p.location && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                          <MapPin className="h-2.5 w-2.5" />
+                          {p.location}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mb-3 space-y-1.5 border-t border-border/60 pt-3">
+                      {p.project_manager_id && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">PM</span>
+                          <span className="font-medium text-foreground">{staffMap[p.project_manager_id] ?? "—"}</span>
+                        </div>
+                      )}
+                      {p.contract_value != null && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <DollarSign className="h-3 w-3 text-muted-foreground" />
+                          <span className="font-medium text-foreground">{formatValue(p.contract_value, p.currency)}</span>
+                        </div>
+                      )}
+                      {(p.start_date || p.end_date) && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          <span>{p.start_date ?? "—"}{p.end_date ? ` → ${p.end_date}` : ""}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-border/60 pt-3">
+                      {p.description ? (
+                        <p className="line-clamp-1 text-[10px] text-muted-foreground flex-1 mr-2">{p.description}</p>
+                      ) : <div />}
+                      <button
+                        type="button"
+                        title="Manage team"
+                        onClick={(e) => { e.stopPropagation(); setTeamProject(p); }}
+                        className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-muted-foreground border border-border hover:bg-muted hover:text-foreground transition-colors"
+                      >
+                        <Users className="h-3 w-3" />
+                        Team
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+>>>>>>> 252fdf0 (UI enhancements: sidebar redesign, S-Curve progress, card view, budget codes edit + collapse)
           )}
 
           <p className="text-xs text-muted-foreground">

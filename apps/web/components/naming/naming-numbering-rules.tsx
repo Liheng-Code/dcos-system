@@ -60,32 +60,26 @@ export function NamingNumberingRules({ projectId, onSaved }: NamingNumberingRule
 
   useEffect(() => {
     if (!projectId) { setLoading(false); return; }
-    Promise.all([
-      supabase.from("discipline_codes").select("code, name").eq("is_active", true).order("sort_order"),
-      supabase.from("document_types").select("code, name").eq("is_active", true).order("code"),
-      supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
-      supabase.from("profiles").select("company_id").eq("id", supabase.auth.getUser().then(({ data }) => data.user?.id)).single(),
-      supabase.from("projects").select("project_code").eq("id", projectId).single(),
-    ]).then(([discRes, dtRes, ruleRes, profileRes, projRes]) => {
-      if (discRes.data) setDisciplines(discRes.data as { code: string; name: string }[]);
-      if (dtRes.data) setDocTypes(dtRes.data as { code: string; name: string }[]);
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id;
+      Promise.all([
+        supabase.from("discipline_codes").select("code, name").eq("is_active", true).order("sort_order"),
+        supabase.from("document_types").select("code, name").eq("is_active", true).order("code"),
+        supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
+        uid ? supabase.from("profiles").select("company_id").eq("id", uid).single() : Promise.resolve({ data: null }),
+        supabase.from("projects").select("project_code").eq("id", projectId).single(),
+      ]).then(([discRes, dtRes, ruleRes, profileRes, projRes]) => {
+        if (discRes.data) setDisciplines(discRes.data as { code: string; name: string }[]);
+        if (dtRes.data) setDocTypes(dtRes.data as { code: string; name: string }[]);
 
-      if (profileRes.data) {
-        const uid = supabase.auth.getUser().then(({ data }) => data.user?.id);
-        uid.then((userId) => {
-          if (userId) {
-            supabase.from("profiles").select("company_id").eq("id", userId).single().then(({ data: pd }) => {
-              if (pd?.company_id) {
-                supabase.from("companies").select("code").eq("id", pd.company_id).single().then(({ data: cd }) => {
-                  if (cd) setCompanyCode(cd.code as string);
-                });
-              }
-            });
-          }
-        });
-      }
+        if (profileRes.data?.company_id) {
+          supabase.from("companies").select("code").eq("id", profileRes.data.company_id).single().then(({ data: cd }) => {
+            if (cd) setCompanyCode(cd.code as string);
+          });
+        }
 
-      if (projRes.data) setProjectCode((projRes.data as { project_code: string }).project_code);
+        if (projRes.data) setProjectCode((projRes.data as { project_code: string }).project_code);
 
       if (ruleRes.data) {
         const r = ruleRes.data as RuleData & { format_mask: string; revision_format: string; running_number_scope: string };
@@ -99,6 +93,7 @@ export function NamingNumberingRules({ projectId, onSaved }: NamingNumberingRule
       }
       setLoading(false);
     });
+    })();
   }, [projectId, supabase]);
 
   const toggleArray = (arr: string[], item: string): string[] =>

@@ -37,30 +37,36 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
 
   useEffect(() => {
     if (!projectId) return;
-    Promise.all([
-      supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
-      supabase.from("projects").select("project_code").eq("id", projectId).single(),
-      supabase.from("building_codes").select("code, name").eq("is_active", true).order("sort_order"),
-    ]).then(([ruleRes, projRes, bldRes]) => {
-      if (ruleRes.data) {
-        const r = ruleRes.data as typeof rules & { format_mask: string; revision_format: string; running_number_scope: string; discipline_codes: string[]; document_types: string[] };
-        setRules(r);
-        if (r.discipline_codes?.length) setSelectedDisc(r.discipline_codes[0]);
-        if (r.document_types?.length) setSelectedDocType(r.document_types[0]);
-        setSelectedLevel("G00");
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id;
+      Promise.all([
+        supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
+        supabase.from("projects").select("project_code").eq("id", projectId).single(),
+        supabase.from("building_codes").select("code, name").eq("is_active", true).order("sort_order"),
+      ]).then(([ruleRes, projRes, bldRes]) => {
+        if (ruleRes.data) {
+          const r = ruleRes.data as typeof rules & { format_mask: string; revision_format: string; running_number_scope: string; discipline_codes: string[]; document_types: string[] };
+          setRules(r);
+          if (r.discipline_codes?.length) setSelectedDisc(r.discipline_codes[0]);
+          if (r.document_types?.length) setSelectedDocType(r.document_types[0]);
+          setSelectedLevel("G00");
 
-        supabase.from("profiles").select("company_id").eq("id", supabase.auth.getUser().then(({ data }) => data.user?.id).then((uid) => uid || "")).single().then(({ data: pd }) => {
-          if (pd?.company_id) {
-            supabase.from("companies").select("code").eq("id", pd.company_id).single().then(({ data: cd }) => {
-              if (cd) setCompanyCode(cd.code as string);
+          if (uid) {
+            supabase.from("profiles").select("company_id").eq("id", uid).single().then(({ data: pd }) => {
+              if (pd?.company_id) {
+                supabase.from("companies").select("code").eq("id", pd.company_id).single().then(({ data: cd }) => {
+                  if (cd) setCompanyCode(cd.code as string);
+                });
+              }
             });
           }
-        });
-      }
-      if (projRes.data) setProjectCode((projRes.data as { project_code: string }).project_code);
-      if (bldRes.data) setBuildingCodes(bldRes.data as { code: string; name: string }[]);
-      setLoading(false);
-    });
+        }
+        if (projRes.data) setProjectCode((projRes.data as { project_code: string }).project_code);
+        if (bldRes.data) setBuildingCodes(bldRes.data as { code: string; name: string }[]);
+        setLoading(false);
+      });
+    })();
   }, [projectId, supabase]);
 
   useEffect(() => {

@@ -1,25 +1,54 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Plus, FileSearch, Eye } from "lucide-react";
+import { Loader2, Plus, FileSearch, Eye, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default function TenderRegisterPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
+  const emptyForm = {
     tender_no: "", title: "", description: "", tender_type: "selective",
     budget_range: "", currency: "USD", issue_date: "", submission_deadline: "",
     tender_days: "30", procurement_method: "limited_bid", estimated_value: "",
-  });
+  };
+  const [form, setForm] = useState(emptyForm);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(true);
+  }
+
+  function openEdit(t: any) {
+    setEditingId(t.id);
+    setForm({
+      tender_no: t.tender_no ?? "",
+      title: t.title ?? "",
+      description: t.description ?? "",
+      tender_type: t.tender_type ?? "selective",
+      budget_range: t.budget_range != null ? String(t.budget_range) : "",
+      currency: t.currency ?? "USD",
+      issue_date: t.issue_date ?? "",
+      submission_deadline: t.submission_deadline ? String(t.submission_deadline).slice(0, 16) : "",
+      tender_days: t.tender_days != null ? String(t.tender_days) : "30",
+      procurement_method: t.procurement_method ?? "limited_bid",
+      estimated_value: t.estimated_value != null ? String(t.estimated_value) : "",
+    });
+    setShowForm(true);
+  }
 
   useEffect(() => {
     supabase.from("tender_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
@@ -28,10 +57,10 @@ export default function TenderRegisterPage() {
     });
   }, [supabase]);
 
-  async function handleCreate() {
+  async function handleSave() {
     setSaving(true);
     const days = parseInt(form.tender_days) || 30;
-    const { error } = await supabase.from("tender_register").insert({
+    const payload = {
       tender_no: form.tender_no,
       title: form.title,
       description: form.description || null,
@@ -43,14 +72,28 @@ export default function TenderRegisterPage() {
       tender_days: days,
       procurement_method: form.procurement_method,
       estimated_value: parseFloat(form.estimated_value) || null,
-    });
+    };
+    const { error } = editingId
+      ? await supabase.from("tender_register").update(payload).eq("id", editingId)
+      : await supabase.from("tender_register").insert(payload);
     if (error) { toast.error(error.message); setSaving(false); return; }
-    toast.success("Tender created");
+    toast.success(editingId ? "Tender updated" : "Tender created");
     setShowForm(false);
+    setEditingId(null);
     supabase.from("tender_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
       if (data) setItems(data);
     });
     setSaving(false);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this tender? This cannot be undone.")) return;
+    setDeletingId(id);
+    const { error } = await supabase.from("tender_register").delete().eq("id", id);
+    if (error) { toast.error(error.message); setDeletingId(null); return; }
+    toast.success("Tender deleted");
+    setItems((prev) => prev.filter((t) => t.id !== id));
+    setDeletingId(null);
   }
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
@@ -62,7 +105,7 @@ export default function TenderRegisterPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Tender Register</h1>
           <p className="text-sm text-muted-foreground">Manage tenders from issuance to award</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)} size="sm">
+        <Button onClick={() => (showForm ? setShowForm(false) : openCreate())} size="sm">
           <Plus className="mr-1.5 h-4 w-4" /> New Tender
         </Button>
       </div>
@@ -70,6 +113,7 @@ export default function TenderRegisterPage() {
       {showForm && (
         <Card>
           <CardContent className="p-4 space-y-3">
+            <p className="text-sm font-semibold">{editingId ? "Edit Tender" : "New Tender"}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Tender No *</label>
@@ -133,9 +177,9 @@ export default function TenderRegisterPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleCreate} disabled={saving || !form.tender_no.trim() || !form.title.trim()}>
-                {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Create
+              <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || !form.tender_no.trim() || !form.title.trim()}>
+                {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}{editingId ? "Update" : "Create"}
               </Button>
             </div>
           </CardContent>
@@ -160,7 +204,33 @@ export default function TenderRegisterPage() {
                   <p className="text-xs text-muted-foreground">{t.tender_type} · {t.procurement_method?.replace(/_/g, " ") || "—"}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">{t.issue_date || "—"}</p>
-                <Eye className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    title="View tender cost estimation"
+                    onClick={() => router.push(`/dashboard/tenders/cost-estimation?tender=${t.id}`)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Edit tender"
+                    onClick={() => openEdit(t)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Delete tender"
+                    disabled={deletingId === t.id}
+                    onClick={() => handleDelete(t.id)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  >
+                    {deletingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
+                </div>
               </CardContent>
             </Card>
           ))}
