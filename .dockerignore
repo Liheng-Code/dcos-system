@@ -1,0 +1,12 @@
+**/.next
+**/node_modules
+.git
+.claude
+.opencode
+supabase
+docs
+scripts
+*.md
+apps/web/.env.local
+apps/web/dev-server.log
+apps/web/dev-server.err.log

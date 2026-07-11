@@ -150,7 +150,7 @@ create table if not exists public.overtime_audit_log (
   action            text not null check (action in (
                       'created', 'edited', 'submitted', 'approved', 'rejected',
                       'verified', 'completed', 'paid', 'cancelled', 'cost_allocated',
-                      'payroll_transfer'
+                      'payroll_transfer', 'clock_in', 'clock_out'
                     )),
   performed_by      uuid not null references public.profiles(id) on delete restrict,
   details           jsonb,

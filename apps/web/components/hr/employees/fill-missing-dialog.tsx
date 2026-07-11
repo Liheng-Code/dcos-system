@@ -28,10 +28,18 @@ interface EmployeeProfile {
   avatar_url: string | null;
 }
 
+interface StatusSets {
+  hasPayrollProfile: Set<string>;
+  hasTaxProfile: Set<string>;
+  hasNSSFProfile: Set<string>;
+  hasBankAccount: Set<string>;
+}
+
 interface FieldDef {
   key: string;
   label: string;
   group: string;
+  statusSetKey?: keyof StatusSets;
 }
 
 const FIELD_DEFS: FieldDef[] = [
@@ -45,9 +53,13 @@ const FIELD_DEFS: FieldDef[] = [
   { key: "probation_status", label: "Probation Status", group: "Employment" },
   { key: "probation_end_date", label: "Probation End Date", group: "Employment" },
   { key: "avatar_url", label: "Avatar URL", group: "Avatar" },
+  { key: "payroll_profile", label: "Payroll Profile", group: "Payroll", statusSetKey: "hasPayrollProfile" },
+  { key: "tax_profile", label: "Tax Profile (TOS)", group: "Tax", statusSetKey: "hasTaxProfile" },
+  { key: "nssf_profile", label: "NSSF Profile", group: "NSSF", statusSetKey: "hasNSSFProfile" },
+  { key: "bank_account", label: "Bank Account", group: "Bank", statusSetKey: "hasBankAccount" },
 ];
 
-const GROUPS = ["Personal", "Employment", "Avatar"] as const;
+const GROUPS = ["Personal", "Employment", "Avatar", "Payroll", "Tax", "NSSF", "Bank"] as const;
 
 type FillResult = {
   updated: number;
@@ -61,12 +73,14 @@ export function FillMissingDialog({
   onOpenChange,
   profiles,
   filteredIds,
+  statusSets,
   onComplete,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   profiles: EmployeeProfile[];
   filteredIds?: string[];
+  statusSets?: StatusSets;
   onComplete?: () => void;
 }) {
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(FIELD_DEFS.map((f) => f.key)));
@@ -89,12 +103,16 @@ export function FillMissingDialog({
     const counts: Record<string, number> = {};
     for (const field of FIELD_DEFS) {
       counts[field.key] = targetProfiles.filter((p) => {
+        if (field.statusSetKey && statusSets) {
+          const set = statusSets[field.statusSetKey];
+          return !set || !set.has(p.id);
+        }
         const val = (p as unknown as Record<string, unknown>)[field.key];
         return val === null || val === undefined || val === "";
       }).length;
     }
     return counts;
-  }, [targetProfiles]);
+  }, [targetProfiles, statusSets]);
 
   const isMissing = (key: string) => missingCounts[key] > 0;
 

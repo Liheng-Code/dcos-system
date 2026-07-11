@@ -1,111 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createUserClient } from "@/lib/supabase/server";
+import crypto from "crypto";
 
-const NATIONALITIES = [
-  "Cambodian", "Cambodian", "Cambodian", "Cambodian", "Cambodian",
-  "Cambodian", "Cambodian", "Cambodian", "Cambodian", "Cambodian",
-  "Cambodian", "Cambodian", "Cambodian", "Cambodian", "Cambodian",
-  "Chinese", "Chinese", "Chinese", "Chinese",
-  "Vietnamese", "Vietnamese", "Vietnamese",
-  "Filipino", "Filipino",
-  "Japanese", "Korean", "Thai", "Malaysian", "Indonesian",
-  "Indian", "Bangladeshi", "Burmese", "British", "American",
-  "Australian",
-];
+const HR_ROLE_CODES = new Set(["HR_Manager", "admin"]);
 
-const PHONE_PREFIXES = [
-  "10", "11", "12", "15", "16", "17", "18",
-  "60", "61", "69",
-  "77", "78",
-  "80", "81", "85", "86", "87", "88", "89",
-  "90", "92", "95", "96", "97", "98", "99",
-];
+const FIELD_GROUPS = ["payroll_profile", "tax_profile", "nssf_profile", "bank_account"] as const;
+type FieldGroup = (typeof FIELD_GROUPS)[number];
 
-const ADDRESSES = [
-  "#12A, Street 63, Sangkat Tonle Bassac, Khan Chamkarmon, Phnom Penh",
-  "#45, Street 110, Sangkat Srah Chak, Khan Daun Penh, Phnom Penh",
-  "#78, Street 271, Sangkat Boeung Tumpun, Khan Mean Chey, Phnom Penh",
-  "#101, Street 2004, Sangkat Kakab, Khan Pur SenChey, Phnom Penh",
-  "#56, Street 598, Sangkat Boeung Kak II, Khan Toul Kork, Phnom Penh",
-  "#23, Street 294, Sangkat Tonle Bassac, Khan Chamkarmon, Phnom Penh",
-  "#89, Street 51, Sangkat Sras Chak, Khan Daun Penh, Phnom Penh",
-  "#34, Street 123, Sangkat Veal Vong, Khan 7 Makara, Phnom Penh",
-  "#67, Street 456, Sangkat Monorom, Khan 7 Makara, Phnom Penh",
-  "#15, Street 789, Sangkat Mittapheap, Khan 7 Makara, Phnom Penh",
-  "#92, Street 1003, Sangkat Phnom Penh Thmey, Khan Russey Keo, Phnom Penh",
-  "#28, Street 2001, Sangkat Toek Thla, Khan Russey Keo, Phnom Penh",
-  "#55, Street 2010, Sangkat Kilometre 6, Khan Russey Keo, Phnom Penh",
-  "#19, Street 371, Sangkat Boeung Salang, Khan Toul Kork, Phnom Penh",
-  "#73, Street 313, Sangkat Boeung Kak I, Khan Toul Kork, Phnom Penh",
-  "#41, Street 1011, Sangkat Chrang Chamreh I, Khan Russey Keo, Phnom Penh",
-  "#88, Street 1993, Sangkat Prek Leap, Khan Chroy Changvar, Phnom Penh",
-  "#6, Street 68, Sangkat Phsar Thmey III, Khan Daun Penh, Phnom Penh",
-  "#37, Street 242, Sangkat Chaktomuk, Khan Daun Penh, Phnom Penh",
-  "#64, Street 155, Sangkat Psar Doeum Thkov, Khan Chamkarmon, Phnom Penh",
-  "#50, Street 1, Preah Sihanouk Ville, Sihanoukville",
-  "#22, Street 2, Group 12, Sangkat 4, Sihanoukville",
-  "#11, Street Angkor Wat, Sangkat Svay Dangkum, Siem Reap",
-  "#9, Street 6, Sangkat Slorkram, Siem Reap",
-  "#33, Street 7, Sangkat Mondul 3, Siem Reap",
-  "#17, National Road 5, Sangkat Prek Kdam, Kandal",
-  "#8, National Road 3, Sangkat Kampong Samnanh, Kampot",
-  "#21, Street Battambang, Sangkat Svay Por, Battambang",
-  "#14, Street 2, Sangkat Kampong Kdei, Kampong Thom",
-  "#25, National Road 6, Sangkat Kampong Cham, Kampong Cham",
-];
-
-const GRADES = ["L1", "L2", "L3", "L4", "L5", "L6"];
-const GENDERS: Array<"male" | "female"> = ["male", "male", "male", "female", "female"];
-
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function generateDeterministicId(base: string, prefix: string): string {
+  const hash = crypto.createHash("md5").update(base).digest("hex");
+  const num = (parseInt(hash.substring(0, 8), 16) % 900000) + 100000;
+  return `${prefix}-${num}`;
 }
 
-function randomDOB(): string {
-  const year = Math.floor(Math.random() * 38) + 1965; // 1965-2002
-  const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, "0");
-  const day = String(Math.floor(Math.random() * 28) + 1).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+async function getActorContext(
+  supabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+) {
+  const [{ data: profile }, { data: roles }] = await Promise.all([
+    supabase.from("profiles").select("id, role").eq("id", userId).maybeSingle(),
+    supabase.from("user_roles").select("role_code").eq("user_id", userId),
+  ]);
 
-function randomJoinDate(): string {
-  const start = new Date("2014-01-01T00:00:00");
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const offset = Math.floor(Math.random() * (end.getTime() - start.getTime()));
-  const date = new Date(start.getTime() + offset);
-  return date.toISOString().slice(0, 10);
-}
+  const roleCodes = new Set<string>((roles ?? []).map((r: { role_code: string }) => r.role_code));
+  if (profile?.role) roleCodes.add(profile.role);
 
-function randomPhone(): string {
-  const prefix = pick(PHONE_PREFIXES);
-  const suffix = String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0");
-  return `+855 ${prefix} ${suffix.slice(0, 3)} ${suffix.slice(3)}`;
-}
-
-function randomProbationStatus(employmentType: string | null): string | null {
-  if (!employmentType || employmentType === "permanent") {
-    return pick(["not_applicable", "not_applicable", "completed"]);
-  }
-  return pick(["active", "active", "completed", "completed", "not_applicable"]);
-}
-
-function randomProbationEndDate(joinDate: string | null, probationStatus: string | null): string | null {
-  if (probationStatus !== "active" || !joinDate) return null;
-  const start = new Date(joinDate + "T00:00:00");
-  if (Number.isNaN(start.getTime())) return null;
-  const months = Math.floor(Math.random() * 4) + 3; // 3-6 months
-  start.setMonth(start.getMonth() + months);
-  return start.toISOString().slice(0, 10);
+  return {
+    profile,
+    isHr: [...roleCodes].some((role) => HR_ROLE_CODES.has(role)),
+  };
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const userClient = await createUserClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userClient = await createUserClient();
+  const {
+    data: { user },
+  } = await userClient.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabase = createAdminClient();
+  const actor = await getActorContext(supabase, user.id);
+  if (!actor.isHr) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json();
   const { employee_ids, fields } = body as {
@@ -113,167 +48,156 @@ export async function POST(request: NextRequest) {
     fields: string[];
   };
 
-  if (!fields || !Array.isArray(fields) || fields.length === 0) {
-    return NextResponse.json({ error: "At least one field is required" }, { status: 400 });
+  if (!Array.isArray(fields) || fields.length === 0) {
+    return NextResponse.json({ error: "fields array is required" }, { status: 400 });
   }
 
-  const validFields = [
-    "gender", "date_of_birth", "nationality", "phone", "address",
-    "grade", "join_date", "probation_status", "probation_end_date",
-    "avatar_url",
-  ];
-
-  const invalidFields = fields.filter((f) => !validFields.includes(f));
-  if (invalidFields.length > 0) {
-    return NextResponse.json({ error: `Invalid fields: ${invalidFields.join(", ")}` }, { status: 400 });
-  }
-
-  const supabase = createAdminClient();
-
-  const EXTENDED_COLUMNS = ["date_of_birth", "nationality", "phone", "address"];
-  const ALL_COLUMNS = ["gender", "grade", "join_date", "probation_status", "probation_end_date", "avatar_url", ...EXTENDED_COLUMNS];
-
-  const fieldColumnMap: Record<string, string> = {
-    gender: "gender",
-    date_of_birth: "date_of_birth",
-    nationality: "nationality",
-    phone: "phone",
-    address: "address",
-    grade: "grade",
-    join_date: "join_date",
-    probation_status: "probation_status",
-    probation_end_date: "probation_end_date",
-    avatar_url: "avatar_url",
-  };
-
-  const requestedColumns = [...new Set(fields.map((f) => fieldColumnMap[f]).filter(Boolean))];
-  const selectColumns = ["id", "full_name", "employment_type", "join_date", ...requestedColumns];
-
-  let query = supabase.from("profiles").select(selectColumns.join(", "));
-  if (employee_ids && employee_ids.length > 0) {
-    query = query.in("id", employee_ids);
-  }
-  const { data: profiles, error: fetchError } = await query;
-  type ProfileRow = Record<string, unknown>;
-  let profilesData = profiles as ProfileRow[] | null;
-
-  if (fetchError) {
-    const msg = fetchError.message ?? "";
-    const missingColumns = ALL_COLUMNS.filter((col) => msg.includes(col));
-    if (missingColumns.length === 0) {
-      return NextResponse.json({ error: msg }, { status: 500 });
-    }
-    const fallbackColumns = requestedColumns.filter((col) => !missingColumns.includes(col));
-    const fallbackSelect = ["id", "full_name", "employment_type", "join_date", ...fallbackColumns];
-    const result = await supabase.from("profiles").select(fallbackSelect.join(", "));
-    if (result.error) {
-      return NextResponse.json({ error: result.error.message }, { status: 500 });
-    }
-    profilesData = (result.data as unknown) as ProfileRow[] | null;
-  }
-
-  const availableColumns = new Set(
-    profilesData && profilesData.length > 0 ? Object.keys(profilesData[0]) : requestedColumns,
+  const validFields = fields.filter((f): f is FieldGroup =>
+    FIELD_GROUPS.includes(f as FieldGroup),
   );
-  const fillableFields = fields.filter((f) => availableColumns.has(fieldColumnMap[f]));
-  const skippedFields = fields.filter((f) => !availableColumns.has(fieldColumnMap[f]));
+  if (validFields.length === 0) {
+    return NextResponse.json({ error: "No valid field groups supplied" }, { status: 400 });
+  }
 
-  if (!profilesData || profilesData.length === 0) {
+  // Fetch employees to fill
+  let profileQuery = supabase
+    .from("profiles")
+    .select("id, employee_id, full_name, join_date, payroll_group, labor_category")
+    .in("status", ["active", "pending", "probation", "approved", "inactive"]);
+
+  if (Array.isArray(employee_ids) && employee_ids.length > 0) {
+    profileQuery = profileQuery.in("id", employee_ids);
+  }
+
+  const { data: employees, error: empError } = await profileQuery;
+  if (empError) {
+    return NextResponse.json({ error: empError.message }, { status: 500 });
+  }
+  if (!employees || employees.length === 0) {
     return NextResponse.json({ updated: 0, fields_filled: {} });
   }
 
+  // Gather existing records to avoid duplicates
+  const empIds = employees.map((e: { id: string }) => e.id);
+  const today = new Date().toISOString().slice(0, 10);
   const fieldsFilled: Record<string, number> = {};
-  const updates: { id: string; data: Record<string, unknown> }[] = [];
 
-  for (const profile of profilesData) {
-    const updateData: Record<string, unknown> = {};
+  // ── Payroll Profile ───────────────────────────────────────────
+  if (validFields.includes("payroll_profile")) {
+    const { data: existing } = await supabase
+      .from("employee_payroll_profiles")
+      .select("employee_id")
+      .in("employee_id", empIds);
 
-    for (const field of fillableFields) {
-      const current = profile[field];
-      if (current !== null && current !== undefined && current !== "") continue;
+    const existingSet = new Set((existing ?? []).map((r: { employee_id: string }) => r.employee_id));
+    const missing = employees.filter((e: { id: string }) => !existingSet.has(e.id));
 
-      let newValue: unknown = null;
+    if (missing.length > 0) {
+      const rows = missing.map((e: { id: string; join_date: string | null; payroll_group: string | null }) => ({
+        employee_id: e.id,
+        payroll_type: "monthly",
+        currency: "USD",
+        payroll_group: e.payroll_group ?? "staff",
+        ot_eligible: true,
+        tax_applicable: true,
+        nssf_applicable: true,
+        effective_date: e.join_date ?? today,
+        created_by: user.id,
+      }));
 
-      switch (field) {
-        case "gender":
-          newValue = pick(GENDERS);
-          break;
-        case "date_of_birth":
-          newValue = randomDOB();
-          break;
-        case "nationality":
-          newValue = pick(NATIONALITIES);
-          break;
-        case "phone":
-          newValue = randomPhone();
-          break;
-        case "address":
-          newValue = pick(ADDRESSES);
-          break;
-        case "grade":
-          newValue = pick(GRADES);
-          break;
-        case "join_date":
-          newValue = randomJoinDate();
-          break;
-        case "probation_status":
-          newValue = randomProbationStatus(profile["employment_type"] as string | null);
-          break;
-        case "probation_end_date":
-          newValue = randomProbationEndDate(
-            (updateData.join_date ?? profile["join_date"]) as string | null,
-            (updateData.probation_status ?? profile["probation_status"]) as string | null,
-          );
-          break;
-        case "avatar_url":
-          newValue = `https://ui-avatars.com/api/?name=${encodeURIComponent(profile["full_name"] as string)}&background=random&size=128`;
-          break;
-      }
-
-      if (newValue !== null && newValue !== current) {
-        updateData[field] = newValue;
-        fieldsFilled[field] = (fieldsFilled[field] ?? 0) + 1;
-      }
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      updates.push({ id: profile["id"] as string, data: updateData });
+      const { error: insertError } = await supabase.from("employee_payroll_profiles").insert(rows);
+      if (!insertError) fieldsFilled.payroll_profile = missing.length;
+    } else {
+      fieldsFilled.payroll_profile = 0;
     }
   }
 
-  if (updates.length === 0) {
-    return NextResponse.json({ updated: 0, fields_filled: fieldsFilled });
+  // ── Tax Profile ───────────────────────────────────────────────
+  if (validFields.includes("tax_profile")) {
+    const { data: existing } = await supabase
+      .from("employee_tax_profiles")
+      .select("employee_id")
+      .in("employee_id", empIds);
+
+    const existingSet = new Set((existing ?? []).map((r: { employee_id: string }) => r.employee_id));
+    const missing = employees.filter((e: { id: string }) => !existingSet.has(e.id));
+
+    if (missing.length > 0) {
+      const rows = missing.map((e: { id: string; employee_id: string | null; join_date: string | null }) => ({
+        employee_id: e.id,
+        tax_residency: "resident",
+        marital_status: "single",
+        spouse_dependent: false,
+        num_children: 0,
+        tax_id: generateDeterministicId(e.id, "TIN"),
+        effective_date: e.join_date ?? today,
+        created_by: user.id,
+      }));
+
+      const { error: insertError } = await supabase.from("employee_tax_profiles").insert(rows);
+      if (!insertError) fieldsFilled.tax_profile = missing.length;
+    } else {
+      fieldsFilled.tax_profile = 0;
+    }
   }
 
-  const updateResults = await Promise.all(
-    updates.map((u) => supabase.from("profiles").update(u.data).eq("id", u.id)),
-  );
-  const updateError = updateResults.find((r) => r.error)?.error;
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  // ── NSSF Profile ──────────────────────────────────────────────
+  if (validFields.includes("nssf_profile")) {
+    const { data: existing } = await supabase
+      .from("employee_nssf_profiles")
+      .select("employee_id")
+      .in("employee_id", empIds);
+
+    const existingSet = new Set((existing ?? []).map((r: { employee_id: string }) => r.employee_id));
+    const missing = employees.filter((e: { id: string }) => !existingSet.has(e.id));
+
+    if (missing.length > 0) {
+      const rows = missing.map((e: { id: string; employee_id: string | null; labor_category: string | null; join_date: string | null }) => ({
+        employee_id: e.id,
+        nssf_applicable: true,
+        nssf_number: generateDeterministicId(e.id, "NSSF"),
+        pension_applicable: true,
+        healthcare_applicable: true,
+        occupational_risk_applicable: e.labor_category === "site_staff",
+        effective_date: e.join_date ?? today,
+        created_by: user.id,
+      }));
+
+      const { error: insertError } = await supabase.from("employee_nssf_profiles").insert(rows);
+      if (!insertError) fieldsFilled.nssf_profile = missing.length;
+    } else {
+      fieldsFilled.nssf_profile = 0;
+    }
   }
 
-  const auditInserts = updates.map((u) => ({
-    user_id: u.id,
-    actor_id: user.id,
-    event_type: "profile_bulk_fill",
-    new_value: u.data,
-    note: `Auto-filled missing fields: ${Object.keys(u.data).join(", ")}`,
-  }));
+  // ── Bank Account ──────────────────────────────────────────────
+  if (validFields.includes("bank_account")) {
+    const { data: existing } = await supabase
+      .from("employee_bank_accounts")
+      .select("employee_id")
+      .in("employee_id", empIds);
 
-  const { error: auditError } = await supabase.from("user_audit_logs").insert(auditInserts);
-  if (auditError) {
-    console.error("Audit log insert failed (non-fatal):", auditError.message);
+    const existingSet = new Set((existing ?? []).map((r: { employee_id: string }) => r.employee_id));
+    const missing = employees.filter((e: { id: string }) => !existingSet.has(e.id));
+
+    if (missing.length > 0) {
+      const rows = missing.map((e: { id: string; full_name: string }) => ({
+        employee_id: e.id,
+        bank_name: "",
+        account_name: e.full_name,
+        account_number: "",
+        branch: "",
+        is_primary: true,
+      }));
+
+      const { error: insertError } = await supabase.from("employee_bank_accounts").insert(rows);
+      if (!insertError) fieldsFilled.bank_account = missing.length;
+    } else {
+      fieldsFilled.bank_account = 0;
+    }
   }
 
-  return NextResponse.json({
-    updated: updates.length,
-    fields_filled: fieldsFilled,
-    skipped_fields: skippedFields.length > 0 ? skippedFields : undefined,
-  });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Fill missing error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  const totalUpdated = Object.values(fieldsFilled).reduce((a, b) => a + b, 0);
+
+  return NextResponse.json({ updated: totalUpdated, fields_filled: fieldsFilled });
 }

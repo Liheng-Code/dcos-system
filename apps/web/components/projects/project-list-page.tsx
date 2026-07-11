@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Search, Loader2, Filter, X, Plus, Users, ChevronLeft } from "lucide-react";
+import { Search, Loader2, Filter, X, Plus, Users, ChevronLeft, LayoutGrid, List, Calendar, MapPin, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { type Project } from "@/components/projects/project-edit-sheet";
@@ -47,6 +47,7 @@ export function ProjectListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showNamingCreate, setShowNamingCreate] = useState(false);
   const [teamProject, setTeamProject] = useState<Project | null>(null);
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
 
   function fetchProjects() {
     const supabase = createClient();
@@ -205,85 +206,205 @@ export function ProjectListPage() {
                 Clear
               </button>
             )}
+            <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+              <button
+                type="button"
+                title="Card view"
+                onClick={() => setViewMode("card")}
+                className={cn(
+                  "rounded-md p-1.5 transition-colors",
+                  viewMode === "card"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                )}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="List view"
+                onClick={() => setViewMode("list")}
+                className={cn(
+                  "rounded-md p-1.5 transition-colors",
+                  viewMode === "list"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                )}
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Project</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Code</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Type</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">PM</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Value</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Dates</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Team</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
-                      No projects found
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((p) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => setSelected(p)}
-                      className={cn(
-                        "cursor-pointer transition-colors hover:bg-muted/50",
-                        false,
-                      )}
-                    >
-                      <td className="px-3 py-2.5 font-medium text-foreground">
-                        {p.project_name}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
-                        {p.project_code}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium">
+          {viewMode === "card" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filtered.length === 0 ? (
+                <div className="col-span-full py-16 text-center text-sm text-muted-foreground">
+                  No projects found
+                </div>
+              ) : (
+                filtered.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelected(p)}
+                    className="group flex flex-col rounded-xl border border-border bg-card p-4 text-left transition-all hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-sm leading-tight truncate group-hover:text-primary transition-colors">
+                          {p.project_name}
+                        </h3>
+                        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                          {p.project_code}
+                        </p>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        STATUS_COLORS[p.project_status] ?? "bg-muted text-muted-foreground border-border",
+                      )}>
+                        {STATUS_LABELS[p.project_status] ?? p.project_status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+
+                    {p.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+                        {p.description}
+                      </p>
+                    )}
+
+                    <div className="mt-auto flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium">
                           {TYPE_LABELS[p.project_type] ?? p.project_type}
                         </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
-                        {p.project_manager_id ? (staffMap[p.project_manager_id] ?? "—") : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
-                        {formatValue(p.contract_value, p.currency)}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                        {p.start_date ? p.start_date : "—"}
-                        {p.end_date ? ` → ${p.end_date}` : ""}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={cn(
-                          "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-                          STATUS_COLORS[p.project_status] ?? "bg-muted text-muted-foreground border-border",
-                        )}>
-                          {STATUS_LABELS[p.project_status] ?? p.project_status.replace(/_/g, " ")}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          title="Manage team"
-                          onClick={(e) => { e.stopPropagation(); setTeamProject(p); }}
-                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground border border-border hover:bg-muted hover:text-foreground transition-colors"
-                        >
-                          <Users className="h-3 w-3" />
-                          Team
-                        </button>
+                        {p.category && (
+                          <span className="text-[10px] text-muted-foreground truncate">
+                            {p.category}
+                          </span>
+                        )}
+                      </div>
+                      {p.project_manager_id && (
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Users className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{staffMap[p.project_manager_id] ?? "Unassigned"}</span>
+                        </div>
+                      )}
+                      {p.location && (
+                        <div className="flex items-center gap-1.5 truncate">
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{p.location}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3">
+                        {p.contract_value != null && (
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 shrink-0" />
+                            <span>{p.currency} {p.contract_value.toLocaleString()}</span>
+                          </div>
+                        )}
+                        {p.start_date && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            <span>{p.start_date}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">
+                        {p.start_date && p.end_date ? `${p.start_date} → ${p.end_date}` : p.start_date ?? "No dates set"}
+                      </span>
+                      <div
+                        role="button"
+                        title="Manage team"
+                        onClick={(e) => { e.stopPropagation(); setTeamProject(p); }}
+                        className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Project</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Code</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Type</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">PM</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Value</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Dates</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Status</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Team</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                        No projects found
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filtered.map((p) => (
+                      <tr
+                        key={p.id}
+                        onClick={() => setSelected(p)}
+                        className="cursor-pointer transition-colors hover:bg-muted/50"
+                      >
+                        <td className="px-3 py-2.5 font-medium text-foreground">
+                          {p.project_name}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
+                          {p.project_code}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium">
+                            {TYPE_LABELS[p.project_type] ?? p.project_type}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {p.project_manager_id ? (staffMap[p.project_manager_id] ?? "—") : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {formatValue(p.contract_value, p.currency)}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {p.start_date ? p.start_date : "—"}
+                          {p.end_date ? ` → ${p.end_date}` : ""}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={cn(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                            STATUS_COLORS[p.project_status] ?? "bg-muted text-muted-foreground border-border",
+                          )}>
+                            {STATUS_LABELS[p.project_status] ?? p.project_status.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <button
+                            type="button"
+                            title="Manage team"
+                            onClick={(e) => { e.stopPropagation(); setTeamProject(p); }}
+                            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground border border-border hover:bg-muted hover:text-foreground transition-colors"
+                          >
+                            <Users className="h-3 w-3" />
+                            Team
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground">
             Showing {filtered.length} of {projects.length} projects

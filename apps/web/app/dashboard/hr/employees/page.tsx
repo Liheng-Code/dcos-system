@@ -198,6 +198,7 @@ export default function EmployeesPage() {
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [certifications, setCertifications] = useState<EmployeeCertification[]>([]);
   // Payroll profile status sets (employee_id strings)
+  const [hasPayrollProfile, setHasPayrollProfile] = useState<Set<string>>(new Set());
   const [hasTaxProfile, setHasTaxProfile] = useState<Set<string>>(new Set());
   const [hasNSSFProfile, setHasNSSFProfile] = useState<Set<string>>(new Set());
   const [hasBankAccount, setHasBankAccount] = useState<Set<string>>(new Set());
@@ -225,7 +226,7 @@ export default function EmployeesPage() {
       setLoading(true);
       setError(null);
       const supabase = createClient();
-      const [fullProfileRes, departmentRes, teamRes, positionRes, documentRes, certRes, taxRes, nssfRes, bankRes] = await Promise.all([
+      const [fullProfileRes, departmentRes, teamRes, positionRes, documentRes, certRes, payrollRes, taxRes, nssfRes, bankRes] = await Promise.all([
         supabase
           .from("profiles")
           .select(PROFILE_SELECT_EXTENDED)
@@ -235,6 +236,7 @@ export default function EmployeesPage() {
         supabase.from("positions").select("id, position_name, department_id, grade").order("position_name"),
         supabase.from("employee_documents").select("id, employee_id, document_type, document_name, expiry_date, verified"),
         supabase.from("employee_certifications").select("id, employee_id, certification_name, issuing_body, expiry_date, status"),
+        supabase.from("employee_payroll_profiles").select("employee_id"),
         supabase.from("employee_tax_profiles").select("employee_id").order("effective_date", { ascending: false }),
         supabase.from("employee_nssf_profiles").select("employee_id").order("effective_date", { ascending: false }),
         supabase.from("employee_bank_accounts").select("employee_id").eq("is_primary", true),
@@ -273,6 +275,7 @@ export default function EmployeesPage() {
       setCertifications((certRes.data ?? []) as EmployeeCertification[]);
 
       // Build payroll status sets (ignore errors — tables may not exist yet)
+      setHasPayrollProfile(new Set((payrollRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
       setHasTaxProfile(new Set((taxRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
       setHasNSSFProfile(new Set((nssfRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
       setHasBankAccount(new Set((bankRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
@@ -644,17 +647,29 @@ export default function EmployeesPage() {
         onOpenChange={setFillDialogOpen}
         profiles={profiles}
         filteredIds={filtered.length < profiles.length ? filtered.map((p) => p.id) : undefined}
+        statusSets={{
+          hasPayrollProfile,
+          hasTaxProfile,
+          hasNSSFProfile,
+          hasBankAccount,
+        }}
         onComplete={() => {
           const supabase = createClient();
-          supabase
-            .from("profiles")
-            .select(PROFILE_SELECT_EXTENDED)
-            .order("employee_id", { ascending: true, nullsFirst: false })
-            .then((res) => {
-              if (!res.error && res.data) {
-                setProfiles((res.data as Partial<EmployeeProfile>[]).map(normalizeProfile));
-              }
-            });
+          Promise.all([
+            supabase.from("profiles").select(PROFILE_SELECT_EXTENDED).order("employee_id", { ascending: true, nullsFirst: false }),
+            supabase.from("employee_payroll_profiles").select("employee_id"),
+            supabase.from("employee_tax_profiles").select("employee_id").order("effective_date", { ascending: false }),
+            supabase.from("employee_nssf_profiles").select("employee_id").order("effective_date", { ascending: false }),
+            supabase.from("employee_bank_accounts").select("employee_id").eq("is_primary", true),
+          ]).then(([profileRes, payrollRes, taxRes, nssfRes, bankRes]) => {
+            if (!profileRes.error && profileRes.data) {
+              setProfiles((profileRes.data as Partial<EmployeeProfile>[]).map(normalizeProfile));
+            }
+            setHasPayrollProfile(new Set((payrollRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
+            setHasTaxProfile(new Set((taxRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
+            setHasNSSFProfile(new Set((nssfRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
+            setHasBankAccount(new Set((bankRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)));
+          });
         }}
       />
 
