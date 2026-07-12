@@ -61,6 +61,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
+import { useProject } from "@/components/dashboard/project-context";
 
 
 
@@ -72,6 +73,12 @@ const PROJECT_ITEMS = [
 
 ] as const;
 
+const PRECONTRACT_ITEMS = [
+  { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
+  { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
+
+] as const;
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -79,6 +86,8 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
+  const { selectedProject } = useProject();
+  const isPrecontract = selectedProject?.project_type === "tender";
   const [isAdmin, setIsAdmin] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [reportingOpen, setReportingOpen] = useState(false);
@@ -286,9 +295,25 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
         {/* ── PROJECT ── */}
         <FolderHeader label="Project" open={projectOpen} onToggle={() => setProjectOpen(!projectOpen)} level={1} />
-        {(collapsed || projectOpen) && PROJECT_ITEMS.map((item) => (
+        {(collapsed || projectOpen) && (isPrecontract ? PRECONTRACT_ITEMS : PROJECT_ITEMS).map((item) => (
           <NavItem key={item.href} {...item} />
         ))}
+
+        {/* ── PRE-CONTRACT (shown only for tender-type projects) ── */}
+        {isPrecontract && (
+          <div className={cn(!collapsed && "mt-3")}>
+            <FolderHeader label="Pre-Contract" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={1} />
+            {(collapsed || tenderingOpen) && (
+              <>
+                <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"   icon={Calculator} />
+                <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"      icon={FolderTree} />
+                <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
+                <NavItem href="/dashboard/tenders/submissions"       label="Submissions"       icon={Send} />
+                <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"    icon={Award} />
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── REPORTING ── */}
         <div className={cn(!collapsed && "mt-3")}>
@@ -318,6 +343,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         </div>
 
         {/* ── PLANNING ── */}
+        {!isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Planning" open={planningOpen} onToggle={() => setPlanningOpen(!planningOpen)} level={1} />
           {(collapsed || planningOpen) && (
@@ -332,8 +358,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── DESIGN ── */}
+        {!isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Design" open={designOpen} onToggle={() => setDesignOpen(!designOpen)} level={1} />
           {(collapsed || designOpen) && (
@@ -395,6 +423,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* ── PROCUREMENT ── */}
         <div className={cn(!collapsed && "mt-3")}>
@@ -427,7 +456,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
           {(collapsed || qsGroupOpen) && (
             <div className={cn(!collapsed && "ml-2 border-l border-border/50 pl-1")}>
 
-              {/* Tendering & Estimating */}
+              {/* Tendering & Estimating (shared — visible for all project types) */}
+              {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
                 <FolderHeader label="Tender & Estimate" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={2} />
                 {(collapsed || tenderingOpen) && (
@@ -441,8 +471,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Cost Control */}
+              {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
                 <FolderHeader label="Cost Control" open={qsCostControlOpen} onToggle={() => setQsCostControlOpen(!qsCostControlOpen)} level={2} />
                 {(collapsed || qsCostControlOpen) && (
@@ -460,8 +492,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Subcontractor Management */}
+              {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
                 <FolderHeader label="Subcon Mgmt" open={subcontractorOpen} onToggle={() => setSubcontractorOpen(!subcontractorOpen)} level={2} />
                 {(collapsed || subcontractorOpen) && (
@@ -471,8 +505,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Contract Administration */}
+              {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
                 <FolderHeader label="Contract Admin" open={contractAdminOpen} onToggle={() => setContractAdminOpen(!contractAdminOpen)} level={2} />
                 {(collapsed || contractAdminOpen) && (
@@ -485,12 +521,14 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   </div>
                 )}
               </div>
+              )}
 
             </div>
           )}
         </div>
 
         {/* ── CONSTRUCTION ── */}
+        {!isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Construction" open={siteOpen} onToggle={() => setSiteOpen(!siteOpen)} level={1} />
           {(collapsed || siteOpen) && (
@@ -523,6 +561,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </div>
           )}
         </div>
+        )}
 
 
 

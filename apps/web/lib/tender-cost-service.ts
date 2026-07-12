@@ -714,8 +714,11 @@ export async function updateBidSummary(
 }
 
 export async function deleteBidSummary(id: string): Promise<void> {
-  const { error } = await createClient().from("tender_bid_summaries").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  const res = await fetch(`/api/procurement/tender_bid_summaries/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Delete failed (${res.status})`);
+  }
 }
 
 /** Recomputes direct_cost from tender_boq_items and preliminaries from tender_preliminaries_items,
