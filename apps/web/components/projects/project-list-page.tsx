@@ -171,30 +171,6 @@ export function ProjectListPage() {
               {projects.length} project{projects.length !== 1 ? "s" : ""}
             </p>
             <div className="flex items-center gap-2">
-              <div className="flex items-center rounded-lg border border-border">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  className={cn(
-                    "flex items-center gap-1 rounded-l-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
-                    viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <List className="h-3.5 w-3.5" />
-                  List
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("card")}
-                  className={cn(
-                    "flex items-center gap-1 rounded-r-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
-                    viewMode === "card" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                  Cards
-                </button>
-              </div>
               <Button onClick={() => setShowNamingCreate(true)} size="sm" variant="outline">
                 <Plus className="mr-1.5 h-4 w-4" />
                 New (Template)
