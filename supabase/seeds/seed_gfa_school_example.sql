@@ -1,0 +1,64 @@
+-- Seed: GFA School Example per DCOS-QS-GDL-001 §6–§9
+-- This seed assumes a project with WBS nodes already created.
+-- Replace :project_id, :building_ba_id, :building_bx_id, and level node IDs with actual UUIDs.
+
+-- ============================================================
+-- 1. GFA per level (Case A + B from guideline)
+-- ============================================================
+-- BA-01-G00 Ground Floor: 850 m²
+-- BA-02-L01 through BA-10-L09: 9 × 850 m² = 7,650 m²
+-- BA-11-R00 Roof enclosed rooms: 60 m²
+-- BA-12-B01 Basement: 850 m² (is_basement = true)
+-- Total above ground: 8,560 m²
+-- Total basement: 850 m²
+-- GFA total: 9,410 m²
+
+-- Example inserts (replace UUIDs with actual WBS node IDs):
+-- INSERT INTO public.wbs_node_quantities (project_id, wbs_node_id, metric_code, value, source_ref, is_current, created_by)
+-- VALUES
+--   ('PROJECT_UUID', 'G00_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L01_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L02_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L03_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L04_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L05_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L06_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L07_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L08_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'L09_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'R00_NODE_UUID',  'GFA', 60,   'DWG-ARC-001 Rev.A', true, auth.uid()),
+--   ('PROJECT_UUID', 'B01_NODE_UUID',  'GFA', 850,  'DWG-ARC-001 Rev.A', true, auth.uid());
+
+-- ============================================================
+-- 2. Site Area (Case C from guideline)
+-- ============================================================
+-- Site area: 4,500 m² (title deed)
+-- INSERT INTO public.wbs_node_quantities (project_id, wbs_node_id, metric_code, value, source_ref, is_current, created_by)
+-- VALUES ('PROJECT_UUID', 'PROJECT_NODE_UUID', 'SITE_AREA', 4500, 'Title Deed Ref: TD-2024-001', true, auth.uid());
+
+-- ============================================================
+-- 3. Expected Cost per m² (for verification)
+-- ============================================================
+-- Building cost: $3,595,200 (above ground)
+-- Basement cost: $722,500
+-- External works: $180,000
+-- Site area: 4,500 m²
+--
+-- Line 1: $3,595,200 ÷ 8,560 m² = $420.00/m² (above ground)
+-- Line 2: $722,500 ÷ 850 m² = $850.00/m² (basement)
+-- Line A: $4,317,700 ÷ 9,410 m² = $458.84/m² (blended)
+-- Line 3: $180,000 ÷ 4,500 m² = $40.00/m² site (external)
+-- Memo:  $4,497,700 ÷ 9,410 m² = $477.97/m² (whole project, memo only)
+
+-- ============================================================
+-- 4. Elemental breakdown (÷ GFA total 9,410 m²)
+-- ============================================================
+-- Substructure:     $428,000 ÷ 9,410 = $45.48/m²
+-- Superstructure: $1,112,800 ÷ 9,410 = $118.26/m²
+-- Architectural:  $1,027,200 ÷ 9,410 = $109.16/m²
+-- MEP:              $856,000 ÷ 9,410 = $90.97/m²
+-- Preliminaries:    $171,200 ÷ 9,410 = $18.19/m²
+-- Total:          $3,595,200 ÷ 9,410 = $382.06/m² (above ground portion only)
+--
+-- Note: Elemental breakdown uses GFA total (9,410) as denominator,
+-- not just above-ground GFA, per §6 Step 3 of the guideline.
