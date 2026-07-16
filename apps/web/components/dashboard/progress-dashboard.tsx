@@ -167,7 +167,7 @@ export function ProgressDashboard({ projectId, projectName, projectProgress = 0 
                   <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
                   <Tooltip
                     contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
-                    formatter={(value: number, name: string) => [`${value.toFixed(1)}%`, name]}
+                    formatter={(value, name) => [`${Number(value).toFixed(1)}%`, name]}
                   />
                   <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="circle" iconSize={6} />
                   <ReferenceLine y={100} stroke="#e2e8f0" strokeDasharray="4 4" />
