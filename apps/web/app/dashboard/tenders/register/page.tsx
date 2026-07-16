@@ -23,6 +23,7 @@ export default function TenderRegisterPage() {
     tender_no: "", title: "", description: "", tender_type: "selective",
     budget_range: "", currency: "USD", issue_date: "", submission_deadline: "",
     tender_days: "30", procurement_method: "limited_bid", estimated_value: "",
+    client_name: "", contractor_name: "",
   };
   const [form, setForm] = useState(emptyForm);
 
@@ -46,6 +47,8 @@ export default function TenderRegisterPage() {
       tender_days: t.tender_days != null ? String(t.tender_days) : "30",
       procurement_method: t.procurement_method ?? "limited_bid",
       estimated_value: t.estimated_value != null ? String(t.estimated_value) : "",
+      client_name: t.client_name ?? "",
+      contractor_name: t.contractor_name ?? "",
     });
     setShowForm(true);
   }
@@ -72,6 +75,8 @@ export default function TenderRegisterPage() {
       tender_days: days,
       procurement_method: form.procurement_method,
       estimated_value: parseFloat(form.estimated_value) || null,
+      client_name: form.client_name || null,
+      contractor_name: form.contractor_name || null,
     };
     const { error } = editingId
       ? await supabase.from("tender_register").update(payload).eq("id", editingId)
@@ -174,6 +179,18 @@ export default function TenderRegisterPage() {
                   <option value="direct_negotiation">Direct Negotiation</option>
                   <option value="framework">Framework</option>
                 </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Client Name</label>
+                <input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                  placeholder="e.g. Ministry of Health"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Contractor Name</label>
+                <input value={form.contractor_name} onChange={(e) => setForm({ ...form, contractor_name: e.target.value })}
+                  placeholder="e.g. Your Company Ltd."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
