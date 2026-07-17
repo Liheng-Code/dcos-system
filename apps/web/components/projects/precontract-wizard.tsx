@@ -206,17 +206,25 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       status: "draft",
     };
 
-    // Check if tender already exists for this project
-    const { data: existingTender } = await supabase
+    // Check if tender already exists for this project or by tender_no
+    const { data: existingByProject } = await supabase
       .from("tender_register")
       .select("id")
       .eq("project_id", projectId)
-      .single();
+      .maybeSingle();
+
+    const { data: existingByNo } = await supabase
+      .from("tender_register")
+      .select("id")
+      .eq("tender_no", tenderPayload.tender_no)
+      .maybeSingle();
+
+    const existingId = existingByProject?.id ?? existingByNo?.id;
 
     let tenderId: string;
-    if (existingTender) {
-      await supabase.from("tender_register").update(tenderPayload).eq("id", existingTender.id);
-      tenderId = existingTender.id;
+    if (existingId) {
+      await supabase.from("tender_register").update(tenderPayload).eq("id", existingId);
+      tenderId = existingId;
     } else {
       const { data: newTender, error: tenderErr } = await supabase.from("tender_register").insert(tenderPayload).select().single();
       if (tenderErr) { toast.error(tenderErr.message); setSaving(false); return; }

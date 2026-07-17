@@ -336,6 +336,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             <FolderHeader label="Pre-Contract" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={1} />
             {(collapsed || tenderingOpen) && (
               <>
+                <NavItem href="/dashboard/tenders/register"          label="Tender Register"   icon={FileSearch} />
                 <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"   icon={Calculator} />
                 <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"      icon={FolderTree} />
                 <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
@@ -519,6 +520,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <TabNavItem href="/dashboard/qs?tab=audit"              label="Audit Log"             icon={History} />
                     <TabNavItem href="/dashboard/qs?tab=currency"           label="Currency"              icon={DollarSign} />
                     <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
+                    <NavItem href="/dashboard/qs/rate-libraries"        label="Rate Libraries"        icon={BookTemplate} />
                     <NavItem href="/dashboard/qs/claims"                 label="Progress Claims"       icon={FileText} />
                     <NavItem href="/dashboard/qs/variations"             label="Variations"            icon={GitBranch} />
                   </div>
