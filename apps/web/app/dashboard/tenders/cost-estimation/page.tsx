@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BoqTab } from "@/components/tenders/cost-estimation/boq-tab";
@@ -13,15 +14,21 @@ import { CoverSummaryTab } from "@/components/tenders/cost-estimation/cover-summ
 import { UnitRatesTab } from "@/components/tenders/cost-estimation/unit-rates-tab";
 import { SubQuotesTab } from "@/components/tenders/cost-estimation/sub-quotes-tab";
 import { RisksTab } from "@/components/tenders/cost-estimation/risks-tab";
+import { CostSummaryTab } from "@/components/tenders/cost-estimation/cost-summary-tab";
+import { ProjectBudgetTab } from "@/components/tenders/cost-estimation/project-budget-tab";
+import { CostPerM2Tab } from "@/components/tenders/cost-estimation/cost-per-m2-tab";
 
-type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "rates" | "subquotes" | "risks";
+type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "rates" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "bid", label: "Bid Summary" },
+  { key: "cost_summary", label: "Cost Summary" },
+  { key: "cost_per_m2", label: "Cost / m²" },
+  { key: "project_budget", label: "Project Budget" },
+  { key: "cover", label: "Cover Page" },
   { key: "boq", label: "Tender BOQ" },
   { key: "price_list", label: "Price List" },
   { key: "preliminaries", label: "Preliminaries" },
-  { key: "cover", label: "Cover / Tender Summary" },
   { key: "rates", label: "Unit Rates" },
   { key: "subquotes", label: "Sub Quotes" },
   { key: "risks", label: "Risk Items" },
@@ -39,21 +46,30 @@ function CostEstimationContent() {
   const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
   const tenderParam = searchParams.get("tender");
+  const { selectedProjectId } = useProject();
   const [tenders, setTenders] = useState<{ id: string; tender_no: string; title: string }[]>([]);
   const [tab, setTab] = useState<Tab>("bid");
   const [loading, setLoading] = useState(true);
   const [selectedTenderId, setSelectedTenderId] = useState<string>(tenderParam ?? "");
 
   useEffect(() => {
-    supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false }).then(({ data }) => {
+    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+    query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId]);
 
   useEffect(() => {
     if (tenderParam) setSelectedTenderId(tenderParam);
   }, [tenderParam]);
+
+  useEffect(() => {
+    if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
+      setSelectedTenderId("");
+    }
+  }, [selectedProjectId, tenders]);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
@@ -91,6 +107,9 @@ function CostEstimationContent() {
           {tab === "price_list" && <PriceListTab tenderId={selectedTenderId} />}
           {tab === "preliminaries" && <PreliminariesTab tenderId={selectedTenderId} />}
           {tab === "cover" && <CoverSummaryTab tenderId={selectedTenderId} />}
+          {tab === "cost_summary" && <CostSummaryTab tenderId={selectedTenderId} />}
+          {tab === "cost_per_m2" && <CostPerM2Tab tenderId={selectedTenderId} />}
+          {tab === "project_budget" && <ProjectBudgetTab tenderId={selectedTenderId} />}
           {tab === "rates" && <UnitRatesTab />}
           {tab === "subquotes" && <SubQuotesTab tenderId={selectedTenderId} />}
           {tab === "risks" && <RisksTab tenderId={selectedTenderId} />}

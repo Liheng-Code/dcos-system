@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Award, Plus, Star, Trash2, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 export default function BidEvaluationPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [tenders, setTenders] = useState<{id:string,tender_no:string,title:string}[]>([]);
   const [selectedTenderId, setSelectedTenderId] = useState("");
   const [evals, setEvals] = useState<any[]>([]);
@@ -35,11 +37,23 @@ export default function BidEvaluationPage() {
   const [wlForm, setWlForm] = useState({ our_bid_amount: "0", winning_bid_amount: "", awardee_name: "", reason_won: "", reason_lost: "", lesson_learned: "", competitor_count: "0" });
 
   useEffect(() => {
-    supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false }).then(({ data }) => {
+    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+    query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
+      setSelectedTenderId("");
+      setEvals([]);
+      setSubmissions([]);
+      setAwards([]);
+      setWinLoss(null);
+    }
+  }, [selectedProjectId, tenders]);
 
   function loadData(tenderId: string) {
     setSelectedTenderId(tenderId);

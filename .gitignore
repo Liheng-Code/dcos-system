@@ -8,3 +8,5 @@ dist/
 .branches/
 .opencode
 docs/env local.md
+*.bak
+dev-server*.log

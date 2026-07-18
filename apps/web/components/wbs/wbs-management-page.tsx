@@ -136,7 +136,7 @@ function NodeRow({ node, selectedId, onSelect, onEdit, onDelete, onDuplicate, dr
       </button>
       <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-white" : iconColor)} />
       <span className="font-mono text-[10px] text-muted-foreground shrink-0">{data.wbs_code}</span>
-      <span className="text-xs font-medium truncate flex-1 min-w-0">{data.wbs_name}</span>
+      <span className="text-xs font-medium truncate flex-1 min-w-0" title={data.wbs_name}>{data.wbs_name}</span>
       {active && !projectRoot && (
         <div className="flex items-center gap-0.5 shrink-0">
           <button type="button" onClick={(e) => { e.stopPropagation(); onDuplicate(data.id); }} className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/20" aria-label={`Duplicate ${data.wbs_name}`}><Copy className="h-3 w-3" /></button>
@@ -374,6 +374,17 @@ export function WbsManagementPage() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
+      {selectedProject?.project_type === "tender" && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <FolderTree className="h-4 w-4 shrink-0" />
+          <span>
+            <strong>Preliminary structure — tender phase.</strong> This project hasn&apos;t been awarded yet.
+            When it&apos;s assigned to a post-contract project, you&apos;ll be offered a one-time option to copy
+            this structure into the new project — it does not happen automatically, and edits made here
+            afterward will not sync to the post-contract project.
+          </span>
+        </div>
+      )}
       {/* Header */}
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-5 py-4 shadow-sm border border-slate-200">
         <div>
@@ -407,7 +418,7 @@ export function WbsManagementPage() {
       </header>
 
       {/* Main 2-column layout */}
-      <main className={cn("grid grid-cols-1 gap-4 flex-1 min-h-0", treePanelCollapsed ? "xl:grid-cols-[48px_minmax(0,1fr)]" : "xl:grid-cols-[40%_minmax(0,1fr)]")}>
+      <main className={cn("grid grid-cols-1 gap-4 flex-1 min-h-0", treePanelCollapsed ? "xl:grid-cols-[48px_minmax(0,1fr)]" : "xl:grid-cols-[55%_minmax(0,1fr)]")}>
         {/* Left: WBS Tree */}
         <aside className={cn("rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col", treePanelCollapsed ? "items-center p-2" : "p-3")}>
           <div className={cn("mb-2 flex items-center shrink-0", treePanelCollapsed ? "flex-col gap-2 px-0" : "justify-between px-1")}>
@@ -486,6 +497,7 @@ export function WbsManagementPage() {
                     handleSelectNode(nodes[0].data, nodes[0].id);
                   }
                 }}
+                width="100%"
                 className="scrollbar-hidden w-full"
               >
                 {(props) => (

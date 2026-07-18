@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Plus, Trash2, Send, FileWarning, HelpCircle, Mail, Check, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ const RESPONSE_OPTIONS = [
 
 export default function TenderManagementPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [tenders, setTenders] = useState<{id:string,tender_no:string,title:string}[]>([]);
   const [tab, setTab] = useState<Tab>("invitations");
   const [loading, setLoading] = useState(true);
@@ -53,11 +55,22 @@ export default function TenderManagementPage() {
   });
 
   useEffect(() => {
-    supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false }).then(({ data }) => {
+    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+    query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
+      setSelectedTenderId("");
+      setInvitations([]);
+      setAddenda([]);
+      setQueries([]);
+    }
+  }, [selectedProjectId, tenders]);
 
   function loadData(tenderId: string) {
     setSelectedTenderId(tenderId);

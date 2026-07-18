@@ -17,12 +17,14 @@ import {
   FolderTree,
   CalendarRange,
   AlertCircle,
+  Ruler,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
 import { WbsNodeEditSheet, type WbsNodeRecord } from "@/components/wbs/wbs-node-edit-sheet";
+import { ProjectSiteAreaDialog } from "@/components/wbs/project-site-area-dialog";
 
 interface WbsNodeData {
   id: string;
@@ -32,6 +34,8 @@ interface WbsNodeData {
   full_path: string | null;
   progress_percent: number;
   status: string;
+  is_below_ground: boolean;
+  is_external_works: boolean;
   children: WbsNodeData[];
 }
 
@@ -70,6 +74,8 @@ function buildTree(nodes: WbsNodeRecord[]): WbsNodeData[] {
       full_path: n.full_path,
       progress_percent: n.progress_percent,
       status: n.status,
+      is_below_ground: n.is_below_ground ?? false,
+      is_external_works: n.is_external_works ?? false,
       children: [],
     });
   }
@@ -130,6 +136,7 @@ export function WbsTreePage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editingNode, setEditingNode] = useState<WbsNodeRecord | null>(null);
   const [addingChild, setAddingChild] = useState(false);
+  const [showSiteArea, setShowSiteArea] = useState(false);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -217,6 +224,13 @@ export function WbsTreePage() {
           {data.node_type}
         </span>
 
+        {data.is_below_ground && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-500/10 text-slate-600">Basement</span>
+        )}
+        {data.is_external_works && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-700">External Works</span>
+        )}
+
         {data.status !== "active" && (
           <span className={cn(
             "inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full",
@@ -271,6 +285,14 @@ export function WbsTreePage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {selectedProjectId && (
+        <div className="flex items-center justify-end">
+          <Button variant="outline" size="sm" onClick={() => setShowSiteArea(true)}>
+            <Ruler className="mr-1.5 h-3.5 w-3.5" />
+            Site Area
+          </Button>
+        </div>
+      )}
       {!selectedProjectId ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
           <FolderTree className="h-12 w-12" />
@@ -349,6 +371,13 @@ export function WbsTreePage() {
           parentId={addingChild && selectedNode ? selectedNode.id : null}
           onClose={() => { setShowEdit(false); setAddingChild(false); setEditingNode(null); }}
           onSave={() => { setShowEdit(false); setAddingChild(false); setEditingNode(null); refreshTree(); }}
+        />
+      )}
+
+      {showSiteArea && selectedProjectId && (
+        <ProjectSiteAreaDialog
+          projectId={selectedProjectId}
+          onClose={() => setShowSiteArea(false)}
         />
       )}
     </div>

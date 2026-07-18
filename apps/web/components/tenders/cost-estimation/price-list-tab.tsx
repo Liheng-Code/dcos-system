@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  getPriceList, createPriceListItem, deletePriceListItem, getBudgetCodes,
+  getPriceList, createPriceListItem, deletePriceListItem, getBudgetCodes, pullFromUnitRateLibrary,
   type TenderPriceListItem, type BudgetCode,
 } from "@/lib/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
@@ -21,6 +21,7 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pulling, setPulling] = useState(false);
 
   const [form, setForm] = useState({
     item_code: "", section: "", sub_section: "", sub_element: "", description: "", unit: "ea",
@@ -86,6 +87,24 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
     }
   }
 
+  async function handlePullFromLibrary() {
+    if (!confirm("Pull rates from Unit Rate Library? Existing rates with the same source will be skipped.")) return;
+    setPulling(true);
+    try {
+      const count = await pullFromUnitRateLibrary(tenderId);
+      if (count === 0) {
+        toast.info("No new rates to pull — all library rates already exist");
+      } else {
+        toast.success(`Pulled ${count} rate(s) from Unit Rate Library`);
+        load();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to pull from library");
+    } finally {
+      setPulling(false);
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
   return (
@@ -93,6 +112,10 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{items.length} rate(s)</p>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={handlePullFromLibrary} disabled={pulling}>
+            {pulling ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+            Pull from Library
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
             <Upload className="mr-1 h-4 w-4" /> Import
           </Button>
@@ -136,7 +159,10 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       )}
 
       {items.length === 0 && !showForm ? (
-        <div className="rounded-lg border px-6 py-8 text-center text-sm text-muted-foreground">No price list items yet — import your Price List spreadsheet or add rates manually</div>
+        <div className="rounded-lg border px-6 py-8 text-center text-sm text-muted-foreground space-y-2">
+          <p>No price list items yet.</p>
+          <p>Start by pulling base rates from the <strong>Unit Rate Library</strong>, or import your own Price List spreadsheet.</p>
+        </div>
       ) : (
         <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-sm">

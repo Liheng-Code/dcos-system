@@ -18,6 +18,7 @@ interface PrecontractDetailProps {
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "tender-register", label: "Tender Register" },
   { id: "cost-estimation", label: "Cost Estimation" },
   { id: "risks", label: "Risks" },
   { id: "submissions", label: "Submissions" },
@@ -157,6 +158,82 @@ export function PrecontractDetail({ project, onBack, onUpdate }: PrecontractDeta
     switch (activeTab) {
       case "overview":
         return <PrecontractDashboard projectId={project.id} projectName={project.project_name} />;
+      case "tender-register":
+        if (!tender) {
+          return (
+            <div className="rounded-xl border border-dashed border-border p-8 text-center">
+              <p className="text-sm text-muted-foreground">No tender register linked to this project.</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Create or link a tender record via <strong>Pre-Contract &gt; Tender Register</strong> in the sidebar.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold">Tender Information</h3>
+                <span className={cn(
+                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  tender.status === "awarded" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                  tender.status === "cancelled" ? "bg-red-50 text-red-600 border-red-200" :
+                  tender.status === "draft" ? "bg-gray-50 text-gray-600 border-gray-200" :
+                  "bg-blue-50 text-blue-600 border-blue-200",
+                )}>
+                  {tender.status}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Tender No</p>
+                  <p className="text-sm font-medium">{tender.tender_no}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Title</p>
+                  <p className="text-sm font-medium">{tender.title}</p>
+                </div>
+              </div>
+            </div>
+            {details && (
+              <div className="rounded-xl border border-border p-5">
+                <h3 className="text-sm font-semibold mb-4">Procurement Details</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tender Type</p>
+                    <p className="text-sm font-medium capitalize">{(details.tender_type ?? "—").replace(/_/g, " ")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Procurement Method</p>
+                    <p className="text-sm font-medium capitalize">{(details.procurement_method ?? "—").replace(/_/g, " ")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Estimated Value</p>
+                    <p className="text-sm font-medium">
+                      {details.estimated_value != null ? `${details.bid_currency} ${details.estimated_value.toLocaleString()}` : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Bid Price</p>
+                    <p className="text-sm font-medium">
+                      {details.bid_price != null ? `${details.bid_currency} ${details.bid_price.toLocaleString()}` : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Submission Deadline</p>
+                    <p className="text-sm font-medium">
+                      {details.submission_deadline ? new Date(details.submission_deadline).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tender Days</p>
+                    <p className="text-sm font-medium">{details.tender_days ?? "—"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
       case "cost-estimation":
         return (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">

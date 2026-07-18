@@ -8,10 +8,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 export default function TenderRegisterPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProject, projects: allProjects } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -23,6 +25,7 @@ export default function TenderRegisterPage() {
     tender_no: "", title: "", description: "", tender_type: "selective",
     budget_range: "", currency: "USD", issue_date: "", submission_deadline: "",
     tender_days: "30", procurement_method: "limited_bid", estimated_value: "",
+    client_name: "", contractor_name: "",
   };
   const [form, setForm] = useState(emptyForm);
 
@@ -46,6 +49,8 @@ export default function TenderRegisterPage() {
       tender_days: t.tender_days != null ? String(t.tender_days) : "30",
       procurement_method: t.procurement_method ?? "limited_bid",
       estimated_value: t.estimated_value != null ? String(t.estimated_value) : "",
+      client_name: t.client_name ?? "",
+      contractor_name: t.contractor_name ?? "",
     });
     setShowForm(true);
   }
@@ -61,6 +66,7 @@ export default function TenderRegisterPage() {
     setSaving(true);
     const days = parseInt(form.tender_days) || 30;
     const payload = {
+      project_id: selectedProject?.id ?? null,
       tender_no: form.tender_no,
       title: form.title,
       description: form.description || null,
@@ -72,6 +78,8 @@ export default function TenderRegisterPage() {
       tender_days: days,
       procurement_method: form.procurement_method,
       estimated_value: parseFloat(form.estimated_value) || null,
+      client_name: form.client_name || null,
+      contractor_name: form.contractor_name || null,
     };
     const { error } = editingId
       ? await supabase.from("tender_register").update(payload).eq("id", editingId)
@@ -114,6 +122,24 @@ export default function TenderRegisterPage() {
         <Card>
           <CardContent className="p-4 space-y-3">
             <p className="text-sm font-semibold">{editingId ? "Edit Tender" : "New Tender"}</p>
+            {selectedProject && (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
+                <span className="text-xs font-medium text-muted-foreground">Project:</span>
+                <span className="text-sm font-medium">{selectedProject.project_code}</span>
+                <span className="text-sm text-muted-foreground">{selectedProject.project_name}</span>
+                <span className={cn(
+                  "ml-auto rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                  selectedProject.project_type === "tender" ? "bg-blue-50 text-blue-600 border-blue-200" :
+                  selectedProject.project_type === "awarded" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                  "bg-gray-50 text-gray-600 border-gray-200",
+                )}>{selectedProject.project_type}</span>
+              </div>
+            )}
+            {!selectedProject && (
+              <div className="rounded-lg border border-dashed border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">No project selected. Select a project from the top-left project selector.</p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Tender No *</label>
@@ -175,6 +201,18 @@ export default function TenderRegisterPage() {
                   <option value="framework">Framework</option>
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Client Name</label>
+                <input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                  placeholder="e.g. Ministry of Health"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Contractor Name</label>
+                <input value={form.contractor_name} onChange={(e) => setForm({ ...form, contractor_name: e.target.value })}
+                  placeholder="e.g. Your Company Ltd."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</Button>
@@ -190,7 +228,9 @@ export default function TenderRegisterPage() {
         <div className="rounded-lg border border-border px-6 py-12 text-center text-sm text-muted-foreground">No tenders created</div>
       ) : (
         <div className="space-y-2">
-          {items.map((t) => (
+          {items.map((t) => {
+            const proj = allProjects.find((p) => p.id === t.project_id);
+            return (
             <Card key={t.id}>
               <CardContent className="flex items-center gap-4 p-3">
                 <div className={cn(
@@ -201,7 +241,10 @@ export default function TenderRegisterPage() {
                 )}>{t.status.slice(0, 3).toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold">{t.tender_no} — {t.title}</p>
-                  <p className="text-xs text-muted-foreground">{t.tender_type} · {t.procurement_method?.replace(/_/g, " ") || "—"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t.tender_type} · {t.procurement_method?.replace(/_/g, " ") || "—"}
+                    {proj && <><span className="mx-1">·</span><span className="font-medium">{proj.project_code}</span> {proj.project_name}</>}
+                  </p>
                 </div>
                 <p className="text-xs text-muted-foreground">{t.issue_date || "—"}</p>
                 <div className="flex items-center gap-1">
@@ -233,7 +276,8 @@ export default function TenderRegisterPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

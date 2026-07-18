@@ -183,7 +183,7 @@ export async function getBudgetCodes(): Promise<BudgetCode[]> {
   const { data, error } = await createClient()
     .from("budget_codes")
     .select("*")
-    .order("sort_order");
+    .order("code");
   if (error) throw new Error(error.message);
   return (data ?? []) as BudgetCode[];
 }
@@ -197,10 +197,14 @@ export async function getBudgetCodeTree(): Promise<BudgetCodeGroupTree[]> {
       (childrenByParent[c.parent_code_id] ??= []).push(c);
     }
   }
+  for (const parentId of Object.keys(childrenByParent)) {
+    childrenByParent[parentId].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  }
   return groups.map((group) => ({
     group,
     codes: level2
       .filter((c) => c.code_letter === group.code_letter)
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
       .map((c) => ({ ...c, children: childrenByParent[c.id] ?? [] })),
   }));
 }
@@ -213,9 +217,21 @@ export async function createBudgetCode(payload: {
   description: string;
   sort_order?: number;
 }): Promise<BudgetCode> {
+  let sort_order = payload.sort_order;
+  if (sort_order === undefined) {
+    const supabase = createClient();
+    const { data: maxRow } = await supabase
+      .from("budget_codes")
+      .select("sort_order")
+      .eq("code_letter", payload.code_letter)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    sort_order = (maxRow?.sort_order ?? 0) + 1;
+  }
   const { data, error } = await createClient()
     .from("budget_codes")
-    .insert({ ...payload, parent_code_id: payload.parent_code_id ?? null, sort_order: payload.sort_order ?? 0 })
+    .insert({ ...payload, parent_code_id: payload.parent_code_id ?? null, sort_order })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -352,6 +368,43 @@ export async function bulkInsertPriceList(
     .from("tender_price_list")
     .insert(rows.map((r) => ({ ...r, tender_id: tenderId })));
   if (error) throw new Error(error.message);
+  return rows.length;
+}
+
+export async function pullFromUnitRateLibrary(tenderId: string): Promise<number> {
+  const supabase = createClient();
+
+  const { data: unitRates, error: fetchError } = await supabase
+    .from("unit_rate_library")
+    .select("*")
+    .order("category");
+  if (fetchError) throw new Error(fetchError.message);
+  if (!unitRates || unitRates.length === 0) return 0;
+
+  const { data: existing } = await supabase
+    .from("tender_price_list")
+    .select("source_unit_rate_id")
+    .eq("tender_id", tenderId);
+  const existingIds = new Set((existing ?? []).map((r) => r.source_unit_rate_id).filter(Boolean));
+
+  const newRates = unitRates.filter((r) => !existingIds.has(r.id));
+  if (newRates.length === 0) return 0;
+
+  const rows = newRates.map((r) => ({
+    tender_id: tenderId,
+    item_code: r.code,
+    description: r.description,
+    unit: r.unit,
+    labor_net_cost: r.category === "labour" ? r.base_rate : 0,
+    labor_margin_pct: 0,
+    material_net_cost: r.category === "material" ? r.base_rate : 0,
+    material_margin_pct: 0,
+    basis_source: "Pulled from Unit Rate Library",
+    source_unit_rate_id: r.id,
+  }));
+
+  const { error: insertError } = await supabase.from("tender_price_list").insert(rows);
+  if (insertError) throw new Error(insertError.message);
   return rows.length;
 }
 
@@ -727,6 +780,53 @@ export async function deleteBidSummary(id: string): Promise<void> {
 export async function recalculateBidSummaryFromBoq(tenderId: string, bidSummaryId: string): Promise<TenderBidSummary> {
   const [directCost, preliminariesTotal] = await Promise.all([getDirectWorksTotal(tenderId), getPreliminariesTotal(tenderId)]);
   return updateBidSummary(bidSummaryId, { direct_cost: directCost, preliminaries: preliminariesTotal });
+}
+
+// ── GFA / Cost per m² (§9 rollout, tender-phase — see migration 20260718000005) ──
+
+export interface TenderGfa {
+  gfaTotal: number | null;
+  gfaSource: string | null;
+}
+
+export interface TenderCostPerM2Summary {
+  directWorksTotal: number;
+  preliminariesTotal: number;
+  combinedTotal: number;
+  gfaTotal: number | null;
+  blendedRate: number | null;
+}
+
+export async function getTenderGfa(tenderId: string): Promise<TenderGfa> {
+  const { data, error } = await createClient()
+    .from("tender_register")
+    .select("gfa_total, gfa_source")
+    .eq("id", tenderId)
+    .single();
+  if (error) throw new Error(error.message);
+  return { gfaTotal: data?.gfa_total ?? null, gfaSource: data?.gfa_source ?? null };
+}
+
+export async function updateTenderGfa(tenderId: string, payload: TenderGfa): Promise<void> {
+  const { error } = await createClient()
+    .from("tender_register")
+    .update({ gfa_total: payload.gfaTotal, gfa_source: payload.gfaSource })
+    .eq("id", tenderId);
+  if (error) throw new Error(error.message);
+}
+
+/** Blended tender $/m2 = (Direct Works + Preliminaries) / GFA total, per DCOS-QS-GDL-001 §5.1
+ *  house basis. No elemental/basement/external split at this phase — see migration
+ *  20260718000005 header comment for why. */
+export async function getTenderCostPerM2Summary(tenderId: string): Promise<TenderCostPerM2Summary> {
+  const [directWorksTotal, preliminariesTotal, gfa] = await Promise.all([
+    getDirectWorksTotal(tenderId),
+    getPreliminariesTotal(tenderId),
+    getTenderGfa(tenderId),
+  ]);
+  const combinedTotal = directWorksTotal + preliminariesTotal;
+  const blendedRate = gfa.gfaTotal && gfa.gfaTotal > 0 ? combinedTotal / gfa.gfaTotal : null;
+  return { directWorksTotal, preliminariesTotal, combinedTotal, gfaTotal: gfa.gfaTotal, blendedRate };
 }
 
 // ── Cover / Tender Summary ───────────────────────────────────────────────────

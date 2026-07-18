@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -56,6 +56,8 @@ import {
   ScrollText,
   FileSignature,
   BookTemplate,
+  Box,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -76,6 +78,7 @@ const PROJECT_ITEMS = [
 const PRECONTRACT_ITEMS = [
   { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
   { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
+  { href: "/dashboard/wbs",                      label: "WBS (Preliminary)", icon: FolderTree },
 
 ] as const;
 
@@ -172,11 +175,41 @@ export function Sidebar({ collapsed }: SidebarProps) {
   type Icon = LucideIcon;
 
   // ── Standard nav item ─────────────────────────────────────────────────────
-  function NavItem({ href, label, icon: Icon, exact, badge }: {
+  function NavItem({ href, label, icon, exact, badge }: {
     href: string; label: string; icon: Icon; exact?: boolean; badge?: number;
   }) {
     const active = isActive(href, exact);
+    return <NavItemBase href={href} label={label} icon={icon} badge={badge} active={active} />;
+  }
 
+  // ── Nav item that highlights based on a "?tab=" query string ───────────────
+  // useSearchParams must sit under its own Suspense boundary, so this is kept
+  // separate from the plain-path NavItem above to avoid suspending the whole
+  // sidebar during prerendering.
+  function TabNavItem({ href, label, icon, badge }: {
+    href: string; label: string; icon: Icon; badge?: number;
+  }) {
+    return (
+      <Suspense fallback={<NavItemBase href={href} label={label} icon={icon} badge={badge} active={false} />}>
+        <TabNavItemInner href={href} label={label} icon={icon} badge={badge} />
+      </Suspense>
+    );
+  }
+
+  function TabNavItemInner({ href, label, icon, badge }: {
+    href: string; label: string; icon: Icon; badge?: number;
+  }) {
+    const searchParams = useSearchParams();
+    const [hrefPath, hrefQuery] = href.split("?");
+    const hrefParams = new URLSearchParams(hrefQuery);
+    const active = pathname === hrefPath &&
+      Array.from(hrefParams.entries()).every(([key, value]) => searchParams.get(key) === value);
+    return <NavItemBase href={href} label={label} icon={icon} badge={badge} active={active} />;
+  }
+
+  function NavItemBase({ href, label, icon: Icon, badge, active }: {
+    href: string; label: string; icon: Icon; badge?: number; active: boolean;
+  }) {
     const content = (
       <>
         <Icon className="h-5 w-5 shrink-0" />
@@ -305,8 +338,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             <FolderHeader label="Pre-Contract" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={1} />
             {(collapsed || tenderingOpen) && (
               <>
+                <NavItem href="/dashboard/tenders/register"          label="Tender Register"   icon={FileSearch} />
                 <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"   icon={Calculator} />
                 <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"      icon={FolderTree} />
+                <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"      icon={Database} />
                 <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
                 <NavItem href="/dashboard/tenders/submissions"       label="Submissions"       icon={Send} />
                 <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"    icon={Award} />
@@ -371,6 +406,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
               <NavItem href="/dashboard/design"              label="Dashboard"      icon={LayoutDashboard} />
               <NavItem href="/dashboard/design/coordination" label="Coordination"   icon={GitBranch} />
               <NavItem href="/dashboard/design/markup"       label="Drawing Markup" icon={PenTool} />
+              <NavItem href="/dashboard/design/bim"          label="BIM Viewer"     icon={Box} />
 
               {/* Architecture */}
               <div className={cn(!collapsed && "mt-1")}>
@@ -465,6 +501,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <NavItem href="/dashboard/tenders/register"          label="Tender Register"       icon={FileSearch} />
                     <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
                     <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"          icon={FolderTree} />
+                    <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"          icon={Database} />
                     <NavItem href="/dashboard/tenders/tender-management" label="Tender Management"     icon={ClipboardList} />
                     <NavItem href="/dashboard/tenders/submissions"       label="Submissions"           icon={Send} />
                     <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"        icon={Award} />
@@ -480,13 +517,14 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 {(collapsed || qsCostControlOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/qs/boq"                    label="BOQ"                  icon={DollarSign} />
-                    <NavItem href="/dashboard/qs?tab=cost-control"        label="Cost Control"          icon={BarChart2} />
-                    <NavItem href="/dashboard/qs?tab=contingency"        label="Contingency"           icon={Shield} />
+                    <TabNavItem href="/dashboard/qs?tab=cost-control"        label="Cost Control"          icon={BarChart2} />
+                    <TabNavItem href="/dashboard/qs?tab=contingency"        label="Contingency"           icon={Shield} />
                     <NavItem href="/dashboard/qs/evm"                    label="Earned Value"          icon={TrendingUp} />
-                    <NavItem href="/dashboard/qs?tab=portfolio"          label="Portfolio"             icon={Briefcase} />
-                    <NavItem href="/dashboard/qs?tab=audit"              label="Audit Log"             icon={History} />
-                    <NavItem href="/dashboard/qs?tab=currency"           label="Currency"              icon={DollarSign} />
+                    <TabNavItem href="/dashboard/qs?tab=portfolio"          label="Portfolio"             icon={Briefcase} />
+                    <TabNavItem href="/dashboard/qs?tab=audit"              label="Audit Log"             icon={History} />
+                    <TabNavItem href="/dashboard/qs?tab=currency"           label="Currency"              icon={DollarSign} />
                     <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
+                    <NavItem href="/dashboard/qs/rate-libraries"        label="Rate Libraries"        icon={BookTemplate} />
                     <NavItem href="/dashboard/qs/claims"                 label="Progress Claims"       icon={FileText} />
                     <NavItem href="/dashboard/qs/variations"             label="Variations"            icon={GitBranch} />
                   </div>

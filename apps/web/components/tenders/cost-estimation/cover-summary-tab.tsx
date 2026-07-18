@@ -14,6 +14,8 @@ interface TenderHeader {
   tender_no: string;
   title: string;
   project_location: string | null;
+  client_name: string | null;
+  contractor_name: string | null;
 }
 
 export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
@@ -28,7 +30,7 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
     try {
       const supabase = createClient();
       const [{ data: t }, revs, s] = await Promise.all([
-        supabase.from("tender_register").select("tender_no, title, project_location").eq("id", tenderId).single(),
+        supabase.from("tender_register").select("tender_no, title, project_location, client_name, contractor_name").eq("id", tenderId).single(),
         getBidSummaries(tenderId),
         getTenderCoverSummary(tenderId, bidSummaryId),
       ]);
@@ -47,7 +49,10 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
 
   function handlePrint() {
     if (!summary || !tender) return;
-    printTenderCoverSummary(summary, tender, {});
+    printTenderCoverSummary(summary, tender, {
+      client: tender.client_name ?? undefined,
+      contractor: tender.contractor_name ?? undefined,
+    });
   }
 
   if (loading || !summary || !tender) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;

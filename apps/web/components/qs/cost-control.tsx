@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { BudgetView } from "@/components/qs/budget-view";
 import { BudgetRevisions } from "@/components/qs/budget-revisions";
 import { CostEntry } from "@/components/qs/cost-entry";
+import { CostPerM2Dashboard } from "@/components/qs/cost-per-m2-dashboard";
 import {
   getBudgetSummary, getCostTransactions, getProgressClaims, getVariationOrders,
   type BudgetSummary, type QsCostTransaction, type QsProgressClaim, type QsVariationOrder,
@@ -25,6 +26,7 @@ const SUB_TABS = [
   { id: "variance", label: "Budget & Variance" },
   { id: "revisions", label: "Budget Revisions" },
   { id: "costs", label: "Cost Transactions" },
+  { id: "cost-per-m2", label: "Cost / m²" },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]["id"];
@@ -44,7 +46,7 @@ function statusClass(status: string) {
   return "bg-slate-100 text-slate-600";
 }
 
-function MetricCard({ label, value, detail, icon: Icon, tone = "slate" }: {
+export function MetricCard({ label, value, detail, icon: Icon, tone = "slate" }: {
   label: string; value: string; detail: string; icon: typeof TrendingUp; tone?: "slate" | "blue" | "emerald";
 }) {
   const toneClass = tone === "emerald" ? "bg-emerald-50 text-emerald-600" : tone === "blue" ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-600";
@@ -202,6 +204,7 @@ export function CostControl({ projectId, projectName }: Props) {
       {subTab === "variance" && <BudgetView projectId={projectId} projectName={projectName} />}
       {subTab === "revisions" && <BudgetRevisions projectId={projectId} />}
       {subTab === "costs" && <CostEntry projectId={projectId} />}
+      {subTab === "cost-per-m2" && <CostPerM2Dashboard projectId={projectId} projectName={projectName} />}
     </div>
   );
 }
