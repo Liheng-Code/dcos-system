@@ -16,14 +16,16 @@ import { SubQuotesTab } from "@/components/tenders/cost-estimation/sub-quotes-ta
 import { RisksTab } from "@/components/tenders/cost-estimation/risks-tab";
 import { CostSummaryTab } from "@/components/tenders/cost-estimation/cost-summary-tab";
 import { ProjectBudgetTab } from "@/components/tenders/cost-estimation/project-budget-tab";
+import { CostPerM2Tab } from "@/components/tenders/cost-estimation/cost-per-m2-tab";
 
-type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "rates" | "subquotes" | "risks" | "cost_summary" | "project_budget";
+type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "rates" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "bid", label: "Bid Summary" },
   { key: "cost_summary", label: "Cost Summary" },
+  { key: "cost_per_m2", label: "Cost / m²" },
   { key: "project_budget", label: "Project Budget" },
-  { key: "cover", label: "Cover / Tender Summary" },
+  { key: "cover", label: "Cover Page" },
   { key: "boq", label: "Tender BOQ" },
   { key: "price_list", label: "Price List" },
   { key: "preliminaries", label: "Preliminaries" },
@@ -106,6 +108,7 @@ function CostEstimationContent() {
           {tab === "preliminaries" && <PreliminariesTab tenderId={selectedTenderId} />}
           {tab === "cover" && <CoverSummaryTab tenderId={selectedTenderId} />}
           {tab === "cost_summary" && <CostSummaryTab tenderId={selectedTenderId} />}
+          {tab === "cost_per_m2" && <CostPerM2Tab tenderId={selectedTenderId} />}
           {tab === "project_budget" && <ProjectBudgetTab tenderId={selectedTenderId} />}
           {tab === "rates" && <UnitRatesTab />}
           {tab === "subquotes" && <SubQuotesTab tenderId={selectedTenderId} />}

@@ -33,6 +33,7 @@ export interface Project {
   retention: number | null;
   advance_payment: number | null;
   duration: string | null;
+  source_tender_project_id: string | null;
   created_at: string;
   updated_at: string;
 }

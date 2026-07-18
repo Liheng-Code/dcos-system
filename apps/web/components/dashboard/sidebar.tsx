@@ -57,6 +57,7 @@ import {
   FileSignature,
   BookTemplate,
   Box,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -77,6 +78,7 @@ const PROJECT_ITEMS = [
 const PRECONTRACT_ITEMS = [
   { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
   { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
+  { href: "/dashboard/wbs",                      label: "WBS (Preliminary)", icon: FolderTree },
 
 ] as const;
 
@@ -339,6 +341,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 <NavItem href="/dashboard/tenders/register"          label="Tender Register"   icon={FileSearch} />
                 <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"   icon={Calculator} />
                 <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"      icon={FolderTree} />
+                <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"      icon={Database} />
                 <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
                 <NavItem href="/dashboard/tenders/submissions"       label="Submissions"       icon={Send} />
                 <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"    icon={Award} />
@@ -498,6 +501,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <NavItem href="/dashboard/tenders/register"          label="Tender Register"       icon={FileSearch} />
                     <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
                     <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"          icon={FolderTree} />
+                    <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"          icon={Database} />
                     <NavItem href="/dashboard/tenders/tender-management" label="Tender Management"     icon={ClipboardList} />
                     <NavItem href="/dashboard/tenders/submissions"       label="Submissions"           icon={Send} />
                     <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"        icon={Award} />

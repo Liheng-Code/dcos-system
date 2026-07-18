@@ -1698,3 +1698,360 @@ export async function deleteExchangeRate(id: string): Promise<void> {
   const { error } = await createClient().from("qs_exchange_rates").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+// ── GFA, Site Area & Cost per m² (DCOS-QS-GDL-001 V1.1) ─────────────────────
+// See docs/03-Business-Modules/12-Quantity-Surveying/04-GFA-Site-Area-Cost-per-m2-Design.md
+
+export type ElementalCategory = "substructure" | "superstructure" | "architectural" | "mep" | "external_works" | "prelims";
+
+export interface WbsNodeGfa {
+  wbsNodeId: string;
+  value: number;
+  unit: string;
+  source: string | null;
+  updatedAt: string;
+}
+
+export interface ProjectGfaSummary {
+  gfaAbove: number;
+  gfaBasement: number;
+  gfaTotal: number;
+}
+
+export interface CostPerM2Summary {
+  buildingCost: number;
+  aboveGroundCost: number;
+  basementCost: number;
+  externalWorksCost: number;
+  gfa: ProjectGfaSummary;
+  siteArea: number | null;
+  aboveGroundRate: number | null;
+  basementRate: number | null;
+  blendedRate: number | null;
+  externalWorksRate: number | null;
+}
+
+export interface ElementalBreakdownLine {
+  category: ElementalCategory | "unclassified";
+  cost: number;
+  costPerM2: number;
+}
+
+export interface PrelimsApportionment {
+  aboveGroundShare: number;
+  basementShare: number;
+  aboveGroundRateRefined: number | null;
+  basementRateRefined: number | null;
+}
+
+export interface FinalCostSummaryLine {
+  no: string;
+  description: string;
+  cost: number;
+  denominatorLabel: string;
+  costPerM2: number | null;
+}
+
+export interface GfaDataQualityWarning {
+  wbsNodeId: string;
+  wbsName: string;
+  cost: number;
+}
+
+// §11: GFA entered per level node, source = drawing revision reference.
+export async function getWbsNodeGfa(wbsNodeId: string): Promise<WbsNodeGfa | null> {
+  const { data, error } = await createClient()
+    .from("wbs_node_quantities")
+    .select("wbs_node_id, value, unit, source, updated_at")
+    .eq("wbs_node_id", wbsNodeId)
+    .eq("metric_code", "GFA")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    wbsNodeId: data.wbs_node_id,
+    value: Number(data.value),
+    unit: data.unit,
+    source: data.source,
+    updatedAt: data.updated_at,
+  };
+}
+
+// §3 Non-Negotiable Rule 3: editing an existing value requires a reason, logged
+// via qs_audit_log (trigger already attached to wbs_node_quantities). First
+// entry needs no reason — nothing to revise yet.
+export async function upsertWbsNodeGfa(payload: {
+  wbsNodeId: string;
+  value: number;
+  source: string;
+  revisionReason?: string;
+}): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const existing = await getWbsNodeGfa(payload.wbsNodeId);
+
+  if (existing && !payload.revisionReason) {
+    throw new Error("A revision reason is required when changing an existing GFA value.");
+  }
+
+  const { error } = await supabase
+    .from("wbs_node_quantities")
+    .upsert(
+      {
+        wbs_node_id: payload.wbsNodeId,
+        metric_code: "GFA",
+        value: payload.value,
+        source: payload.source,
+        revision_reason: existing ? payload.revisionReason : null,
+        updated_by: user?.id ?? null,
+        ...(existing ? {} : { created_by: user?.id ?? null }),
+      },
+      { onConflict: "wbs_node_id,metric_code" },
+    );
+  if (error) throw new Error(error.message);
+}
+
+// §4: Site Area entered once per project, independent of the WBS GFA rollup.
+export async function getProjectSiteArea(projectId: string): Promise<{ siteArea: number | null; siteAreaSource: string | null }> {
+  const { data, error } = await createClient()
+    .from("projects")
+    .select("site_area, site_area_source")
+    .eq("id", projectId)
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    siteArea: data?.site_area != null ? Number(data.site_area) : null,
+    siteAreaSource: data?.site_area_source ?? null,
+  };
+}
+
+export async function updateProjectSiteArea(payload: {
+  projectId: string;
+  siteArea: number;
+  siteAreaSource: string;
+}): Promise<void> {
+  const { error } = await createClient()
+    .from("projects")
+    .update({ site_area: payload.siteArea, site_area_source: payload.siteAreaSource })
+    .eq("id", payload.projectId);
+  if (error) throw new Error(error.message);
+}
+
+// §2/§6/§7: GFA above ground / basement / total, rolled up from level nodes.
+// wbs_nodes.project_id is denormalized onto every node, so this is a flat
+// aggregate — no recursive rollup needed.
+export async function getProjectGfaSummary(projectId: string): Promise<ProjectGfaSummary> {
+  const supabase = createClient();
+  const { data: nodes, error: nodesError } = await supabase
+    .from("wbs_nodes")
+    .select("id, is_below_ground")
+    .eq("project_id", projectId)
+    .eq("node_type", "level");
+  if (nodesError) throw new Error(nodesError.message);
+  const levelNodes = nodes ?? [];
+  if (levelNodes.length === 0) return { gfaAbove: 0, gfaBasement: 0, gfaTotal: 0 };
+
+  const nodeIds = levelNodes.map((n) => n.id);
+  const { data: quantities, error: qError } = await supabase
+    .from("wbs_node_quantities")
+    .select("wbs_node_id, value")
+    .eq("metric_code", "GFA")
+    .in("wbs_node_id", nodeIds);
+  if (qError) throw new Error(qError.message);
+
+  const belowGroundByNode = new Map(levelNodes.map((n) => [n.id, n.is_below_ground]));
+  let gfaAbove = 0;
+  let gfaBasement = 0;
+  for (const q of quantities ?? []) {
+    const value = Number(q.value ?? 0);
+    if (belowGroundByNode.get(q.wbs_node_id)) gfaBasement += value;
+    else gfaAbove += value;
+  }
+  return { gfaAbove, gfaBasement, gfaTotal: gfaAbove + gfaBasement };
+}
+
+interface BoqCostRow {
+  wbs_node_id: string | null;
+  elemental_category: ElementalCategory | null;
+  total_amount: number;
+}
+
+async function getProjectBoqCostRows(projectId: string): Promise<BoqCostRow[]> {
+  const { data, error } = await createClient()
+    .from("qs_boq_items")
+    .select("wbs_node_id, elemental_category, total_amount")
+    .eq("project_id", projectId);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BoqCostRow[];
+}
+
+async function getBelowGroundMap(wbsNodeIds: string[]): Promise<Map<string, boolean>> {
+  if (wbsNodeIds.length === 0) return new Map();
+  const { data, error } = await createClient()
+    .from("wbs_nodes")
+    .select("id, is_below_ground")
+    .in("id", wbsNodeIds);
+  if (error) throw new Error(error.message);
+  return new Map((data ?? []).map((n) => [n.id, n.is_below_ground]));
+}
+
+// §5/§6/§7/§8: building cost ÷ GFA total (blended), split above/basement, and
+// external works ÷ Site Area kept as an entirely separate figure. External
+// works items are excluded from the building numerator by construction (never
+// summed into aboveGroundCost/basementCost) rather than by a runtime check —
+// the §8 "classic mistake" this guideline exists to prevent can't happen here
+// because there is no code path that adds externalWorksCost into buildingCost.
+export async function getCostPerM2Summary(projectId: string): Promise<CostPerM2Summary> {
+  const supabase = createClient();
+  const [rows, gfa, projectResult] = await Promise.all([
+    getProjectBoqCostRows(projectId),
+    getProjectGfaSummary(projectId),
+    supabase.from("projects").select("site_area").eq("id", projectId).single(),
+  ]);
+  if (projectResult.error) throw new Error(projectResult.error.message);
+  const siteArea = projectResult.data?.site_area != null ? Number(projectResult.data.site_area) : null;
+
+  const wbsNodeIds = Array.from(new Set(rows.map((r) => r.wbs_node_id).filter((id): id is string => !!id)));
+  const belowGroundMap = await getBelowGroundMap(wbsNodeIds);
+
+  let aboveGroundCost = 0;
+  let basementCost = 0;
+  let externalWorksCost = 0;
+
+  for (const row of rows) {
+    const amount = Number(row.total_amount ?? 0);
+    if (row.elemental_category === "external_works") {
+      externalWorksCost += amount;
+      continue;
+    }
+    const isBasement = row.wbs_node_id ? belowGroundMap.get(row.wbs_node_id) === true : false;
+    if (isBasement) basementCost += amount;
+    else aboveGroundCost += amount;
+  }
+
+  const buildingCost = aboveGroundCost + basementCost;
+
+  return {
+    buildingCost,
+    aboveGroundCost,
+    basementCost,
+    externalWorksCost,
+    gfa,
+    siteArea,
+    aboveGroundRate: gfa.gfaAbove > 0 ? aboveGroundCost / gfa.gfaAbove : null,
+    basementRate: gfa.gfaBasement > 0 ? basementCost / gfa.gfaBasement : null,
+    blendedRate: gfa.gfaTotal > 0 ? buildingCost / gfa.gfaTotal : null,
+    externalWorksRate: siteArea && siteArea > 0 ? externalWorksCost / siteArea : null,
+  };
+}
+
+// §5/§6 Step 3: elemental cost table, each line ÷ GFA total. External works
+// never appears here divided by GFA — it has its own rate in CostPerM2Summary.
+export async function getElementalBreakdown(projectId: string): Promise<ElementalBreakdownLine[]> {
+  const [rows, gfa] = await Promise.all([
+    getProjectBoqCostRows(projectId),
+    getProjectGfaSummary(projectId),
+  ]);
+
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (row.elemental_category === "external_works") continue;
+    const key = row.elemental_category ?? "unclassified";
+    totals.set(key, (totals.get(key) ?? 0) + Number(row.total_amount ?? 0));
+  }
+
+  return Array.from(totals.entries()).map(([category, cost]) => ({
+    category: category as ElementalCategory | "unclassified",
+    cost,
+    costPerM2: gfa.gfaTotal > 0 ? cost / gfa.gfaTotal : 0,
+  }));
+}
+
+// §7 Step 3: refined split — apportions shared prelims between above-ground and
+// basement pro-rata by direct cost. Optional; the simple presentation (prelims
+// fully in the above-ground line, from getCostPerM2Summary) remains the default
+// for routine summaries. Never changes the blended figure.
+export async function apportionPrelimsToSplit(projectId: string): Promise<PrelimsApportionment> {
+  const [rows, gfa] = await Promise.all([
+    getProjectBoqCostRows(projectId),
+    getProjectGfaSummary(projectId),
+  ]);
+  const wbsNodeIds = Array.from(new Set(rows.map((r) => r.wbs_node_id).filter((id): id is string => !!id)));
+  const belowGroundMap = await getBelowGroundMap(wbsNodeIds);
+
+  let prelimsTotal = 0;
+  let directCostAbove = 0;
+  let directCostBasement = 0;
+
+  for (const row of rows) {
+    if (row.elemental_category === "external_works") continue;
+    const amount = Number(row.total_amount ?? 0);
+    if (row.elemental_category === "prelims") {
+      prelimsTotal += amount;
+      continue;
+    }
+    const isBasement = row.wbs_node_id ? belowGroundMap.get(row.wbs_node_id) === true : false;
+    if (isBasement) directCostBasement += amount;
+    else directCostAbove += amount;
+  }
+
+  const directCostTotal = directCostAbove + directCostBasement;
+  const aboveGroundShare = directCostTotal > 0 ? prelimsTotal * (directCostAbove / directCostTotal) : 0;
+  const basementShare = prelimsTotal - aboveGroundShare;
+
+  return {
+    aboveGroundShare,
+    basementShare,
+    aboveGroundRateRefined: gfa.gfaAbove > 0 ? (directCostAbove + aboveGroundShare) / gfa.gfaAbove : null,
+    basementRateRefined: gfa.gfaBasement > 0 ? (directCostBasement + basementShare) / gfa.gfaBasement : null,
+  };
+}
+
+// §9: Standard Final Cost Summary — mandatory format, lines 1/2/A/3/B/memo.
+export async function getFinalCostSummary(projectId: string): Promise<FinalCostSummaryLine[]> {
+  const summary = await getCostPerM2Summary(projectId);
+  const { gfa, siteArea } = summary;
+  const totalContract = summary.buildingCost + summary.externalWorksCost;
+
+  const m2 = (area: number) => `${area.toLocaleString()} m² GFA`;
+
+  return [
+    { no: "1", description: "Building works — above ground", cost: summary.aboveGroundCost, denominatorLabel: m2(gfa.gfaAbove), costPerM2: summary.aboveGroundRate },
+    { no: "2", description: "Building works — basement", cost: summary.basementCost, denominatorLabel: m2(gfa.gfaBasement), costPerM2: summary.basementRate },
+    { no: "A", description: "Building subtotal (blended)", cost: summary.buildingCost, denominatorLabel: m2(gfa.gfaTotal), costPerM2: summary.blendedRate },
+    { no: "3", description: "External works", cost: summary.externalWorksCost, denominatorLabel: siteArea ? `${siteArea.toLocaleString()} m² site` : "—", costPerM2: summary.externalWorksRate },
+    { no: "B", description: "TOTAL CONTRACT", cost: totalContract, denominatorLabel: "—", costPerM2: null },
+    { no: "memo", description: "Whole project ÷ GFA (memo only — not a benchmark)", cost: totalContract, denominatorLabel: m2(gfa.gfaTotal), costPerM2: gfa.gfaTotal > 0 ? totalContract / gfa.gfaTotal : null },
+  ];
+}
+
+// §10 checklist item 5: "No level has cost > 0 with GFA = 0" — DCOS warns,
+// does not block, per the guideline's own wording.
+export async function getGfaDataQualityWarnings(projectId: string): Promise<GfaDataQualityWarning[]> {
+  const supabase = createClient();
+  const { data: levelNodes, error } = await supabase
+    .from("wbs_nodes")
+    .select("id, wbs_name")
+    .eq("project_id", projectId)
+    .eq("node_type", "level");
+  if (error) throw new Error(error.message);
+  const nodes = levelNodes ?? [];
+  if (nodes.length === 0) return [];
+
+  const nodeIds = nodes.map((n) => n.id);
+  const [{ data: quantities }, { data: boqItems }] = await Promise.all([
+    supabase.from("wbs_node_quantities").select("wbs_node_id").eq("metric_code", "GFA").in("wbs_node_id", nodeIds),
+    supabase.from("qs_boq_items").select("wbs_node_id, total_amount").in("wbs_node_id", nodeIds),
+  ]);
+
+  const hasGfa = new Set((quantities ?? []).map((q) => q.wbs_node_id));
+  const costByNode = new Map<string, number>();
+  for (const item of boqItems ?? []) {
+    if (!item.wbs_node_id) continue;
+    costByNode.set(item.wbs_node_id, (costByNode.get(item.wbs_node_id) ?? 0) + Number(item.total_amount ?? 0));
+  }
+
+  return nodes
+    .filter((n) => (costByNode.get(n.id) ?? 0) > 0 && !hasGfa.has(n.id))
+    .map((n) => ({ wbsNodeId: n.id, wbsName: n.wbs_name, cost: costByNode.get(n.id) ?? 0 }));
+}

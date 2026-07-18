@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -82,9 +82,14 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{items.length} item(s) · Total ${fmt(total)}</p>
-        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-1 h-4 w-4" /> Add Item
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => window.open(`/dashboard/tenders/cost-library?tenderId=${tenderId}`, "_blank")}>
+            <BookOpen className="mr-1 h-4 w-4" /> Load from Library
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
+            <Plus className="mr-1 h-4 w-4" /> Add Item
+          </Button>
+        </div>
       </div>
 
       {showForm && (
@@ -124,6 +129,7 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
               <tr>
                 <th className="text-left px-3 py-2 font-medium">Code</th>
                 <th className="text-left px-3 py-2 font-medium">Description</th>
+                <th className="text-right px-3 py-2 font-medium">Unit</th>
                 <th className="text-right px-3 py-2 font-medium">Qty</th>
                 <th className="text-right px-3 py-2 font-medium">Rate</th>
                 <th className="text-right px-3 py-2 font-medium">Amount</th>
@@ -134,7 +140,8 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
               {items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-3 py-2 font-mono text-xs">{item.code}</td>
-                  <td className="px-3 py-2">{item.description} <span className="text-xs text-muted-foreground">/ {item.unit}</span></td>
+                  <td className="px-3 py-2">{item.description}</td>
+                  <td className="px-3 py-2 text-right text-xs text-muted-foreground">{item.unit}</td>
                   <td className="px-3 py-2 text-right">{fmt(item.quantity)}</td>
                   <td className="px-3 py-2 text-right">${fmt(item.rate)}</td>
                   <td className="px-3 py-2 text-right font-semibold">${fmt(item.amount)}</td>
@@ -146,7 +153,7 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
                 </tr>
               ))}
               <tr className="bg-muted/30 font-semibold">
-                <td colSpan={4} className="px-3 py-2 text-right">TOTAL PRELIMINARIES</td>
+                <td colSpan={5} className="px-3 py-2 text-right">TOTAL PRELIMINARIES</td>
                 <td className="px-3 py-2 text-right">${fmt(total)}</td>
                 <td />
               </tr>

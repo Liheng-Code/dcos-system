@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Search, Loader2, Filter, X, Plus, Users, ChevronLeft, LayoutGrid, List, Calendar, MapPin, DollarSign } from "lucide-react";
+import { Search, Loader2, Filter, X, Plus, Users, ChevronLeft, LayoutGrid, List, Calendar, MapPin, DollarSign, Handshake, HardHat as HardHatIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { type Project } from "@/components/projects/project-edit-sheet";
@@ -37,11 +37,14 @@ const STATUS_LABELS: Record<string, string> = {
   archived: "Archived",
 };
 
+type PhaseTab = "precontract" | "postcontract";
+
 export function ProjectListPage() {
   const { refreshProjects } = useProject();
   const [projects, setProjects] = useState<Project[]>([]);
   const [staffMap, setStaffMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [phaseTab, setPhaseTab] = useState<PhaseTab>("precontract");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -77,8 +80,28 @@ export function ProjectListPage() {
     fetchProjects();
   }, []);
 
+  const precontractProjects = useMemo(() => projects.filter((p) => p.project_type === "tender"), [projects]);
+  const postcontractProjects = useMemo(() => projects.filter((p) => p.project_type !== "tender"), [projects]);
+
+  // Forward/reverse link maps between a tender row and the post-contract project
+  // it was assigned to (source_tender_project_id), built from the single fetch
+  // above rather than a per-card query.
+  const awardedByTenderId = useMemo(() => {
+    const map: Record<string, Project> = {};
+    for (const p of projects) {
+      if (p.source_tender_project_id) map[p.source_tender_project_id] = p;
+    }
+    return map;
+  }, [projects]);
+  const projectById = useMemo(() => {
+    const map: Record<string, Project> = {};
+    for (const p of projects) map[p.id] = p;
+    return map;
+  }, [projects]);
+
   const filtered = useMemo(() => {
-    return projects.filter((p) => {
+    const scoped = phaseTab === "precontract" ? precontractProjects : postcontractProjects;
+    return scoped.filter((p) => {
       const q = search.toLowerCase();
       if (q && !p.project_name.toLowerCase().includes(q) && !p.project_code.toLowerCase().includes(q)) {
         return false;
@@ -87,7 +110,7 @@ export function ProjectListPage() {
       if (statusFilter && p.project_status !== statusFilter) return false;
       return true;
     });
-  }, [projects, search, typeFilter, statusFilter]);
+  }, [precontractProjects, postcontractProjects, phaseTab, search, typeFilter, statusFilter]);
 
   function handleSave(updated: Project) {
     setProjects((prev) => {
@@ -166,23 +189,69 @@ export function ProjectListPage() {
         />
       ) : (
         <div className="flex flex-col gap-4">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setPhaseTab("precontract")}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-all",
+                phaseTab === "precontract"
+                  ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25"
+                  : "bg-background text-muted-foreground border-border hover:border-amber-300 hover:text-foreground",
+              )}
+            >
+              <Handshake className="h-4 w-4" />
+              Pre-Contract
+              <span className={cn(
+                "inline-flex items-center justify-center rounded-full px-1.5 py-0 text-xs font-bold min-w-[1.25rem]",
+                phaseTab === "precontract" ? "bg-white/25 text-white" : "bg-muted text-muted-foreground",
+              )}>
+                {precontractProjects.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhaseTab("postcontract")}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-all",
+                phaseTab === "postcontract"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/25"
+                  : "bg-background text-muted-foreground border-border hover:border-emerald-300 hover:text-foreground",
+              )}
+            >
+              <HardHatIcon className="h-4 w-4" />
+              Post-Contract
+              <span className={cn(
+                "inline-flex items-center justify-center rounded-full px-1.5 py-0 text-xs font-bold min-w-[1.25rem]",
+                phaseTab === "postcontract" ? "bg-white/25 text-white" : "bg-muted text-muted-foreground",
+              )}>
+                {postcontractProjects.length}
+              </span>
+            </button>
+          </div>
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {projects.length} project{projects.length !== 1 ? "s" : ""}
+              {filtered.length} project{filtered.length !== 1 ? "s" : ""}
             </p>
             <div className="flex items-center gap-2">
-              <Button onClick={() => setShowNamingCreate(true)} size="sm" variant="outline">
-                <Plus className="mr-1.5 h-4 w-4" />
-                New (Template)
-              </Button>
-              <Button onClick={() => { setSelected(null); setShowPrecontractCreate(true); }} size="sm" variant="outline">
-                <Plus className="mr-1.5 h-4 w-4" />
-                New Pre-Contract
-              </Button>
-              <Button onClick={() => setShowCreate(true)} size="sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                New Project
-              </Button>
+              {phaseTab === "precontract" ? (
+                <Button onClick={() => { setSelected(null); setShowPrecontractCreate(true); }} size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  New Pre-Contract
+                </Button>
+              ) : (
+                <>
+                  <Button onClick={() => setShowNamingCreate(true)} size="sm" variant="outline">
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    New (Template)
+                  </Button>
+                  <Button onClick={() => setShowCreate(true)} size="sm">
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    New Project
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -196,19 +265,21 @@ export function ProjectListPage() {
                 className="w-full rounded-lg border border-border bg-background py-2 pl-8 pr-3 text-sm outline-hidden placeholder:text-muted-foreground focus:border-primary"
               />
             </div>
-            <div className="relative">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="rounded-lg border border-border bg-background py-2 pl-7 pr-8 text-sm appearance-none outline-hidden focus:border-primary"
-              >
-                <option value="">All Types</option>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
+            {phaseTab === "postcontract" && (
+              <div className="relative">
+                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="rounded-lg border border-border bg-background py-2 pl-7 pr-8 text-sm appearance-none outline-hidden focus:border-primary"
+                >
+                  <option value="">All Types</option>
+                  {Object.entries(TYPE_LABELS).filter(([k]) => k !== "tender").map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -296,6 +367,21 @@ export function ProjectListPage() {
                         {STATUS_LABELS[p.project_status] ?? p.project_status.replace(/_/g, " ")}
                       </span>
                     </div>
+
+                    {p.project_type === "tender" && awardedByTenderId[p.id] && (
+                      <div
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); }}
+                        className="mb-3 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+                      >
+                        Awarded → {awardedByTenderId[p.id].project_code}
+                      </div>
+                    )}
+                    {p.project_type !== "tender" && p.source_tender_project_id && projectById[p.source_tender_project_id] && (
+                      <span className="mb-3 inline-flex w-fit items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        From tender: {projectById[p.source_tender_project_id].project_code}
+                      </span>
+                    )}
 
                     {p.description && (
                       <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
@@ -397,6 +483,20 @@ export function ProjectListPage() {
                       >
                         <td className="px-3 py-2.5 font-medium text-foreground">
                           {p.project_name}
+                          {p.project_type === "tender" && awardedByTenderId[p.id] && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); }}
+                              className="mt-0.5 block w-fit rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
+                            >
+                              Awarded → {awardedByTenderId[p.id].project_code}
+                            </button>
+                          )}
+                          {p.project_type !== "tender" && p.source_tender_project_id && projectById[p.source_tender_project_id] && (
+                            <span className="mt-0.5 block w-fit rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground">
+                              From tender: {projectById[p.source_tender_project_id].project_code}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
                           {p.project_code}
@@ -443,7 +543,7 @@ export function ProjectListPage() {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            Showing {filtered.length} of {projects.length} projects
+            Showing {filtered.length} of {(phaseTab === "precontract" ? precontractProjects : postcontractProjects).length} projects
           </p>
         </div>
       )}
