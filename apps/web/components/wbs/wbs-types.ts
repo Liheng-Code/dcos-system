@@ -27,12 +27,16 @@ export interface WbsNodeData {
   wbs_name: string;
   node_type: string;
   full_path: string | null;
+  sort_order: number;
   progress_percent: number;
   status: string;
   budget_cost?: number | null;
   actual_cost?: number | null;
   planned_hours?: number | null;
   actual_hours?: number | null;
+  gfa_value?: number | null;
+  gfa_source?: string | null;
+  gfa_updated_at?: string | null;
   children: WbsNodeData[];
 }
 

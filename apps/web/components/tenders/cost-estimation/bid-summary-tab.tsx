@@ -9,6 +9,7 @@ import {
   getBidSummaries, createBidSummaryRevision, updateBidSummary, deleteBidSummary, recalculateBidSummaryFromBoq,
   type TenderBidSummary,
 } from "@/lib/tender-cost-service";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -21,6 +22,8 @@ export function BidSummaryTab({ tenderId }: { tenderId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editForm, setEditForm] = useState<Record<string, any>>({});
+
+  const { can } = useTenderPermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,9 +111,11 @@ export function BidSummaryTab({ tenderId }: { tenderId: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-muted-foreground">Bid Summaries</p>
+        {can("tender_bid_summary", "can_create") && (
         <Button size="sm" variant="outline" onClick={handleCreate} disabled={saving}>
           <Plus className="mr-1 h-4 w-4" /> New Revision
         </Button>
+        )}
       </div>
 
       {summaries.length === 0 ? (
@@ -162,7 +167,9 @@ export function BidSummaryTab({ tenderId }: { tenderId: string }) {
                         <button onClick={() => handleRecalculate(bs.id)} className="text-muted-foreground hover:text-foreground" title="Recalculate Direct Works & Preliminaries from BOQ" disabled={recalculatingId === bs.id}>
                           {recalculatingId === bs.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         </button>
+                        {can("tender_bid_summary", "submit") && (
                         <button onClick={() => { setEditingId(bs.id); setEditForm({ ...editForm, [bs.id]: {} }); }} className="text-muted-foreground hover:text-foreground"><Save className="h-3.5 w-3.5" /></button>
+                        )}
                         <button onClick={() => handleDelete(bs.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === bs.id}>
                           {deletingId === bs.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </button>

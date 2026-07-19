@@ -37,6 +37,8 @@ const MODULES: { key: string; label: string }[] = [
   { key: "task_management", label: "Task Management" },
   { key: "document_control", label: "Document Control" },
   { key: "procurement", label: "Procurement" },
+  { key: "tender", label: "Pre-Contract / Tendering" },
+  { key: "qs", label: "Quantity Surveying" },
   { key: "inventory", label: "Inventory / Stock" },
   { key: "construction", label: "Construction" },
   { key: "qa_qc", label: "QA / QC" },

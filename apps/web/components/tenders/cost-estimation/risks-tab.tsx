@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RiskItem = any;
@@ -18,6 +19,8 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showRiskForm, setShowRiskForm] = useState(false);
   const [riskForm, setRiskForm] = useState({ risk_no: "", description: "", category: "technical", likelihood: "medium", impact: "medium", priced_amount: "0", mitigation: "", owner: "" });
+
+  const { can } = useTenderPermissions();
 
   const supabase = createClient();
 
@@ -61,9 +64,11 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{risks.length} risk{risks.length !== 1 ? "s" : ""}</p>
+        {can("tender_risks", "can_create") && (
         <Button size="sm" variant="outline" onClick={() => setShowRiskForm(!showRiskForm)}>
           <Plus className="mr-1 h-4 w-4" /> Add Risk
         </Button>
+        )}
       </div>
 
       {showRiskForm && (
@@ -114,9 +119,11 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
                 <p className="text-xs text-muted-foreground">{r.category} · {r.likelihood} / {r.impact}</p>
               </div>
               <p className="text-sm font-semibold">${Number(r.priced_amount).toLocaleString()}</p>
+              {can("tender_risks", "delete") && (
               <button onClick={() => handleDeleteRisk(r.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === r.id}>
                 {deletingId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               </button>
+              )}
             </CardContent>
           </Card>
         ))

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { Loader2, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BoqTab } from "@/components/tenders/cost-estimation/boq-tab";
@@ -11,27 +12,25 @@ import { PriceListTab } from "@/components/tenders/cost-estimation/price-list-ta
 import { PreliminariesTab } from "@/components/tenders/cost-estimation/preliminaries-tab";
 import { BidSummaryTab } from "@/components/tenders/cost-estimation/bid-summary-tab";
 import { CoverSummaryTab } from "@/components/tenders/cost-estimation/cover-summary-tab";
-import { UnitRatesTab } from "@/components/tenders/cost-estimation/unit-rates-tab";
 import { SubQuotesTab } from "@/components/tenders/cost-estimation/sub-quotes-tab";
 import { RisksTab } from "@/components/tenders/cost-estimation/risks-tab";
 import { CostSummaryTab } from "@/components/tenders/cost-estimation/cost-summary-tab";
 import { ProjectBudgetTab } from "@/components/tenders/cost-estimation/project-budget-tab";
 import { CostPerM2Tab } from "@/components/tenders/cost-estimation/cost-per-m2-tab";
 
-type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "rates" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2";
+type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "bid", label: "Bid Summary" },
-  { key: "cost_summary", label: "Cost Summary" },
-  { key: "cost_per_m2", label: "Cost / m²" },
-  { key: "project_budget", label: "Project Budget" },
-  { key: "cover", label: "Cover Page" },
-  { key: "boq", label: "Tender BOQ" },
-  { key: "price_list", label: "Price List" },
-  { key: "preliminaries", label: "Preliminaries" },
-  { key: "rates", label: "Unit Rates" },
-  { key: "subquotes", label: "Sub Quotes" },
-  { key: "risks", label: "Risk Items" },
+const TABS: { key: Tab; label: string; permissionAction?: string }[] = [
+  { key: "bid", label: "Bid Summary", permissionAction: "tender_bid_summary" },
+  { key: "cost_summary", label: "Cost Summary", permissionAction: "tender_cost_summary" },
+  { key: "cost_per_m2", label: "Cost / m²", permissionAction: "tender_cost_per_m2" },
+  { key: "project_budget", label: "Project Budget", permissionAction: "tender_budget" },
+  { key: "cover", label: "Cover Page", permissionAction: "tender_cover" },
+  { key: "boq", label: "Tender BOQ", permissionAction: "tender_boq" },
+  { key: "price_list", label: "Price List", permissionAction: "tender_price_list" },
+  { key: "preliminaries", label: "Preliminaries", permissionAction: "tender_preliminaries" },
+  { key: "subquotes", label: "Sub Quotes", permissionAction: "tender_sub_quotes" },
+  { key: "risks", label: "Risk Items", permissionAction: "tender_risks" },
 ];
 
 export default function CostEstimationPage() {
@@ -47,10 +46,16 @@ function CostEstimationContent() {
   const searchParams = useSearchParams();
   const tenderParam = searchParams.get("tender");
   const { selectedProjectId } = useProject();
+  const { can, loaded: permsLoaded } = useTenderPermissions();
   const [tenders, setTenders] = useState<{ id: string; tender_no: string; title: string }[]>([]);
   const [tab, setTab] = useState<Tab>("bid");
   const [loading, setLoading] = useState(true);
   const [selectedTenderId, setSelectedTenderId] = useState<string>(tenderParam ?? "");
+
+  const visibleTabs = useMemo(() => {
+    if (!permsLoaded) return [];
+    return TABS.filter((t) => !t.permissionAction || can(t.permissionAction, "view"));
+  }, [permsLoaded, can]);
 
   useEffect(() => {
     let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
@@ -92,7 +97,7 @@ function CostEstimationContent() {
       {selectedTenderId ? (
         <>
           <div className="flex gap-1 border-b border-border overflow-x-auto">
-            {TABS.map((t) => (
+            {visibleTabs.map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={cn("px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                   tab === t.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -110,7 +115,6 @@ function CostEstimationContent() {
           {tab === "cost_summary" && <CostSummaryTab tenderId={selectedTenderId} />}
           {tab === "cost_per_m2" && <CostPerM2Tab tenderId={selectedTenderId} />}
           {tab === "project_budget" && <ProjectBudgetTab tenderId={selectedTenderId} />}
-          {tab === "rates" && <UnitRatesTab />}
           {tab === "subquotes" && <SubQuotesTab tenderId={selectedTenderId} />}
           {tab === "risks" && <RisksTab tenderId={selectedTenderId} />}
         </>

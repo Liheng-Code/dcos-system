@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Tree, type NodeApi } from "react-arborist";
 import {
@@ -25,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
 import { WbsNodeEditSheet, type WbsNodeRecord } from "@/components/wbs/wbs-node-edit-sheet";
 import { ProjectSiteAreaDialog } from "@/components/wbs/project-site-area-dialog";
+import { GfaInlineEditor } from "@/components/wbs/gfa-inline-editor";
+import { GfaRollup } from "@/components/wbs/gfa-rollup";
 
 interface WbsNodeData {
   id: string;
@@ -32,10 +34,13 @@ interface WbsNodeData {
   wbs_name: string;
   node_type: string;
   full_path: string | null;
+  sort_order: number;
   progress_percent: number;
   status: string;
   is_below_ground: boolean;
   is_external_works: boolean;
+  gfa_value?: number | null;
+  gfa_source?: string | null;
   children: WbsNodeData[];
 }
 
@@ -61,21 +66,28 @@ const NODE_COLORS: Record<string, string> = {
   task_group: "text-gray-500",
 };
 
-function buildTree(nodes: WbsNodeRecord[]): WbsNodeData[] {
+function buildTree(
+  nodes: WbsNodeRecord[],
+  gfaMap: Map<string, { value: number; source: string | null }>,
+): WbsNodeData[] {
   const map = new Map<string, WbsNodeData>();
   const roots: WbsNodeData[] = [];
 
   for (const n of nodes) {
+    const gfa = gfaMap.get(n.id);
     map.set(n.id, {
       id: n.id,
       wbs_code: n.wbs_code,
       wbs_name: n.wbs_name,
       node_type: n.node_type,
       full_path: n.full_path,
+      sort_order: n.sort_order ?? 0,
       progress_percent: n.progress_percent,
       status: n.status,
       is_below_ground: n.is_below_ground ?? false,
       is_external_works: n.is_external_works ?? false,
+      gfa_value: gfa?.value ?? null,
+      gfa_source: gfa?.source ?? null,
       children: [],
     });
   }
@@ -90,7 +102,11 @@ function buildTree(nodes: WbsNodeRecord[]): WbsNodeData[] {
   }
 
   function sortNodes(list: WbsNodeData[]) {
-    // Keep DB sort_order; sort children recursively
+    list.sort((a, b) => {
+      const bySort = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (bySort !== 0) return bySort;
+      return a.wbs_code.localeCompare(b.wbs_code);
+    });
     for (const node of list) {
       sortNodes(node.children);
     }
@@ -98,6 +114,26 @@ function buildTree(nodes: WbsNodeRecord[]): WbsNodeData[] {
   sortNodes(roots);
 
   return roots;
+}
+
+function calculateRollups(nodes: WbsNodeData[]): void {
+  for (const node of nodes) {
+    calculateRollups(node.children);
+
+    if (node.node_type === "building" && node.children.length > 0) {
+      let totalGfa = 0;
+      let hasAnyGfa = false;
+      for (const child of node.children) {
+        if (child.gfa_value != null && child.gfa_value > 0) {
+          totalGfa += child.gfa_value;
+          hasAnyGfa = true;
+        }
+      }
+      if (hasAnyGfa) {
+        node.gfa_value = totalGfa;
+      }
+    }
+  }
 }
 
 function deleteFromTree(nodes: WbsNodeData[], id: string): boolean {
@@ -126,6 +162,21 @@ function countAll(nodes: WbsNodeData[]): number {
   return c;
 }
 
+function updateNodeInTree(
+  nodes: WbsNodeData[],
+  id: string,
+  updates: Partial<Pick<WbsNodeData, "gfa_value" | "gfa_source">>,
+): boolean {
+  for (const node of nodes) {
+    if (node.id === id) {
+      Object.assign(node, updates);
+      return true;
+    }
+    if (updateNodeInTree(node.children, id, updates)) return true;
+  }
+  return false;
+}
+
 export function WbsTreePage() {
   const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectsLoading } = useProject();
@@ -138,6 +189,44 @@ export function WbsTreePage() {
   const [addingChild, setAddingChild] = useState(false);
   const [showSiteArea, setShowSiteArea] = useState(false);
 
+  const fetchGfaData = useCallback(async (nodeRecords: WbsNodeRecord[]): Promise<Map<string, { value: number; source: string | null }>> => {
+    const gfaMap = new Map<string, { value: number; source: string | null }>();
+    const levelNodes = nodeRecords.filter((n) => n.node_type === "level");
+    if (levelNodes.length === 0) return gfaMap;
+
+    try {
+      const nodeIds = levelNodes.map((n) => n.id);
+
+      // Try with metric_code filter first
+      let { data, error } = await supabase
+        .from("wbs_node_quantities")
+        .select("wbs_node_id, value")
+        .eq("metric_code", "GFA")
+        .in("wbs_node_id", nodeIds);
+
+      // Fallback: try without metric_code filter
+      if (error) {
+        const retry = await supabase
+          .from("wbs_node_quantities")
+          .select("wbs_node_id, value")
+          .in("wbs_node_id", nodeIds);
+        data = retry.data;
+      }
+
+      if (data) {
+        for (const row of data) {
+          gfaMap.set(row.wbs_node_id, {
+            value: Number(row.value ?? 0),
+            source: null,
+          });
+        }
+      }
+    } catch {
+      // Table may not have expected schema yet — silently skip
+    }
+    return gfaMap;
+  }, [supabase]);
+
   useEffect(() => {
     if (!selectedProjectId) {
       setNodes([]);
@@ -146,21 +235,26 @@ export function WbsTreePage() {
       return;
     }
     setLoading(true);
-    supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false }).then(({ data }) => {
+    supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false }).then(async ({ data }) => {
       const records = (data ?? []) as WbsNodeRecord[];
       setNodes(records);
-      setTreeData(buildTree(records));
+      const gfaMap = await fetchGfaData(records);
+      const tree = buildTree(records, gfaMap);
+      calculateRollups(tree);
+      setTreeData(tree);
       setLoading(false);
     });
-  }, [selectedProjectId, supabase]);
+  }, [selectedProjectId, supabase, fetchGfaData]);
 
-  function refreshTree() {
+  async function refreshTree() {
     if (!selectedProjectId) return;
-    supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false }).then(({ data }) => {
-      const records = (data ?? []) as WbsNodeRecord[];
-      setNodes(records);
-      setTreeData(buildTree(records));
-    });
+    const { data } = await supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false });
+    const records = (data ?? []) as WbsNodeRecord[];
+    setNodes(records);
+    const gfaMap = await fetchGfaData(records);
+    const tree = buildTree(records, gfaMap);
+    calculateRollups(tree);
+    setTreeData(tree);
   }
 
   const selectedRecord = useMemo(() => {
@@ -189,6 +283,10 @@ export function WbsTreePage() {
     const data = node.data;
     const Icon = NODE_ICONS[data.node_type] ?? FolderTree;
     const iconColor = NODE_COLORS[data.node_type] ?? "text-gray-500";
+
+    const childLevelCount = data.node_type === "building"
+      ? data.children.filter((c) => c.node_type === "level").length
+      : 0;
 
     return (
       <div
@@ -239,6 +337,27 @@ export function WbsTreePage() {
             <AlertCircle className="h-3 w-3" />
             {data.status.replace(/_/g, " ")}
           </span>
+        )}
+
+        {data.node_type === "level" && (
+          <GfaInlineEditor
+            wbsNodeId={data.id}
+            nodeType={data.node_type}
+            gfaValue={data.gfa_value}
+            gfaSource={data.gfa_source}
+            onSaved={(value, source) => {
+              setTreeData((prev) => {
+                const next = JSON.parse(JSON.stringify(prev)) as WbsNodeData[];
+                updateNodeInTree(next, data.id, { gfa_value: value, gfa_source: source });
+                calculateRollups(next);
+                return next;
+              });
+            }}
+          />
+        )}
+
+        {data.node_type === "building" && childLevelCount > 0 && (
+          <GfaRollup totalGfa={data.gfa_value ?? null} childCount={childLevelCount} />
         )}
 
         <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

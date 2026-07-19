@@ -829,6 +829,202 @@ export async function getTenderCostPerM2Summary(tenderId: string): Promise<Tende
   return { directWorksTotal, preliminariesTotal, combinedTotal, gfaTotal: gfa.gfaTotal, blendedRate };
 }
 
+// ── Cost per m² by Floor (WBS Preliminary levels) ────────────────────────────
+
+export interface FloorCostLine {
+  levelCode: string;
+  wbsNodeId: string | null;
+  wbsName: string | null;
+  sortOrder: number;
+  gfa: number | null;
+  directCost: number;
+  prelimsCost: number;
+  totalCost: number;
+  costPerM2: number | null;
+}
+
+export interface TenderCostPerM2ByFloor {
+  floors: FloorCostLine[];
+  unallocated: FloorCostLine | null;
+  blendedTotal: FloorCostLine;
+}
+
+/** Cost breakdown by floor, linking BOQ items to WBS Preliminary level nodes via
+ *  the `level` text field on tender_boq_items.  Prelims are apportioned pro-rata
+ *  by each floor's share of total direct cost (same approach as §7 post-award). */
+export async function getTenderCostPerM2ByFloor(tenderId: string): Promise<TenderCostPerM2ByFloor> {
+  const supabase = createClient();
+
+  // 1. Get the project this tender belongs to
+  const { data: tender, error: tErr } = await supabase
+    .from("tender_register")
+    .select("project_id")
+    .eq("id", tenderId)
+    .single();
+  if (tErr) throw new Error(tErr.message);
+  const projectId = tender?.project_id as string | null;
+
+  // 2. Parallel fetch: BOQ items, preliminaries, and (if project linked) WBS level nodes + GFA
+  const [boqItems, prelimsItems] = await Promise.all([
+    getBoqItems(tenderId),
+    getPreliminariesItems(tenderId),
+  ]);
+
+  let wbsLevels: { id: string; wbs_code: string; wbs_name: string; sort_order: number }[] = [];
+  let gfaByNode: Map<string, number> = new Map();
+
+  if (projectId) {
+    const [nodesRes, quantitiesRes] = await Promise.all([
+      supabase
+        .from("wbs_nodes")
+        .select("id, wbs_code, wbs_name, sort_order")
+        .eq("project_id", projectId)
+        .eq("node_type", "level")
+        .order("sort_order"),
+      supabase
+        .from("wbs_node_quantities")
+        .select("wbs_node_id, value")
+        .eq("metric_code", "GFA"),
+    ]);
+    if (!nodesRes.error) wbsLevels = (nodesRes.data ?? []) as typeof wbsLevels;
+    if (!quantitiesRes.error) {
+      const wbsIds = new Set(wbsLevels.map((n) => n.id));
+      for (const q of quantitiesRes.data ?? []) {
+        if (wbsIds.has(q.wbs_node_id)) gfaByNode.set(q.wbs_node_id, Number(q.value ?? 0));
+      }
+    }
+  }
+
+  // 3. Group BOQ direct cost by level text
+  const directCostByLevel = new Map<string, number>();
+  for (const item of boqItems) {
+    const level = (item.level ?? "All").trim() || "All";
+    directCostByLevel.set(level, (directCostByLevel.get(level) ?? 0) + Number(item.total_amount ?? 0));
+  }
+
+  const prelimsTotal = prelimsItems.reduce((sum, i) => sum + Number(i.amount ?? 0), 0);
+  const grandDirectCost = boqItems.reduce((sum, i) => sum + Number(i.total_amount ?? 0), 0);
+
+  // 4. Build a normalised lookup from BOQ level codes → WBS node
+  //    BOQ level values are the level_code from level_master (e.g. "GF", "1F", "02.GF").
+  //    WBS level nodes have wbs_code = same level_code.
+  const wbsByCode = new Map<string, typeof wbsLevels[number]>();
+  for (const node of wbsLevels) wbsByCode.set(node.wbs_code.toLowerCase(), node);
+
+  function matchWbsNode(levelCode: string): typeof wbsLevels[number] | null {
+    const norm = levelCode.toLowerCase().trim();
+    if (!norm || norm === "all") return null;
+    // Direct match
+    const direct = wbsByCode.get(norm);
+    if (direct) return direct;
+    // Strip common prefix patterns like "02." from "02.GF"
+    const stripped = norm.replace(/^\d+\./, "");
+    if (stripped !== norm) {
+      const byStripped = wbsByCode.get(stripped);
+      if (byStripped) return byStripped;
+    }
+    // Partial: WBS code contained in BOQ level or vice versa
+    for (const node of wbsLevels) {
+      const lc = node.wbs_code.toLowerCase();
+      if (norm.includes(lc) || lc.includes(norm)) return node;
+    }
+    return null;
+  }
+
+  // 5. Build floor lines for each BOQ level
+  const seenWbsIds = new Set<string>();
+  const floors: FloorCostLine[] = [];
+  const sortedLevels = [...directCostByLevel.entries()].sort((a, b) => {
+    const aNode = matchWbsNode(a[0]);
+    const bNode = matchWbsNode(b[0]);
+    const aOrder = aNode?.sort_order ?? 9999;
+    const bOrder = bNode?.sort_order ?? 9999;
+    return aOrder - bOrder || a[0].localeCompare(b[0], undefined, { numeric: true });
+  });
+
+  for (const [levelCode, directCost] of sortedLevels) {
+    const node = matchWbsNode(levelCode);
+    const wbsNodeId = node?.id ?? null;
+    const gfa = node ? (gfaByNode.get(node.id) ?? null) : null;
+    const prelimsShare = grandDirectCost > 0 ? (directCost / grandDirectCost) * prelimsTotal : 0;
+    const totalCost = directCost + prelimsShare;
+
+    if (wbsNodeId) seenWbsIds.add(wbsNodeId);
+
+    if (!node && (levelCode === "All" || !levelCode.trim())) {
+      // Unallocated items — skip for now, handle below
+      continue;
+    }
+
+    floors.push({
+      levelCode: node?.wbs_code ?? levelCode,
+      wbsNodeId,
+      wbsName: node?.wbs_name ?? null,
+      sortOrder: node?.sort_order ?? 9999,
+      gfa,
+      directCost,
+      prelimsCost: prelimsShare,
+      totalCost,
+      costPerM2: gfa && gfa > 0 ? totalCost / gfa : null,
+    });
+  }
+
+  // 6. Add WBS levels that have GFA but no BOQ items (unpriced floors)
+  for (const node of wbsLevels) {
+    if (seenWbsIds.has(node.id)) continue;
+    const gfa = gfaByNode.get(node.id) ?? null;
+    if (gfa == null) continue; // skip nodes without GFA
+    floors.push({
+      levelCode: node.wbs_code,
+      wbsNodeId: node.id,
+      wbsName: node.wbs_name,
+      sortOrder: node.sort_order,
+      gfa,
+      directCost: 0,
+      prelimsCost: 0,
+      totalCost: 0,
+      costPerM2: null,
+    });
+  }
+
+  floors.sort((a, b) => a.sortOrder - b.sortOrder || a.levelCode.localeCompare(b.levelCode, undefined, { numeric: true }));
+
+  // 7. Unallocated ("All" level items)
+  const allDirectCost = directCostByLevel.get("All") ?? 0;
+  let unallocated: FloorCostLine | null = null;
+  if (allDirectCost > 0) {
+    const allPrelimsShare = grandDirectCost > 0 ? (allDirectCost / grandDirectCost) * prelimsTotal : 0;
+    unallocated = {
+      levelCode: "All",
+      wbsNodeId: null,
+      wbsName: "Unallocated",
+      sortOrder: 99999,
+      gfa: null,
+      directCost: allDirectCost,
+      prelimsCost: allPrelimsShare,
+      totalCost: allDirectCost + allPrelimsShare,
+      costPerM2: null,
+    };
+  }
+
+  // 8. Blended total
+  const totalGfa = floors.reduce((s, f) => s + (f.gfa ?? 0), 0);
+  const blendedTotalCost = grandDirectCost + prelimsTotal;
+  const blendedTotal: FloorCostLine = {
+    levelCode: "TOTAL",
+    wbsNodeId: null,
+    wbsName: "Blended Total",
+    sortOrder: 99999,
+    gfa: totalGfa > 0 ? totalGfa : null,
+    directCost: grandDirectCost,
+    prelimsCost: prelimsTotal,
+    totalCost: blendedTotalCost,
+    costPerM2: totalGfa > 0 ? blendedTotalCost / totalGfa : null,
+  };
+
+  return { floors, unallocated, blendedTotal };
+}
+
 // ── Cover / Tender Summary ───────────────────────────────────────────────────
 
 export async function getTenderCoverSummary(tenderId: string, bidSummaryId?: string): Promise<TenderCoverSummary> {

@@ -6,6 +6,7 @@ import { Loader2, Plus, Trash2, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SubQuote = any;
@@ -17,6 +18,8 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [quoteForm, setQuoteForm] = useState({ company_name: "", trade: "", quote_amount: "0", currency: "USD", scope_of_work: "", received_date: new Date().toISOString().split("T")[0], valid_until: "", is_preferred: false });
+
+  const { can } = useTenderPermissions();
 
   const supabase = createClient();
 
@@ -61,9 +64,11 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{subQuotes.length} quote{subQuotes.length !== 1 ? "s" : ""}</p>
+        {can("tender_sub_quotes", "can_create") && (
         <Button size="sm" variant="outline" onClick={() => setShowQuoteForm(!showQuoteForm)}>
           <Plus className="mr-1 h-4 w-4" /> Add Quote
         </Button>
+        )}
       </div>
 
       {showQuoteForm && (
@@ -107,9 +112,11 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
               </div>
               <p className="text-sm font-semibold">{q.currency} {Number(q.quote_amount).toLocaleString()}</p>
               {q.is_preferred && <span className="text-[10px] bg-emerald-50 text-emerald-600 rounded-full px-1.5 py-0.5 font-medium">Preferred</span>}
+              {can("tender_sub_quotes", "delete") && (
               <button onClick={() => handleDeleteQuote(q.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === q.id}>
                 {deletingId === q.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               </button>
+              )}
             </CardContent>
           </Card>
         ))

@@ -107,6 +107,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const [qsCostControlOpen, setQsCostControlOpen] = useState(false);
   const [subcontractorOpen, setSubcontractorOpen] = useState(false);
   const [contractAdminOpen, setContractAdminOpen] = useState(false);
+  const [librariesOpen, setLibrariesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [siteOpen, setSiteOpen] = useState(false);
   const [hseOpen, setHseOpen] = useState(false);
@@ -332,24 +333,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
           <NavItem key={item.href} {...item} />
         ))}
 
-        {/* ── PRE-CONTRACT (shown only for tender-type projects) ── */}
-        {isPrecontract && (
-          <div className={cn(!collapsed && "mt-3")}>
-            <FolderHeader label="Pre-Contract" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={1} />
-            {(collapsed || tenderingOpen) && (
-              <>
-                <NavItem href="/dashboard/tenders/register"          label="Tender Register"   icon={FileSearch} />
-                <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"   icon={Calculator} />
-                <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"      icon={FolderTree} />
-                <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"      icon={Database} />
-                <NavItem href="/dashboard/tenders/tender-management" label="Tender Management" icon={ClipboardList} />
-                <NavItem href="/dashboard/tenders/submissions"       label="Submissions"       icon={Send} />
-                <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"    icon={Award} />
-              </>
-            )}
-          </div>
-        )}
-
         {/* ── REPORTING ── */}
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Reporting" open={reportingOpen} onToggle={() => setReportingOpen(!reportingOpen)} level={1} />
@@ -492,23 +475,33 @@ export function Sidebar({ collapsed }: SidebarProps) {
           {(collapsed || qsGroupOpen) && (
             <div className={cn(!collapsed && "ml-2 border-l border-border/50 pl-1")}>
 
-              {/* Tendering & Estimating (shared — visible for all project types) */}
-              {!isPrecontract && (
+              {/* Tender & Estimate — always visible, regardless of project phase */}
               <div className={cn(!collapsed && "mt-1")}>
                 <FolderHeader label="Tender & Estimate" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={2} />
                 {(collapsed || tenderingOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/tenders/register"          label="Tender Register"       icon={FileSearch} />
                     <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
-                    <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"          icon={FolderTree} />
-                    <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"          icon={Database} />
                     <NavItem href="/dashboard/tenders/tender-management" label="Tender Management"     icon={ClipboardList} />
                     <NavItem href="/dashboard/tenders/submissions"       label="Submissions"           icon={Send} />
                     <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"        icon={Award} />
                   </div>
                 )}
               </div>
-              )}
+
+              {/* Libraries — always visible */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Libraries" open={librariesOpen} onToggle={() => setLibrariesOpen(!librariesOpen)} level={2} />
+                {(collapsed || librariesOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
+                    <NavItem href="/dashboard/qs/rate-libraries"        label="Rate Libraries"        icon={BookTemplate} />
+                    <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"          icon={FolderTree} />
+                    <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"   icon={Database} />
+                    <NavItem href="/dashboard/tenders/unit-rates"        label="Unit Rate Library"     icon={Database} />
+                  </div>
+                )}
+              </div>
 
               {/* Cost Control */}
               {!isPrecontract && (
@@ -523,8 +516,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <TabNavItem href="/dashboard/qs?tab=portfolio"          label="Portfolio"             icon={Briefcase} />
                     <TabNavItem href="/dashboard/qs?tab=audit"              label="Audit Log"             icon={History} />
                     <TabNavItem href="/dashboard/qs?tab=currency"           label="Currency"              icon={DollarSign} />
-                    <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
-                    <NavItem href="/dashboard/qs/rate-libraries"        label="Rate Libraries"        icon={BookTemplate} />
                     <NavItem href="/dashboard/qs/claims"                 label="Progress Claims"       icon={FileText} />
                     <NavItem href="/dashboard/qs/variations"             label="Variations"            icon={GitBranch} />
                   </div>

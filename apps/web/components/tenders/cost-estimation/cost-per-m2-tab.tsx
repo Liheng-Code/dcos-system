@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Pencil, Ruler } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Pencil, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { CostPerM2Footnote } from "@/components/qs/cost-per-m2-dashboard";
 import {
-  getTenderCostPerM2Summary, getTenderGfa, updateTenderGfa,
-  type TenderCostPerM2Summary,
+  getTenderCostPerM2Summary, getTenderCostPerM2ByFloor, getTenderGfa, updateTenderGfa,
+  type TenderCostPerM2Summary, type FloorCostLine,
 } from "@/lib/tender-cost-service";
+import { cn } from "@/lib/utils";
 
 const money = (value: number) => new Intl.NumberFormat("en-US", {
   style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0,
@@ -16,20 +17,47 @@ const money = (value: number) => new Intl.NumberFormat("en-US", {
 
 const rate = (value: number | null) => value == null ? "—" : `$${value.toFixed(2)}/m²`;
 
+function FloorRow({ line, isTotal }: { line: FloorCostLine; isTotal?: boolean }) {
+  return (
+    <tr className={cn(
+      "border-b border-slate-100 last:border-0",
+      isTotal && "border-t-2 border-slate-300 font-semibold bg-slate-50",
+      !isTotal && !line.gfa && line.directCost === 0 && "text-muted-foreground",
+    )}>
+      <td className="py-2 pr-3 text-sm">
+        {line.wbsName && line.wbsName !== line.levelCode
+          ? <>{line.levelCode} <span className="text-muted-foreground text-xs">({line.wbsName})</span></>
+          : line.levelCode}
+      </td>
+      <td className="py-2 text-right text-sm tabular-nums">{line.gfa != null ? `${line.gfa.toLocaleString()} m²` : "—"}</td>
+      <td className="py-2 text-right text-sm tabular-nums">{money(line.directCost)}</td>
+      <td className="py-2 text-right text-sm tabular-nums">{money(line.prelimsCost)}</td>
+      <td className="py-2 text-right text-sm tabular-nums">{money(line.totalCost)}</td>
+      <td className="py-2 text-right text-sm tabular-nums font-medium">{rate(line.costPerM2)}</td>
+    </tr>
+  );
+}
+
 export function CostPerM2Tab({ tenderId }: { tenderId: string }) {
   const { can, loaded, isClientOrConsultant } = useQsPermissions();
   const [summary, setSummary] = useState<TenderCostPerM2Summary | null>(null);
+  const [floorData, setFloorData] = useState<{ floors: FloorCostLine[]; unallocated: FloorCostLine | null; blendedTotal: FloorCostLine } | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [gfaInput, setGfaInput] = useState("");
   const [sourceInput, setSourceInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [floorExpanded, setFloorExpanded] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const s = await getTenderCostPerM2Summary(tenderId);
+      const [s, f] = await Promise.all([
+        getTenderCostPerM2Summary(tenderId),
+        getTenderCostPerM2ByFloor(tenderId),
+      ]);
       setSummary(s);
+      setFloorData(f);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load Cost / m² data");
     }
@@ -82,6 +110,8 @@ export function CostPerM2Tab({ tenderId }: { tenderId: string }) {
   }
 
   if (!summary) return null;
+
+  const hasFloors = floorData && floorData.floors.length > 0;
 
   return (
     <div className="space-y-4">
@@ -148,9 +178,59 @@ export function CostPerM2Tab({ tenderId }: { tenderId: string }) {
         </div>
       </div>
 
+      {hasFloors && (
+        <section className="rounded-lg border border-border bg-white shadow-sm">
+          <button
+            onClick={() => setFloorExpanded(!floorExpanded)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          >
+            {floorExpanded
+              ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+            <h3 className="text-sm font-semibold">Cost Breakdown by Floor</h3>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {floorData.floors.length} level{floorData.floors.length !== 1 ? "s" : ""}
+            </span>
+          </button>
+
+          {floorExpanded && (
+            <div className="overflow-x-auto border-t border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2 font-medium">Level</th>
+                    <th className="px-4 py-2 font-medium text-right">GFA (m²)</th>
+                    <th className="px-4 py-2 font-medium text-right">Direct Cost</th>
+                    <th className="px-4 py-2 font-medium text-right">Prelims</th>
+                    <th className="px-4 py-2 font-medium text-right">Total Cost</th>
+                    <th className="px-4 py-2 font-medium text-right">$/m²</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {floorData.floors.map((f) => (
+                    <FloorRow key={f.levelCode} line={f} />
+                  ))}
+                  {floorData.unallocated && (
+                    <FloorRow line={floorData.unallocated} />
+                  )}
+                  <FloorRow line={floorData.blendedTotal} isTotal />
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {!hasFloors && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Ruler className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Tender-phase rate only: a single blended figure against total GFA. Tag BOQ items with floor levels and set WBS Preliminary GFA values to see the per-floor breakdown.
+        </p>
+      )}
+
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <Ruler className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        Tender-phase rate only: a single blended figure against total GFA, since the tender BOQ isn&apos;t split by WBS level or elemental category yet. See the Cost Control &rarr; Cost / m² tab post-award for the full split view.
+        Floor GFA sourced from WBS Preliminary level nodes. Prelims apportioned pro-rata by each floor&apos;s share of direct cost. Unallocated items (level &ldquo;All&rdquo;) shown separately.
       </p>
 
       <CostPerM2Footnote />

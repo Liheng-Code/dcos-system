@@ -12,6 +12,7 @@ import {
   getPreliminariesTotal,
   type TenderBidSummary,
 } from "@/lib/tender-cost-service";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) =>
   `$ ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,6 +28,8 @@ export function ProjectBudgetTab({ tenderId }: { tenderId: string }) {
   const [bidSummary, setBidSummary] = useState<TenderBidSummary | null>(null);
   const [directWorks, setDirectWorks] = useState(0);
   const [preliminaries, setPreliminaries] = useState(0);
+
+  const { can } = useTenderPermissions();
 
   useEffect(() => {
     setLoading(true);

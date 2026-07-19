@@ -10,6 +10,7 @@ import {
   type BoqItemsGrouped, type BudgetCode,
 } from "@/lib/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -27,6 +28,8 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
     budget_code: "", section: "", sub_section: "", level: "All", description: "", unit: "ea",
     quantity: "0", labor_net_cost: "0", labor_margin_pct: "0", material_net_cost: "0", material_margin_pct: "0",
   });
+
+  const { can } = useTenderPermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,12 +104,16 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{grouped?.groups.reduce((n, g) => n + g.budgetCodes.reduce((m, b) => m + b.sections.reduce((k, s) => k + s.subSections.reduce((j, ss) => j + ss.items.length, 0), 0), 0), 0) ?? 0} item(s) · Direct Works ${fmt(grouped?.grandTotal ?? 0)}</p>
         <div className="flex gap-2">
+          {can("tender_boq", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
             <Upload className="mr-1 h-4 w-4" /> Import
           </Button>
+          )}
+          {can("tender_boq", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Item
           </Button>
+          )}
         </div>
       </div>
 
@@ -190,9 +197,11 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
                                   <td className="px-3 py-1.5 text-right text-xs">${fmt(item.unit_rate)}</td>
                                   <td className="px-3 py-1.5 text-right text-xs font-medium">${fmt(item.total_amount)}</td>
                                   <td className="px-2 py-1.5">
+                                    {can("tender_boq", "delete") && (
                                     <button onClick={() => handleDelete(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
                                       {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                     </button>
+                                    )}
                                   </td>
                                 </tr>
                               ))}

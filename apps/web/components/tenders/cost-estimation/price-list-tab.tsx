@@ -10,6 +10,7 @@ import {
   type TenderPriceListItem, type BudgetCode,
 } from "@/lib/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -22,6 +23,8 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
+
+  const { can } = useTenderPermissions();
 
   const [form, setForm] = useState({
     item_code: "", section: "", sub_section: "", sub_element: "", description: "", unit: "ea",
@@ -112,16 +115,22 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{items.length} rate(s)</p>
         <div className="flex gap-2">
+          {can("tender_price_list", "can_create") && (
           <Button size="sm" variant="outline" onClick={handlePullFromLibrary} disabled={pulling}>
             {pulling ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
             Pull from Library
           </Button>
+          )}
+          {can("tender_price_list", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
             <Upload className="mr-1 h-4 w-4" /> Import
           </Button>
+          )}
+          {can("tender_price_list", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Rate
           </Button>
+          )}
         </div>
       </div>
 
@@ -187,9 +196,11 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
                   <td className="px-3 py-2 text-right">${fmt(item.material_rate)}</td>
                   <td className="px-3 py-2 text-right font-semibold">${fmt(item.total_rate)}</td>
                   <td className="px-3 py-2">
+                    {can("tender_price_list", "delete") && (
                     <button onClick={() => handleDelete(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
                       {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </button>
+                    )}
                   </td>
                 </tr>
               ))}

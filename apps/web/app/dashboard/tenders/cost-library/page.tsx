@@ -2,13 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Database, Send } from "lucide-react";
+import { Loader2, Database, Send, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import SiteDataPanel from "@/components/tenders/cost-library/site-data-panel";
 import PrelimTree from "@/components/tenders/cost-library/prelim-tree";
 import ItemEditor from "@/components/tenders/cost-library/item-editor";
 import ApplyDialog from "@/components/tenders/cost-library/apply-dialog";
+import AddItemDialog from "@/components/tenders/cost-library/add-item-dialog";
 import {
   type SiteDataParams,
   type CalculatedPrelimTree,
@@ -22,6 +25,7 @@ import {
 export default function CostLibraryPage() {
   const searchParams = useSearchParams();
   const tenderId = searchParams.get("tenderId");
+  const { can, loaded: permsLoaded } = useQsPermissions();
 
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PrelimLibraryItemWithComponents[]>([]);
@@ -29,6 +33,18 @@ export default function CostLibraryPage() {
   const [tree, setTree] = useState<CalculatedPrelimTree>({ sections: [], total: 0 });
   const [selectedItem, setSelectedItem] = useState<PrelimLibraryItemWithComponents | null>(null);
   const [showApply, setShowApply] = useState(false);
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return;
+      supabase.from("profiles").select("role").eq("id", data.user.id).single().then(({ data: profile }) => {
+        if (profile) setIsAdmin(profile.role === "admin");
+      });
+    });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +93,11 @@ export default function CostLibraryPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && can("qs_libraries", "can_create") && (
+            <Button size="sm" variant="outline" onClick={() => setShowAddItem(true)}>
+              <Plus className="mr-1 h-4 w-4" /> Add Item
+            </Button>
+          )}
           {tenderId && (
             <Button size="sm" onClick={() => setShowApply(true)} disabled={tree.sections.length === 0}>
               <Send className="mr-1 h-4 w-4" /> Apply to Tender
@@ -88,6 +109,14 @@ export default function CostLibraryPage() {
           </div>
         </div>
       </div>
+
+      {showAddItem && (
+        <AddItemDialog
+          items={items}
+          onClose={() => setShowAddItem(false)}
+          onCreated={load}
+        />
+      )}
 
       {showApply && tenderId && (
         <ApplyDialog
@@ -119,9 +148,12 @@ export default function CostLibraryPage() {
           <div className="w-1/2 sticky top-6">
             <ItemEditor
               item={selectedItem}
+              allItems={items}
               params={params}
+              isAdmin={isAdmin}
               onClose={() => setSelectedItem(null)}
               onSaved={load}
+              onDeleted={() => { setSelectedItem(null); load(); }}
             />
           </div>
         )}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { getTenderCoverSummary, getBidSummaries, type TenderCoverSummary, type TenderBidSummary } from "@/lib/tender-cost-service";
 import { printTenderCoverSummary } from "@/lib/print-service";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -24,6 +25,8 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
   const [revisions, setRevisions] = useState<TenderBidSummary[]>([]);
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>("");
   const [loading, setLoading] = useState(true);
+
+  const { can } = useTenderPermissions();
 
   const load = useCallback(async (bidSummaryId?: string) => {
     setLoading(true);
@@ -75,9 +78,11 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
             {revisions.map((r) => <option key={r.id} value={r.id}>Revision {r.revision_no} — {r.status}</option>)}
           </select>
         </div>
+        {can("tender_cover", "export") && (
         <Button size="sm" onClick={handlePrint} disabled={!bs}>
           <Printer className="mr-1 h-4 w-4" /> Print Tender Cost Summary
         </Button>
+        )}
       </div>
 
       <div className="rounded-lg border border-border p-4">

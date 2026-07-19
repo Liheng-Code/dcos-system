@@ -1,25 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Loader2, Plus, Trash2 } from "lucide-react";
+import { X, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   type PrelimLibraryItemWithComponents,
   type PrelimLibraryComponent,
   type SiteDataParams,
-  updateLibraryItem,
   createLibraryComponent,
   updateLibraryComponent,
   deleteLibraryComponent,
+  deleteLibraryItem,
 } from "@/lib/prelim-library-service";
 import { toast } from "sonner";
 
 interface ItemEditorProps {
   item: PrelimLibraryItemWithComponents;
+  allItems: PrelimLibraryItemWithComponents[];
   params: SiteDataParams;
+  isAdmin: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted: () => void;
 }
 
 function resolveFormula(formula: string, params: SiteDataParams, fallback: number = 0): number {
@@ -38,9 +41,9 @@ function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
-export default function ItemEditor({ item, params, onClose, onSaved }: ItemEditorProps) {
+export default function ItemEditor({ item, allItems, params, isAdmin, onClose, onSaved, onDeleted }: ItemEditorProps) {
   const [comps, setComps] = useState<PrelimLibraryComponent[]>([...item.components]);
-  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [newComp, setNewComp] = useState({ description: "", qty_formula: "1", unit: "no", rate: 0 });
 
   useEffect(() => {
@@ -109,6 +112,25 @@ export default function ItemEditor({ item, params, onClose, onSaved }: ItemEdito
     }
   }
 
+  async function handleDeleteItem() {
+    const hasChildren = allItems.some((i) => i.parent_code === item.code);
+    if (hasChildren) {
+      toast.error("Delete or move this item's child items first — deleting a parent would orphan them.");
+      return;
+    }
+    if (!window.confirm(`Delete library item "${item.code}" and all its components? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await deleteLibraryItem(item.id);
+      toast.success("Library item deleted");
+      onDeleted();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete library item");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Card className="border-blue-200 dark:border-blue-800">
       <CardContent className="p-4 space-y-4">
@@ -123,9 +145,21 @@ export default function ItemEditor({ item, params, onClose, onSaved }: ItemEdito
             </div>
             <h3 className="text-sm font-semibold mt-1">{item.description}</h3>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={handleDeleteItem}
+                disabled={deleting}
+                className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                title="Delete this library item"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
+            )}
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="rounded-lg border border-border overflow-hidden">
@@ -137,7 +171,7 @@ export default function ItemEditor({ item, params, onClose, onSaved }: ItemEdito
                 <th className="px-3 py-2 text-left font-medium w-20">Unit</th>
                 <th className="px-3 py-2 text-right font-medium w-24">Rate ($)</th>
                 <th className="px-3 py-2 text-right font-medium w-28">Amount ($)</th>
-                <th className="px-3 py-2 w-16"></th>
+                {isAdmin && <th className="px-3 py-2 w-16"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -149,30 +183,34 @@ export default function ItemEditor({ item, params, onClose, onSaved }: ItemEdito
                     <td className="px-3 py-1.5">
                       <input
                         value={comp.description}
+                        readOnly={!isAdmin}
                         onChange={(e) => handleCompChange(i, "description", e.target.value)}
-                        onBlur={() => handleSaveComp(comp, i)}
-                        className="w-full bg-transparent text-sm border-none outline-none"
+                        onBlur={() => isAdmin && handleSaveComp(comp, i)}
+                        className="w-full bg-transparent text-sm border-none outline-none read-only:cursor-default"
                       />
                     </td>
                     <td className="px-3 py-1.5">
                       <input
                         value={comp.qty_formula}
+                        readOnly={!isAdmin}
                         onChange={(e) => handleCompChange(i, "qty_formula", e.target.value)}
-                        onBlur={() => handleSaveComp(comp, i)}
-                        className="w-full bg-transparent text-xs font-mono border border-border rounded px-1.5 py-0.5 outline-none focus:border-blue-400"
+                        onBlur={() => isAdmin && handleSaveComp(comp, i)}
+                        className="w-full bg-transparent text-xs font-mono border border-border rounded px-1.5 py-0.5 outline-none focus:border-blue-400 read-only:cursor-default"
                       />
                     </td>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground">{comp.unit}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(comp.rate)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-medium">{formatCurrency(compAmount)}</td>
-                    <td className="px-3 py-1.5">
-                      <button
-                        onClick={() => handleDeleteComp(comp.id, i)}
-                        className="text-muted-foreground hover:text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-3 py-1.5">
+                        <button
+                          onClick={() => handleDeleteComp(comp.id, i)}
+                          className="text-muted-foreground hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -181,56 +219,58 @@ export default function ItemEditor({ item, params, onClose, onSaved }: ItemEdito
               <tr className="border-t-2 border-border bg-muted/50 font-semibold">
                 <td colSpan={4} className="px-3 py-2 text-right text-sm">Item Rate</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(totalRate)}</td>
-                <td></td>
+                {isAdmin && <td></td>}
               </tr>
               <tr className="bg-muted/30 font-semibold">
                 <td colSpan={4} className="px-3 py-2 text-right text-sm">Amount ({qty} x {formatCurrency(totalRate)})</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(amount)}</td>
-                <td></td>
+                {isAdmin && <td></td>}
               </tr>
             </tfoot>
           </table>
         </div>
 
-        <div className="flex items-end gap-2">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">New Component</label>
-            <input
-              value={newComp.description}
-              onChange={(e) => setNewComp({ ...newComp, description: e.target.value })}
-              placeholder="Description"
-              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-            />
+        {isAdmin && (
+          <div className="flex items-end gap-2">
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">New Component</label>
+              <input
+                value={newComp.description}
+                onChange={(e) => setNewComp({ ...newComp, description: e.target.value })}
+                placeholder="Description"
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div className="w-24 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Qty</label>
+              <input
+                value={newComp.qty_formula}
+                onChange={(e) => setNewComp({ ...newComp, qty_formula: e.target.value })}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div className="w-20 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Unit</label>
+              <input
+                value={newComp.unit}
+                onChange={(e) => setNewComp({ ...newComp, unit: e.target.value })}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div className="w-28 space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Rate ($)</label>
+              <input
+                type="number"
+                value={newComp.rate}
+                onChange={(e) => setNewComp({ ...newComp, rate: parseFloat(e.target.value) || 0 })}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <Button size="sm" onClick={handleAddComp} disabled={!newComp.description.trim()}>
+              <Plus className="mr-1 h-3.5 w-3.5" /> Add
+            </Button>
           </div>
-          <div className="w-24 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Qty</label>
-            <input
-              value={newComp.qty_formula}
-              onChange={(e) => setNewComp({ ...newComp, qty_formula: e.target.value })}
-              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-            />
-          </div>
-          <div className="w-20 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Unit</label>
-            <input
-              value={newComp.unit}
-              onChange={(e) => setNewComp({ ...newComp, unit: e.target.value })}
-              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-            />
-          </div>
-          <div className="w-28 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Rate ($)</label>
-            <input
-              type="number"
-              value={newComp.rate}
-              onChange={(e) => setNewComp({ ...newComp, rate: parseFloat(e.target.value) || 0 })}
-              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-            />
-          </div>
-          <Button size="sm" onClick={handleAddComp} disabled={!newComp.description.trim()}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Add
-          </Button>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -7,11 +7,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
 type View = "divisions" | "sections" | "items";
 
 export default function CostLibraryPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { can, loaded: permsLoaded } = useQsPermissions();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -211,17 +213,17 @@ export default function CostLibraryPage() {
           </>
         )}
         <div className="flex-1" />
-        {view === "divisions" && (
+        {view === "divisions" && can("qs_libraries", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowDivForm(!showDivForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Division
           </Button>
         )}
-        {view === "sections" && (
+        {view === "sections" && can("qs_libraries", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowSecForm(!showSecForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Section
           </Button>
         )}
-        {view === "items" && (
+        {view === "items" && can("qs_libraries", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowItemForm(!showItemForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Item
           </Button>
@@ -271,10 +273,12 @@ export default function CostLibraryPage() {
                         <p className="text-xs text-muted-foreground">{d.name}</p>
                       </div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteDivision(d.id); }}
-                      className="text-muted-foreground hover:text-red-600 shrink-0" disabled={deletingId === d.id}>
-                      {deletingId === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    {can("qs_libraries", "delete") && (
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteDivision(d.id); }}
+                        className="text-muted-foreground hover:text-red-600 shrink-0" disabled={deletingId === d.id}>
+                        {deletingId === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -332,10 +336,12 @@ export default function CostLibraryPage() {
                           <p className="text-xs text-muted-foreground">{s.name}</p>
                         </div>
                       </div>
+                    {can("qs_libraries", "delete") && (
                       <button onClick={(e) => { e.stopPropagation(); handleDeleteSection(s.id); }}
                         className="text-muted-foreground hover:text-red-600 shrink-0" disabled={deletingId === s.id}>
                         {deletingId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       </button>
+                    )}
                     </div>
                   </CardContent>
                 </Card>
@@ -478,13 +484,17 @@ export default function CostLibraryPage() {
                           <td className="px-3 py-2 text-right text-muted-foreground">{item.equipment_pct}%</td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-1">
-                              <button onClick={() => { setEditingItemId(item.id); setItemEditForm({...itemEditForm, [item.id]: {}}); }}
-                                className="text-muted-foreground hover:text-foreground">
-                                <Edit3 className="h-3.5 w-3.5" />
-                              </button>
-                              <button onClick={() => handleDeleteItem(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
-                                {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                              </button>
+                              {can("qs_libraries", "edit") && (
+                                <button onClick={() => { setEditingItemId(item.id); setItemEditForm({...itemEditForm, [item.id]: {}}); }}
+                                  className="text-muted-foreground hover:text-foreground">
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              {can("qs_libraries", "delete") && (
+                                <button onClick={() => handleDeleteItem(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
+                                  {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                </button>
+                              )}
                             </div>
                           </td>
                         </>

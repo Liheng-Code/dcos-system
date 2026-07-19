@@ -9,8 +9,10 @@ import {
   getBudgetCodeTree, createBudgetCode, deleteBudgetCode, updateBudgetCode,
   type BudgetCodeGroupTree,
 } from "@/lib/tender-cost-service";
+import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
 export default function BudgetCodesPage() {
+  const { can, loaded: permsLoaded } = useQsPermissions();
   const [tree, setTree] = useState<BudgetCodeGroupTree[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -131,7 +133,7 @@ export default function BudgetCodesPage() {
               {allCollapsed ? "Expand All" : "Collapse All"}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
+          <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)} disabled={!can("qs_libraries", "can_create")}>
             <Plus className="mr-1 h-4 w-4" /> Add Code
           </Button>
         </div>
@@ -212,12 +214,16 @@ export default function BudgetCodesPage() {
                               <td className="px-4 py-1.5">{c.description}</td>
                               <td className="px-4 py-1.5 w-20">
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => startEdit(c.id, c.code, c.code_letter, c.description)} className="text-muted-foreground hover:text-blue-600">
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => handleDelete(c.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === c.id}>
-                                    {deletingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                  </button>
+                                  {can("qs_libraries", "edit") && (
+                                    <button onClick={() => startEdit(c.id, c.code, c.code_letter, c.description)} className="text-muted-foreground hover:text-blue-600">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  {can("qs_libraries", "delete") && (
+                                    <button onClick={() => handleDelete(c.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === c.id}>
+                                      {deletingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -252,12 +258,16 @@ export default function BudgetCodesPage() {
                                   <td className="px-4 py-1.5 text-xs">{child.description}</td>
                                   <td className="px-4 py-1.5 w-20">
                                     <div className="flex items-center gap-1">
-                                      <button onClick={() => startEdit(child.id, child.code, child.code_letter, child.description)} className="text-muted-foreground hover:text-blue-600">
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button onClick={() => handleDelete(child.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === child.id}>
-                                        {deletingId === child.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                      </button>
+                                      {can("qs_libraries", "edit") && (
+                                        <button onClick={() => startEdit(child.id, child.code, child.code_letter, child.description)} className="text-muted-foreground hover:text-blue-600">
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                      {can("qs_libraries", "delete") && (
+                                        <button onClick={() => handleDelete(child.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === child.id}>
+                                          {deletingId === child.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                        </button>
+                                      )}
                                     </div>
                                   </td>
                                 </>

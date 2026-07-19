@@ -10,6 +10,8 @@ import {
   type TenderPreliminariesItem, type BudgetCode,
 } from "@/lib/tender-cost-service";
 
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
+
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function PreliminariesTab({ tenderId }: { tenderId: string }) {
@@ -21,6 +23,8 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [form, setForm] = useState({ code: "", budget_code: "", description: "", unit: "ea", quantity: "0", rate: "0" });
+
+  const { can } = useTenderPermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,9 +90,11 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
           <Button size="sm" variant="outline" onClick={() => window.open(`/dashboard/tenders/cost-library?tenderId=${tenderId}`, "_blank")}>
             <BookOpen className="mr-1 h-4 w-4" /> Load from Library
           </Button>
+          {can("tender_preliminaries", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Item
           </Button>
+          )}
         </div>
       </div>
 
@@ -146,9 +152,11 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
                   <td className="px-3 py-2 text-right">${fmt(item.rate)}</td>
                   <td className="px-3 py-2 text-right font-semibold">${fmt(item.amount)}</td>
                   <td className="px-3 py-2">
+                    {can("tender_preliminaries", "delete") && (
                     <button onClick={() => handleDelete(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
                       {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </button>
+                    )}
                   </td>
                 </tr>
               ))}

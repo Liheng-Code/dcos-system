@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
 type Discipline = "STR" | "MEP" | "ARC";
 type Category = "material" | "labor" | "plant";
@@ -43,6 +44,7 @@ const CATEGORIES: { key: Category | "all"; label: string }[] = [
 
 export default function RateLibrariesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { can, loaded: permsLoaded } = useQsPermissions();
   const [items, setItems] = useState<RateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -193,7 +195,7 @@ export default function RateLibrariesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Rate Libraries</h1>
           <p className="text-sm text-muted-foreground">Cambodia Market Rates — Q2-2026 Indicative</p>
         </div>
-        <Button onClick={() => (showForm ? setShowForm(false) : openCreate())} size="sm">
+        <Button onClick={() => (showForm ? setShowForm(false) : openCreate())} size="sm" disabled={!can("qs_libraries", "can_create")}>
           <Plus className="mr-1.5 h-4 w-4" /> Add Rate
         </Button>
       </div>
@@ -356,22 +358,28 @@ export default function RateLibrariesPage() {
                   <td className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[160px]">{item.supplier_name || "—"}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[130px]">{item.notes || "—"}</td>
                   <td className="px-3 py-2 text-center">
-                    <button onClick={() => handleToggleActive(item)} className="mx-auto flex items-center justify-center">
-                      {item.is_active
-                        ? <ToggleRight className="h-5 w-5 text-emerald-600" />
-                        : <ToggleLeft className="h-5 w-5 text-muted-foreground" />}
-                    </button>
+                    {can("qs_libraries", "edit") && (
+                      <button onClick={() => handleToggleActive(item)} className="mx-auto flex items-center justify-center">
+                        {item.is_active
+                          ? <ToggleRight className="h-5 w-5 text-emerald-600" />
+                          : <ToggleLeft className="h-5 w-5 text-muted-foreground" />}
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => openEdit(item)}
-                        className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}
-                        className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
-                        {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      </button>
+                      {can("qs_libraries", "edit") && (
+                        <button onClick={() => openEdit(item)}
+                          className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {can("qs_libraries", "delete") && (
+                        <button onClick={() => handleDelete(item.id)} disabled={deletingId === item.id}
+                          className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                          {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
