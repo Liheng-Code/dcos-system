@@ -695,6 +695,7 @@ Total to Date = Previous Completed + This Period + Materials Stored
 | GAP-16 | No multi-currency support on QS tables | Low | Open |
 | GAP-17 | No audit log viewer for QS transactions | Low | Open |
 | GAP-18 | WBS-level budget rollup not in WBS tree view | Low | Open |
+| GAP-19 | Cost Library is being rebuilt as a 4-level resource/recipe/assembly/parametric-model architecture (`dwl_*` tables) per `docs/03-Business-Modules/12-Quantity-Surveying/SOP_Direct_Works_Cost_Library_Module.md` (QS-SOP-002), consolidating six overlapping rate-library structures (`qs_cost_items`, `unit_rate_library`, `rate_libraries`, `company_rate_library`/`_lines`, `tender_unit_rates`/`_lines`, `tender_price_list_items`). By QS Manager/Commercial Director decision this rebuild is sequenced **ahead of** GAP-01 and GAP-02 below — recorded here so the ordering is a decision, not an oversight. §5 SOP-QS-01 will be superseded once it ships. | High | In Progress |
 
 ---
 

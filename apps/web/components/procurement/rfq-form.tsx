@@ -98,6 +98,7 @@ export function RFQForm() {
     const { data: rfqResult, error: rfqError } = await supabase
       .from("procurement_rfqs")
       .insert([{
+        rfq_number: `RFQ-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
         pr_id: form.pr_id,
         response_deadline: form.response_deadline || null,
         evaluation_method: form.evaluation_method,
@@ -110,10 +111,6 @@ export function RFQForm() {
     if (rfqError) { toast.error(rfqError.message); setSaving(false); return; }
 
     const rfqId = (rfqResult as { id: string }).id;
-
-    await supabase.from("procurement_rfqs").update({
-      rfq_number: `RFQ-${new Date().getFullYear()}-${rfqId.slice(0, 4).toUpperCase()}`,
-    }).eq("id", rfqId);
 
     const supplierInserts = selectedSuppliers.map(supId => ({
       rfq_id: rfqId,

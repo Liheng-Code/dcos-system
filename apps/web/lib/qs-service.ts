@@ -55,6 +55,8 @@ export interface QsBoqItem {
   wbs_node_id: string | null;
   cost_item_id: string | null;
   seq: number;
+  item_no: string | null;
+  item_code: string | null;
   description: string;
   unit: string;
   quantity: number;
@@ -63,6 +65,7 @@ export interface QsBoqItem {
   contingency_pct: number;
   is_provisional: boolean;
   notes: string | null;
+  elemental_category: string | null;
   baseline_status?: "draft" | "approved" | "locked" | "revised";
   approved_at?: string | null;
   locked_at?: string | null;
@@ -70,6 +73,26 @@ export interface QsBoqItem {
   effective_date?: string | null;
   qs_cost_items?: { code: string; description: string } | null;
   wbs_nodes?: { wbs_name: string; wbs_code: string } | null;
+}
+
+export interface BoqItemForPr {
+  boq_item_id: string;
+  project_id: string;
+  boq_section_id: string;
+  boq_id: string;
+  boq_number: string;
+  boq_type: string;
+  seq: number;
+  item_no: string | null;
+  item_code: string | null;
+  description: string;
+  unit: string;
+  boq_quantity: number;
+  unit_rate: number;
+  total_amount: number;
+  elemental_category: string | null;
+  requisitioned_quantity: number;
+  remaining_quantity: number;
 }
 
 export interface QsCostTransaction {
@@ -1834,7 +1857,7 @@ export async function upsertWbsNodeGfa(payload: {
     if (error) throw new Error(error.message);
   } else {
     // Try minimal insert first
-    let { error } = await supabase
+    const { error } = await supabase
       .from("wbs_node_quantities")
       .insert({
         wbs_node_id: payload.wbsNodeId,
@@ -2103,4 +2126,517 @@ export async function getGfaDataQualityWarnings(projectId: string): Promise<GfaD
   return nodes
     .filter((n) => (costByNode.get(n.id) ?? 0) > 0 && !hasGfa.has(n.id))
     .map((n) => ({ wbsNodeId: n.id, wbsName: n.wbs_name, cost: costByNode.get(n.id) ?? 0 }));
+}
+
+// ── Award Conversion: Tender → Postcontract carry-over ────────────────────────
+
+export interface ContractSnapshot {
+  id: string;
+  project_id: string;
+  tender_id: string;
+  tender_project_id: string | null;
+  converted_by: string | null;
+  converted_at: string;
+  direct_cost: number;
+  preliminaries: number;
+  subcontract_cost: number;
+  overhead_pct: number;
+  overhead_amount: number;
+  profit_pct: number;
+  profit_amount: number;
+  contingency: number;
+  risk_allowance: number;
+  vat_pct: number;
+  vat_amount: number;
+  total_bid_price: number;
+  boq_item_count: number;
+  price_list_count: number;
+  prelims_count: number;
+  risk_count: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface QsRiskItem {
+  id: string;
+  project_id: string;
+  risk_no: string;
+  description: string;
+  category: string;
+  likelihood: string;
+  impact: string;
+  risk_score: string;
+  priced_amount: number;
+  mitigation: string | null;
+  owner: string | null;
+  source: string;
+  created_at: string;
+}
+
+export interface QsPriceListItem {
+  id: string;
+  project_id: string;
+  item_code: string;
+  section: string | null;
+  sub_section: string | null;
+  sub_element: string | null;
+  description: string;
+  unit: string;
+  labor_net_cost: number;
+  labor_margin_pct: number;
+  labor_rate: number;
+  material_net_cost: number;
+  material_margin_pct: number;
+  material_rate: number;
+  total_rate: number;
+  basis_source: string | null;
+  budget_code_id: string | null;
+  source_tender_price_list_id: string | null;
+  created_at: string;
+}
+
+/**
+ * Carry over tender BOQ items into the postcontract project as a locked baseline.
+ * Creates: qs_boq (main_works, locked) → qs_boq_sections (locked) → qs_boq_items (locked).
+ * Items are grouped by their `section` field from the tender.
+ */
+export async function carryOverBoq(
+  projectId: string,
+  tenderId: string,
+): Promise<{ boqId: string; itemCount: number }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // 1. Fetch all tender BOQ items
+  const { data: tenderItems, error: fetchErr } = await supabase
+    .from("tender_boq_items")
+    .select("*")
+    .eq("tender_id", tenderId)
+    .order("sort_order");
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!tenderItems || tenderItems.length === 0) return { boqId: "", itemCount: 0 };
+
+  // 2. Create the BOQ header (locked)
+  const boq_number = await getNextBoqNumber(projectId);
+  const { data: boq, error: boqErr } = await supabase
+    .from("qs_boq")
+    .insert({
+      project_id: projectId,
+      boq_number,
+      title: "Tender BOQ Baseline",
+      description: "Carried over from tender cost estimation — locked baseline",
+      boq_type: "main_works",
+      status: "locked",
+      currency_code: "USD",
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+  if (boqErr) throw new Error(boqErr.message);
+
+  // 3. Group items by section
+  const sectionMap = new Map<string, typeof tenderItems>();
+  for (const item of tenderItems) {
+    const sec = item.section || "General";
+    if (!sectionMap.has(sec)) sectionMap.set(sec, []);
+    sectionMap.get(sec)!.push(item);
+  }
+
+  let totalItems = 0;
+  let seq = 10;
+
+  for (const [sectionTitle, items] of sectionMap) {
+    // Create section (locked)
+    const { data: section, error: secErr } = await supabase
+      .from("qs_boq_sections")
+      .insert({
+        project_id: projectId,
+        boq_id: boq.id,
+        title: sectionTitle,
+        description: null,
+        seq,
+        baseline_status: "locked",
+        locked_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (secErr) throw new Error(secErr.message);
+    seq += 10;
+
+    // Create items (locked)
+    const itemRows = items.map((t, i) => ({
+      project_id: projectId,
+      boq_section_id: section.id,
+      seq: (i + 1) * 10,
+      item_no: t.item_code,
+      item_code: t.item_code,
+      description: t.description,
+      unit: t.unit,
+      quantity: t.quantity,
+      unit_rate: t.unit_rate,
+      contingency_pct: 0,
+      is_provisional: false,
+      notes: t.notes,
+      wbs_node_id: t.wbs_node_id ?? null,
+      budget_code_id: t.budget_code_id ?? null,
+      baseline_status: "locked" as const,
+      locked_at: new Date().toISOString(),
+    }));
+
+    const { error: itemErr } = await supabase
+      .from("qs_boq_items")
+      .insert(itemRows);
+    if (itemErr) throw new Error(itemErr.message);
+    totalItems += items.length;
+  }
+
+  return { boqId: boq.id, itemCount: totalItems };
+}
+
+/**
+ * Carry over tender preliminaries into the postcontract project as a locked baseline.
+ * Creates: qs_boq (preliminary, locked) → qs_boq_sections (locked) → qs_boq_items (locked).
+ */
+export async function carryOverPreliminaries(
+  projectId: string,
+  tenderId: string,
+): Promise<{ boqId: string; itemCount: number }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: tenderItems, error: fetchErr } = await supabase
+    .from("tender_preliminaries_items")
+    .select("*")
+    .eq("tender_id", tenderId)
+    .order("sort_order");
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!tenderItems || tenderItems.length === 0) return { boqId: "", itemCount: 0 };
+
+  const boq_number = await getNextBoqNumber(projectId);
+  const { data: boq, error: boqErr } = await supabase
+    .from("qs_boq")
+    .insert({
+      project_id: projectId,
+      boq_number,
+      title: "Tender Preliminaries Baseline",
+      description: "Carried over from tender preliminaries — locked baseline",
+      boq_type: "preliminary",
+      status: "locked",
+      currency_code: "USD",
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+  if (boqErr) throw new Error(boqErr.message);
+
+  // Single section for all prelims
+  const { data: section, error: secErr } = await supabase
+    .from("qs_boq_sections")
+    .insert({
+      project_id: projectId,
+      boq_id: boq.id,
+      title: "Preliminaries",
+      description: "Tender preliminaries carried over as locked baseline",
+      seq: 10,
+      baseline_status: "locked",
+      locked_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (secErr) throw new Error(secErr.message);
+
+  const itemRows = tenderItems.map((t, i) => ({
+    project_id: projectId,
+    boq_section_id: section.id,
+    seq: (i + 1) * 10,
+    item_no: t.code,
+    description: t.description,
+    unit: t.unit,
+    quantity: t.quantity,
+    unit_rate: t.rate,
+    contingency_pct: 0,
+    is_provisional: false,
+    notes: t.notes,
+    budget_code_id: t.budget_code_id ?? null,
+    baseline_status: "locked" as const,
+    locked_at: new Date().toISOString(),
+  }));
+
+  const { error: itemErr } = await supabase.from("qs_boq_items").insert(itemRows);
+  if (itemErr) throw new Error(itemErr.message);
+
+  return { boqId: boq.id, itemCount: tenderItems.length };
+}
+
+/**
+ * Carry over tender price list into the postcontract project.
+ */
+export async function carryOverPriceList(
+  projectId: string,
+  tenderId: string,
+): Promise<number> {
+  const supabase = createClient();
+
+  const { data: tenderItems, error: fetchErr } = await supabase
+    .from("tender_price_list")
+    .select("*")
+    .eq("tender_id", tenderId);
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!tenderItems || tenderItems.length === 0) return 0;
+
+  const rows = tenderItems.map((t) => ({
+    project_id: projectId,
+    item_code: t.item_code,
+    section: t.section,
+    sub_section: t.sub_section,
+    sub_element: t.sub_element,
+    description: t.description,
+    unit: t.unit,
+    labor_net_cost: t.labor_net_cost,
+    labor_margin_pct: t.labor_margin_pct,
+    material_net_cost: t.material_net_cost,
+    material_margin_pct: t.material_margin_pct,
+    basis_source: t.basis_source,
+    budget_code_id: t.budget_code_id,
+    source_tender_price_list_id: t.id,
+  }));
+
+  const { error: insertErr } = await supabase.from("qs_price_list_items").insert(rows);
+  if (insertErr) throw new Error(insertErr.message);
+  return rows.length;
+}
+
+/**
+ * Carry over tender risks into the postcontract project.
+ */
+export async function carryOverRisks(
+  projectId: string,
+  tenderId: string,
+): Promise<number> {
+  const supabase = createClient();
+
+  const { data: tenderItems, error: fetchErr } = await supabase
+    .from("tender_risk_items")
+    .select("*")
+    .eq("tender_id", tenderId);
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!tenderItems || tenderItems.length === 0) return 0;
+
+  const rows = tenderItems.map((t) => ({
+    project_id: projectId,
+    risk_no: t.risk_no,
+    description: t.description,
+    category: t.category,
+    likelihood: t.likelihood,
+    impact: t.impact,
+    priced_amount: t.priced_amount ?? 0,
+    mitigation: t.mitigation,
+    owner: t.owner,
+    source: "tender_conversion",
+  }));
+
+  const { error: insertErr } = await supabase.from("qs_risk_items").insert(rows);
+  if (insertErr) throw new Error(insertErr.message);
+  return rows.length;
+}
+
+/**
+ * Create a contract snapshot from the latest tender bid summary.
+ */
+export async function createContractSnapshot(
+  projectId: string,
+  tenderId: string,
+  tenderProjectId: string,
+  counts: { boqItemCount: number; priceListCount: number; prelimsCount: number; riskCount: number },
+): Promise<ContractSnapshot> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Fetch latest bid summary
+  const { data: bs, error: bsErr } = await supabase
+    .from("tender_bid_summaries")
+    .select("*")
+    .eq("tender_id", tenderId)
+    .order("revision_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (bsErr) throw new Error(bsErr.message);
+
+  const snapshot = {
+    project_id: projectId,
+    tender_id: tenderId,
+    tender_project_id: tenderProjectId,
+    converted_by: user?.id ?? null,
+    direct_cost: bs?.direct_cost ?? 0,
+    preliminaries: bs?.preliminaries ?? 0,
+    subcontract_cost: bs?.subcontract_cost ?? 0,
+    overhead_pct: bs?.overhead_pct ?? 0,
+    overhead_amount: bs?.overhead_amount ?? 0,
+    profit_pct: bs?.profit_pct ?? 0,
+    profit_amount: bs?.profit_amount ?? 0,
+    contingency: bs?.contingency ?? 0,
+    risk_allowance: bs?.risk_allowance ?? 0,
+    vat_pct: bs?.vat_pct ?? 0,
+    vat_amount: bs?.vat_amount ?? 0,
+    total_bid_price: bs?.total_bid_price ?? 0,
+    boq_item_count: counts.boqItemCount,
+    price_list_count: counts.priceListCount,
+    prelims_count: counts.prelimsCount,
+    risk_count: counts.riskCount,
+  };
+
+  const { data, error } = await supabase
+    .from("qs_contract_snapshots")
+    .insert(snapshot)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ContractSnapshot;
+}
+
+/**
+ * Auto-create a head contract register entry from tender award records.
+ */
+export async function autoCreateContractRegister(
+  projectId: string,
+  projectName: string,
+  tenderId: string,
+  contractValue: number,
+  currency: string,
+  startDate: string | null,
+  endDate: string | null,
+): Promise<string | null> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Fetch the award record
+  const { data: award } = await supabase
+    .from("tender_award_records")
+    .select("award_no, awardee_name, contract_no, award_date")
+    .eq("tender_id", tenderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const contractNo = award?.contract_no ?? `HC-${projectName.slice(0, 8).toUpperCase()}`;
+
+  const { data, error } = await supabase
+    .from("contract_register")
+    .insert({
+      project_id: projectId,
+      contract_no: contractNo,
+      contract_type: "head_contract",
+      title: projectName,
+      party_name: award?.awardee_name ?? "—",
+      contract_value: contractValue,
+      currency,
+      start_date: startDate,
+      end_date: endDate,
+      status: "active",
+      signed_date: award?.award_date,
+      created_by: user?.id ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data?.id ?? null;
+}
+
+/**
+ * Fetch the contract snapshot for a postcontract project (if any).
+ */
+export async function getContractSnapshot(projectId: string): Promise<ContractSnapshot | null> {
+  const { data, error } = await createClient()
+    .from("qs_contract_snapshots")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as ContractSnapshot | null;
+}
+
+/**
+ * Fetch postcontract KPIs for the dashboard.
+ */
+export async function getPostcontractKpis(projectId: string) {
+  const supabase = createClient();
+
+  const [boqRes, voRes, claimRes, retentionRes, contractRes] = await Promise.all([
+    supabase
+      .from("qs_boq_items")
+      .select("total_amount, baseline_status")
+      .eq("project_id", projectId),
+    supabase
+      .from("qs_vo_items")
+      .select("amount, qs_variation_orders!inner(project_id, status)")
+      .eq("qs_variation_orders.project_id", projectId)
+      .eq("qs_variation_orders.status", "approved"),
+    supabase
+      .from("qs_progress_claims")
+      .select("total_amount, status")
+      .eq("project_id", projectId)
+      .in("status", ["certified", "paid"]),
+    supabase
+      .from("qs_retention_ledger")
+      .select("amount, entry_type")
+      .eq("project_id", projectId),
+    supabase
+      .from("contract_register")
+      .select("contract_value, status")
+      .eq("project_id", projectId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const boqItems = boqRes.data ?? [];
+  const boqTotal = boqItems
+    .filter((i) => i.baseline_status === "locked" || i.baseline_status === "approved")
+    .reduce((sum, i) => sum + Number(i.total_amount ?? 0), 0);
+
+  const variationTotal = (voRes.data ?? []).reduce((sum, i) => sum + Number(i.amount ?? 0), 0);
+  const claimsTotal = (claimRes.data ?? []).reduce((sum, i) => sum + Number(i.total_amount ?? 0), 0);
+  const retentionDeducted = (retentionRes.data ?? [])
+    .filter((r) => r.entry_type === "deduction")
+    .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+  const retentionReleased = (retentionRes.data ?? [])
+    .filter((r) => r.entry_type === "release")
+    .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+
+  return {
+    contractValue: contractRes.data?.contract_value ?? 0,
+    boqTotal,
+    variationTotal,
+    claimsTotal,
+    retentionHeld: retentionDeducted - retentionReleased,
+    boqItemCount: boqItems.length,
+  };
+}
+
+// ── BOQ → PR Integration ────────────────────────────────────────────────────
+
+export async function getBoqItemsForPr(projectId: string): Promise<BoqItemForPr[]> {
+  const { data, error } = await createClient()
+    .from("qs_v_boq_requisition_status")
+    .select("*")
+    .eq("project_id", projectId)
+    .gt("remaining_quantity", 0)
+    .order("seq");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BoqItemForPr[];
+}
+
+export async function getBoqItemsForPrBySection(
+  projectId: string,
+  sectionId: string,
+): Promise<BoqItemForPr[]> {
+  const { data, error } = await createClient()
+    .from("qs_v_boq_requisition_status")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("boq_section_id", sectionId)
+    .gt("remaining_quantity", 0)
+    .order("seq");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BoqItemForPr[];
 }

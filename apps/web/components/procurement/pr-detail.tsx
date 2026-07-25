@@ -44,6 +44,8 @@ interface PRItem {
   estimated_total: number | null;
   budget_code: string | null;
   notes: string | null;
+  boq_item_id: string | null;
+  qs_boq_items?: { item_no: string | null; item_code: string | null; description: string } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -95,7 +97,7 @@ export function PRDetail({ id }: PRDetailProps) {
     const supabase = createClient();
     Promise.all([
       supabase.from("procurement_prs").select("*").eq("id", id).single(),
-      supabase.from("procurement_pr_items").select("*").eq("pr_id", id).order("line_no"),
+      supabase.from("procurement_pr_items").select("*, qs_boq_items(item_no, item_code, description)").eq("pr_id", id).order("line_no"),
     ]).then(([prRes, itemsRes]) => {
       if (prRes.data) setPr(prRes.data as PRRecord);
       if (itemsRes.data) setItems(itemsRes.data as PRItem[]);
@@ -215,6 +217,7 @@ export function PRDetail({ id }: PRDetailProps) {
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">#</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Code</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Description</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">BOQ Ref</th>
                 <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Qty</th>
                 <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Unit Price</th>
                 <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Total</th>
@@ -226,6 +229,13 @@ export function PRDetail({ id }: PRDetailProps) {
                   <td className="px-3 py-2 text-sm">{item.line_no}</td>
                   <td className="px-3 py-2 text-sm text-muted-foreground">{item.item_code ?? "—"}</td>
                   <td className="px-3 py-2 text-sm">{item.item_description}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {item.qs_boq_items ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 font-mono">
+                        {item.qs_boq_items.item_no ?? item.qs_boq_items.item_code ?? "—"}
+                      </span>
+                    ) : "—"}
+                  </td>
                   <td className="px-3 py-2 text-sm text-right">{item.quantity} {item.unit}</td>
                   <td className="px-3 py-2 text-sm text-right">{item.estimated_unit_price != null ? `$${item.estimated_unit_price.toLocaleString()}` : "—"}</td>
                   <td className="px-3 py-2 text-sm text-right font-medium">{item.estimated_total != null ? `$${item.estimated_total.toLocaleString()}` : "—"}</td>
@@ -234,7 +244,7 @@ export function PRDetail({ id }: PRDetailProps) {
             </tbody>
             <tfoot>
               <tr className="border-t font-semibold">
-                <td colSpan={5} className="px-3 py-2 text-sm text-right">Total</td>
+                <td colSpan={6} className="px-3 py-2 text-sm text-right">Total</td>
                 <td className="px-3 py-2 text-sm text-right">
                   ${items.reduce((s, i) => s + (i.estimated_total ?? 0), 0).toLocaleString()}
                 </td>

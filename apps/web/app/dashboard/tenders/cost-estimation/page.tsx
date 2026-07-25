@@ -17,18 +17,20 @@ import { RisksTab } from "@/components/tenders/cost-estimation/risks-tab";
 import { CostSummaryTab } from "@/components/tenders/cost-estimation/cost-summary-tab";
 import { ProjectBudgetTab } from "@/components/tenders/cost-estimation/project-budget-tab";
 import { CostPerM2Tab } from "@/components/tenders/cost-estimation/cost-per-m2-tab";
+import { ExcludeItemsTab } from "@/components/tenders/cost-estimation/exclude-items-tab";
 
-type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2";
+type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2" | "exclude_items";
 
 const TABS: { key: Tab; label: string; permissionAction?: string }[] = [
   { key: "bid", label: "Bid Summary", permissionAction: "tender_bid_summary" },
   { key: "cost_summary", label: "Cost Summary", permissionAction: "tender_cost_summary" },
-  { key: "cost_per_m2", label: "Cost / m²", permissionAction: "tender_cost_per_m2" },
+  { key: "cost_per_m2", label: "Cost($/m2)", permissionAction: "tender_cost_per_m2" },
   { key: "project_budget", label: "Project Budget", permissionAction: "tender_budget" },
   { key: "cover", label: "Cover Page", permissionAction: "tender_cover" },
   { key: "boq", label: "Tender BOQ", permissionAction: "tender_boq" },
   { key: "price_list", label: "Price List", permissionAction: "tender_price_list" },
   { key: "preliminaries", label: "Preliminaries", permissionAction: "tender_preliminaries" },
+  { key: "exclude_items", label: "Exclude Items", permissionAction: "tender_exclude_items" },
   { key: "subquotes", label: "Sub Quotes", permissionAction: "tender_sub_quotes" },
   { key: "risks", label: "Risk Items", permissionAction: "tender_risks" },
 ];
@@ -117,6 +119,7 @@ function CostEstimationContent() {
           {tab === "project_budget" && <ProjectBudgetTab tenderId={selectedTenderId} />}
           {tab === "subquotes" && <SubQuotesTab tenderId={selectedTenderId} />}
           {tab === "risks" && <RisksTab tenderId={selectedTenderId} />}
+          {tab === "exclude_items" && <ExcludeItemsTab tenderId={selectedTenderId} />}
         </>
       ) : (
         <div className="rounded-lg border border-border px-6 py-16 text-center text-sm text-muted-foreground">

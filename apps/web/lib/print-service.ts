@@ -1,5 +1,5 @@
 import type { QsProgressClaim, QsClaimItem } from "@/lib/qs-service";
-import type { TenderCoverSummary } from "@/lib/tender-cost-service";
+import type { TenderCoverSummary, TenderSubmissionData } from "@/lib/tender-cost-service";
 
 const BASE_STYLE = `
   <style>
@@ -21,6 +21,7 @@ const BASE_STYLE = `
     .right { text-align: right; }
     .footer { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 10px; font-size: 7.5pt; color: #777; display: flex; justify-content: space-between; }
     .sig-line { margin-top: 36px; border-top: 1px solid #999; padding-top: 4px; width: 200px; font-size: 8pt; color: #555; }
+    .repeat-header thead { display: table-header-group; }
     @media print { body { padding: 12mm; } }
   </style>
 `;
@@ -412,4 +413,283 @@ export function printTenderCoverSummary(
   `;
 
   openPrint(html, `Tender-Cost-Summary-${tender.tender_no}`);
+}
+
+// ── Tender Submission Document ───────────────────────────────────────────────
+
+const BUILDING_NAMES: Record<string, string> = {
+  BA: "Building A — Tower", BB: "Building B — Parking", BC: "Building C — Podium",
+  BD: "Building D", BE: "Building E", BF: "Building F", BG: "Building G",
+  BH: "Building H", BJ: "Building J", BK: "Building K", BL: "Building L",
+  BM: "Building M", BN: "Building N", BP: "Building P", BQ: "Building Q",
+  BR: "Building R", BS: "Building S", BT: "Building T", BU: "Building U",
+  BV: "Building V", BW: "Building W", BX: "External Works", BY: "Landscape",
+  BZ: "Boundary Works",
+};
+
+function buildingLabel(code: string): string {
+  return BUILDING_NAMES[code] ?? code;
+}
+
+export function printTenderSubmission(data: TenderSubmissionData): void {
+  const { tender, bidSummary, elementalSummary, preliminariesTotal, preliminariesItems,
+    boqItemsGrouped, excludeItems, directWorksTotal, blendedRate } = data;
+  const today = new Date().toLocaleDateString();
+  const bs = bidSummary;
+
+  // ── Cover Page (includes Executive Summary) ──
+  const coverHtml = `
+    <div style="display:flex;flex-direction:column;justify-content:center;min-height:240px;border-bottom:3px solid #1e3a5f;padding-bottom:20px;margin-bottom:20px">
+      <div class="logo" style="font-size:28pt;text-align:center;margin-bottom:8px">DCOS</div>
+      <div style="text-align:center;font-size:9pt;color:#555;margin-bottom:24px">Digital Construction Operating System</div>
+      <h1 style="text-align:center;font-size:20pt;margin-bottom:4px">TENDER SUBMISSION</h1>
+      <p style="text-align:center;font-size:10pt;color:#555">For Submission to Client — For Approval</p>
+    </div>
+    <table class="summary-table" style="width:100%;margin-bottom:16px">
+      <tr><td>Project Name</td><td>${tender.title}</td></tr>
+      <tr><td>Tender Reference</td><td>${tender.tender_no}</td></tr>
+      <tr><td>Location</td><td>${tender.project_location ?? "—"}</td></tr>
+      <tr><td>Client</td><td>${tender.client_name ?? "—"}</td></tr>
+      <tr><td>Contractor</td><td>${tender.contractor_name ?? "—"}</td></tr>
+      <tr><td>Issue Date</td><td>${tender.issue_date ?? today}</td></tr>
+      <tr><td>Currency</td><td>${tender.currency}</td></tr>
+      <tr><td>GFA Total</td><td>${tender.gfa_total ? tender.gfa_total.toLocaleString() + " m²" : "—"}</td></tr>
+    </table>
+
+    <h3 style="margin-top:20px">Executive Summary</h3>
+    <table class="summary-table" style="width:100%;margin-bottom:12px">
+      <tr><td>Direct Works Total</td><td>$ ${fmt(directWorksTotal)}</td></tr>
+      <tr><td>Preliminaries Total</td><td>$ ${fmt(preliminariesTotal)}</td></tr>
+      <tr><td>Combined Total</td><td>$ ${fmt(directWorksTotal + preliminariesTotal)}</td></tr>
+      ${tender.gfa_total ? `<tr><td>GFA</td><td>${tender.gfa_total.toLocaleString()} m²</td></tr>` : ""}
+      ${blendedRate != null ? `<tr><td>Blended $/m²</td><td>$ ${blendedRate.toFixed(2)}/m²</td></tr>` : ""}
+      ${bs ? `<tr><td><strong>Tender Price</strong></td><td><strong>$ ${fmt(Number(bs.total_bid_price))}</strong></td></tr>` : ""}
+      ${bs ? `<tr><td>Status</td><td>${bs.status.toUpperCase()}</td></tr>` : ""}
+      ${bs ? `<tr><td>Revision</td><td>${bs.revision_no}</td></tr>` : ""}
+    </table>
+    ${tender.description ? `<p style="font-size:9pt;line-height:1.5;margin-top:8px">${tender.description}</p>` : ""}
+
+    <div style="margin-top:60px;display:flex;gap:32px;flex-wrap:wrap">
+      <div style="min-width:180px">
+        <div class="sig-line">Prepared by (QS / Estimator)</div>
+        <p style="font-size:8pt;color:#555;margin-top:20px">Name: ___________________________</p>
+        <p style="font-size:8pt;color:#555;margin-top:6px">Date: ___________________________</p>
+      </div>
+      <div style="min-width:180px">
+        <div class="sig-line">Checked by (QS Manager)</div>
+        <p style="font-size:8pt;color:#555;margin-top:20px">Name: ___________________________</p>
+        <p style="font-size:8pt;color:#555;margin-top:6px">Date: ___________________________</p>
+      </div>
+      <div style="min-width:180px">
+        <div class="sig-line">Approved by (Contractor)</div>
+        <p style="font-size:8pt;color:#555;margin-top:20px">Name: ___________________________</p>
+        <p style="font-size:8pt;color:#555;margin-top:6px">Date: ___________________________</p>
+      </div>
+      <div style="min-width:180px">
+        <div class="sig-line">Accepted by (Client)</div>
+        <p style="font-size:8pt;color:#555;margin-top:20px">Name: ___________________________</p>
+        <p style="font-size:8pt;color:#555;margin-top:6px">Date: ___________________________</p>
+      </div>
+    </div>
+  `;
+
+  // ── Chapter 01: Tender Price Summary ──
+  const preVatSubtotal = bs
+    ? Number(bs.direct_cost) + Number(bs.preliminaries) + Number(bs.subcontract_cost) +
+      Number(bs.overhead_amount) + Number(bs.profit_amount) + Number(bs.contingency) + Number(bs.risk_allowance)
+    : 0;
+
+  const elementalRows = elementalSummary.map((g) => `
+    <tr>
+      <td>${g.codeLetter}</td>
+      <td>${g.groupName}</td>
+      <td class="right">${g.priced ? "$ " + fmt(g.amount) : "—"}</td>
+      <td>${g.priced ? "Priced" : "Excluded"}</td>
+    </tr>
+  `).join("");
+
+  const priceSummaryHtml = `
+    <h2>01 &nbsp; Tender Price Summary</h2>
+    <h3>Elemental Cost Summary</h3>
+    <table>
+      <thead>
+        <tr><th style="width:40px">Code</th><th>Description</th><th style="width:100px">Amount ($)</th><th style="width:80px">Remark</th></tr>
+      </thead>
+      <tbody>
+        ${elementalRows}
+        <tr class="total-row"><td colspan="2">DIRECT WORKS COST (A)</td><td class="right">$ ${fmt(directWorksTotal)}</td><td></td></tr>
+      </tbody>
+    </table>
+    <h3>Commercial Build-up to Tender Price</h3>
+    <table class="summary-table" style="width:460px">
+      <tr><td>Direct Works Cost (A)</td><td>$ ${fmt(directWorksTotal)}</td></tr>
+      <tr><td>Add: Preliminaries & General (Z)</td><td>$ ${fmt(preliminariesTotal)}</td></tr>
+      ${bs ? `
+      <tr><td>Add: Subcontract Cost</td><td>$ ${fmt(Number(bs.subcontract_cost))}</td></tr>
+      <tr><td>Add: Head Office Overhead (${Number(bs.overhead_pct)}%)</td><td>$ ${fmt(Number(bs.overhead_amount))}</td></tr>
+      <tr><td>Add: Risk & Contingency</td><td>$ ${fmt(Number(bs.contingency) + Number(bs.risk_allowance))}</td></tr>
+      <tr><td>Add: Profit (${Number(bs.profit_pct)}%)</td><td>$ ${fmt(Number(bs.profit_amount))}</td></tr>
+      <tr><td><strong>Subtotal before VAT</strong></td><td><strong>$ ${fmt(preVatSubtotal)}</strong></td></tr>
+      <tr><td>Add: VAT (${Number(bs.vat_pct)}%)</td><td>$ ${fmt(Number(bs.vat_amount))}</td></tr>
+      <tr class="total-row"><td>TENDER PRICE (USD)</td><td>$ ${fmt(Number(bs.total_bid_price))}</td></tr>
+      ` : `<tr><td colspan="2" style="color:#888">No bid summary revision available</td></tr>`}
+    </table>
+  `;
+
+  // ── Discipline-grouped appendices ──
+  const CS_LETTERS = ["A", "B", "G"];        // Early Work, Structure, External Work
+  const ARC_LETTERS = ["C", "D", "E"];       // Architecture, Interior Finish, Fittings
+  const MEP_LETTERS = ["F"];                 // Services (MEP)
+
+  function disciplineSubtotal(letterGroup: string[]): number {
+    return boqItemsGrouped.groups
+      .filter((g) => letterGroup.includes(g.codeLetter))
+      .reduce((sum, g) => sum + g.subtotal, 0);
+  }
+
+  function buildDisciplineAppendix(label: string, title: string, letterGroup: string[]): string {
+    const total = disciplineSubtotal(letterGroup);
+    if (total === 0) return "";
+
+    const matchedGroups = boqItemsGrouped.groups
+      .filter((g) => letterGroup.includes(g.codeLetter))
+      .sort((a, b) => a.codeLetter.localeCompare(b.codeLetter));
+    if (matchedGroups.length === 0) return "";
+
+    // Collect budget codes for display in title
+    const budgetCodeLabels = matchedGroups.flatMap((g) => g.budgetCodes.map((bc) => `${bc.code} ${bc.description}`));
+    const uniqueCodes = [...new Set(budgetCodeLabels)].join(" / ");
+
+    let tables = "";
+    for (const group of matchedGroups) {
+      const sortedBCs = [...group.budgetCodes].sort((a, b) => a.code.localeCompare(b.code));
+      for (const bc of sortedBCs) {
+        const bcItems = bc.sections.flatMap((sec) => sec.subSections.flatMap((ss) => ss.items));
+        if (bcItems.length === 0) continue;
+
+        // Sort within budget code by section → sub_section → sub_element
+        const sorted = [...bcItems].sort((a, b) => {
+          const sCmp = (a.section || "").localeCompare(b.section || "");
+          if (sCmp !== 0) return sCmp;
+          const ssCmp = (a.sub_section || "").localeCompare(b.sub_section || "");
+          if (ssCmp !== 0) return ssCmp;
+          return (a.sub_element || "").localeCompare(b.sub_element || "");
+        });
+
+        const bcTotal = sorted.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+        const rows = sorted.map((item) => `
+          <tr>
+            <td class="right">${item.level ?? "All"}</td>
+            <td>${item.item_code}</td>
+            <td>${item.section || ""}</td>
+            <td>${item.sub_section || ""}</td>
+            <td>${item.sub_element || ""}</td>
+            <td>${item.description}</td>
+            <td>${item.unit}</td>
+            <td class="right">${Number(item.quantity).toLocaleString()}</td>
+            <td class="right">$ ${fmt(Number(item.unit_rate))}</td>
+            <td class="right" style="white-space:nowrap">$ ${fmt(Number(item.total_amount))}</td>
+          </tr>
+        `).join("");
+        tables += `
+          <table class="repeat-header">
+            <thead>
+              <tr><th colspan="10" style="background:#fff;color:#111;border:none;font-size:10pt;text-align:left;padding:0 0 6px">${label} — ${title} · ${bc.code} ${bc.description}</th></tr>
+              <tr><th style="width:45px">Level</th><th style="width:65px">Item</th><th style="width:130px">Section</th><th style="width:150px">Sub Section</th><th style="width:150px">Sub Element</th><th>Description</th><th style="width:40px">Unit</th><th style="width:60px">Qty</th><th style="width:95px">Rate</th><th style="width:110px">Amount</th></tr>
+            </thead>
+            <tbody>
+              ${rows}
+              <tr class="total-row"><td colspan="9">${bc.code} Subtotal</td><td class="right">$ ${fmt(bcTotal)}</td></tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+
+    return `
+      <p style="font-size:8pt;color:#555;margin-bottom:2px"><strong>${label} — ${title}</strong> &nbsp; Discipline Total: <strong>$ ${fmt(total)}</strong></p>
+      <p style="font-size:7pt;color:#888;margin:0 0 8px">Budget Codes: ${uniqueCodes}</p>
+      ${tables}
+    `;
+  }
+
+  // ── Appendix A: Preliminaries Detail ──
+  const prelimRows = preliminariesItems.map((p) => `
+    <tr>
+      <td>${p.code}</td>
+      <td>${p.description}</td>
+      <td class="right">${p.unit}</td>
+      <td class="right">${Number(p.quantity).toLocaleString()}</td>
+      <td class="right" style="white-space:nowrap">$ ${fmt(p.rate)}</td>
+      <td class="right" style="white-space:nowrap">$ ${fmt(Number(p.amount))}</td>
+    </tr>
+  `).join("");
+
+  const appendixAHtml = `
+    ${preliminariesItems.length === 0 ? '' : `
+    <table class="repeat-header">
+      <thead>
+        <tr><th colspan="6" style="background:#fff;color:#111;border:none;font-size:11pt;text-align:left;padding:0 0 8px">Appendix A — Preliminaries Detail</th></tr>
+        <tr><th style="width:60px">Code</th><th>Description</th><th style="width:45px">Unit</th><th style="width:60px">Qty</th><th style="width:95px">Rate</th><th style="width:110px">Amount</th></tr>
+      </thead>
+      <tbody>
+        ${prelimRows}
+        <tr class="total-row"><td colspan="5">PRELIMINARIES TOTAL</td><td class="right">$ ${fmt(preliminariesTotal)}</td></tr>
+      </tbody>
+    </table>`}
+  `;
+
+  // ── Appendix B: C&S Detail ──
+  const appendixBHtml = buildDisciplineAppendix("Appendix B", "C&S Detail (Civil & Structural)", CS_LETTERS);
+
+  // ── Appendix C: Architecture ──
+  const appendixCHtml = buildDisciplineAppendix("Appendix C", "Architecture", ARC_LETTERS);
+
+  // ── Appendix D: MEP Work ──
+  const appendixDHtml = buildDisciplineAppendix("Appendix D", "MEP Work", MEP_LETTERS);
+
+  // ── Appendix E: Exclude Items ──
+  const excludeItemRows = excludeItems.map((item) => `
+    <tr>
+      <td>${item.item_code}</td>
+      <td>${item.description}</td>
+      <td>${item.reason ?? ""}</td>
+    </tr>
+  `).join("");
+
+  const appendixEHtml = excludeItems.length === 0 ? "" : `
+    <table class="repeat-header">
+      <thead>
+        <tr><th colspan="3" style="background:#fff;color:#111;border:none;font-size:11pt;text-align:left;padding:0 0 8px">02 — Exclude Items</th></tr>
+        <tr><th style="width:80px">Item</th><th>Description</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        ${excludeItemRows}
+      </tbody>
+    </table>
+  `;
+
+  // ── Assemble ──
+  const allChapters = [
+    coverHtml,
+    priceSummaryHtml,
+    appendixEHtml,
+    appendixAHtml,
+    appendixBHtml,
+    appendixCHtml,
+    appendixDHtml,
+  ].filter(Boolean);
+
+  const body = allChapters
+    .map((ch, i) => `<div class="chapter" style="${i > 0 ? "page-break-before:always" : ""}">${ch}</div>`)
+    .join("");
+
+  const footer = `
+    <div class="footer">
+      <span>Generated by DCOS — ${today}</span>
+      <span>${tender.tender_no} · Tender Submission</span>
+    </div>
+  `;
+
+  openPrint(body + footer, `Tender-Submission-${tender.tender_no}`);
 }

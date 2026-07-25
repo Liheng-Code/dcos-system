@@ -13,7 +13,7 @@ import { useProject } from "@/components/dashboard/project-context";
 export default function TenderRegisterPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const { selectedProject, projects: allProjects } = useProject();
+  const { selectedProject, selectedProjectId, projects: allProjects } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -56,11 +56,13 @@ export default function TenderRegisterPage() {
   }
 
   useEffect(() => {
-    supabase.from("tender_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    let query = supabase.from("tender_register").select("*").order("created_at", { ascending: false });
+    if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
+    query.then(({ data }) => {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId]);
 
   async function handleSave() {
     setSaving(true);
@@ -88,7 +90,9 @@ export default function TenderRegisterPage() {
     toast.success(editingId ? "Tender updated" : "Tender created");
     setShowForm(false);
     setEditingId(null);
-    supabase.from("tender_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    let refetch = supabase.from("tender_register").select("*").order("created_at", { ascending: false });
+    if (selectedProjectId) refetch = refetch.eq("project_id", selectedProjectId);
+    refetch.then(({ data }) => {
       if (data) setItems(data);
     });
     setSaving(false);
@@ -225,7 +229,9 @@ export default function TenderRegisterPage() {
       )}
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-border px-6 py-12 text-center text-sm text-muted-foreground">No tenders created</div>
+        <div className="rounded-lg border border-border px-6 py-12 text-center text-sm text-muted-foreground">
+          {selectedProjectId ? "No tenders for this project" : "No tenders created"}
+        </div>
       ) : (
         <div className="space-y-2">
           {items.map((t) => {

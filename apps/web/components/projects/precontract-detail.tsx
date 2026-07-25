@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, Loader2, Pencil, ArrowRight } from "lucide-react";
+import { ChevronLeft, Loader2, Pencil, ArrowRight, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { PrecontractDashboard } from "@/components/dashboard/precontract-dashboard";
 import { PrecontractWizard } from "@/components/projects/precontract-wizard";
@@ -55,7 +56,7 @@ interface Submission {
   supplier_name: string;
   bid_amount: number | null;
   submission_status: string;
-  submitted_at: string | null;
+  submitted_date: string | null;
 }
 
 interface RiskItem {
@@ -123,7 +124,7 @@ export function PrecontractDetail({ project, onBack, onUpdate }: PrecontractDeta
             .from("tender_submissions")
             .select("*")
             .eq("tender_id", pcData.tender_register_id)
-            .order("submitted_at", { ascending: false });
+            .order("submitted_date", { ascending: false });
           if (subData) setSubmissions(subData as Submission[]);
 
           // Load risks
@@ -321,7 +322,7 @@ export function PrecontractDetail({ project, onBack, onUpdate }: PrecontractDeta
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                          {sub.submitted_at ? new Date(sub.submitted_at).toLocaleDateString() : "—"}
+                          {sub.submitted_date ? new Date(sub.submitted_date).toLocaleDateString() : "—"}
                         </td>
                       </tr>
                     ))}
@@ -395,6 +396,26 @@ export function PrecontractDetail({ project, onBack, onUpdate }: PrecontractDeta
                     <strong>Loss reason:</strong> {details.loss_reason}
                   </p>
                 </div>
+              )}
+              {details?.award_status !== "awarded" && details?.award_status !== "lost" && (
+                <Button
+                  size="sm"
+                  className="mt-4"
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("project_precontract_details")
+                      .update({ award_status: "awarded", award_date: new Date().toISOString().slice(0, 10) })
+                      .eq("project_id", project.id);
+                    if (error) {
+                      toast.error(error.message);
+                      return;
+                    }
+                    setDetails((prev) => prev ? { ...prev, award_status: "awarded", award_date: new Date().toISOString().slice(0, 10) } : prev);
+                    toast.success("Tender marked as awarded");
+                  }}
+                >
+                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Mark as Awarded
+                </Button>
               )}
             </div>
 

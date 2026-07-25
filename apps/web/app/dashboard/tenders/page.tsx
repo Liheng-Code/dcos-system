@@ -8,8 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const QUICK_LINKS = [
   { href: "/dashboard/tenders/register", label: "Tender Register", icon: FileSearch, desc: "Active and past tenders", color: "bg-blue-50 text-blue-600" },
-  { href: "/dashboard/tenders/cost-estimation", label: "Cost Estimation", icon: Calculator, desc: "Tender BOQ, unit rates, bid build-up", color: "bg-emerald-50 text-emerald-600" },
   { href: "/dashboard/tenders/tender-management", label: "Tender Management", icon: ClipboardList, desc: "Invitations, addenda, Q&A", color: "bg-cyan-50 text-cyan-600" },
+  { href: "/dashboard/tenders/cost-estimation", label: "Cost Estimation", icon: Calculator, desc: "Tender BOQ, unit rates, bid build-up", color: "bg-emerald-50 text-emerald-600" },
   { href: "/dashboard/tenders/submissions", label: "Submissions", icon: DollarSign, desc: "Bidder submissions and pricing", color: "bg-amber-50 text-amber-600" },
   { href: "/dashboard/tenders/bid-evaluation", label: "Bid Evaluation", icon: Award, desc: "Scoring, comparison, award", color: "bg-purple-50 text-purple-600" },
 ];

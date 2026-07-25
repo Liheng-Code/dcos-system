@@ -1,5 +1,28 @@
 {
 	"dependencies": {
-		"date-fns": "^4.3.0"
-	}
+		"date-fns": "^4.3.0",
+		"playwright": "^1.57.0"
+	},
+	"name": "dcos-system",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"directories": {
+		"doc": "docs"
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Liheng-Code/dcos-system.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "commonjs",
+	"bugs": {
+		"url": "https://github.com/Liheng-Code/dcos-system/issues"
+	},
+	"homepage": "https://github.com/Liheng-Code/dcos-system#readme"
 }

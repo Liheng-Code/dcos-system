@@ -138,6 +138,7 @@ export function POForm() {
     const supabase = createClient();
 
     const poData = {
+      po_number: `PO-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
       supplier_id: form.supplier_id,
       pr_id: form.pr_id || null,
       delivery_date_expected: form.delivery_date_expected || null,
@@ -154,8 +155,6 @@ export function POForm() {
     if (poError) { toast.error(poError.message); setSaving(false); return; }
 
     const poId = (poResult as { id: string }).id;
-
-    await supabase.from("procurement_pos").update({ po_number: `PO-${new Date().getFullYear()}-${poId.slice(0, 4).toUpperCase()}` }).eq("id", poId);
 
     const itemInserts = items.map((i, idx) => ({
       po_id: poId,

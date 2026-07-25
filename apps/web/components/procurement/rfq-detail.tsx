@@ -314,6 +314,7 @@ export function RFQDetail({ id }: { id: string }) {
     const { data: poResult, error: poError } = await supabase
       .from("procurement_pos")
       .insert([{
+        po_number: `PO-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
         supplier_id: quotation.supplier_id,
         project_id: projectId,
         wbs_node_id: wbsNodeId,
@@ -332,9 +333,6 @@ export function RFQDetail({ id }: { id: string }) {
     if (poError) { toast.error("RFQ awarded but PO creation failed: " + poError.message); setActionLoading(""); fetchDetail(); return; }
 
     const poId = (poResult as { id: string }).id;
-    await supabase.from("procurement_pos").update({
-      po_number: `PO-${new Date().getFullYear()}-${poId.slice(0, 4).toUpperCase()}`,
-    }).eq("id", poId);
 
     const poItemInserts = quotation.procurement_quotation_items.map((qi, idx) => ({
       po_id: poId,

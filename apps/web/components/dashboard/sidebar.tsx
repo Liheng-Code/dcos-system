@@ -55,15 +55,18 @@ import {
   Handshake,
   ScrollText,
   FileSignature,
-  BookTemplate,
   Box,
   Database,
+  Layers,
+  Ruler,
+  ListTree,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import { useProject } from "@/components/dashboard/project-context";
+import { useModuleSettings } from "@/contexts/module-settings-context";
 
 
 
@@ -91,6 +94,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
   const { selectedProject } = useProject();
   const isPrecontract = selectedProject?.project_type === "tender";
+  const { isModuleActive, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [reportingOpen, setReportingOpen] = useState(false);
@@ -179,6 +183,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
   function NavItem({ href, label, icon, exact, badge }: {
     href: string; label: string; icon: Icon; exact?: boolean; badge?: number;
   }) {
+    if (!isNavItemActive(href)) return null;
     const active = isActive(href, exact);
     return <NavItemBase href={href} label={label} icon={icon} badge={badge} active={active} />;
   }
@@ -201,6 +206,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
     href: string; label: string; icon: Icon; badge?: number;
   }) {
     const searchParams = useSearchParams();
+    if (!isNavItemActive(href)) return null;
     const [hrefPath, hrefQuery] = href.split("?");
     const hrefParams = new URLSearchParams(hrefQuery);
     const active = pathname === hrefPath &&
@@ -263,7 +269,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
   }
 
   // ── Section header ────────────────────────────────────────────────────────
-  function FolderHeader({ label, open, onToggle, icon: Icon, level }: { label: string; open: boolean; onToggle: () => void; icon?: LucideIcon; level?: 1 | 2 }) {
+  function FolderHeader({ label, open, onToggle, icon: Icon, level, navKey }: { label: string; open: boolean; onToggle: () => void; icon?: LucideIcon; level?: 1 | 2; navKey?: string }) {
+    if (navKey && !isNavItemActive(navKey)) return null;
     if (collapsed) return null;
     if (level === 1) {
       return (
@@ -328,12 +335,17 @@ export function Sidebar({ collapsed }: SidebarProps) {
       <nav className="flex flex-col gap-1 overflow-y-auto p-3 flex-1">
 
         {/* ── PROJECT ── */}
+        {isModuleActive("project") && (
+        <>
         <FolderHeader label="Project" open={projectOpen} onToggle={() => setProjectOpen(!projectOpen)} level={1} />
         {(collapsed || projectOpen) && (isPrecontract ? PRECONTRACT_ITEMS : PROJECT_ITEMS).map((item) => (
           <NavItem key={item.href} {...item} />
         ))}
+        </>
+        )}
 
         {/* ── REPORTING ── */}
+        {isModuleActive("reporting") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Reporting" open={reportingOpen} onToggle={() => setReportingOpen(!reportingOpen)} level={1} />
           {(collapsed || reportingOpen) && (
@@ -346,8 +358,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── DOCUMENT CONTROL ── */}
+        {isModuleActive("document_control") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Document Control" open={docOpen} onToggle={() => setDocOpen(!docOpen)} level={1} />
           {(collapsed || docOpen) && (
@@ -359,9 +373,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── PLANNING ── */}
-        {!isPrecontract && (
+        {isModuleActive("planning") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Planning" open={planningOpen} onToggle={() => setPlanningOpen(!planningOpen)} level={1} />
           {(collapsed || planningOpen) && (
@@ -379,7 +394,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── DESIGN ── */}
-        {!isPrecontract && (
+        {isModuleActive("design") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Design" open={designOpen} onToggle={() => setDesignOpen(!designOpen)} level={1} />
           {(collapsed || designOpen) && (
@@ -393,8 +408,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
               {/* Architecture */}
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Architecture" open={arcOpen} onToggle={() => setArcOpen(!arcOpen)} />
-                {(collapsed || arcOpen) && (
+                <FolderHeader label="Architecture" open={arcOpen} onToggle={() => setArcOpen(!arcOpen)} navKey="group:design:architecture" />
+                {isNavItemActive("group:design:architecture") && (collapsed || arcOpen) && (
                   <>
                     <NavItem href="/dashboard/design/arc/drawings"       label="ARC Drawings"       icon={FileText} />
                     <NavItem href="/dashboard/design/arc/room-data"      label="Room Data"          icon={Grid} />
@@ -409,8 +424,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
               {/* Structure */}
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Structure" open={strOpen} onToggle={() => setStrOpen(!strOpen)} />
-                {(collapsed || strOpen) && (
+                <FolderHeader label="Structure" open={strOpen} onToggle={() => setStrOpen(!strOpen)} navKey="group:design:structure" />
+                {isNavItemActive("group:design:structure") && (collapsed || strOpen) && (
                   <>
                     <NavItem href="/dashboard/design/str/drawings"     label="STR Drawings"      icon={FileText} />
                     <NavItem href="/dashboard/design/str/calculations" label="Calculations"      icon={Calculator} />
@@ -425,8 +440,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
               {/* MEP */}
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="MEP" open={mepOpen} onToggle={() => setMepOpen(!mepOpen)} />
-                {(collapsed || mepOpen) && (
+                <FolderHeader label="MEP" open={mepOpen} onToggle={() => setMepOpen(!mepOpen)} navKey="group:design:mep" />
+                {isNavItemActive("group:design:mep") && (collapsed || mepOpen) && (
                   <>
                     <NavItem href="/dashboard/design/mep/drawings"     label="MEP Drawings"    icon={FileText} />
                     <NavItem href="/dashboard/design/mep/equipment"   label="Equipment"       icon={Cpu} />
@@ -445,6 +460,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── PROCUREMENT ── */}
+        {isModuleActive("procurement") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Procurement" open={procurementOpen} onToggle={() => setProcurementOpen(!procurementOpen)} level={1} />
           {(collapsed || procurementOpen) && (
@@ -456,8 +472,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
               <NavItem href="/dashboard/procurement/suppliers"            label="Suppliers"             icon={Building2} />
               <NavItem href="/dashboard/procurement/prequalification"    label="Supplier PQ"          icon={ClipboardCheck} />
               <NavItem href="/dashboard/procurement/supplier-performance" label="Supplier Perf."       icon={TrendingUp} />
-              <NavItem href="/dashboard/procurement/rfq"         label="RFQs"                   icon={FileSearch} />
               <NavItem href="/dashboard/procurement/pr"          label="Purchase Requisitions" icon={FileText} />
+              <NavItem href="/dashboard/procurement/rfq"         label="RFQs"                   icon={FileSearch} />
               <NavItem href="/dashboard/procurement/po"          label="Purchase Orders"       icon={Package} />
               <NavItem href="/dashboard/procurement/inventory"   label="Inventory"             icon={ListChecks} />
               <NavItem href="/dashboard/procurement/auto-reorder" label="Auto Reorder"         icon={RefreshCw} />
@@ -468,35 +484,43 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── QUANTITY SURVEYING ── */}
+        {isModuleActive("qs") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Quantity Surveying" open={qsGroupOpen} onToggle={() => setQsGroupOpen(!qsGroupOpen)} level={1} />
           {(collapsed || qsGroupOpen) && (
             <div className={cn(!collapsed && "ml-2 border-l border-border/50 pl-1")}>
 
-              {/* Tender & Estimate — always visible, regardless of project phase */}
+              {/* Tender & Estimate — only visible during pre-contract phase */}
+              {isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Tender & Estimate" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={2} />
-                {(collapsed || tenderingOpen) && (
+                <FolderHeader label="Tender & Estimate" open={tenderingOpen} onToggle={() => setTenderingOpen(!tenderingOpen)} level={2} navKey="group:qs:tendering" />
+                {isNavItemActive("group:qs:tendering") && (collapsed || tenderingOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/tenders/register"          label="Tender Register"       icon={FileSearch} />
-                    <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
                     <NavItem href="/dashboard/tenders/tender-management" label="Tender Management"     icon={ClipboardList} />
+                    <NavItem href="/dashboard/tenders/cost-estimation"   label="Cost Estimation"       icon={Calculator} />
                     <NavItem href="/dashboard/tenders/submissions"       label="Submissions"           icon={Send} />
                     <NavItem href="/dashboard/tenders/bid-evaluation"    label="Bid Evaluation"        icon={Award} />
                   </div>
                 )}
               </div>
+              )}
 
               {/* Libraries — always visible */}
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Libraries" open={librariesOpen} onToggle={() => setLibrariesOpen(!librariesOpen)} level={2} />
-                {(collapsed || librariesOpen) && (
+                <FolderHeader label="Libraries" open={librariesOpen} onToggle={() => setLibrariesOpen(!librariesOpen)} level={2} navKey="group:qs:libraries" />
+                {isNavItemActive("group:qs:libraries") && (collapsed || librariesOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
-                    <NavItem href="/dashboard/qs/cost-library"           label="Cost Library"          icon={BookTemplate} />
-                    <NavItem href="/dashboard/qs/rate-libraries"        label="Rate Libraries"        icon={BookTemplate} />
+                    <NavItem href="/dashboard/qs/dwl-resources"         label="Direct Works Resources" icon={Layers} />
+                    <NavItem href="/dashboard/qs/dwl-work-items"        label="Direct Works Rate Build-Up" icon={Calculator} />
+                    <NavItem href="/dashboard/qs/dwl-assemblies"        label="Direct Works Assemblies" icon={Box} />
+                    <NavItem href="/dashboard/qs/dwl-estimate"          label="Direct Works Quick Estimate" icon={Ruler} />
+                    <NavItem href="/dashboard/qs/dwl-price-dashboard"   label="Direct Works Price Dashboard" icon={TrendingUp} />
                     <NavItem href="/dashboard/tenders/budget-codes"      label="Budget Codes"          icon={FolderTree} />
+                    <NavItem href="/dashboard/qs/element-library"        label="Element Library"       icon={ListTree} />
                     <NavItem href="/dashboard/tenders/cost-library"      label="Prelim Cost Library"   icon={Database} />
                     <NavItem href="/dashboard/tenders/unit-rates"        label="Unit Rate Library"     icon={Database} />
                   </div>
@@ -506,8 +530,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
               {/* Cost Control */}
               {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Cost Control" open={qsCostControlOpen} onToggle={() => setQsCostControlOpen(!qsCostControlOpen)} level={2} />
-                {(collapsed || qsCostControlOpen) && (
+                <FolderHeader label="Cost Control" open={qsCostControlOpen} onToggle={() => setQsCostControlOpen(!qsCostControlOpen)} level={2} navKey="group:qs:cost_control" />
+                {isNavItemActive("group:qs:cost_control") && (collapsed || qsCostControlOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/qs/boq"                    label="BOQ"                  icon={DollarSign} />
                     <TabNavItem href="/dashboard/qs?tab=cost-control"        label="Cost Control"          icon={BarChart2} />
@@ -526,8 +550,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
               {/* Subcontractor Management */}
               {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Subcon Mgmt" open={subcontractorOpen} onToggle={() => setSubcontractorOpen(!subcontractorOpen)} level={2} />
-                {(collapsed || subcontractorOpen) && (
+                <FolderHeader label="Subcon Mgmt" open={subcontractorOpen} onToggle={() => setSubcontractorOpen(!subcontractorOpen)} level={2} navKey="group:qs:subcontractor" />
+                {isNavItemActive("group:qs:subcontractor") && (collapsed || subcontractorOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/subcontractors/back-charges"        label="Back Charges"        icon={AlertTriangle} />
                     <NavItem href="/dashboard/subcontractors/performance-notices" label="Performance Notices" icon={FileWarning} />
@@ -539,8 +563,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
               {/* Contract Administration */}
               {!isPrecontract && (
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="Contract Admin" open={contractAdminOpen} onToggle={() => setContractAdminOpen(!contractAdminOpen)} level={2} />
-                {(collapsed || contractAdminOpen) && (
+                <FolderHeader label="Contract Admin" open={contractAdminOpen} onToggle={() => setContractAdminOpen(!contractAdminOpen)} level={2} navKey="group:qs:contract_admin" />
+                {isNavItemActive("group:qs:contract_admin") && (collapsed || contractAdminOpen) && (
                   <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
                     <NavItem href="/dashboard/contracts/register"        label="Contract Register"     icon={FileSignature} />
                     <NavItem href="/dashboard/contracts/notices"         label="Notices"               icon={AlertTriangle} />
@@ -555,9 +579,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* ── CONSTRUCTION ── */}
-        {!isPrecontract && (
+        {isModuleActive("construction") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Construction" open={siteOpen} onToggle={() => setSiteOpen(!siteOpen)} level={1} />
           {(collapsed || siteOpen) && (
@@ -574,8 +599,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
               {/* HSE sub-section */}
               <div className={cn(!collapsed && "mt-1")}>
-                <FolderHeader label="HSE" open={hseOpen} onToggle={() => setHseOpen(!hseOpen)} />
-                {(collapsed || hseOpen) && (
+                <FolderHeader label="HSE" open={hseOpen} onToggle={() => setHseOpen(!hseOpen)} navKey="group:construction:hse" />
+                {isNavItemActive("group:construction:hse") && (collapsed || hseOpen) && (
                   <>
                     <NavItem href="/dashboard/hse"                  label="Dashboard"        icon={LayoutDashboard} />
                     <NavItem href="/dashboard/hse/permits"          label="Work Permits"      icon={FileText} />
@@ -592,9 +617,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
         </div>
         )}
 
-
-
         {/* ── HR MANAGEMENT ── */}
+        {isModuleActive("hr") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="HR Management" open={hrOpen} onToggle={() => setHrOpen(!hrOpen)} level={1} />
           {(collapsed || hrOpen) && (
@@ -620,8 +644,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── ACCOUNT / FINANCE ── */}
+        {isModuleActive("account") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Account" open={accountOpen} onToggle={() => setAccountOpen(!accountOpen)} level={1} />
           {(collapsed || accountOpen) && (
@@ -641,9 +667,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </>
           )}
         </div>
+        )}
 
         {/* ── ADMINISTRATION ── */}
-        {isAdmin && (
+        {isAdmin && isModuleActive("administration") && (
           <div className={cn(!collapsed && "mt-3")}>
             <FolderHeader label="Administration" open={adminOpen} onToggle={() => setAdminOpen(!adminOpen)} level={1} />
             {(collapsed || adminOpen) && (

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2, Printer, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { getTenderCoverSummary, getBidSummaries, type TenderCoverSummary, type TenderBidSummary } from "@/lib/tender-cost-service";
-import { printTenderCoverSummary } from "@/lib/print-service";
+import { getTenderCoverSummary, getBidSummaries, getTenderSubmissionData, type TenderCoverSummary, type TenderBidSummary } from "@/lib/tender-cost-service";
+import { printTenderCoverSummary, printTenderSubmission } from "@/lib/print-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,6 +25,7 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
   const [revisions, setRevisions] = useState<TenderBidSummary[]>([]);
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [printingSubmission, setPrintingSubmission] = useState(false);
 
   const { can } = useTenderPermissions();
 
@@ -58,6 +59,18 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
     });
   }
 
+  async function handlePrintSubmission() {
+    setPrintingSubmission(true);
+    try {
+      const submissionData = await getTenderSubmissionData(tenderId, selectedRevisionId || undefined);
+      printTenderSubmission(submissionData);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate submission");
+    } finally {
+      setPrintingSubmission(false);
+    }
+  }
+
   if (loading || !summary || !tender) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
   const bs = summary.bidSummary;
@@ -79,9 +92,14 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
           </select>
         </div>
         {can("tender_cover", "export") && (
-        <Button size="sm" onClick={handlePrint} disabled={!bs}>
-          <Printer className="mr-1 h-4 w-4" /> Print Tender Cost Summary
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={handlePrint} disabled={!bs}>
+            <Printer className="mr-1 h-4 w-4" /> Print Cost Summary
+          </Button>
+          <Button size="sm" variant="default" onClick={handlePrintSubmission} disabled={printingSubmission}>
+            {printingSubmission ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileText className="mr-1 h-4 w-4" />} Print Full Submission
+          </Button>
+        </div>
         )}
       </div>
 

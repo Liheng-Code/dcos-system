@@ -11,6 +11,7 @@ import { PrecontractWizard } from "@/components/projects/precontract-wizard";
 import { NamingProjectWizard } from "@/components/naming/naming-project-wizard";
 import { ProjectStakeholdersTab } from "@/components/projects/project-stakeholders-tab";
 import { PrecontractDetail } from "@/components/projects/precontract-detail";
+import { PostcontractDetail } from "@/components/projects/postcontract-detail";
 import { useProject } from "@/components/dashboard/project-context";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -52,6 +53,7 @@ export function ProjectListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showPrecontractCreate, setShowPrecontractCreate] = useState(false);
   const [showPrecontractDetail, setShowPrecontractDetail] = useState(false);
+  const [showPostcontractDetail, setShowPostcontractDetail] = useState(false);
   const [showNamingCreate, setShowNamingCreate] = useState(false);
   const [teamProject, setTeamProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
@@ -145,6 +147,7 @@ export function ProjectListPage() {
 
   const wizardOpen = !!(selected || showCreate || showPrecontractCreate || showNamingCreate);
   const showDetail = showPrecontractDetail && selected?.project_type === "tender";
+  const showPostDetail = showPostcontractDetail && selected && selected.project_type !== "tender";
 
   return (
     <div className="flex flex-col" style={{ height: '100%' }}>
@@ -167,6 +170,12 @@ export function ProjectListPage() {
         <PrecontractDetail
           project={selected!}
           onBack={() => { setShowPrecontractDetail(false); setSelected(null); }}
+          onUpdate={handleSave}
+        />
+      ) : showPostDetail ? (
+        <PostcontractDetail
+          project={selected!}
+          onBack={() => { setShowPostcontractDetail(false); setSelected(null); }}
           onUpdate={handleSave}
         />
       ) : showNamingCreate ? (
@@ -347,6 +356,7 @@ export function ProjectListPage() {
                         setShowPrecontractDetail(true);
                       } else {
                         setSelected(p);
+                        setShowPostcontractDetail(true);
                       }
                     }}
                     className="group flex flex-col rounded-xl border border-border bg-card p-4 text-left transition-all hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5"
@@ -371,7 +381,7 @@ export function ProjectListPage() {
                     {p.project_type === "tender" && awardedByTenderId[p.id] && (
                       <div
                         role="button"
-                        onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); }}
+                        onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); setShowPostcontractDetail(true); }}
                         className="mb-3 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 cursor-pointer"
                       >
                         Awarded → {awardedByTenderId[p.id].project_code}
@@ -477,6 +487,7 @@ export function ProjectListPage() {
                             setShowPrecontractDetail(true);
                           } else {
                             setSelected(p);
+                            setShowPostcontractDetail(true);
                           }
                         }}
                         className="cursor-pointer transition-colors hover:bg-muted/50"
@@ -486,7 +497,7 @@ export function ProjectListPage() {
                           {p.project_type === "tender" && awardedByTenderId[p.id] && (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); }}
+                              onClick={(e) => { e.stopPropagation(); setSelected(awardedByTenderId[p.id]); setShowPrecontractDetail(false); setShowPostcontractDetail(true); }}
                               className="mt-0.5 block w-fit rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
                             >
                               Awarded → {awardedByTenderId[p.id].project_code}

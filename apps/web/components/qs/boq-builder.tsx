@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Loader2, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ import {
   updateBoqBaselineStatus,
 } from "@/lib/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { RaisePrFromBoqDialog } from "@/components/procurement/raise-pr-from-boq-dialog";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -273,6 +274,15 @@ export function BoqBuilder({ projectId, boqId }: Props) {
               <span className="flex-1 text-sm font-semibold text-slate-800">{section.title}</span>
               <span className="text-xs text-slate-400">{items.length} item{items.length !== 1 ? "s" : ""}</span>
               <span className="min-w-[7rem] text-right text-sm font-medium text-slate-700">${fmt(sectionTotal)}</span>
+              {items.length > 0 && (
+                <RaisePrFromBoqDialog
+                  projectId={projectId}
+                  boqItemIds={items.map((i) => i.id)}
+                  triggerLabel="Raise PR"
+                  triggerSize="sm"
+                  triggerClassName="ml-2 gap-1 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                />
+              )}
               {can("boq", "delete") && (
                 <button
                   onClick={(e) => { e.stopPropagation(); if (!baselineLocked) void handleDeleteSection(section.id); }}
@@ -314,15 +324,24 @@ export function BoqBuilder({ projectId, boqId }: Props) {
                             <td className="px-3 py-2 text-right text-slate-600">{fmt(Number(item.unit_rate))}</td>
                             <td className="px-3 py-2 text-right font-medium text-slate-700">${fmt(Number(item.total_amount ?? 0))}</td>
                             <td className="px-3 py-2">
-                              {can("boq", "delete") && (
-                                <button
-                                  onClick={() => { if (!baselineLocked) void handleDeleteItem(section.id, item.id); }}
-                                  disabled={baselineLocked}
-                                  className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              )}
+                              <div className="flex items-center gap-0.5">
+                                <RaisePrFromBoqDialog
+                                  projectId={projectId}
+                                  boqItemIds={[item.id]}
+                                  triggerLabel=""
+                                  triggerSize="sm"
+                                  triggerClassName="h-7 w-7 p-0 justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                />
+                                {can("boq", "delete") && (
+                                  <button
+                                    onClick={() => { if (!baselineLocked) void handleDeleteItem(section.id, item.id); }}
+                                    disabled={baselineLocked}
+                                    className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}

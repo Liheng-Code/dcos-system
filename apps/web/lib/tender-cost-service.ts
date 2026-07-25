@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import type { DwlCategory, DwlSourceType, DwlWorkItemExplosionLine } from "@/components/qs/dwl-types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,31 @@ export interface BudgetCodeGroupTree {
   codes: BudgetCodeTreeNode[];
 }
 
+export interface QsElementLibraryItem {
+  id: string;
+  discipline: string;
+  section: string;
+  sub_section: string;
+  sub_element: string;
+  budget_code_id: string | null;
+  typical_unit: string | null;
+  sort_order: number;
+  is_active: boolean;
+  budget_codes?: { code: string; description: string } | null;
+  descriptions?: QsDescriptionLibraryItem[];
+}
+
+export interface QsDescriptionLibraryItem {
+  id: string;
+  element_library_id: string;
+  description: string;
+  material_rate: number | null;
+  labor_rate: number | null;
+  in_price_list: boolean;
+  sort_order: number;
+  is_active: boolean;
+}
+
 export interface TenderPriceListItem {
   id: string;
   tender_id: string;
@@ -51,7 +77,11 @@ export interface TenderPriceListItem {
   budget_codes?: { code: string; description: string } | null;
 }
 
-export type RateSource = "manual" | "price_list";
+// SOP-QS-003 §4.1 widened rate_source to carry library provenance:
+// 'dwl_work_item' / 'dwl_assembly' rows were created (or last refreshed) from
+// the Direct Works Cost Library picker; 'manual'/'price_list' behavior is
+// completely unchanged (BR1).
+export type RateSource = "manual" | "price_list" | "dwl_work_item" | "dwl_assembly";
 
 export interface TenderBoqItem {
   id: string;
@@ -82,9 +112,477 @@ export interface TenderBoqItem {
   material_net_cost: number | null;
   material_margin_pct: number | null;
   price_list_item_id: string | null;
+  // SOP-QS-003 §4.1 — at most one of these two is ever non-null (DB CHECK
+  // constraint); both null means manual or price_list entry.
+  dwl_work_item_id: string | null;
+  dwl_assembly_id: string | null;
   rate_source: RateSource;
+  // SOP-QS-003 §4.3 — frozen resource-level rate build-up snapshot, written
+  // once at pick time and wholesale-replaced (never patched) at Refresh time.
+  // null for manual/price_list rows.
+  rate_build_up: BoqRateBuildUp | null;
   notes: string | null;
   budget_codes?: { code: string; description: string; code_letter: string } | null;
+}
+
+// ── Direct Works Cost Library → BOQ snapshot (SOP-QS-003 §5, §4.3, §6.2) ────
+//
+// docs/03-Business-Modules/12-Quantity-Surveying/
+// 08-SOP_Direct_Works_Library_Tender_BOQ_Integration.md
+
+/** One line of a frozen rate_build_up snapshot (§4.3 exact shape). */
+export interface BoqRateBuildUpLine {
+  /** The constituent work item this line came from — equals `source_code`
+   *  itself for a direct Work Item pick, or the specific component's own
+   *  code for an Assembly pick (this is the audit-trail field: it lets a
+   *  multi-component assembly snapshot be traced back to which constituent
+   *  produced which resource line, per §5). */
+  work_item_code: string;
+  /** dwl_assembly_items.qty_per_unit; 1.0 for a direct Work Item pick. */
+  qty_per_unit: number;
+  resource_code: string;
+  resource_desc: string;
+  resource_unit: string;
+  resource_category: DwlCategory;
+  consumption: number;
+  waste_pct: number;
+  unit_price: number;
+  /** dwl_v_work_item_explosion.line_cost — per unit of the constituent work
+   *  item, unscaled by qty_per_unit. */
+  line_cost: number;
+  /** line_cost * qty_per_unit — per unit of the item actually picked. */
+  extended_cost: number;
+  source_type: DwlSourceType;
+  is_expired: boolean;
+  basis_note: string;
+}
+
+/** Exact rate_build_up jsonb shape (SOP-QS-003 §4.3). */
+export interface BoqRateBuildUp {
+  source: "dwl_work_item" | "dwl_assembly";
+  source_id: string;
+  source_code: string;
+  snapshot_at: string;
+  /** dwl_v_work_item_rates / dwl_v_assembly_rates .net_direct_rate at pick
+   *  time, per unit of the picked item. */
+  snapshot_net_direct_rate: number;
+  /** Sum of lines[].extended_cost where resource_category = 'labor' (§6.2). */
+  labor_net_cost: number;
+  /** Sum of lines[].extended_cost where resource_category in
+   *  ('material','equipment','subcon') — equipment/subcon fold into this
+   *  bucket because tender_boq_items only has two cost buckets (BR5). */
+  material_net_cost: number;
+  lines: BoqRateBuildUpLine[];
+}
+
+export interface BoqLibrarySnapshotResult {
+  rate_build_up: BoqRateBuildUp;
+  labor_net_cost: number;
+  material_net_cost: number;
+  /** BR3 sanity check — sum(lines[].extended_cost) vs snapshot_net_direct_rate
+   *  within ±0.01, same comparison/tolerance dwl-work-items-list-page.tsx
+   *  already performs for the library screen itself. Non-blocking: a mismatch
+   *  does not prevent saving, the caller decides how (or whether) to surface
+   *  it. See SOP §4.3 BR3 and its OQ-9 rounding-at-scale caveat. */
+  reconciles: boolean;
+}
+
+// SOP-QS-003 §6.4/BR9 — pick-time (and refresh-time) equipment+subcon margin-
+// basis guardrail. 10% is a business decision (user/QS Manager, 2026-07-21 —
+// see Revision Log OQ-7a), not an architect default; kept as a named,
+// exported constant (not inlined at call sites) so it can be retuned later
+// without hunting through the two call sites (pick + refresh) that use it.
+export const EQUIPMENT_SUBCON_GUARDRAIL_PCT = 10;
+
+/**
+ * BR9 — equipment+subcon share of a snapshot's net_direct_rate:
+ *   sum(lines[].extended_cost where resource_category in ('equipment','subcon'))
+ *   / snapshot_net_direct_rate
+ *
+ * Computed from the same rate_build_up buildBoqLibrarySnapshot() already
+ * produces, so both call sites (pick time in handleLibrarySelect, refresh
+ * time in buildBoqLibraryRefreshPreview) reuse this one implementation.
+ * Purely informational — this NEVER blocks a pick or a refresh (§6.4:
+ * "non-blocking... not a hard stop"); the caller decides how to surface the
+ * warning when the returned share exceeds EQUIPMENT_SUBCON_GUARDRAIL_PCT.
+ */
+export function computeEquipmentSubconShare(rateBuildUp: BoqRateBuildUp): number {
+  if (!rateBuildUp.snapshot_net_direct_rate) return 0;
+  const equipmentSubconCost = rateBuildUp.lines
+    .filter((line) => line.resource_category === "equipment" || line.resource_category === "subcon")
+    .reduce((sum, line) => sum + line.extended_cost, 0);
+  return equipmentSubconCost / rateBuildUp.snapshot_net_direct_rate;
+}
+
+/** A minimal, structurally-compatible view of what LibraryRatePicker's
+ *  onSelect hands back (components/qs/library-rate-picker.tsx). Declared
+ *  locally rather than imported so this lib module doesn't take a hard
+ *  dependency on a "use client" component — any DwlWorkItemRate/
+ *  DwlAssemblyRate value satisfies this shape structurally. */
+export type BoqLibraryPick =
+  | { kind: "work_item"; data: { work_item_id: string; code: string; net_direct_rate: number } }
+  | { kind: "assembly"; data: { assembly_id: string; code: string; net_direct_rate: number } };
+
+async function explodeWorkItem(workItemId: string): Promise<DwlWorkItemExplosionLine[]> {
+  const { data, error } = await createClient()
+    .from("dwl_v_work_item_explosion")
+    .select(
+      "work_item_id, work_item_code, sort_order, resource_code, resource_desc, resource_unit, resource_category, consumption, waste_pct, unit_price, line_cost, source_type, is_expired, basis_note"
+    )
+    .eq("work_item_id", workItemId)
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DwlWorkItemExplosionLine[];
+}
+
+function toSnapshotLine(line: DwlWorkItemExplosionLine, qtyPerUnit: number): BoqRateBuildUpLine {
+  // 4dp matches dwl_v_work_item_explosion.line_cost's own rounding (§4.3 QA
+  // flag) — extended_cost is only ever line_cost * qty_per_unit, so it
+  // carries the same precision, not an invented one.
+  const extended_cost = Math.round(line.line_cost * qtyPerUnit * 10000) / 10000;
+  return {
+    work_item_code: line.work_item_code,
+    qty_per_unit: qtyPerUnit,
+    resource_code: line.resource_code,
+    resource_desc: line.resource_desc,
+    resource_unit: line.resource_unit,
+    resource_category: line.resource_category,
+    consumption: line.consumption,
+    waste_pct: line.waste_pct,
+    unit_price: line.unit_price,
+    line_cost: line.line_cost,
+    extended_cost,
+    source_type: line.source_type,
+    is_expired: line.is_expired,
+    basis_note: line.basis_note,
+  };
+}
+
+/**
+ * Builds the frozen rate_build_up snapshot for a Direct Works Cost Library
+ * pick (SOP-QS-003 §5):
+ *
+ * - Work Item pick: one query to dwl_v_work_item_explosion filtered by
+ *   work_item_id → its rows become lines[] directly, qty_per_unit = 1.0.
+ * - Assembly pick: dwl_assembly_items gives each constituent's
+ *   (work_item_id, qty_per_unit); each constituent's explosion lines are
+ *   scaled by that qty_per_unit into extended_cost and concatenated into one
+ *   flat lines[], each line keeping its own work_item_code so a
+ *   multi-component snapshot stays traceable back to which constituent
+ *   produced which line.
+ *
+ * Also performs the §6.2 margin bucketing (labor_net_cost/material_net_cost)
+ * and the BR3 reconciliation sanity check. Does not write anything —
+ * the caller passes the result's rate_build_up/labor_net_cost/
+ * material_net_cost into createBoqItem().
+ */
+export async function buildBoqLibrarySnapshot(pick: BoqLibraryPick): Promise<BoqLibrarySnapshotResult> {
+  const snapshot_at = new Date().toISOString();
+
+  let source: "dwl_work_item" | "dwl_assembly";
+  let source_id: string;
+  let source_code: string;
+  let snapshot_net_direct_rate: number;
+  let lines: BoqRateBuildUpLine[];
+
+  if (pick.kind === "work_item") {
+    source = "dwl_work_item";
+    source_id = pick.data.work_item_id;
+    source_code = pick.data.code;
+    snapshot_net_direct_rate = pick.data.net_direct_rate;
+
+    const explosion = await explodeWorkItem(source_id);
+    lines = explosion.map((line) => toSnapshotLine(line, 1.0));
+  } else {
+    source = "dwl_assembly";
+    source_id = pick.data.assembly_id;
+    source_code = pick.data.code;
+    snapshot_net_direct_rate = pick.data.net_direct_rate;
+
+    const { data: constituents, error: constErr } = await createClient()
+      .from("dwl_assembly_items")
+      .select("work_item_id, qty_per_unit, basis_note")
+      .eq("assembly_id", source_id)
+      .order("sort_order");
+    if (constErr) throw new Error(constErr.message);
+
+    const rows = (constituents ?? []) as { work_item_id: string; qty_per_unit: number; basis_note: string }[];
+
+    // One explosion query per constituent — a small (few-item) assembly, not
+    // worth a fan-out RPC for this build (§5 describes it as a two-step
+    // per-constituent procedure, not a single joined query).
+    const explosions = await Promise.all(rows.map((c) => explodeWorkItem(c.work_item_id)));
+
+    lines = [];
+    for (let i = 0; i < rows.length; i++) {
+      const qtyPerUnit = rows[i].qty_per_unit;
+      for (const line of explosions[i]) {
+        lines.push(toSnapshotLine(line, qtyPerUnit));
+      }
+    }
+  }
+
+  let labor_net_cost = 0;
+  let material_net_cost = 0;
+  for (const line of lines) {
+    // BR5 — equipment/subcon fold into material_net_cost; only 'labor' gets
+    // its own bucket, since tender_boq_items has just the two.
+    if (line.resource_category === "labor") labor_net_cost += line.extended_cost;
+    else material_net_cost += line.extended_cost;
+  }
+  labor_net_cost = Math.round(labor_net_cost * 100) / 100;
+  material_net_cost = Math.round(material_net_cost * 100) / 100;
+
+  const lineSum = lines.reduce((sum, line) => sum + line.extended_cost, 0);
+  const reconciles = Math.abs(lineSum - snapshot_net_direct_rate) < 0.01;
+  if (!reconciles) {
+    // Dev-time signal only (BR3) — never blocks the pick, per the SOP's own
+    // "not a hard failure" instruction.
+    console.warn(
+      `[BR3] Library snapshot for ${source_code} does not reconcile: lines sum to ${lineSum}, header rate is ${snapshot_net_direct_rate}.`
+    );
+  }
+
+  const rate_build_up: BoqRateBuildUp = {
+    source,
+    source_id,
+    source_code,
+    snapshot_at,
+    snapshot_net_direct_rate,
+    labor_net_cost,
+    material_net_cost,
+    lines,
+  };
+
+  return { rate_build_up, labor_net_cost, material_net_cost, reconciles };
+}
+
+// ── "Refresh from Library" (SOP-QS-003 §7.3, BR2/BR4/BR7/BR9) ──────────────
+//
+// Deliberately NOT built by re-using updateBoqItem()'s generic
+// changesRate/rate_source path: a refresh legitimately overwrites
+// labor_net_cost/material_net_cost from the library, but must never flip
+// rate_source to 'manual' the way a human hand-typing a net cost would
+// (BR2) — different provenance, different action. Split into a
+// preview (no write) + commit (writes exactly what was previewed) pair
+// rather than one do-everything function, because BR7 requires a
+// confirmation step before anything is committed ("cancel = no write at
+// all") — the preview is what the confirmation dialog renders, and commit
+// re-uses that exact snapshot rather than re-querying, so what the estimator
+// confirmed is exactly what gets written.
+
+export interface BoqLibraryRefreshPreview {
+  /** The fresh snapshot (§5) re-built against the row's current library
+   *  source — wholesale replacement payload for rate_build_up (BR4). */
+  rate_build_up: BoqRateBuildUp;
+  labor_net_cost: number;
+  material_net_cost: number;
+  /** Computed at the row's CURRENT (unchanged) labor_margin_pct/
+   *  material_margin_pct — createBoqItem()'s formula, reused explicitly here
+   *  because updateBoqItem() does not compute unit_rate at all (§7.3 step 4
+   *  correction, v0.2). */
+  unit_rate: number;
+  before: { snapshot_net_direct_rate: number; unit_rate: number };
+  after: { snapshot_net_direct_rate: number; unit_rate: number };
+  /** BR9 — equipment+subcon share of the NEW snapshot; caller shows the
+   *  non-blocking warning when this exceeds EQUIPMENT_SUBCON_GUARDRAIL_PCT. */
+  equipmentSubconShare: number;
+  /** BR3 sanity check on the new snapshot (see BoqLibrarySnapshotResult). */
+  reconciles: boolean;
+}
+
+/**
+ * SOP-QS-003 §7.3 steps 1-3 — re-runs the exact §5 snapshot procedure against
+ * the row's CURRENT dwl_work_item_id/dwl_assembly_id and computes what the
+ * resulting unit_rate would be, WITHOUT writing anything. Only valid for
+ * rows already sourced from the library (rate_source in
+ * ('dwl_work_item','dwl_assembly')) — throws otherwise, since there is
+ * nothing to refresh *from* on a manual/price_list row (§7.3 opening line).
+ *
+ * buildBoqLibrarySnapshot() takes the header net_direct_rate as an input
+ * (the same way the picker supplies it at pick time) rather than querying it
+ * itself, so this function looks up the row's CURRENT net_direct_rate from
+ * dwl_v_work_item_rates / dwl_v_assembly_rates first — a fresh query, not a
+ * diff/patch of the frozen snapshot (§7.3 step 1).
+ */
+export async function buildBoqLibraryRefreshPreview(row: TenderBoqItem): Promise<BoqLibraryRefreshPreview> {
+  if (row.rate_source !== "dwl_work_item" && row.rate_source !== "dwl_assembly") {
+    throw new Error("Refresh from Library is only available for rows priced from the Direct Works Cost Library.");
+  }
+  if (!row.rate_build_up) {
+    throw new Error("This row has no library snapshot to refresh from.");
+  }
+
+  const supabase = createClient();
+  let pick: BoqLibraryPick;
+
+  if (row.rate_source === "dwl_work_item") {
+    if (!row.dwl_work_item_id) throw new Error("This row is missing its dwl_work_item_id — cannot refresh.");
+    const { data, error } = await supabase
+      .from("dwl_v_work_item_rates")
+      .select("work_item_id, code, net_direct_rate")
+      .eq("work_item_id", row.dwl_work_item_id)
+      .single();
+    if (error) throw new Error(error.message);
+    pick = {
+      kind: "work_item",
+      data: { work_item_id: data.work_item_id, code: data.code, net_direct_rate: data.net_direct_rate },
+    };
+  } else {
+    if (!row.dwl_assembly_id) throw new Error("This row is missing its dwl_assembly_id — cannot refresh.");
+    const { data, error } = await supabase
+      .from("dwl_v_assembly_rates")
+      .select("assembly_id, code, net_direct_rate")
+      .eq("assembly_id", row.dwl_assembly_id)
+      .single();
+    if (error) throw new Error(error.message);
+    pick = {
+      kind: "assembly",
+      data: { assembly_id: data.assembly_id, code: data.code, net_direct_rate: data.net_direct_rate },
+    };
+  }
+
+  const snapshot = await buildBoqLibrarySnapshot(pick);
+
+  // §7.3 step 4 / BR7 — computed explicitly at the row's CURRENT (unchanged)
+  // margins; labor_margin_pct/material_margin_pct themselves are never
+  // touched by a refresh (BR8).
+  const laborMarginPct = row.labor_margin_pct ?? 0;
+  const materialMarginPct = row.material_margin_pct ?? 0;
+  const labor_rate = snapshot.labor_net_cost * (1 + laborMarginPct / 100);
+  const material_rate = snapshot.material_net_cost * (1 + materialMarginPct / 100);
+  const unit_rate = labor_rate + material_rate;
+
+  return {
+    rate_build_up: snapshot.rate_build_up,
+    labor_net_cost: snapshot.labor_net_cost,
+    material_net_cost: snapshot.material_net_cost,
+    unit_rate,
+    before: { snapshot_net_direct_rate: row.rate_build_up.snapshot_net_direct_rate, unit_rate: row.unit_rate },
+    after: { snapshot_net_direct_rate: snapshot.rate_build_up.snapshot_net_direct_rate, unit_rate },
+    equipmentSubconShare: computeEquipmentSubconShare(snapshot.rate_build_up),
+    reconciles: snapshot.reconciles,
+  };
+}
+
+/**
+ * SOP-QS-003 §7.3 steps 2-5 — commits a previously-built
+ * BoqLibraryRefreshPreview exactly as previewed (no re-query, no re-compute):
+ * writes rate_build_up (wholesale replace, BR4), labor_net_cost,
+ * material_net_cost, and the already-computed unit_rate in one update call.
+ * Deliberately does NOT touch rate_source, labor_margin_pct,
+ * material_margin_pct, dwl_work_item_id, or dwl_assembly_id (BR2/BR8) — this
+ * is the entire reason Refresh is its own function instead of a call into
+ * updateBoqItem(), whose changesRate logic exists specifically to flip
+ * rate_source to 'manual' on a hand-typed net-cost edit, which a refresh is
+ * not. total_amount is a generated column (quantity * unit_rate) and updates
+ * automatically once unit_rate is written.
+ */
+export async function commitBoqLibraryRefresh(
+  row: TenderBoqItem,
+  preview: BoqLibraryRefreshPreview
+): Promise<TenderBoqItem> {
+  const { data, error } = await createClient()
+    .from("tender_boq_items")
+    .update({
+      rate_build_up: preview.rate_build_up,
+      labor_net_cost: preview.labor_net_cost,
+      material_net_cost: preview.material_net_cost,
+      unit_rate: preview.unit_rate,
+    })
+    .eq("id", row.id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as TenderBoqItem;
+}
+
+// ── Staleness badges (SOP-QS-003 §7.1/§7.2, BR6) ────────────────────────────
+
+export interface BoqLibraryCurrentRate {
+  net_direct_rate: number;
+  has_expired_price: boolean;
+}
+
+export interface BoqLibraryCurrentRates {
+  /** Keyed by dwl_work_item_id. */
+  workItemRates: Map<string, BoqLibraryCurrentRate>;
+  /** Keyed by dwl_assembly_id. */
+  assemblyRates: Map<string, BoqLibraryCurrentRate>;
+}
+
+/**
+ * Batch-fetches the CURRENT dwl_v_work_item_rates / dwl_v_assembly_rates rows
+ * for every distinct dwl_work_item_id / dwl_assembly_id present on the given
+ * (already-loaded) BOQ rows — one IN(...) query each, mirroring the
+ * merge-in-the-frontend pattern dwl-work-items-list-page.tsx already uses
+ * for the library screen itself (§7 "Implementation shape"). No new view or
+ * RPC. Caller merges the result against each row client-side via
+ * getBoqItemStaleness() below.
+ */
+export async function getBoqLibraryCurrentRates(items: TenderBoqItem[]): Promise<BoqLibraryCurrentRates> {
+  const supabase = createClient();
+  const workItemIds = [...new Set(items.map((i) => i.dwl_work_item_id).filter((v): v is string => !!v))];
+  const assemblyIds = [...new Set(items.map((i) => i.dwl_assembly_id).filter((v): v is string => !!v))];
+
+  const [wiResult, asmResult] = await Promise.all([
+    workItemIds.length
+      ? supabase.from("dwl_v_work_item_rates").select("work_item_id, net_direct_rate, has_expired_price").in("work_item_id", workItemIds)
+      : Promise.resolve({ data: [] as { work_item_id: string; net_direct_rate: number; has_expired_price: boolean }[], error: null }),
+    assemblyIds.length
+      ? supabase.from("dwl_v_assembly_rates").select("assembly_id, net_direct_rate, has_expired_price").in("assembly_id", assemblyIds)
+      : Promise.resolve({ data: [] as { assembly_id: string; net_direct_rate: number; has_expired_price: boolean }[], error: null }),
+  ]);
+  if (wiResult.error) throw new Error(wiResult.error.message);
+  if (asmResult.error) throw new Error(asmResult.error.message);
+
+  const workItemRates = new Map<string, BoqLibraryCurrentRate>();
+  for (const r of wiResult.data ?? []) {
+    workItemRates.set(r.work_item_id, { net_direct_rate: r.net_direct_rate, has_expired_price: r.has_expired_price });
+  }
+  const assemblyRates = new Map<string, BoqLibraryCurrentRate>();
+  for (const r of asmResult.data ?? []) {
+    assemblyRates.set(r.assembly_id, { net_direct_rate: r.net_direct_rate, has_expired_price: r.has_expired_price });
+  }
+  return { workItemRates, assemblyRates };
+}
+
+export interface BoqStalenessFlags {
+  /** §7.1 — the live library itself has a stale quote behind this rate.
+   *  Informational/secondary — does not by itself mean the BOQ line's price
+   *  is wrong yet. */
+  libraryPriceExpired: boolean;
+  /** §7.2 — the row's frozen snapshot_net_direct_rate has drifted from the
+   *  CURRENT library rate by >= 0.01 (OQ-4's recommended flat tolerance,
+   *  same as BR3's). Actionable/primary — this is what Refresh responds to. */
+  rateChangedSincePriced: boolean;
+}
+
+/**
+ * BR6 — computes BOTH staleness badges for one BOQ row. They are
+ * independent and must not be merged into a single generic "stale" flag: a
+ * line can have a current, non-expired library rate that has simply moved
+ * (§7.2 without §7.1), or vice versa.
+ */
+export function getBoqItemStaleness(item: TenderBoqItem, currentRates: BoqLibraryCurrentRates): BoqStalenessFlags {
+  if ((item.rate_source !== "dwl_work_item" && item.rate_source !== "dwl_assembly") || !item.rate_build_up) {
+    return { libraryPriceExpired: false, rateChangedSincePriced: false };
+  }
+  const current =
+    item.rate_source === "dwl_work_item"
+      ? item.dwl_work_item_id
+        ? currentRates.workItemRates.get(item.dwl_work_item_id)
+        : undefined
+      : item.dwl_assembly_id
+        ? currentRates.assemblyRates.get(item.dwl_assembly_id)
+        : undefined;
+  if (!current) {
+    return { libraryPriceExpired: false, rateChangedSincePriced: false };
+  }
+  return {
+    libraryPriceExpired: current.has_expired_price,
+    rateChangedSincePriced: Math.abs(item.rate_build_up.snapshot_net_direct_rate - current.net_direct_rate) >= 0.01,
+  };
 }
 
 export interface TenderPreliminariesItem {
@@ -266,6 +764,26 @@ export async function deleteBudgetCode(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function getQsElementLibrary(): Promise<QsElementLibraryItem[]> {
+  const { data, error } = await createClient()
+    .from("qs_element_library")
+    .select("*, budget_codes(code, description)")
+    .eq("is_active", true)
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as QsElementLibraryItem[];
+}
+
+export async function getQsDescriptionLibrary(): Promise<QsDescriptionLibraryItem[]> {
+  const { data, error } = await createClient()
+    .from("qs_description_library")
+    .select("*")
+    .eq("is_active", true)
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as QsDescriptionLibraryItem[];
+}
+
 // ── Price List ───────────────────────────────────────────────────────────────
 
 export async function getPriceList(tenderId: string): Promise<TenderPriceListItem[]> {
@@ -408,6 +926,129 @@ export async function pullFromUnitRateLibrary(tenderId: string): Promise<number>
   return rows.length;
 }
 
+export async function getElementLibraryForPicker(): Promise<{
+  elements: QsElementLibraryItem[];
+  descriptions: QsDescriptionLibraryItem[];
+}> {
+  const supabase = createClient();
+  const [elRes, descRes] = await Promise.all([
+    supabase.from("qs_element_library").select("*, budget_codes(code, description)").eq("is_active", true).order("sort_order"),
+    supabase.from("qs_description_library").select("*").eq("is_active", true).order("sort_order"),
+  ]);
+  if (elRes.error) throw new Error(elRes.error.message);
+  if (descRes.error) throw new Error(descRes.error.message);
+  return {
+    elements: (elRes.data ?? []) as unknown as QsElementLibraryItem[],
+    descriptions: (descRes.data ?? []) as unknown as QsDescriptionLibraryItem[],
+  };
+}
+
+export interface SelectedElementItem {
+  elementId: string;
+  descriptionIds?: string[];
+}
+
+export async function pullFromElementLibrary(
+  tenderId: string,
+  selectedItems: SelectedElementItem[],
+): Promise<number> {
+  const supabase = createClient();
+
+  const { data: tender, error: tenderErr } = await supabase
+    .from("tender_register")
+    .select("default_labor_margin_pct, default_material_margin_pct")
+    .eq("id", tenderId)
+    .single();
+  if (tenderErr) throw new Error(tenderErr.message);
+  const defLaborMargin = tender?.default_labor_margin_pct ?? 0;
+  const defMaterialMargin = tender?.default_material_margin_pct ?? 0;
+
+  const { data: elements, error: elErr } = await supabase
+    .from("qs_element_library")
+    .select("*, budget_codes(code, description)")
+    .eq("is_active", true)
+    .order("sort_order");
+  if (elErr) throw new Error(elErr.message);
+  if (!elements || elements.length === 0) return 0;
+
+  const { data: descriptions, error: descErr } = await supabase
+    .from("qs_description_library")
+    .select("*")
+    .eq("is_active", true)
+    .order("sort_order");
+  if (descErr) throw new Error(descErr.message);
+
+  const descByElement = new Map<string, typeof descriptions>();
+  for (const d of descriptions ?? []) {
+    const list = descByElement.get(d.element_library_id) ?? [];
+    list.push(d);
+    descByElement.set(d.element_library_id, list);
+  }
+
+  const selectedMap = new Map<string, string[] | undefined>();
+  for (const s of selectedItems) selectedMap.set(s.elementId, s.descriptionIds);
+
+  const { data: existing } = await supabase
+    .from("tender_price_list")
+    .select("item_code, description, unit, section, sub_section, sub_element")
+    .eq("tender_id", tenderId);
+  const existingCodes = new Set((existing ?? []).map((r) => r.item_code));
+  const existingKeys = new Set(
+    (existing ?? []).map((r) => `${r.description}||${r.unit}||${r.section}||${r.sub_section}||${r.sub_element}`)
+  );
+
+  function uniqueCode(base: string): string {
+    if (!existingCodes.has(base)) {
+      existingCodes.add(base);
+      return base;
+    }
+    let n = 2;
+    while (existingCodes.has(`${base}-${n}`)) n++;
+    const code = `${base}-${n}`;
+    existingCodes.add(code);
+    return code;
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (const el of elements) {
+    if (!selectedMap.has(el.id)) continue;
+    const selectedDescIds = selectedMap.get(el.id);
+
+    const allDescs = descByElement.get(el.id) ?? [];
+    const fallbackDesc = { id: null, description: el.sub_element || el.section, material_rate: null, labor_rate: null, in_price_list: false };
+    const descsToUse = selectedDescIds === undefined
+      ? (allDescs.length > 0 ? allDescs : [fallbackDesc])
+      : allDescs.filter((d) => selectedDescIds.includes(d.id));
+
+    for (const d of descsToUse) {
+      const key = `${d.description}||${el.typical_unit ?? "ea"}||${el.section}||${el.sub_section}||${el.sub_element}`;
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+
+      rows.push({
+        tender_id: tenderId,
+        item_code: uniqueCode(el.sub_element || el.sub_section || el.section),
+        section: el.section,
+        sub_section: el.sub_section,
+        sub_element: el.sub_element,
+        description: d.description,
+        unit: el.typical_unit ?? "ea",
+        labor_net_cost: d.labor_rate ?? 0,
+        labor_margin_pct: defLaborMargin,
+        material_net_cost: d.material_rate ?? 0,
+        material_margin_pct: defMaterialMargin,
+        basis_source: "Pulled from Element Library",
+        budget_code_id: el.budget_code_id ?? null,
+      });
+    }
+  }
+
+  if (rows.length === 0) return 0;
+  const { error: insertErr } = await supabase.from("tender_price_list").insert(rows);
+  if (insertErr) throw new Error(insertErr.message);
+  return rows.length;
+}
+
 // ── BOQ Items ────────────────────────────────────────────────────────────────
 
 export async function getBoqItems(
@@ -484,6 +1125,24 @@ export async function getBoqItemsGrouped(tenderId: string): Promise<BoqItemsGrou
   return { groups: orderedGroups, grandTotal };
 }
 
+/** Flattens getBoqItemsGrouped()'s nested tree back into a flat item list —
+ *  used by the §7.1/§7.2 staleness-badge load so boq-tab.tsx doesn't need a
+ *  second round-trip to the DB just to get a flat array to batch-fetch
+ *  current library rates against. */
+export function flattenBoqItemsGrouped(grouped: BoqItemsGrouped): TenderBoqItem[] {
+  const out: TenderBoqItem[] = [];
+  for (const g of grouped.groups) {
+    for (const bc of g.budgetCodes) {
+      for (const sec of bc.sections) {
+        for (const ss of sec.subSections) {
+          out.push(...ss.items);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 export async function createBoqItem(payload: {
   tender_id: string;
   section: string;
@@ -510,6 +1169,16 @@ export async function createBoqItem(payload: {
   labor_margin_pct?: number | null;
   material_net_cost?: number | null;
   material_margin_pct?: number | null;
+  // SOP-QS-003 §4.1/§5 — Direct Works Cost Library provenance. At most one
+  // of these two should be set (mirrors the DB CHECK constraint); when
+  // either is set, rate_source is derived as 'dwl_work_item'/'dwl_assembly'
+  // below instead of the caller passing it explicitly (§6.2: a library-picked
+  // line behaves exactly like a manual line from the moment it's created —
+  // labor_net_cost/material_net_cost/margins above are the already-bucketed,
+  // estimator-typed-margin values, computed by buildBoqLibrarySnapshot()).
+  dwl_work_item_id?: string | null;
+  dwl_assembly_id?: string | null;
+  rate_build_up?: BoqRateBuildUp | null;
   sort_order?: number;
 }): Promise<TenderBoqItem> {
   const supabase = createClient();
@@ -517,6 +1186,8 @@ export async function createBoqItem(payload: {
   let rate = { labor_net_cost: payload.labor_net_cost ?? 0, labor_margin_pct: payload.labor_margin_pct ?? 0, material_net_cost: payload.material_net_cost ?? 0, material_margin_pct: payload.material_margin_pct ?? 0 };
   let rate_source: RateSource = "manual";
   let price_list_item_id = payload.price_list_item_id ?? null;
+  const dwl_work_item_id = payload.dwl_work_item_id ?? null;
+  const dwl_assembly_id = payload.dwl_assembly_id ?? null;
 
   if (price_list_item_id) {
     const { data: pl } = await supabase.from("tender_price_list").select("*").eq("id", price_list_item_id).single();
@@ -524,6 +1195,10 @@ export async function createBoqItem(payload: {
       rate = { labor_net_cost: pl.labor_net_cost, labor_margin_pct: pl.labor_margin_pct, material_net_cost: pl.material_net_cost, material_margin_pct: pl.material_margin_pct };
       rate_source = "price_list";
     }
+  } else if (dwl_work_item_id) {
+    rate_source = "dwl_work_item";
+  } else if (dwl_assembly_id) {
+    rate_source = "dwl_assembly";
   }
 
   const labor_rate = rate.labor_net_cost * (1 + rate.labor_margin_pct / 100);
@@ -555,6 +1230,9 @@ export async function createBoqItem(payload: {
       actual_quantity: payload.actual_quantity ?? null,
       notes: payload.notes ?? null,
       price_list_item_id,
+      dwl_work_item_id,
+      dwl_assembly_id,
+      rate_build_up: payload.rate_build_up ?? null,
       rate_source,
       ...rate,
       sort_order: payload.sort_order ?? 0,
@@ -580,11 +1258,16 @@ export async function updateBoqItem(
     notes: string | null;
   }>
 ): Promise<TenderBoqItem> {
-  const changesRate =
-    payload.labor_net_cost !== undefined ||
-    payload.labor_margin_pct !== undefined ||
-    payload.material_net_cost !== undefined ||
-    payload.material_margin_pct !== undefined;
+  // SOP-QS-003 §4.1 BR1 (narrowed, v0.2/v0.3) — ONLY a net-cost edit flips
+  // rate_source back to 'manual'. A margin-only edit (labor_margin_pct/
+  // material_margin_pct) must NOT trip this, since §6.2 expects the
+  // estimator to type a margin on essentially every library pick (margins
+  // default to 0) — tripping rate_source on that routine, expected action
+  // would silently strip the Refresh affordance (§7.3, gated on
+  // rate_source) from almost every library-sourced line. This was
+  // previously (incorrectly) also triggered by labor_margin_pct/
+  // material_margin_pct !== undefined — corrected per commercial-qs review.
+  const changesRate = payload.labor_net_cost !== undefined || payload.material_net_cost !== undefined;
 
   const update: Record<string, unknown> = { ...payload };
   if (changesRate) {
@@ -730,9 +1413,13 @@ export async function createBidSummaryRevision(tenderId: string): Promise<Tender
   const { data: { user } } = await supabase.auth.getUser();
   const existing = await getBidSummaries(tenderId);
   const nextRev = existing.length > 0 ? Math.max(...existing.map((b) => b.revision_no)) + 1 : 1;
+  const [directCost, preliminariesTotal] = await Promise.all([
+    getDirectWorksTotal(tenderId),
+    getPreliminariesTotal(tenderId),
+  ]);
   const { data, error } = await supabase
     .from("tender_bid_summaries")
-    .insert({ tender_id: tenderId, revision_no: nextRev, direct_cost: 0, overhead_pct: 10, profit_pct: 5, created_by: user?.id ?? null })
+    .insert({ tender_id: tenderId, revision_no: nextRev, direct_cost: directCost, preliminaries: preliminariesTotal, overhead_pct: 10, profit_pct: 5, created_by: user?.id ?? null })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -767,11 +1454,8 @@ export async function updateBidSummary(
 }
 
 export async function deleteBidSummary(id: string): Promise<void> {
-  const res = await fetch(`/api/procurement/tender_bid_summaries/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Delete failed (${res.status})`);
-  }
+  const { error } = await createClient().from("tender_bid_summaries").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 /** Recomputes direct_cost from tender_boq_items and preliminaries from tender_preliminaries_items,
@@ -815,18 +1499,105 @@ export async function updateTenderGfa(tenderId: string, payload: TenderGfa): Pro
   if (error) throw new Error(error.message);
 }
 
+export async function updateTenderMargins(
+  tenderId: string,
+  defaultLaborMarginPct: number,
+  defaultMaterialMarginPct: number,
+): Promise<void> {
+  const { error } = await createClient()
+    .from("tender_register")
+    .update({
+      default_labor_margin_pct: defaultLaborMarginPct,
+      default_material_margin_pct: defaultMaterialMarginPct,
+    })
+    .eq("id", tenderId);
+  if (error) throw new Error(error.message);
+}
+
+export async function getTenderMargins(
+  tenderId: string,
+): Promise<{ defaultLaborMarginPct: number; defaultMaterialMarginPct: number }> {
+  const { data, error } = await createClient()
+    .from("tender_register")
+    .select("default_labor_margin_pct, default_material_margin_pct")
+    .eq("id", tenderId)
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    defaultLaborMarginPct: data?.default_labor_margin_pct ?? 0,
+    defaultMaterialMarginPct: data?.default_material_margin_pct ?? 0,
+  };
+}
+
 /** Blended tender $/m2 = (Direct Works + Preliminaries) / GFA total, per DCOS-QS-GDL-001 §5.1
- *  house basis. No elemental/basement/external split at this phase — see migration
- *  20260718000005 header comment for why. */
+ *  GFA is sourced from WBS Preliminary level node quantities (metric_code = 'GFA'),
+ *  not from a manual entry on tender_register. */
 export async function getTenderCostPerM2Summary(tenderId: string): Promise<TenderCostPerM2Summary> {
-  const [directWorksTotal, preliminariesTotal, gfa] = await Promise.all([
-    getDirectWorksTotal(tenderId),
-    getPreliminariesTotal(tenderId),
-    getTenderGfa(tenderId),
+  const supabase = createClient();
+
+  const [{ directWorksTotal, preliminariesTotal }, gfaTotal] = await Promise.all([
+    (async () => {
+      const [dw, pi] = await Promise.all([getDirectWorksTotal(tenderId), getPreliminariesTotal(tenderId)]);
+      return { directWorksTotal: dw, preliminariesTotal: pi };
+    })(),
+    (async (): Promise<number> => {
+      const { data: tender } = await supabase
+        .from("tender_register").select("project_id").eq("id", tenderId).single();
+      const projectId = tender?.project_id as string | null;
+      if (!projectId) return 0;
+      const { data: nodes } = await supabase
+        .from("wbs_nodes").select("id").eq("project_id", projectId).eq("node_type", "level");
+      if (!nodes || nodes.length === 0) return 0;
+      const { data: quants } = await supabase
+        .from("wbs_node_quantities").select("value").eq("metric_code", "GFA").in("wbs_node_id", nodes.map((n) => n.id));
+      return (quants ?? []).reduce((sum, q) => sum + Number(q.value ?? 0), 0);
+    })(),
   ]);
+
   const combinedTotal = directWorksTotal + preliminariesTotal;
-  const blendedRate = gfa.gfaTotal && gfa.gfaTotal > 0 ? combinedTotal / gfa.gfaTotal : null;
-  return { directWorksTotal, preliminariesTotal, combinedTotal, gfaTotal: gfa.gfaTotal, blendedRate };
+  const blendedRate = gfaTotal > 0 ? combinedTotal / gfaTotal : null;
+  return { directWorksTotal, preliminariesTotal, combinedTotal, gfaTotal: gfaTotal || null, blendedRate };
+}
+
+// ── WBS Nodes (for BOQ Level / Building / Discipline dropdowns) ───────────────
+
+export interface WbsProjectNode {
+  id: string;
+  wbs_code: string;
+  wbs_name: string;
+  node_type: string;
+  full_path: string | null;
+  sort_order: number;
+}
+
+export interface WbsProjectNodes {
+  levels: WbsProjectNode[];
+  buildings: WbsProjectNode[];
+  disciplines: WbsProjectNode[];
+}
+
+export async function getWbsProjectNodes(tenderId: string): Promise<WbsProjectNodes> {
+  const supabase = createClient();
+  const { data: tender } = await supabase
+    .from("tender_register")
+    .select("project_id")
+    .eq("id", tenderId)
+    .single();
+  const projectId = tender?.project_id as string | null;
+  if (!projectId) return { levels: [], buildings: [], disciplines: [] };
+  const { data, error } = await supabase
+    .from("wbs_nodes")
+    .select("id, wbs_code, wbs_name, node_type, full_path, sort_order")
+    .eq("project_id", projectId)
+    .in("node_type", ["level", "building", "discipline"])
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as WbsProjectNode[];
+  return {
+    levels: rows.filter((n) => n.node_type === "level"),
+    buildings: rows.filter((n) => n.node_type === "building"),
+    disciplines: rows.filter((n) => n.node_type === "discipline"),
+  };
 }
 
 // ── Cost per m² by Floor (WBS Preliminary levels) ────────────────────────────
@@ -969,11 +1740,10 @@ export async function getTenderCostPerM2ByFloor(tenderId: string): Promise<Tende
     });
   }
 
-  // 6. Add WBS levels that have GFA but no BOQ items (unpriced floors)
+  // 6. Add remaining WBS levels not yet seen (floors with no BOQ items, with or without GFA)
   for (const node of wbsLevels) {
     if (seenWbsIds.has(node.id)) continue;
     const gfa = gfaByNode.get(node.id) ?? null;
-    if (gfa == null) continue; // skip nodes without GFA
     floors.push({
       levelCode: node.wbs_code,
       wbsNodeId: node.id,
@@ -1023,6 +1793,141 @@ export async function getTenderCostPerM2ByFloor(tenderId: string): Promise<Tende
   };
 
   return { floors, unallocated, blendedTotal };
+}
+
+// ── Exclude Items ──────────────────────────────────────────────────────────
+
+export interface TenderExcludeItem {
+  id: string;
+  tender_id: string;
+  item_code: string;
+  description: string;
+  reason: string | null;
+  notes: string | null;
+  sort_order: number;
+}
+
+export async function getExcludeItems(tenderId: string): Promise<TenderExcludeItem[]> {
+  const { data, error } = await createClient()
+    .from("tender_exclude_items")
+    .select("*")
+    .eq("tender_id", tenderId)
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TenderExcludeItem[];
+}
+
+export async function createExcludeItem(payload: {
+  tender_id: string;
+  item_code: string;
+  description: string;
+  reason?: string | null;
+  notes?: string | null;
+  sort_order?: number;
+}): Promise<TenderExcludeItem> {
+  const { data, error } = await createClient().from("tender_exclude_items").insert(payload).select().single();
+  if (error) throw new Error(error.message);
+  return data as TenderExcludeItem;
+}
+
+export async function updateExcludeItem(
+  id: string,
+  payload: Partial<{ description: string; reason: string | null; notes: string | null }>
+): Promise<TenderExcludeItem> {
+  const { data, error } = await createClient()
+    .from("tender_exclude_items")
+    .update(payload)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as TenderExcludeItem;
+}
+
+export async function deleteExcludeItem(id: string): Promise<void> {
+  const { error } = await createClient().from("tender_exclude_items").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// ── Tender Submission Data Aggregation ───────────────────────────────────────
+
+export interface TenderSubmissionData {
+  tender: {
+    tender_no: string;
+    title: string;
+    description: string | null;
+    project_location: string | null;
+    client_name: string | null;
+    contractor_name: string | null;
+    issue_date: string | null;
+    currency: string;
+    gfa_total: number | null;
+    gfa_source: string | null;
+  };
+  bidSummary: TenderBidSummary | null;
+  elementalSummary: {
+    codeLetter: string;
+    groupName: string;
+    amount: number;
+    priced: boolean;
+  }[];
+  preliminariesTotal: number;
+  preliminariesItems: TenderPreliminariesItem[];
+  boqItemsGrouped: BoqItemsGrouped;
+  excludeItems: TenderExcludeItem[];
+  directWorksTotal: number;
+  blendedRate: number | null;
+}
+
+export async function getTenderSubmissionData(tenderId: string, bidSummaryId?: string): Promise<TenderSubmissionData> {
+  const supabase = createClient();
+
+  const [
+    tender,
+    bidSummaries,
+    grouped,
+    preliminariesItems,
+    excludeItems,
+  ] = await Promise.all([
+    supabase
+      .from("tender_register")
+      .select("tender_no, title, description, project_location, client_name, contractor_name, issue_date, currency, gfa_total, gfa_source")
+      .eq("id", tenderId)
+      .single(),
+    getBidSummaries(tenderId),
+    getBoqItemsGrouped(tenderId),
+    getPreliminariesItems(tenderId),
+    getExcludeItems(tenderId),
+  ]);
+
+  if (tender.error) throw new Error(tender.error.message);
+
+  const bidSummary = bidSummaryId
+    ? bidSummaries.find((b) => b.id === bidSummaryId) ?? null
+    : bidSummaries[0] ?? null;
+
+  const preliminariesTotal = preliminariesItems.reduce((sum, i) => sum + Number(i.amount ?? 0), 0);
+  const directWorksTotal = grouped.grandTotal;
+
+  const gfaTotal = tender.data?.gfa_total ?? 0;
+  const blendedRate = gfaTotal > 0 ? (directWorksTotal + preliminariesTotal) / gfaTotal : null;
+
+  return {
+    tender: tender.data as TenderSubmissionData["tender"],
+    bidSummary,
+    elementalSummary: grouped.groups.map((g) => ({
+      codeLetter: g.codeLetter,
+      groupName: g.groupName,
+      amount: g.subtotal,
+      priced: g.subtotal > 0,
+    })),
+    preliminariesTotal,
+    preliminariesItems,
+    boqItemsGrouped: grouped,
+    excludeItems,
+    directWorksTotal,
+    blendedRate,
+  };
 }
 
 // ── Cover / Tender Summary ───────────────────────────────────────────────────

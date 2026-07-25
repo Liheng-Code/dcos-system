@@ -146,7 +146,7 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
               {items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-3 py-2 font-mono text-xs">{item.code}</td>
-                  <td className="px-3 py-2">{item.description}</td>
+                  <td className="px-3 py-2 line-clamp-2" title={item.description}>{item.description}</td>
                   <td className="px-3 py-2 text-right text-xs text-muted-foreground">{item.unit}</td>
                   <td className="px-3 py-2 text-right">{fmt(item.quantity)}</td>
                   <td className="px-3 py-2 text-right">${fmt(item.rate)}</td>

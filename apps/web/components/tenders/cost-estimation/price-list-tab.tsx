@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, Plus, Trash2, Upload, Download } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, Download, Save, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  getPriceList, createPriceListItem, deletePriceListItem, getBudgetCodes, pullFromUnitRateLibrary,
-  type TenderPriceListItem, type BudgetCode,
+  getPriceList, createPriceListItem, updatePriceListItem, deletePriceListItem, getBudgetCodes, pullFromElementLibrary,
+  getTenderMargins, updateTenderMargins,
+  type TenderPriceListItem, type BudgetCode, type SelectedElementItem,
 } from "@/lib/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
+import { ElementLibraryPickerDialog } from "./element-library-picker-dialog";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,7 +24,15 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editForm, setEditForm] = useState<Record<string, any>>({});
   const [pulling, setPulling] = useState(false);
+  const [showPuller, setShowPuller] = useState(false);
+
+  const [margins, setMargins] = useState({ labor: 0, material: 0 });
+  const [marginsDirty, setMarginsDirty] = useState(false);
+  const [savingMargins, setSavingMargins] = useState(false);
 
   const { can } = useTenderPermissions();
 
@@ -38,6 +48,12 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       const [items, codes] = await Promise.all([getPriceList(tenderId), getBudgetCodes()]);
       setItems(items);
       setBudgetCodes(codes);
+      try {
+        const m = await getTenderMargins(tenderId);
+        setMargins({ labor: m.defaultLaborMarginPct, material: m.defaultMaterialMarginPct });
+      } catch {
+        // columns may not exist yet before migration is applied
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load price list");
     } finally {
@@ -90,21 +106,60 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
     }
   }
 
-  async function handlePullFromLibrary() {
-    if (!confirm("Pull rates from Unit Rate Library? Existing rates with the same source will be skipped.")) return;
+  async function handleSaveEdit(item: TenderPriceListItem) {
+    const f = editForm[item.id];
+    if (!f) return;
+    try {
+      const bc = budgetCodes.find((c) => c.code === f.budget_code);
+      const updated = await updatePriceListItem(item.id, {
+        section: f.section || null,
+        sub_section: f.sub_section || null,
+        sub_element: f.sub_element || null,
+        description: f.description,
+        unit: f.unit,
+        labor_net_cost: parseFloat(f.labor_net_cost) || 0,
+        labor_margin_pct: parseFloat(f.labor_margin_pct) || 0,
+        material_net_cost: parseFloat(f.material_net_cost) || 0,
+        material_margin_pct: parseFloat(f.material_margin_pct) || 0,
+        basis_source: f.basis_source || null,
+        budget_code_id: bc?.id ?? null,
+      });
+      toast.success("Item updated");
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setEditingId(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update item");
+    }
+  }
+
+  async function handlePullFromLibrary(selected: SelectedElementItem[]) {
+    setShowPuller(false);
     setPulling(true);
     try {
-      const count = await pullFromUnitRateLibrary(tenderId);
+      const count = await pullFromElementLibrary(tenderId, selected);
       if (count === 0) {
-        toast.info("No new rates to pull — all library rates already exist");
+        toast.info("No new rates to pull — all selected items already exist");
       } else {
-        toast.success(`Pulled ${count} rate(s) from Unit Rate Library`);
+        toast.success(`Pulled ${count} rate(s) from Element Library`);
         load();
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to pull from library");
+      toast.error(e instanceof Error ? e.message : "Failed to pull from Element Library");
     } finally {
       setPulling(false);
+    }
+  }
+
+  async function handleSaveMargins() {
+    setSavingMargins(true);
+    try {
+      await updateTenderMargins(tenderId, margins.labor, margins.material);
+      toast.success("Standard margins saved");
+      setMarginsDirty(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save margins");
+    } finally {
+      setSavingMargins(false);
     }
   }
 
@@ -116,9 +171,9 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
         <p className="text-sm text-muted-foreground">{items.length} rate(s)</p>
         <div className="flex gap-2">
           {can("tender_price_list", "can_create") && (
-          <Button size="sm" variant="outline" onClick={handlePullFromLibrary} disabled={pulling}>
+          <Button size="sm" variant="outline" onClick={() => setShowPuller(true)} disabled={pulling}>
             {pulling ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
-            Pull from Library
+            Pull from Element Library
           </Button>
           )}
           {can("tender_price_list", "can_create") && (
@@ -133,6 +188,45 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
           )}
         </div>
       </div>
+
+      {can("tender_price_list", "edit") && (
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground">Standard Margins</p>
+              {marginsDirty && (
+                <Button size="sm" variant="outline" onClick={handleSaveMargins} disabled={savingMargins}>
+                  {savingMargins ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                  Save
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">Applied when pulling from the Element Library. Individual rows can still be overridden.</p>
+            <div className="flex items-end gap-4">
+              <div className="space-y-1">
+                <label className="text-xs">Labor %</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={margins.labor}
+                  onChange={(e) => { setMargins({ ...margins, labor: parseFloat(e.target.value) || 0 }); setMarginsDirty(true); }}
+                  className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs">Material %</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={margins.material}
+                  onChange={(e) => { setMargins({ ...margins, material: parseFloat(e.target.value) || 0 }); setMarginsDirty(true); }}
+                  className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showForm && (
         <Card>
@@ -170,7 +264,7 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       {items.length === 0 && !showForm ? (
         <div className="rounded-lg border px-6 py-8 text-center text-sm text-muted-foreground space-y-2">
           <p>No price list items yet.</p>
-          <p>Start by pulling base rates from the <strong>Unit Rate Library</strong>, or import your own Price List spreadsheet.</p>
+          <p>Start by pulling base rates from the <strong>Element Library</strong>, or import your own Price List spreadsheet.</p>
         </div>
       ) : (
         <div className="rounded-lg border border-border overflow-hidden">
@@ -180,29 +274,92 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
                 <th className="text-left px-3 py-2 font-medium">Code</th>
                 <th className="text-left px-3 py-2 font-medium">Description</th>
                 <th className="text-left px-3 py-2 font-medium">Budget Code</th>
-                <th className="text-right px-3 py-2 font-medium">Labor Rate</th>
-                <th className="text-right px-3 py-2 font-medium">Material Rate</th>
-                <th className="text-right px-3 py-2 font-medium">Total Rate</th>
+                <th className="text-right px-3 py-2 font-medium">Labor Net($)</th>
+                <th className="text-right px-3 py-2 font-medium">Labor Margin(%)</th>
+                <th className="text-right px-3 py-2 font-medium">Labor Rate($)</th>
+                <th className="text-right px-3 py-2 font-medium">Material Net($)</th>
+                <th className="text-right px-3 py-2 font-medium">Material Margin(%)</th>
+                <th className="text-right px-3 py-2 font-medium">Material Rate($)</th>
+                <th className="text-right px-3 py-2 font-medium">Total Rate($)</th>
                 <th className="w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {items.map((item) => (
+                editingId === item.id ? (
+                  <tr key={item.id} className="bg-muted/30">
+                    <td className="px-3 py-1.5 font-mono text-xs">{item.item_code}</td>
+                    <td className="px-3 py-1.5" colSpan={2}>
+                      <input value={editForm[item.id]?.description ?? item.description}
+                        onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], description: e.target.value } })}
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-sm" />
+                      <div className="flex gap-2 mt-1">
+                        <input value={editForm[item.id]?.unit ?? item.unit} placeholder="Unit"
+                          onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], unit: e.target.value } })}
+                          className="w-16 rounded border border-border bg-background px-2 py-1 text-xs" />
+                        <select value={editForm[item.id]?.budget_code ?? item.budget_codes?.code ?? ""}
+                          onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], budget_code: e.target.value } })}
+                          className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs">
+                          <option value="">No budget code</option>
+                          {budgetCodes.map((c) => <option key={c.id} value={c.code}>{c.code}</option>)}
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5"><input type="number" value={editForm[item.id]?.labor_net_cost ?? item.labor_net_cost}
+                      onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], labor_net_cost: e.target.value } })}
+                      className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-1.5"><input type="number" value={editForm[item.id]?.labor_margin_pct ?? item.labor_margin_pct}
+                      onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], labor_margin_pct: e.target.value } })}
+                      className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-1.5 text-right text-sm font-semibold">${fmt(item.labor_rate)}</td>
+                    <td className="px-3 py-1.5"><input type="number" value={editForm[item.id]?.material_net_cost ?? item.material_net_cost}
+                      onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], material_net_cost: e.target.value } })}
+                      className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-1.5"><input type="number" value={editForm[item.id]?.material_margin_pct ?? item.material_margin_pct}
+                      onChange={(e) => setEditForm({ ...editForm, [item.id]: { ...editForm[item.id], material_margin_pct: e.target.value } })}
+                      className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-right" /></td>
+                    <td className="px-3 py-1.5 text-right text-sm font-semibold">${fmt(item.material_rate)}</td>
+                    <td className="px-3 py-1.5 text-right text-sm font-semibold">${fmt(item.total_rate)}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1">
+                        <button onClick={() => handleSaveEdit(item)} className="text-muted-foreground hover:text-green-600" title="Save">
+                          <Save className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground" title="Cancel">
+                          <span className="text-xs">&times;</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
                 <tr key={item.id}>
                   <td className="px-3 py-2 font-mono text-xs">{item.item_code}</td>
-                  <td className="px-3 py-2">{item.description} <span className="text-xs text-muted-foreground">/ {item.unit}</span></td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{item.budget_codes?.code ?? "—"}</td>
-                  <td className="px-3 py-2 text-right">${fmt(item.labor_rate)}</td>
-                  <td className="px-3 py-2 text-right">${fmt(item.material_rate)}</td>
+                  <td className="px-3 py-2" colSpan={2}>{item.description} <span className="text-xs text-muted-foreground">/ {item.unit}</span>
+                    {item.budget_codes?.code && <span className="text-xs text-muted-foreground ml-2">[{item.budget_codes.code}]</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">${fmt(item.labor_net_cost)}</td>
+                  <td className="px-3 py-2 text-right">{item.labor_margin_pct}%</td>
+                  <td className="px-3 py-2 text-right font-semibold">${fmt(item.labor_rate)}</td>
+                  <td className="px-3 py-2 text-right">${fmt(item.material_net_cost)}</td>
+                  <td className="px-3 py-2 text-right">{item.material_margin_pct}%</td>
+                  <td className="px-3 py-2 text-right font-semibold">${fmt(item.material_rate)}</td>
                   <td className="px-3 py-2 text-right font-semibold">${fmt(item.total_rate)}</td>
                   <td className="px-3 py-2">
-                    {can("tender_price_list", "delete") && (
-                    <button onClick={() => handleDelete(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
-                      {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
-                    )}
+                    <div className="flex gap-1">
+                      {can("tender_price_list", "edit") && (
+                      <button onClick={() => { setEditingId(item.id); setEditForm({ [item.id]: {} }); }} className="text-muted-foreground hover:text-foreground" title="Edit">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      )}
+                      {can("tender_price_list", "delete") && (
+                      <button onClick={() => handleDelete(item.id)} className="text-muted-foreground hover:text-red-600" disabled={deletingId === item.id}>
+                        {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
+                )
               ))}
             </tbody>
           </table>
@@ -212,6 +369,12 @@ export function PriceListTab({ tenderId }: { tenderId: string }) {
       {showImport && (
         <TenderCostImportDialog tenderId={tenderId} initialMode="price_list" onClose={() => setShowImport(false)} onImported={load} />
       )}
+
+      <ElementLibraryPickerDialog
+        open={showPuller}
+        onClose={() => setShowPuller(false)}
+        onConfirm={handlePullFromLibrary}
+      />
     </div>
   );
 }

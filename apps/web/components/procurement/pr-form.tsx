@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BoqItemPickerDialog } from "@/components/procurement/boq-item-picker-dialog";
 
 interface PRItem {
   key: string;
+  boq_item_id: string | null;
   item_code: string;
   item_description: string;
   unit: string;
@@ -32,6 +34,8 @@ export function PRForm() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [siteLocations, setSiteLocations] = useState<{ id: string; name: string; address: string | null }[]>([]);
+  const [budgetCodes, setBudgetCodes] = useState<{ code: string; description: string }[]>([]);
   const [form, setForm] = useState({
     project_id: "",
     wbs_node_id: "",
@@ -43,13 +47,19 @@ export function PRForm() {
     notes: "",
   });
   const [items, setItems] = useState<PRItem[]>([
-    { key: crypto.randomUUID(), item_code: "", item_description: "", unit: "pcs", quantity: 1, estimated_unit_price: 0, estimated_total: 0, budget_code: "", notes: "" },
+    { key: crypto.randomUUID(), boq_item_id: null, item_code: "", item_description: "", unit: "pcs", quantity: 1, estimated_unit_price: 0, estimated_total: 0, budget_code: "", notes: "" },
   ]);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.from("projects").select("id, project_code, project_name").order("project_name").then(({ data }) => {
       if (data) setProjects(data as Project[]);
+    });
+    supabase.from("site_locations").select("id, name, address").eq("is_active", true).order("name").then(({ data }) => {
+      if (data) setSiteLocations(data);
+    });
+    supabase.from("budget_codes").select("code, description").eq("is_active", true).order("sort_order").then(({ data }) => {
+      if (data) setBudgetCodes(data);
     });
   }, []);
 
@@ -69,11 +79,29 @@ export function PRForm() {
   }
 
   function addItem() {
-    setItems(prev => [...prev, { key: crypto.randomUUID(), item_code: "", item_description: "", unit: "pcs", quantity: 1, estimated_unit_price: 0, estimated_total: 0, budget_code: "", notes: "" }]);
+    setItems(prev => [...prev, { key: crypto.randomUUID(), boq_item_id: null, item_code: "", item_description: "", unit: "pcs", quantity: 1, estimated_unit_price: 0, estimated_total: 0, budget_code: "", notes: "" }]);
   }
 
   function removeItem(key: string) {
     setItems(prev => prev.filter(i => i.key !== key));
+  }
+
+  function handlePickBoq(picked: { boq_item_id: string; item_code: string; description: string; unit: string; quantity: number; unit_rate: number; budget_code: string; notes: string }[]) {
+    setItems(prev => [
+      ...prev.filter(i => i.item_description.trim()),
+      ...picked.map(p => ({
+        key: crypto.randomUUID(),
+        boq_item_id: p.boq_item_id,
+        item_code: p.item_code,
+        item_description: p.description,
+        unit: p.unit,
+        quantity: p.quantity,
+        estimated_unit_price: p.unit_rate,
+        estimated_total: p.quantity * p.unit_rate,
+        budget_code: p.budget_code,
+        notes: p.notes,
+      })),
+    ]);
   }
 
   function totalEstimated() {
@@ -98,6 +126,7 @@ export function PRForm() {
 
     const supabaseForm = {
       ...form,
+      pr_number: `PR-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
       project_id: form.project_id || null,
       wbs_node_id: form.wbs_node_id || null,
       task_id: form.task_id || null,
@@ -117,14 +146,10 @@ export function PRForm() {
 
     const prId = (prData as { id: string }).id;
 
-    const { error: prNumberError } = await supabase
-      .from("procurement_prs")
-      .update({ pr_number: `PR-${new Date().getFullYear()}-${prId.slice(0, 4).toUpperCase()}` })
-      .eq("id", prId);
-
     const itemInserts = validItems.map((i, idx) => ({
       pr_id: prId,
       line_no: idx + 1,
+      boq_item_id: i.boq_item_id || null,
       item_code: i.item_code || null,
       item_description: i.item_description,
       unit: i.unit,
@@ -138,8 +163,6 @@ export function PRForm() {
     const { error: itemsError } = await supabase.from("procurement_pr_items").insert(itemInserts);
 
     if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
-
-    if (prNumberError) { toast.error(prNumberError.message); setSaving(false); return; }
 
     toast.success("Purchase requisition created");
     router.push(`/dashboard/procurement/pr/${prId}`);
@@ -175,7 +198,12 @@ export function PRForm() {
             </div>
             <div className="space-y-1.5">
               <Label>Delivery Location</Label>
-              <Input value={form.delivery_location} onChange={e => updateForm("delivery_location", e.target.value)} placeholder="Site / warehouse" />
+              <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" value={form.delivery_location} onChange={e => updateForm("delivery_location", e.target.value)}>
+                <option value="">Select location...</option>
+                {siteLocations.map(loc => (
+                  <option key={loc.id} value={loc.name}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label>Priority</Label>
@@ -188,7 +216,12 @@ export function PRForm() {
             </div>
             <div className="space-y-1.5">
               <Label>Budget Code</Label>
-              <Input value={form.budget_code} onChange={e => updateForm("budget_code", e.target.value)} placeholder="Cost code" />
+              <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" value={form.budget_code} onChange={e => updateForm("budget_code", e.target.value)}>
+                <option value="">Select budget code...</option>
+                {budgetCodes.map(bc => (
+                  <option key={bc.code} value={bc.code}>{bc.code} — {bc.description}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>
@@ -201,7 +234,12 @@ export function PRForm() {
           <CardContent className="pt-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Items</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1"><Plus className="h-3 w-3" /> Add Item</Button>
+              <div className="flex items-center gap-2">
+                {form.project_id && (
+                  <BoqItemPickerDialog projectId={form.project_id} onPick={handlePickBoq} />
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-1"><Plus className="h-3 w-3" /> Add Item</Button>
+              </div>
             </div>
 
             {items.map((item, idx) => (
