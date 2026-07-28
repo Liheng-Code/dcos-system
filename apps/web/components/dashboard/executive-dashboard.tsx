@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { KPICard } from "@/components/ui/kpi-card";
 import {
   HardHat, ListChecks, FileText, AlertTriangle, Package,
-  DollarSign, Clock, Loader2, TrendingDown,
+  DollarSign, Clock, Loader2, TrendingDown, Handshake,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,8 @@ import { BarChart } from "@/components/reports/charts/bar-chart";
 import { getProjectCostAnalytics } from "@/lib/evm-service";
 
 interface KpiData {
-  totalProjects: number;
+  preContractProjects: number;
+  postContractProjects: number;
   totalTasks: number;
   taskNotStarted: number;
   taskInProgress: number;
@@ -80,7 +81,8 @@ export function ExecutiveDashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("projects").select("id", { count: "exact", head: true }),
+      supabase.from("projects").select("id", { count: "exact", head: true }).eq("project_type", "tender"),
+      supabase.from("projects").select("id", { count: "exact", head: true }).neq("project_type", "tender"),
       supabase.from("wbs_tasks").select("status"),
       supabase.from("documents").select("status"),
       supabase.from("hse_incidents").select("id", { count: "exact", head: true }),
@@ -88,13 +90,14 @@ export function ExecutiveDashboard() {
       supabase.from("procurement_pos").select("status"),
       supabase.from("documents").select("id, document_number, title, status, created_at")
         .order("created_at", { ascending: false }).limit(10),
-    ]).then(([projRes, taskRes, docRes, hseRes, prRes, poRes, recentRes]) => {
+    ]).then(([preRes, postRes, taskRes, docRes, hseRes, prRes, poRes, recentRes]) => {
       const tasks = taskRes.data ?? [];
       const docs = docRes.data ?? [];
       const prs = prRes.data ?? [];
 
       const newKpi: KpiData = {
-        totalProjects: projRes.count ?? 0,
+        preContractProjects: preRes.count ?? 0,
+        postContractProjects: postRes.count ?? 0,
         totalTasks: tasks.length,
         taskNotStarted: tasks.filter((t: any) => t.status === "not_started").length,
         taskInProgress: tasks.filter((t: any) => t.status === "in_progress").length,
@@ -133,7 +136,8 @@ export function ExecutiveDashboard() {
 
   /* eslint-disable react-hooks/refs */
   const p = prevKpiRef.current;
-  const projectsTrend = p ? trendDiff(kpi.totalProjects, p.totalProjects) : undefined;
+  const preContractTrend = p ? trendDiff(kpi.preContractProjects, p.preContractProjects) : undefined;
+  const postContractTrend = p ? trendDiff(kpi.postContractProjects, p.postContractProjects) : undefined;
   const tasksTrend = p ? trendDiff(kpi.totalTasks, p.totalTasks) : undefined;
   const docsTrend = p ? trendDiff(kpi.totalDocuments, p.totalDocuments) : undefined;
   const hseTrend = p ? inverseTrendDiff(kpi.hseIncidents, p.hseIncidents) : undefined;
@@ -156,13 +160,22 @@ export function ExecutiveDashboard() {
   return (
     <div className="space-y-6">
       {/* Row 1: Module KPI cards with trends */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <KPICard
-          label="Active Projects"
-          value={kpi.totalProjects}
+          label="Pre-Contract"
+          value={kpi.preContractProjects}
+          icon={Handshake}
+          iconColor="text-amber-600" iconBg="bg-amber-50"
+          subtitle="Tender projects"
+          {...(preContractTrend ?? {})}
+        />
+        <KPICard
+          label="Post-Contract"
+          value={kpi.postContractProjects}
           icon={HardHat}
-          iconColor="text-blue-600" iconBg="bg-blue-50"
-          {...(projectsTrend ?? {})}
+          iconColor="text-emerald-600" iconBg="bg-emerald-50"
+          subtitle="Awarded projects"
+          {...(postContractTrend ?? {})}
         />
         <KPICard
           label="Total Tasks"
