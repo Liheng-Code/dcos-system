@@ -173,7 +173,7 @@ export function MovementList() {
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Qty</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Unit Cost</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Total Cost</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Balance</th>
+
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -204,9 +204,6 @@ export function MovementList() {
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums text-xs whitespace-nowrap">
                       {r.total_cost.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums text-xs text-muted-foreground whitespace-nowrap">
-                      {r.balance_after.toFixed(2)}
                     </td>
                   </tr>
                 )
