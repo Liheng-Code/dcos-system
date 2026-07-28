@@ -1,6 +1,8 @@
 # Inventory / Stock Module — Reports & KPI
-**Document Code:** DCOS-RPT-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-RPT-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Adds a Tools Overdue KPI card and the Tool Utilisation Report (R12), per CWIMS Appendix A.3 Stage 1+2. Author: Solution Architect. Status: Draft.
 
 ---
 
@@ -18,6 +20,7 @@ These appear on the Inventory Dashboard (S1) and the main project dashboard.
 | Materials Under Inspection (QAQC) | COUNT(GRN lines where inspection_status = 'pending') | 0 | Aged > 48h triggers alert |
 | Pending Transfers | COUNT(transfers where status in ('pending','approved')) | 0 | — |
 | Stock Take in Progress | 1 if any stocktake status = 'counting'/'pending_approval' else 0 | 0 | Store is locked |
+| Tools Overdue | COUNT(tool_issues where status = 'overdue') | 0 | > 0 triggers amber badge on Tools List |
 
 ---
 
@@ -138,6 +141,18 @@ These appear on the Inventory Dashboard (S1) and the main project dashboard.
 
 ---
 
+### R12 — Tool Utilisation & Custody Report
+
+**Purpose:** Custody history and utilisation for all tools — who has what, how long, and return performance.
+
+**Columns:** Tool Code | Tool Name | Serial No. | Restricted? | Current Status | Current Custodian | Issue Date | Due Date | Days Held | Overdue? | Return Condition | Times Issued (period)
+
+**Filters:** Project, Store, Status, Overdue Only, Date Range
+
+**Export:** CSV, PDF
+
+---
+
 ## 3. Management & Executive Reports
 
 ### R10 — Material Budget vs Actual Report
@@ -170,3 +185,5 @@ These appear on the Inventory Dashboard (S1) and the main project dashboard.
 | Zero-stock incidents on critical items | 0 | Count of critical items reaching zero |
 | Write-off % of total received | < 2% | Write-off value / total GRN received value |
 | Return-to-supplier rate | < 5% | Return-to-supplier value / total GRN value |
+| Tool on-time return rate | ≥ 95% | Tools returned by due date / total tool issues closed |
+| Restricted tool approval turnaround | ≤ 4 hours | 90th percentile request → approval time |

@@ -1,7 +1,9 @@
 # Inventory / Stock Module — Business Requirement
-**Document Code:** DCOS-BR-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-BR-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
 **Status:** Draft — Pending Human Approval
+
+**Revision Note (R1):** Extended to fold in CWIMS (Construction Warehouse & Inventory Management System) Appendix A.3 Stage 1 (Foundation) + Stage 2 (Control) gap items — Material Return formalisation, Tool Issue/Return custody, Location/bin hierarchy, Barcode/QR generation and scanning, and the reorder-alert bridge to Procurement. See `docs/03-Business-Modules/31-cwims/README.md` for the source reference package. Author: Solution Architect. Status of this revision: Draft — Pending Human Approval.
 
 ---
 
@@ -45,6 +47,9 @@ This module is the bridge between the Procurement module (what was ordered and r
 5. Maintain a complete material traceability chain — from PO to delivery to site use — including batch numbers and test certificates.
 6. Eliminate unauthorised material removal from stores.
 7. Support physical stock take (cycle count) with system reconciliation.
+8. Track custody of hand tools issued to site staff — from issue to return — to reduce loss and idle tool spend.
+9. Identify items, bins, and tools with barcode/QR codes so store transactions can be scan-driven rather than manually keyed.
+10. Organise each store into a zone → aisle → rack → bin location hierarchy so stock can be found and put away consistently.
 
 ---
 
@@ -73,16 +78,25 @@ This module is the bridge between the Procurement module (what was ordered and r
 - BR8: Physical stock take must be locked (no movements) during count; discrepancies require approval before posting.
 - BR9: Materials requiring QAQC inspection must be quarantined (status = Under Inspection) until approved — they cannot be issued from quarantine.
 - BR10: Material return to supplier must reference the original GRN and PO.
+- BR11: Every store location (bin) belongs to exactly one store and sits in a zone → aisle → rack → bin hierarchy; a location cannot be assigned to more than one store.
+- BR12: Every serialised tool has exactly one custodian at any time. A tool cannot be re-issued to a new custodian until it has been returned and its return condition recorded.
+- BR13: Items, locations, and tools may carry a barcode/QR code. Scanning a code must resolve only to a record belonging to the scanning user's own tenant — a cross-tenant scan is rejected, never silently ignored.
+- BR14: When available stock for an item in a store reaches or falls below its reorder point, the system must notify the Storekeeper and Procurement Officer and make the item visible on the reorder-alert bridge to the Procurement module so a Purchase Requisition can be raised.
 
 ---
 
 ## 6. Out of Scope
 
 - **Subcontractor-supplied materials:** Materials supplied by subcontractors under lump-sum sub-contracts are tracked in the Subcontractor module, not Inventory.
-- **Plant and equipment:** Tracked in the Equipment module (Module 30).
+- **Plant and equipment:** Tracked in the Equipment module (Module 30). Equipment Assignment custody integration (CWIMS UC-08) is explicitly deferred to a later phase (CWIMS Appendix A.3 Stage 4) and is not part of this phase's scope.
 - **Full accounting / AP integration:** Invoice matching and payment are in the Procurement module and Accounting module.
-- **Warehouse management system (WMS) features:** Bin locations, barcode scanning (Phase 4 enhancement).
 - **Demand forecasting / AI reorder:** Phase 7 (AI module).
+- **Deferred to a later phase (CWIMS Stage 3/4 — not this phase):**
+  - Dangerous Goods (DG) compliance workflow — DG-capable store type and DG item flag are captured at foundation level in this phase, but the DG safety checklist / compliance workflow itself is not built.
+  - Full wall-to-wall physical inventory (freeze, dual-count, recount rules) — this phase covers cycle counting only (existing Stock Take feature); full physical inventory is a later-phase enhancement.
+  - Batch/FEFO valuation and period-close — `is_batch_managed` and `shelf_life_days` are captured on the item master in this phase for readiness, but batch-level FIFO/FEFO picking, expiry enforcement, and month-end valuation period-lock are not built this phase (stock remains FIFO-costed at the item level as already documented in Section 5, Assumptions & Constraints of `02-Functional-Specification.md`).
+  - Return write-off record, Store Supervisor approval gate, 30-day return window valuation-variance rule, and mandatory evidence-photo capture on Damaged/Waste return lines (`inv_return_lines.evidence_doc_ids` exists in the schema for this purpose but is not yet wired to any UI or validation) — this phase implements the Draft → Inspected → Posted return lifecycle and correctly excludes Damaged/Waste lines from available stock (logged at `high` audit severity instead), but does not create a formal write-off record or gate posting on approval. BR-F5-05/07/08 describe the target design; they are not yet enforced.
+  - Barcode/QR label generation and scanning — `label-print-button.tsx` renders a placeholder printable text label only; no scannable Code-128/QR image, no signed tenant-checksum deep link, and no scan-input UI exist yet. F12 describes the target design; installing a barcode/QR rendering library and wiring scan-driven transactions is a follow-up task.
 
 ---
 
@@ -99,3 +113,4 @@ This module is the bridge between the Procurement module (what was ordered and r
 | Notification Engine (NTF) | Low-stock alerts, pending approvals, overdue actions |
 | Audit Log Engine (AUD) | All movements logged immutably |
 | Reporting (RPT) | Inventory dashboards, aging reports, consumption analysis |
+| Equipment (EQP) | Deferred to a later phase — tool custody (this phase) is tracked in Inventory; plant/equipment custody integration (CWIMS UC-08) is out of scope for this phase |

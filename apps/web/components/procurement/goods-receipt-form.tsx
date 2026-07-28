@@ -144,33 +144,15 @@ export function GoodsReceiptForm() {
     const { error: grError } = await supabase.from("procurement_goods_receipts").insert(grInserts);
     if (grError) { toast.error(grError.message); setSaving(false); return; }
 
+    // Note: this form only records the delivery/inspection result for invoice
+    // three-way-match. Actual warehouse stock-in is now owned exclusively by the
+    // Inventory module's own GRN flow (inv_grns/inv_grn_lines -> inv_stock) — the
+    // legacy procurement_inventory upsert that used to happen here has been removed.
     for (const item of validItems) {
       const poItem = po.procurement_po_items.find(i => i.id === item.po_item_id);
       if (poItem) {
         const newDelivered = (poItem.quantity_delivered || 0) + item.quantity_accepted;
         await supabase.from("procurement_po_items").update({ quantity_delivered: newDelivered }).eq("id", item.po_item_id);
-
-        if (item.quantity_accepted > 0 && poItem.item_code) {
-          const { data: existing } = await supabase.from("procurement_inventory").select("id, quantity_on_hand, unit_cost").eq("item_code", poItem.item_code).maybeSingle();
-          if (existing) {
-            const totalCost = (existing.quantity_on_hand * (existing.unit_cost || 0)) + (item.quantity_accepted * (poItem.unit_price || 0));
-            const newQty = existing.quantity_on_hand + item.quantity_accepted;
-            await supabase.from("procurement_inventory").update({
-              quantity_on_hand: newQty,
-              unit_cost: newQty > 0 ? totalCost / newQty : 0,
-              last_gr_id: dnId,
-            }).eq("id", existing.id);
-          } else {
-            await supabase.from("procurement_inventory").insert({
-              item_code: poItem.item_code,
-              item_description: poItem.item_description,
-              unit: poItem.unit,
-              quantity_on_hand: item.quantity_accepted,
-              unit_cost: poItem.unit_price,
-              last_gr_id: dnId,
-            });
-          }
-        }
       }
     }
 

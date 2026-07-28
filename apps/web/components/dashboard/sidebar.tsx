@@ -60,6 +60,10 @@ import {
   Layers,
   Ruler,
   ListTree,
+  Truck,
+  Warehouse,
+  ArrowLeftRight,
+  Undo2,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -105,6 +109,19 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const [mepOpen, setMepOpen] = useState(false);
   const [planningOpen, setPlanningOpen] = useState(false);
   const [procurementOpen, setProcurementOpen] = useState(false);
+  const [suppliersGroupOpen, setSuppliersGroupOpen] = useState(false);
+  const [sourcingGroupOpen, setSourcingGroupOpen] = useState(false);
+  const [costMgmtGroupOpen, setCostMgmtGroupOpen] = useState(false);
+  const [receivingGroupOpen, setReceivingGroupOpen] = useState(false);
+  const [adminGroupOpen, setAdminGroupOpen] = useState(false);
+  const [overviewGroupOpen, setOverviewGroupOpen] = useState(false);
+  // Inventory (top-level module)
+  const [invModuleOpen, setInvModuleOpen] = useState(false);
+  const [invOverviewOpen, setInvOverviewOpen] = useState(false);
+  const [invMasterDataOpen, setInvMasterDataOpen] = useState(false);
+  const [invReceivingOpen, setInvReceivingOpen] = useState(false);
+  const [invAssetsOpen, setInvAssetsOpen] = useState(false);
+  const [invStockControlOpen, setInvStockControlOpen] = useState(false);
   const [hrOpen, setHrOpen] = useState(false);
   const [qsGroupOpen, setQsGroupOpen] = useState(false);
   const [tenderingOpen, setTenderingOpen] = useState(false);
@@ -465,22 +482,132 @@ export function Sidebar({ collapsed }: SidebarProps) {
           <FolderHeader label="Procurement" open={procurementOpen} onToggle={() => setProcurementOpen(!procurementOpen)} level={1} />
           {(collapsed || procurementOpen) && (
             <>
-              <NavItem href="/dashboard/procurement"             label="Dashboard"             icon={LayoutDashboard} />
-              <NavItem href="/dashboard/procurement/analytics"   label="Analytics"             icon={BarChart2} />
-              <NavItem href="/dashboard/procurement/boq"         label="BOQ"                   icon={DollarSign} />
-              <NavItem href="/dashboard/procurement/supplier-portal" label="Supplier Portal"   icon={UserCheck} />
-              <NavItem href="/dashboard/procurement/suppliers"            label="Suppliers"             icon={Building2} />
-              <NavItem href="/dashboard/procurement/prequalification"    label="Supplier PQ"          icon={ClipboardCheck} />
-              <NavItem href="/dashboard/procurement/supplier-performance" label="Supplier Perf."       icon={TrendingUp} />
-              <NavItem href="/dashboard/procurement/pr"          label="Purchase Requisitions" icon={FileText} />
-              <NavItem href="/dashboard/procurement/rfq"         label="RFQs"                   icon={FileSearch} />
-              <NavItem href="/dashboard/procurement/po"          label="Purchase Orders"       icon={Package} />
-              <NavItem href="/dashboard/procurement/inventory"   label="Inventory"             icon={ListChecks} />
-              <NavItem href="/dashboard/procurement/auto-reorder" label="Auto Reorder"         icon={RefreshCw} />
-              <NavItem href="/dashboard/procurement/goods-receipt" label="Goods Receipt"        icon={CheckSquare} />
-              <NavItem href="/dashboard/procurement/invoice-matches" label="Invoice Matching"     icon={Receipt} />
-              <NavItem href="/dashboard/procurement/notifications"  label="Notifications"        icon={Bell} />
-              <NavItem href="/dashboard/procurement/audit-log"      label="Audit Log"            icon={History} />
+              {/* Overview sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Overview" open={overviewGroupOpen} onToggle={() => setOverviewGroupOpen(!overviewGroupOpen)} level={2} navKey="group:procurement:overview" />
+                {isNavItemActive("group:procurement:overview") && (collapsed || overviewGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement"           label="Dashboard" icon={LayoutDashboard} />
+                    <NavItem href="/dashboard/procurement/analytics" label="Analytics" icon={BarChart2} />
+                  </div>
+                )}
+              </div>
+              {/* Suppliers sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Suppliers" open={suppliersGroupOpen} onToggle={() => setSuppliersGroupOpen(!suppliersGroupOpen)} level={2} navKey="group:procurement:suppliers" />
+                {isNavItemActive("group:procurement:suppliers") && (collapsed || suppliersGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement/supplier-portal"       label="Supplier Portal"    icon={UserCheck} />
+                    <NavItem href="/dashboard/procurement/suppliers"             label="Supplier List"      icon={Building2} />
+                    <NavItem href="/dashboard/procurement/prequalification"      label="Pre-Qualification"  icon={ClipboardCheck} />
+                    <NavItem href="/dashboard/procurement/supplier-performance"  label="Performance"        icon={TrendingUp} />
+                  </div>
+                )}
+              </div>
+              {/* Cost Management sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Cost Management" open={costMgmtGroupOpen} onToggle={() => setCostMgmtGroupOpen(!costMgmtGroupOpen)} level={2} navKey="group:procurement:cost_management" />
+                {isNavItemActive("group:procurement:cost_management") && (collapsed || costMgmtGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement/boq" label="BOQ" icon={DollarSign} />
+                  </div>
+                )}
+              </div>
+              {/* Sourcing & Ordering sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Sourcing & Ordering" open={sourcingGroupOpen} onToggle={() => setSourcingGroupOpen(!sourcingGroupOpen)} level={2} navKey="group:procurement:sourcing" />
+                {isNavItemActive("group:procurement:sourcing") && (collapsed || sourcingGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement/pr"  label="Purchase Requisitions" icon={FileText} />
+                    <NavItem href="/dashboard/procurement/rfq" label="RFQs"                   icon={FileSearch} />
+                    <NavItem href="/dashboard/procurement/po"  label="Purchase Orders"       icon={Package} />
+                    <NavItem href="/dashboard/procurement/auto-reorder" label="Auto Reorder" icon={RefreshCw} />
+                  </div>
+                )}
+              </div>
+              {/* Receiving & Settlement sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Receiving & Settlement" open={receivingGroupOpen} onToggle={() => setReceivingGroupOpen(!receivingGroupOpen)} level={2} navKey="group:procurement:receiving" />
+                {isNavItemActive("group:procurement:receiving") && (collapsed || receivingGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement/goods-receipt"   label="Goods Receipt"    icon={CheckSquare} />
+                    <NavItem href="/dashboard/procurement/invoice-matches" label="Invoice Matching" icon={Receipt} />
+                  </div>
+                )}
+              </div>
+              {/* Administration sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Administration" open={adminGroupOpen} onToggle={() => setAdminGroupOpen(!adminGroupOpen)} level={2} navKey="group:procurement:administration" />
+                {isNavItemActive("group:procurement:administration") && (collapsed || adminGroupOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/procurement/notifications" label="Notifications" icon={Bell} />
+                    <NavItem href="/dashboard/procurement/audit-log"     label="Audit Log"     icon={History} />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        )}
+
+        {/* ── INVENTORY ── */}
+        {isModuleActive("inventory") && (
+        <div className={cn(!collapsed && "mt-3")}>
+          <FolderHeader label="Inventory" open={invModuleOpen} onToggle={() => setInvModuleOpen(!invModuleOpen)} level={1} />
+          {(collapsed || invModuleOpen) && (
+            <>
+              {/* Overview sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Overview" open={invOverviewOpen} onToggle={() => setInvOverviewOpen(!invOverviewOpen)} level={2} navKey="group:inventory:overview" />
+                {isNavItemActive("group:inventory:overview") && (collapsed || invOverviewOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/inventory"       label="Dashboard" icon={LayoutDashboard} />
+                    <NavItem href="/dashboard/inventory/stock" label="Stock"     icon={Layers} />
+                  </div>
+                )}
+              </div>
+              {/* Master Data sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Master Data" open={invMasterDataOpen} onToggle={() => setInvMasterDataOpen(!invMasterDataOpen)} level={2} navKey="group:inventory:master_data" />
+                {isNavItemActive("group:inventory:master_data") && (collapsed || invMasterDataOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/inventory/items"  label="Item Master"        icon={Database} />
+                    <NavItem href="/dashboard/inventory/stores" label="Stores & Locations" icon={Warehouse} />
+                  </div>
+                )}
+              </div>
+              {/* Receiving & Issuing sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Receiving & Issuing" open={invReceivingOpen} onToggle={() => setInvReceivingOpen(!invReceivingOpen)} level={2} navKey="group:inventory:receiving" />
+                {isNavItemActive("group:inventory:receiving") && (collapsed || invReceivingOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/inventory/grns"      label="GRN"                   icon={Truck} />
+                    <NavItem href="/dashboard/inventory/mrs"       label="Material Requisitions" icon={ClipboardList} />
+                    <NavItem href="/dashboard/inventory/returns"   label="Returns"               icon={Undo2} />
+                    <NavItem href="/dashboard/inventory/transfers" label="Transfers"             icon={ArrowLeftRight} />
+                  </div>
+                )}
+              </div>
+              {/* Tools & Equipment sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Tools & Equipment" open={invAssetsOpen} onToggle={() => setInvAssetsOpen(!invAssetsOpen)} level={2} navKey="group:inventory:assets" />
+                {isNavItemActive("group:inventory:assets") && (collapsed || invAssetsOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/inventory/tools" label="Tools" icon={Wrench} />
+                  </div>
+                )}
+              </div>
+              {/* Stock Control sub-group */}
+              <div className={cn(!collapsed && "mt-1")}>
+                <FolderHeader label="Stock Control" open={invStockControlOpen} onToggle={() => setInvStockControlOpen(!invStockControlOpen)} level={2} navKey="group:inventory:stock_control" />
+                {isNavItemActive("group:inventory:stock_control") && (collapsed || invStockControlOpen) && (
+                  <div className={cn(!collapsed && "ml-2 border-l border-border/40 pl-2")}>
+                    <NavItem href="/dashboard/inventory/adjustments" label="Adjustments" icon={RefreshCw} />
+                    <NavItem href="/dashboard/inventory/stocktakes"  label="Stocktakes"  icon={ListChecks} />
+                    <NavItem href="/dashboard/inventory/movements"   label="Movements"   icon={History} />
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

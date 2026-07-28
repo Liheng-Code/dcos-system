@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -82,8 +82,8 @@ export function SupplierPOView({ supplierId }: { supplierId: string }) {
         </thead>
         <tbody>
           {pos.map(po => (
-            <>
-              <tr key={po.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleExpand(po.id)}>
+            <Fragment key={po.id}>
+              <tr className="border-b last:border-0 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => toggleExpand(po.id)}>
                 <td className="px-4 py-3 text-sm font-medium">{po.po_number}</td>
                 <td className="px-4 py-3"><Badge className={STATUS_COLORS[po.status] ?? ""} variant="outline">{po.status.replace(/_/g, " ")}</Badge></td>
                 <td className="px-4 py-3 text-sm">{po.delivery_date_expected ?? "—"}</td>
@@ -124,8 +124,7 @@ export function SupplierPOView({ supplierId }: { supplierId: string }) {
                   </td>
                 </tr>
               )}
-            </>
-          ))}
+            </Fragment>          ))}
         </tbody>
       </table>
     </div>

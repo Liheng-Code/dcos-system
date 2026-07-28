@@ -51,6 +51,26 @@ export async function deleteContract(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * The head (employer) contract for a project. A project can carry several
+ * contract_register rows of different types (subcontract/consultant/supplier),
+ * so this filters specifically to contract_type='head_contract' rather than
+ * assuming project_id alone identifies the right row. Returns the most
+ * recently created one if more than one exists (e.g. a superseded contract).
+ */
+export async function getHeadContract(projectId: string): Promise<ContractRegister | null> {
+  const { data, error } = await createClient()
+    .from("contract_register")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("contract_type", "head_contract")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as ContractRegister | null) ?? null;
+}
+
 // ── Employer Instructions ──────────────────────────────────────────────────────
 
 export async function getEmployerInstructions(contractId?: string): Promise<ContractEmployerInstruction[]> {

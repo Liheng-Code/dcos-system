@@ -889,7 +889,9 @@ export async function deleteVoItem(id: string, voId: string): Promise<void> {
 
 // ── Phase 2: Progress Claims (IPC) ───────────────────────────────────────────
 
-export type ClaimStatus = "draft" | "submitted" | "client_reviewed" | "certified" | "paid";
+export type ClaimStatus =
+  | "draft" | "internal_review" | "pm_endorsed"
+  | "submitted" | "client_reviewed" | "certified" | "paid" | "rejected";
 
 export interface QsProgressClaim {
   id: string;
@@ -903,16 +905,30 @@ export interface QsProgressClaim {
   retention_pct: number;
   retention_amount: number;
   prev_certificates_total: number;
+  advance_recovery_this_period: number;
+  advance_recovery_cumulative: number;
   current_payment_due: number;
   status: ClaimStatus;
   certified_amount: number | null;
   client_adjustment_total?: number;
+  rejection_reason?: string | null;
   notes: string | null;
   submitted_at: string | null;
   client_reviewed_at?: string | null;
   certified_at: string | null;
   paid_at: string | null;
   created_at: string;
+  ar_invoice_id: string | null;
+  account_ar_invoices?:
+    | { invoice_no: string; status: string; net_amount: number }
+    | { invoice_no: string; status: string; net_amount: number }[]
+    | null;
+  submission_document_id: string | null;
+  documents?:
+    | { document_number: string; status: string }
+    | { document_number: string; status: string }[]
+    | null;
+  projects?: { project_name: string } | { project_name: string }[] | null;
 }
 
 export interface QsClaimItem {
@@ -930,6 +946,7 @@ export interface QsClaimItem {
   adjustment_reason?: string | null;
   certified_this_period?: number | null;
   certified_materials_stored?: number | null;
+  certified_variance_reason?: string | null;
   total_to_date: number;
   pct_complete: number;
   qs_boq_sections?: { title: string } | null;
@@ -938,11 +955,74 @@ export interface QsClaimItem {
 export async function getProgressClaims(projectId: string): Promise<QsProgressClaim[]> {
   const { data, error } = await createClient()
     .from("qs_progress_claims")
-    .select("*")
+    // Disambiguated: qs_progress_claims<->account_ar_invoices has two FK paths
+    // (this row's own ar_invoice_id, and account_ar_invoices.claim_id pointing back)
+    // — PostgREST can't pick one without an explicit constraint-name hint.
+    // documents has only one relationship path (submission_document_id), no
+    // disambiguation needed there.
+    .select("*, account_ar_invoices!qs_progress_claims_ar_invoice_id_fkey(invoice_no, status, net_amount), documents(document_number, status)")
     .eq("project_id", projectId)
     .order("claim_number", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as QsProgressClaim[];
+}
+
+export async function getProgressClaimById(id: string): Promise<QsProgressClaim> {
+  const { data, error } = await createClient()
+    .from("qs_progress_claims")
+    .select("*, account_ar_invoices!qs_progress_claims_ar_invoice_id_fkey(invoice_no, status, net_amount), documents(document_number, status), projects(project_name)")
+    .eq("id", id)
+    .single();
+  if (error) throw new Error(error.message);
+  return data as QsProgressClaim;
+}
+
+/**
+ * Defaults to pre-fill the create-claim form with, instead of forcing the
+ * user to retype the contract sum / retention on every claim. contractSum
+ * prefers the head contract's value; if a project has no contract_register
+ * row yet, falls back to the most recent existing claim's original_contract_sum
+ * (still null for a project's very first-ever claim with neither).
+ */
+export async function getProjectClaimDefaults(projectId: string): Promise<{
+  retentionPct: number | null;
+  advancePct: number | null;
+  contractSum: number | null;
+}> {
+  const supabase = createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("retention, advance_payment")
+    .eq("id", projectId)
+    .single();
+
+  const { data: headContract } = await supabase
+    .from("contract_register")
+    .select("contract_value")
+    .eq("project_id", projectId)
+    .eq("contract_type", "head_contract")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let contractSum: number | null = headContract ? Number(headContract.contract_value) : null;
+  if (contractSum == null) {
+    const { data: latestClaim } = await supabase
+      .from("qs_progress_claims")
+      .select("original_contract_sum")
+      .eq("project_id", projectId)
+      .order("claim_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    contractSum = latestClaim ? Number(latestClaim.original_contract_sum) : null;
+  }
+
+  return {
+    retentionPct: project?.retention != null ? Number(project.retention) : null,
+    advancePct:   project?.advance_payment != null ? Number(project.advance_payment) : null,
+    contractSum,
+  };
 }
 
 export async function createProgressClaim(payload: {
@@ -951,6 +1031,7 @@ export async function createProgressClaim(payload: {
   period_end: string;
   retention_pct: number;
   original_contract_sum: number;
+  advance_recovery_this_period?: number;
   notes?: string | null;
 }): Promise<QsProgressClaim> {
   const supabase = createClient();
@@ -972,26 +1053,31 @@ export async function createProgressClaim(payload: {
     .eq("status", "implemented");
   const netVo = (vos ?? []).reduce((s, v) => s + Number(v.total_amount ?? 0), 0);
 
-  // Previous certificates total (sum of certified current_payment_due)
+  // Previous certificates total (sum of certified current_payment_due) +
+  // cumulative advance already recovered from prior certified/paid claims.
   const { data: prevClaims } = await supabase
     .from("qs_progress_claims")
-    .select("current_payment_due")
+    .select("current_payment_due, advance_recovery_this_period")
     .eq("project_id", payload.project_id)
     .in("status", ["certified", "paid"]);
   const prevTotal = (prevClaims ?? []).reduce((s, c) => s + Number(c.current_payment_due ?? 0), 0);
+  const prevAdvanceRecovered = (prevClaims ?? []).reduce((s, c) => s + Number(c.advance_recovery_this_period ?? 0), 0);
+  const advanceRecoveryThisPeriod = payload.advance_recovery_this_period ?? 0;
 
   const { data, error } = await supabase
     .from("qs_progress_claims")
     .insert({
-      project_id:              payload.project_id,
-      claim_number:            nextNum,
-      period_start:            payload.period_start,
-      period_end:              payload.period_end,
-      original_contract_sum:   payload.original_contract_sum,
-      net_vo_amount:           netVo,
-      retention_pct:           payload.retention_pct,
-      prev_certificates_total: prevTotal,
-      notes:                   payload.notes ?? null,
+      project_id:                   payload.project_id,
+      claim_number:                 nextNum,
+      period_start:                 payload.period_start,
+      period_end:                   payload.period_end,
+      original_contract_sum:        payload.original_contract_sum,
+      net_vo_amount:                netVo,
+      retention_pct:                payload.retention_pct,
+      prev_certificates_total:      prevTotal,
+      advance_recovery_this_period: advanceRecoveryThisPeriod,
+      advance_recovery_cumulative:  prevAdvanceRecovered,
+      notes:                        payload.notes ?? null,
     })
     .select()
     .single();
@@ -1099,14 +1185,15 @@ export async function recalculateClaim(claimId: string): Promise<QsProgressClaim
 
   const { data: claim } = await supabase
     .from("qs_progress_claims")
-    .select("retention_pct, prev_certificates_total")
+    .select("retention_pct, prev_certificates_total, advance_recovery_this_period")
     .eq("id", claimId)
     .single();
 
   const retPct = Number(claim?.retention_pct ?? 5);
   const retentionAmount = Math.round(certifiedBase * retPct) / 100;
   const prevTotal = Number(claim?.prev_certificates_total ?? 0);
-  const paymentDue = certifiedBase - retentionAmount - prevTotal;
+  const advanceRecoveryThisPeriod = Number(claim?.advance_recovery_this_period ?? 0);
+  const paymentDue = certifiedBase - retentionAmount - prevTotal - advanceRecoveryThisPeriod;
 
   const { data: updated, error } = await supabase
     .from("qs_progress_claims")
@@ -1124,13 +1211,118 @@ export async function recalculateClaim(claimId: string): Promise<QsProgressClaim
   return updated as QsProgressClaim;
 }
 
+export async function updateClaimItemCertification(
+  id: string,
+  certified_this_period: number,
+  certified_materials_stored: number,
+  certified_variance_reason?: string | null,
+): Promise<void> {
+  const { error } = await createClient()
+    .from("qs_claim_items")
+    .update({
+      certified_this_period,
+      certified_materials_stored,
+      certified_variance_reason: certified_variance_reason ?? null,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Same math as recalculateClaim(), but sourced from certified_* fields
+ * (falling back to claimed values when a line wasn't touched) — writes
+ * total_completed_stored/retention_amount/current_payment_due onto the claim
+ * row so the existing certified branch of updateClaimStatus reads correct,
+ * certified-basis figures for the retention-ledger deduction and the AR
+ * invoice amount, without modifying that function at all. Returns the
+ * resulting payment due, for the caller to pass through as certified_amount.
+ */
+export async function recalculateClaimForCertification(claimId: string): Promise<number> {
+  const supabase = createClient();
+  const { data: items } = await supabase
+    .from("qs_claim_items")
+    .select("prev_completed, this_period, materials_stored, certified_this_period, certified_materials_stored, client_adjustment")
+    .eq("claim_id", claimId);
+
+  const certifiedCompleted = (items ?? []).reduce((s, i) => {
+    const thisPeriod = i.certified_this_period ?? i.this_period;
+    const materialsStored = i.certified_materials_stored ?? i.materials_stored;
+    return s + Number(i.prev_completed ?? 0) + Number(thisPeriod ?? 0) + Number(materialsStored ?? 0);
+  }, 0);
+  const adjustmentTotal = (items ?? []).reduce((s, i) => s + Number(i.client_adjustment ?? 0), 0);
+  const certifiedBase = certifiedCompleted + adjustmentTotal;
+
+  const { data: claim } = await supabase
+    .from("qs_progress_claims")
+    .select("retention_pct, prev_certificates_total, advance_recovery_this_period")
+    .eq("id", claimId)
+    .single();
+
+  const retPct = Number(claim?.retention_pct ?? 5);
+  const retentionAmount = Math.round(certifiedBase * retPct) / 100;
+  const prevTotal = Number(claim?.prev_certificates_total ?? 0);
+  const advanceRecoveryThisPeriod = Number(claim?.advance_recovery_this_period ?? 0);
+  const paymentDue = certifiedBase - retentionAmount - prevTotal - advanceRecoveryThisPeriod;
+
+  const { error } = await supabase
+    .from("qs_progress_claims")
+    .update({
+      total_completed_stored: certifiedCompleted,
+      retention_amount:       retentionAmount,
+      current_payment_due:    paymentDue,
+      updated_at:             new Date().toISOString(),
+    })
+    .eq("id", claimId);
+  if (error) throw new Error(error.message);
+
+  return paymentDue;
+}
+
 export async function updateClaimStatus(
   id: string,
   status: ClaimStatus,
-  extra?: { certified_amount?: number },
+  extra?: { certified_amount?: number; rejection_reason?: string },
 ): Promise<void> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // ── Pre-flight for certification: require a project client before touching anything ──
+  // Certifying a claim must raise a real AR invoice; if the project has no client
+  // configured we cannot do that, so we fail loudly here rather than certify
+  // without ever being able to bill for it.
+  let certifiedInvoiceAmount = 0;
+  let projectClientId: string | null = null;
+  let projectName = "Project";
+  let claimNumberForCert = 0;
+  let existingArInvoiceId: string | null = null;
+
+  if (status === "certified") {
+    const { data: claim, error: claimErr } = await supabase
+      .from("qs_progress_claims")
+      .select("project_id, claim_number, current_payment_due, ar_invoice_id, projects(client_id, project_name)")
+      .eq("id", id)
+      .single();
+    if (claimErr || !claim) throw new Error(claimErr?.message ?? "Progress claim not found");
+
+    type CertClaim = {
+      project_id: string; claim_number: number; current_payment_due: number; ar_invoice_id: string | null;
+      projects: { client_id: string | null; project_name?: string } | { client_id: string | null; project_name?: string }[] | null;
+    };
+    const cc = claim as unknown as CertClaim;
+    const proj = Array.isArray(cc.projects) ? cc.projects[0] : cc.projects;
+    projectClientId        = proj?.client_id ?? null;
+    projectName             = proj?.project_name ?? "Project";
+    claimNumberForCert      = cc.claim_number;
+    existingArInvoiceId     = cc.ar_invoice_id;
+    certifiedInvoiceAmount  = Number(extra?.certified_amount ?? cc.current_payment_due);
+
+    if (!projectClientId) {
+      throw new Error(
+        "Cannot certify: this project has no client assigned. Set a client on the project (Project Settings) before certifying claims — a client is required to raise the AR invoice."
+      );
+    }
+  }
+
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
   if (status === "submitted") { patch.submitted_at = new Date().toISOString(); patch.submitted_by = user?.id; }
   if (status === "client_reviewed") {
@@ -1140,17 +1332,62 @@ export async function updateClaimStatus(
   if (status === "certified") {
     patch.certified_at = new Date().toISOString();
     patch.certified_by = user?.id;
-    if (extra?.certified_amount !== undefined) patch.certified_amount = extra.certified_amount;
+    patch.certified_amount = certifiedInvoiceAmount;
   }
   if (status === "paid") patch.paid_at = new Date().toISOString();
+  if (status === "rejected" && extra?.rejection_reason) patch.rejection_reason = extra.rejection_reason;
   const { error } = await supabase.from("qs_progress_claims").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
 
-  // On certification: auto-create retention deduction entry
+  // On client submission: register a Document Control entry for the
+  // submission package (header row only — no PDF generation exists in this
+  // codebase to attach as a document_revisions file, and a revision with no
+  // file would be misleading noise in Document Control's own UI). Idempotency
+  // guarded on submission_document_id; failures here are deliberately
+  // non-fatal — they must not block the client-submission status transition.
+  if (status === "submitted") {
+    const { data: claim } = await supabase
+      .from("qs_progress_claims")
+      .select("project_id, claim_number, period_start, period_end, submission_document_id, projects(project_name)")
+      .eq("id", id)
+      .single();
+    if (claim && !claim.submission_document_id && user) {
+      const { data: docType } = await supabase
+        .from("document_types")
+        .select("id")
+        .eq("code", "PC")
+        .single();
+      if (docType) {
+        const proj = Array.isArray(claim.projects) ? claim.projects[0] : claim.projects;
+        const projName = (proj as { project_name?: string } | null)?.project_name ?? "Project";
+        const docNumber = `IPC-${String(claim.claim_number).padStart(3, "0")}`;
+        const { data: doc, error: docErr } = await supabase
+          .from("documents")
+          .insert({
+            project_id: claim.project_id,
+            document_type_id: docType.id,
+            document_number: docNumber,
+            title: `IPC #${claim.claim_number} Submission Package — ${projName}`,
+            discipline: "Commercial",
+            status: "submitted",
+            description: `Client submission package for Progress Claim #${claim.claim_number}, period ${claim.period_start} to ${claim.period_end}.`,
+            created_by: user.id,
+          })
+          .select("id")
+          .single();
+        if (!docErr && doc) {
+          await supabase.from("qs_progress_claims").update({ submission_document_id: doc.id }).eq("id", id);
+        }
+      }
+    }
+  }
+
+  // On certification: auto-create retention deduction entry + advance recovery
+  // ledger entry + raise the AR invoice
   if (status === "certified") {
     const { data: claim } = await supabase
       .from("qs_progress_claims")
-      .select("project_id, retention_amount")
+      .select("project_id, retention_amount, advance_recovery_this_period")
       .eq("id", id)
       .single();
     if (claim && Number(claim.retention_amount) > 0) {
@@ -1162,17 +1399,62 @@ export async function updateClaimStatus(
         created_by:       user?.id ?? null,
       });
     }
+    if (claim && Number(claim.advance_recovery_this_period) > 0) {
+      await supabase.from("qs_advance_recovery_ledger").insert({
+        project_id: claim.project_id,
+        claim_id:   id,
+        amount:     Number(claim.advance_recovery_this_period),
+        created_by: user?.id ?? null,
+      });
+    }
+
+    // Idempotency guard: don't raise a second invoice if this claim is already linked.
+    if (!existingArInvoiceId && claim) {
+      const yr = new Date().getFullYear();
+      const invoiceNo = `AR-IPC-${String(claimNumberForCert).padStart(3, "0")}-${yr}`;
+      const invoiceDate = new Date().toISOString().split("T")[0];
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 30); // matches ar-invoice-form.tsx's manual-entry default
+
+      const { data: arInvoice, error: arErr } = await supabase
+        .from("account_ar_invoices")
+        .insert({
+          project_id:   claim.project_id,
+          client_id:    projectClientId,
+          invoice_no:   invoiceNo,
+          invoice_date: invoiceDate,
+          due_date:     dueDate.toISOString().split("T")[0],
+          amount:       certifiedInvoiceAmount,
+          tax_amount:   0,
+          description:  `IPC #${claimNumberForCert} — ${projectName}`,
+          status:       "approved",
+          claim_id:     id,
+          approved_by:  user?.id ?? null,
+          approved_at:  new Date().toISOString(),
+          created_by:   user?.id ?? null,
+        })
+        .select("id")
+        .single();
+
+      if (arErr) throw new Error(`Claim certified, but failed to raise AR invoice: ${arErr.message}`);
+      if (arInvoice) {
+        await supabase.from("qs_progress_claims").update({ ar_invoice_id: arInvoice.id }).eq("id", id);
+      }
+    }
   }
 
-  // On payment: create receipt voucher in accounts module
+  // On payment: create receipt voucher AND settle the linked AR invoice
   if (status === "paid") {
     const { data: claim } = await supabase
       .from("qs_progress_claims")
-      .select("project_id, claim_number, certified_amount, current_payment_due, projects(project_name)")
+      .select("project_id, claim_number, certified_amount, current_payment_due, ar_invoice_id, projects(project_name)")
       .eq("id", id)
       .single();
     if (claim) {
-      type PaidClaim = { certified_amount: number | null; current_payment_due: number; claim_number: number; projects: { project_name?: string } | null };
+      type PaidClaim = {
+        certified_amount: number | null; current_payment_due: number; claim_number: number;
+        ar_invoice_id: string | null; projects: { project_name?: string } | null;
+      };
       const c = claim as unknown as PaidClaim;
       const amount = Number(c.certified_amount ?? c.current_payment_due);
       const projectName = c.projects?.project_name ?? "Project";
@@ -1194,16 +1476,116 @@ export async function updateClaimStatus(
         })
         .select("id")
         .single();
-      if (pv) {
+
+      // Only settle AR if this claim has a real linked invoice (claims certified
+      // before this fix shipped may not) — the voucher itself is still created either way.
+      if (pv && c.ar_invoice_id) {
         await supabase.from("account_pv_links").insert({
           voucher_id:   pv.id,
           invoice_type: "ar",
-          invoice_id:   id,
+          invoice_id:   c.ar_invoice_id,
           amount,
         });
+        await supabase.from("account_ar_invoices")
+          .update({ status: "paid", payment_voucher_id: pv.id, updated_at: new Date().toISOString() })
+          .eq("id", c.ar_invoice_id);
       }
     }
   }
+}
+
+// ── Claim Internal Approval Chain ───────────────────────────────────────────────
+// Mirrors qs_vo_approvals / submitVoApprovalDecision exactly (delete-then-insert
+// per step, re-fetch-then-check-all-approved), but the chain is a FIXED 2 steps
+// (QS Manager, then PM) rather than VO's amount-scaled 1/2/3 steps — every claim
+// gets both reviews regardless of size, per the module's original design intent.
+
+export interface QsClaimApproval {
+  id: string;
+  claim_id: string;
+  step: number;
+  approver_role: string;
+  user_id: string | null;
+  decision: "pending" | "approved" | "rejected";
+  comments: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ClaimApprovalStep { step: number; role: string; label: string; }
+
+/** Fixed 2-step chain — no amount arg, unlike getVoApprovalSteps, since the
+ *  chain never scales with claim size. */
+export function getClaimApprovalSteps(): ClaimApprovalStep[] {
+  return [
+    { step: 1, role: "QS", label: "QS Manager Review" },
+    { step: 2, role: "PM", label: "PM Endorsement" },
+  ];
+}
+
+export async function getClaimApprovals(claimId: string): Promise<QsClaimApproval[]> {
+  const { data, error } = await createClient()
+    .from("qs_claim_approvals")
+    .select("*")
+    .eq("claim_id", claimId)
+    .order("step");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as QsClaimApproval[];
+}
+
+export async function submitClaimApprovalDecision(
+  claimId: string,
+  step: number,
+  decision: "approved" | "rejected",
+  comments?: string,
+): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const steps = getClaimApprovalSteps();
+  const stepDef = steps.find((s) => s.step === step);
+  const now = new Date().toISOString();
+
+  // Delete existing row for this step (if re-deciding), then insert fresh —
+  // same pattern as submitVoApprovalDecision.
+  await supabase.from("qs_claim_approvals").delete().eq("claim_id", claimId).eq("step", step);
+  const { error } = await supabase.from("qs_claim_approvals").insert({
+    claim_id: claimId,
+    step,
+    approver_role: stepDef?.role ?? "QS",
+    user_id: user?.id ?? null,
+    decision,
+    comments: comments ?? null,
+    decided_at: now,
+  });
+  if (error) throw new Error(error.message);
+
+  if (decision === "rejected") {
+    await updateClaimStatus(claimId, "rejected", { rejection_reason: comments });
+    return;
+  }
+
+  // Check if all required steps are now approved
+  const { data: approvals } = await supabase
+    .from("qs_claim_approvals")
+    .select("step, decision")
+    .eq("claim_id", claimId);
+  const approvedSteps = new Set((approvals ?? []).filter((a) => a.decision === "approved").map((a) => a.step));
+  if (steps.every((s) => approvedSteps.has(s.step))) {
+    await updateClaimStatus(claimId, "pm_endorsed");
+  }
+}
+
+/**
+ * Clears stale qs_claim_approvals rows on reset. (VO's "Reset to Draft" does
+ * NOT do this — a resubmitted VO inherits a stale rejected row at whatever
+ * step, and currentPendingStep() then returns null forever, a dead end with
+ * no approve/reject buttons ever rendering again. Fixed here deliberately,
+ * not reproduced.)
+ */
+export async function resetClaimToDraft(claimId: string): Promise<void> {
+  const supabase = createClient();
+  await supabase.from("qs_claim_approvals").delete().eq("claim_id", claimId);
+  await updateClaimStatus(claimId, "draft");
 }
 
 // ── Phase 2: Retention Ledger ─────────────────────────────────────────────────
@@ -1251,6 +1633,84 @@ export async function getRetentionBalance(
     .filter((e) => e.transaction_type === "release" && (e.approval_status ?? "approved") === "approved")
     .reduce((s, e) => s + Number(e.amount), 0);
   return { deducted, released, balance: deducted - released };
+}
+
+// ── Advance Recovery ────────────────────────────────────────────────────────────
+
+/**
+ * given = head contract's contract_value (falling back to the most recent
+ * claim's original_contract_sum if the project has no head_contract row yet)
+ * × projects.advance_payment (a percentage, per the project setup wizard).
+ * recovered = sum of qs_advance_recovery_ledger entries (auto-posted on
+ * certification — see updateClaimStatus). There is no "release" concept for
+ * advance recovery, unlike retention — it only ever counts down to zero.
+ */
+export async function getAdvanceRecoveryBalance(
+  projectId: string,
+): Promise<{ given: number; recovered: number; balance: number }> {
+  const supabase = createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("advance_payment")
+    .eq("id", projectId)
+    .single();
+  const advancePct = Number(project?.advance_payment ?? 0);
+
+  let contractBase = 0;
+  const { data: headContract } = await supabase
+    .from("contract_register")
+    .select("contract_value")
+    .eq("project_id", projectId)
+    .eq("contract_type", "head_contract")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (headContract) {
+    contractBase = Number(headContract.contract_value ?? 0);
+  } else {
+    const { data: latestClaim } = await supabase
+      .from("qs_progress_claims")
+      .select("original_contract_sum")
+      .eq("project_id", projectId)
+      .order("claim_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    contractBase = Number(latestClaim?.original_contract_sum ?? 0);
+  }
+
+  const given = Math.round(contractBase * advancePct) / 100;
+
+  const { data: ledger, error } = await supabase
+    .from("qs_advance_recovery_ledger")
+    .select("amount")
+    .eq("project_id", projectId);
+  if (error) throw new Error(error.message);
+  const recovered = (ledger ?? []).reduce((s, e) => s + Number(e.amount), 0);
+
+  return { given, recovered, balance: given - recovered };
+}
+
+export async function getAdvanceRecoveryLedger(projectId: string): Promise<Array<{
+  id: string; amount: number; notes: string | null; created_at: string;
+  claim_number: number | null;
+}>> {
+  const { data, error } = await createClient()
+    .from("qs_advance_recovery_ledger")
+    .select("id, amount, notes, created_at, qs_progress_claims(claim_number)")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const claim = Array.isArray(row.qs_progress_claims) ? row.qs_progress_claims[0] : row.qs_progress_claims;
+    return {
+      id: row.id as string,
+      amount: Number(row.amount),
+      notes: row.notes as string | null,
+      created_at: row.created_at as string,
+      claim_number: (claim as { claim_number: number } | null)?.claim_number ?? null,
+    };
+  });
 }
 
 export async function createRetentionRelease(payload: {

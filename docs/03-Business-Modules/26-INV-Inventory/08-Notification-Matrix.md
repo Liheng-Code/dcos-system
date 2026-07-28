@@ -1,6 +1,28 @@
 # Inventory / Stock Module — Notification Matrix
-**Document Code:** DCOS-NTF-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-NTF-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Adds a CWIMS Doc 22 event-type cross-reference (Section below) and new events for Tool custody and formalised Return posting. Each event now records against `inv_notifications.event_type` (see `04-Database-Schema.md`). Author: Solution Architect. Status: Draft.
+
+---
+
+## CWIMS Event Type Cross-Reference
+
+CWIMS Doc 22 names 11 event types by `event_type` code (as persisted on `inv_notifications`). Most already exist below under a DCOS-numbered event (N#); the table maps each CWIMS `event_type` to its DCOS event number, adding new event numbers only where no equivalent existed.
+
+| CWIMS `event_type` | Maps to | Notes |
+|---|---|---|
+| `low_stock` | N12 | Reorder point reached |
+| `out_of_stock` | N13 | Zero stock |
+| `approval_required` | N6 (MR), N19 (Adjustment), N14 (Transfer) — generic tag also applies to N31 (restricted tool) | Generic "approval needed" tag across workflows |
+| `grn_posted` | N2 | GRN confirmed |
+| `mr_approved` | N7 | MR approved |
+| `transfer_dispatched` | N16 | Transfer dispatched |
+| `transfer_overdue` | N17 | Transfer not received within SLA |
+| `return_posted` | N29 (new) | Material Return posted to store (distinct from N26, which is return-to-**supplier** approval) |
+| `adjustment_posted` | N20 | Adjustment approved/posted |
+| `count_variance` | N32 (new) | Per-line count variance outside tolerance, flagged during counting (distinct from N24/N25, which cover the stock take session as a whole) |
+| `overdue_tool_return` | N28 (new) | Tool not returned by due date |
 
 ---
 
@@ -35,6 +57,11 @@
 | N25 | Stock take not completed within 24h | Store Supervisor, PM | High | In-app + Email | 24h after initiation | "Stock Take {stocktake_number} has been locked for over 24 hours. Complete or cancel to restore store operations." |
 | N26 | Return-to-supplier approved | Storekeeper, Procurement Officer | Medium | In-app | Immediate | "Return-to-Supplier {rts_number} approved. Please coordinate physical return with {supplier_name}." |
 | N27 | Items in quarantine > 48h (no inspection decision) | QAQC Engineer, Store Supervisor | High | In-app + Email | 48h after quarantine | "QUARANTINE OVERDUE: {item_name} on GRN {grn_number} has been under inspection for 48 hours. Please complete inspection." |
+| N28 | Tool overdue (not returned by due date) | Custodian, Supervisor | High | In-app + Telegram | Daily until returned | "OVERDUE TOOL: {tool_code} {tool_name} issued to {custodian_name} on {issue_date}, due {due_date}, overdue {overdue_days} day(s). Please return or extend with supervisor approval." |
+| N29 | Material Return posted (Reusable) | Requester (returner), QS | Normal | In-app | Immediate | "Return {return_number} posted. {quantity} {uom} of {item_name} re-credited to {store_name}. Cost reversal posted to {wbs_code}." |
+| N30 | Tool issued to custodian | Custodian | Low | In-app | Immediate | "Tool {tool_code} {tool_name} issued to you, due {due_date}. Please return on time." |
+| N31 | Restricted tool issue requires Supervisor approval | Supervisor | High | In-app + Email | Immediate; reminder 24h | "Restricted tool {tool_code} {tool_name} requested by {requester_name} requires your approval before release." |
+| N32 | Count variance outside tolerance (per line, during counting) | Store Supervisor, Finance | High | In-app + Email | Immediate | "COUNT VARIANCE: {item_name} in {store_name} — system {system_qty}, counted {counted_qty}, variance {variance_qty} ({variance_value}). Explanation required." |
 
 ---
 
@@ -59,6 +86,8 @@
 | Inspection not completed within 48h | QAQC Manager + Store Supervisor | 48h |
 | Stock take not completed within 48h | Project Manager | 48h |
 | Adjustment pending approval > 24h | Project Manager | 24h |
+| Restricted tool issue request pending > 24h | Store Supervisor | 24h |
+| Tool overdue > 7 days | Store Supervisor, Project Manager | 7 days |
 
 ### Channel Selection Logic
 
@@ -80,3 +109,4 @@ The following notifications are bundled into a daily digest (08:00 project time)
 - All MRs pending approval: daily summary to Supervisors
 - All overdue transfers: daily summary to Store Supervisors + PM
 - All pending adjustments: daily summary to Store Supervisor
+- All overdue tools: daily summary to Store Supervisor (individual overdue reminders to the custodian remain immediate, per N28)

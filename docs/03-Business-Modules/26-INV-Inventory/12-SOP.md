@@ -1,5 +1,5 @@
 # Inventory / Stock Module — Standard Operating Procedure
-**Document Code:** DCOS-SOP-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-SOP-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
 
 ---
@@ -38,6 +38,7 @@ Excludes:
 | Procurement Officer | Coordinate deliveries against POs; notify Storekeeper of expected deliveries 24h in advance |
 | Quantity Surveyor | Monitor material consumption vs budget; review cost posting reports weekly |
 | Project Manager | Review stock status dashboard weekly; approve high-value adjustments and inter-project transfers |
+| Any Site Staff (Tool Requester) | Request tools through DCOS; return tools on time and report damage/loss immediately |
 
 ---
 
@@ -136,22 +137,28 @@ Excludes:
 
 1. **Site Engineer identifies excess materials:**
    - Confirm materials are safe to return (not contaminated, not damaged)
-   - Raise Material Return in DCOS referencing the original MR
+   - Raise Material Return in DCOS referencing the original MR (Status: Draft)
    - Specify quantities and reason for return
+   - Attach photo evidence if the material is expected to be Damaged or Waste
+   - Submit for inspection (Status: Submitted)
 
 2. **Physical return:**
    - Transport materials to store
    - Storekeeper receives and inspects each item:
-     - Reusable: in good condition, can be reissued
-     - Damaged: damaged but not waste — record damage details
-     - Waste: unusable — initiate write-off procedure (SOP 4.6)
+     - Reusable (Good): in good condition, can be reissued
+     - Damaged: damaged but not waste — record damage details; item held in Damaged location pending a Damage Report decision (repair, supplier claim, or dispose)
+     - Waste (Scrap): unusable — initiate the Disposal procedure, then the write-off procedure (SOP 4.6)
 
-3. **Storekeeper confirms return in DCOS:**
-   - Record condition per item
-   - Click "Confirm Return"
-   - DCOS adds reusable stock back to Available balance and posts reversal cost transaction
+3. **Return window check:**
+   - If the return is submitted more than 30 days after the original issue date (configurable), DCOS flags it as outside the return window
+   - The Store Supervisor must approve the return before it can be posted; it is valued at current stock cost instead of original issue cost, with the variance posted to project cost
 
-**SLA:** Return must be processed in DCOS on the same day as physical return.
+4. **Storekeeper records inspection and posts the return in DCOS:**
+   - Record condition per item (Status: Inspected)
+   - Click "Post Return"
+   - DCOS adds reusable stock back to Available balance and posts a reversal cost transaction (Status: Posted); damaged/waste lines raise a write-off adjustment per SOP 4.6
+
+**SLA:** Return must be inspected and posted in DCOS on the same day as physical return.
 
 ---
 
@@ -284,6 +291,53 @@ Excludes:
 
 ---
 
+### 4.8 Tool Issue / Return Procedure
+
+**When:** A site staff member needs a hand tool from the store.
+
+**Steps:**
+
+1. **Requester requests a tool:**
+   - Open DCOS → Inventory → Tools → Issue Tool (or ask the Storekeeper to raise it on their behalf)
+   - Select the tool (search or scan its QR code), set the due date, and confirm
+
+2. **Restricted tools:**
+   - If the tool is flagged restricted, the request routes to the Supervisor for approval before release
+   - Supervisor should approve or reject within 24 hours
+
+3. **Storekeeper issues the tool:**
+   - Verify the requester's identity
+   - Record condition-out notes and a photo
+   - Hand over the tool — DCOS records the custodian and due date (Status: Issued)
+
+4. **While the tool is in use:**
+   - Custodian is responsible for the tool until it is returned
+   - DCOS sends a daily reminder to the custodian and Supervisor if the tool is not returned by the due date (Status: Overdue)
+
+5. **Return:**
+   - Custodian returns the tool to the Storekeeper
+   - Storekeeper scans/selects the tool, records condition-in: Good / Damaged / Lost
+   - Good: tool returns to Available. Damaged: a Damage Report is raised. Lost: a loss-charge adjustment is raised against the custodian per company policy
+
+**SLA:** Restricted tool approval within 24 hours of request. Returns processed in DCOS the same day the tool is physically returned.
+
+---
+
+### 4.9 Barcode Label Printing Procedure
+
+**When:** A new item, location, or tool needs a scannable label, or an existing label is lost/damaged.
+
+**Steps:**
+
+1. Open DCOS → Inventory → Labels (or the Generate Barcode action on the Item/Location/Tool detail screen)
+2. Select the record(s) — a barcode/QR value is auto-assigned if one does not already exist
+3. Click "Generate & Print" and affix the printed label to the item, bin, or tool
+4. Reprints are permitted (lost/damaged labels) but are logged automatically — no separate approval needed
+
+**SLA:** Labels for newly received materials are printed at receiving, without exception (per GRN procedure, SOP 4.1).
+
+---
+
 ## 5. Exception Handling
 
 | Exception | Action |
@@ -295,6 +349,10 @@ Excludes:
 | Store locked for > 24h during stock take | PM to decide: cancel stock take and unlock, or authorise emergency extension. |
 | Suspected theft or fraud | Stop all processes. Notify PM, HR, and Security. Preserve evidence. Do not adjust stock until authorised. |
 | System outage during delivery | Record on paper count sheet. Enter into DCOS within 4 hours of system restoration. |
+| Return submitted after the 30-day return window | Route to Store Supervisor for approval; valued at current stock cost, variance posted to project cost. |
+| Restricted tool needed urgently and Supervisor unavailable | Escalate to Project Manager for approval. Do not release without an authorised approval on record. |
+| Tool custodian leaves the company with tools outstanding | Block HR offboarding clearance until the tool is returned or a loss charge is processed. Notify Store Supervisor immediately. |
+| Barcode/QR label lost or damaged | Reprint via Labels screen — no approval needed, reprint is automatically logged. |
 
 ---
 
@@ -311,6 +369,7 @@ Excludes:
 | Delivery Return Note Template | DCOS-TMPL-INV-004 |
 | Inventory Module — Functional Specification | DCOS-FS-26-001 |
 | Inventory Module — Permission Matrix | DCOS-PM-26-001 |
+| CWIMS Reference Package (source) | `docs/03-Business-Modules/31-cwims/README.md` |
 
 ---
 
@@ -319,3 +378,4 @@ Excludes:
 | Version | Date | Change | Author |
 |---|---|---|---|
 | R0 | June 2026 | Initial draft | DCOS System Architect |
+| R1 | 2026-07-27 | Extended for CWIMS Stage 1+2 gap items (returns, tools, locations, barcode, notifications, audit severity) — enhanced Material Return procedure (4.3), added Tool Issue/Return (4.8) and Barcode Label Printing (4.9) procedures | Solution Architect |

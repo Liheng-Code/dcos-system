@@ -23,7 +23,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { GrnRow, GrnLineRow } from "./inv-types"
 
-interface GrnDetail extends GrnRow {
+interface GrnDetail extends Omit<GrnRow, "inv_grn_lines"> {
   supplier_delivery_note: string | null
   vehicle_plate: string | null
   driver_name: string | null

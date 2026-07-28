@@ -38,7 +38,7 @@ interface AuditEntry {
   profiles?: { full_name: string | null; email: string } | null
 }
 
-interface MrDetailData extends MrRow {
+interface MrDetailData extends Omit<MrRow, "inv_mr_lines"> {
   mr_number: string
   store_id: string
   wbs_node_id: string

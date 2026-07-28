@@ -27,7 +27,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { TransferRow, TransferLineRow } from "./inv-types"
 
-interface TransferDetailData extends TransferRow {
+interface TransferDetailData extends Omit<TransferRow, "inv_transfer_lines"> {
   transfer_number: string
   transfer_type: "intra_project" | "inter_project"
   source_project_id: string

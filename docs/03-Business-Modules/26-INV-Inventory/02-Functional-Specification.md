@@ -1,7 +1,9 @@
 # Inventory / Stock Module — Functional Specification
-**Document Code:** DCOS-FS-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-FS-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
 **Status:** Draft — Pending Human Approval
+
+**Revision Note (R1):** Extended for CWIMS Appendix A.3 Stage 1+2 gap items — see F5 (Material Return, enhanced), F11 (Tool Issue & Return, new), F12 (Barcode/QR, new), F13 (Location/Bin Hierarchy, new), and F10 (Reorder alert, enhanced). Deferred items (Equipment Assignment, DG compliance, full physical inventory, batch/FEFO valuation close) are called out in Section 5. Author: Solution Architect. Status: Draft — Pending Human Approval.
 
 ---
 
@@ -62,15 +64,17 @@
 ---
 
 ### F5: Material Return to Store
-**Description:** Unused materials returned from site back to the store.
+**Description:** Unused materials returned from site back to the store. Formalised as its own header/lines record (`inv_returns` / `inv_return_lines` — see `04-Database-Schema.md`) so that condition, evidence photos, and inspection are tracked against a dedicated return document rather than only as movement/adjustment records, per CWIMS UC-03 / Doc 07 §7.2.
 
 **Business Rules:**
 - BR-F5-01: Material return must reference the original Material Requisition (MR).
 - BR-F5-02: Return quantity cannot exceed the original issued quantity from that MR.
 - BR-F5-03: Returned materials are inspected by the Storekeeper: condition is recorded (Reusable / Damaged / Waste).
 - BR-F5-04: Reusable materials are added back to available stock and a reversal cost transaction is posted.
-- BR-F5-05: Damaged or waste materials are written off — a write-off record is created (requires Store Supervisor approval).
+- BR-F5-05: Damaged or waste materials are written off — a write-off record is created (requires Store Supervisor approval). Damaged materials must be moved to a Damaged location/status pending the write-off decision; waste/scrap materials follow the site Disposal procedure (see `12-SOP.md`). **Not yet enforced this phase** — see `01-Business-Requirement.md` §6 Deferred; current behavior excludes damaged/waste lines from stock and logs a `high`-severity audit entry, but creates no write-off record and gates on nothing.
 - BR-F5-06: Only materials from the same project can be returned to the project store.
+- BR-F5-07: Returns must be raised within 30 days (configurable per tenant) of the original issue date and are valued at the original issue cost. Returns raised after the return window has passed require Store Supervisor approval and are valued at current stock cost, with the valuation variance posted to project cost. **Not yet enforced this phase** — see `01-Business-Requirement.md` §6 Deferred.
+- BR-F5-08: At least one photo/evidence attachment is required when the recorded condition is Damaged or Waste. **Not yet enforced this phase** — `evidence_doc_ids` exists on `inv_return_lines` but is not yet exposed in the create/inspect UI or validated server-side. See `01-Business-Requirement.md` §6 Deferred.
 
 ---
 
@@ -131,6 +135,51 @@
 - BR-F10-02: The alert links to the item's last purchase history to help with reorder quantity estimation.
 - BR-F10-03: If configured, the system can auto-generate a draft Purchase Requisition (PR) for the reorder quantity (requires Procurement module integration). The auto-generated PR is a draft — it does not submit automatically.
 - BR-F10-04: Alerts are dismissed automatically when stock is replenished above the reorder point.
+- BR-F10-05: The Low Stock Alert and its digest to Procurement carry a suggested reorder quantity (from `reorder_quantity`, falling back to a calculation from recent consumption if not set) so the Procurement Officer can raise a PR without leaving the alert (CWIMS FR-017 / US-PR-01 — reorder-alert bridge to Procurement).
+
+---
+
+### F11: Tool Issue & Return (Custody Tracking)
+**Description:** Tracks hand tools and other serialised, returnable equipment issued to site staff, from issue through to return — one custodian per tool at any time. Corresponds to CWIMS UC-07 / FR-012. Distinct from plant/equipment assignment (Module 30, EQP), which is out of scope for this phase.
+
+**Business Rules:**
+- BR-F11-01: A tool must exist in the Tool Master (`inv_tools`) with a unique tool code and, where applicable, a unique serial number before it can be issued.
+- BR-F11-02: A tool can have at most one open (unreturned) issue record at a time — it cannot be issued to a second custodian while already issued.
+- BR-F11-03: Issuing a tool records the custodian, project, WBS node (optional), due date, and condition-out notes/photo.
+- BR-F11-04: Tools flagged as restricted (`is_restricted = true`) require Supervisor approval before the Storekeeper may release the tool to the custodian.
+- BR-F11-05: On return, the Storekeeper scans/selects the tool and records condition-in: Good, Damaged, or Lost.
+  - Good: tool status returns to Available.
+  - Damaged: a Damage Report is raised and the tool is held pending repair or disposal decision.
+  - Lost: a loss-charge adjustment is raised against the custodian per company policy.
+- BR-F11-06: Tools not returned by their due date are flagged Overdue and trigger a daily reminder to the custodian and their Supervisor until returned.
+- BR-F11-07: A tool cannot be permanently deactivated/disposed while it has an open (unreturned) issue.
+
+---
+
+### F12: Barcode / QR Generation & Scanning
+**Description:** Target design for generating and printing barcode/QR labels for items, locations (bins), and tools, and resolving scanned codes back to the correct tenant record to drive faster, lower-error store transactions. Corresponds to CWIMS FR-014 / Business Rules Catalogue §23.2 (Barcode Rules, QR Rules).
+
+**Implementation status — placeholder only, not yet delivered:** `GET /api/inv/labels/:type/:id` and `label-print-button.tsx` exist and supply/render a `{code, description, uom}` payload as a printable text label, but there is no barcode/QR image library installed, no signed tenant-checksum deep link, no scan-input UI anywhere in GRN/MR/tool screens, and label reprints are not audit-logged. See `01-Business-Requirement.md` §6 Deferred. BR-F12-01 through BR-F12-05 below describe the target design this phase's placeholder is meant to be swapped into, not current behavior.
+
+**Business Rules (target design):**
+- BR-F12-01: Item, location, and tool master records may each carry a system-assigned barcode/QR value. Barcode is Code-128 format for printed labels (code + description + UoM); QR encodes a signed deep-link containing entity type, entity id, and tenant checksum.
+- BR-F12-02: Labels are printable individually or in batch from the Item Master, Location Master, and Tool Master screens.
+- BR-F12-03: A scan (or manual code entry) resolves to exactly one record. A scan whose tenant checksum does not match the scanning user's tenant is rejected with a tenant-scope violation error and is never resolved to another tenant's record.
+- BR-F12-04: Barcode/QR scanning is an input method for existing transactions (GRN line entry, MR issue picking, tool issue/return, location assignment) — it does not introduce a separate transaction type. Manual entry remains available as a fallback.
+- BR-F12-05: Every label reprint is logged (who, when, which record) per audit requirements (see `09-Audit-Requirements.md`).
+
+---
+
+### F13: Store Location / Bin Hierarchy
+**Description:** Organises each store into a location hierarchy (Zone → Aisle → Rack → Bin) so stock can be assigned a put-away location, located quickly, and constrained by capacity. Extends F2 (Store Master). Corresponds to CWIMS Doc 11 §11.1 (`locations` master table) and Doc 15 §15 (Master Data Spec — Location Master).
+
+**Business Rules:**
+- BR-F13-01: A location belongs to exactly one store and, except for top-level Zones, has exactly one parent location, forming a Zone → Aisle → Rack → Bin hierarchy.
+- BR-F13-02: Location code is unique within its store (e.g. `Z01-A03-R02-B15`).
+- BR-F13-03: A location may be flagged `is_dg_allowed` to indicate it may hold dangerous-goods items. Enforcement of DG-only put-away is part of the deferred DG compliance workflow (Section 5) — the flag is captured now for readiness.
+- BR-F13-04: A location may declare a capacity (quantity + UoM). The system warns when a put-away would exceed declared capacity; hard blocking is a later-phase enhancement alongside full DG/physical-inventory controls.
+- BR-F13-05: Assigning a bin location to a GRN or transfer receipt line is optional in this phase — stock balances remain tracked at store level (`inv_stock`); bin-level balance tracking is a later-phase enhancement. The location field on movement/GRN lines is informational (put-away record) in this phase.
+- BR-F13-06: A location with stock recorded against it, or with an open GRN/transfer/tool issue referencing it, cannot be deactivated.
 
 ---
 
@@ -177,6 +226,28 @@
 | Discrepancy | Destination received different quantity | Resolved |
 | Rejected | Transfer rejected | (terminal) |
 
+### Material Return Status
+
+| Status | Description | Allowed transitions to |
+|---|---|---|
+| Draft | Return being prepared by Site Engineer/Supervisor | Submitted, Cancelled |
+| Submitted | Awaiting Storekeeper inspection | Inspected, Cancelled |
+| Inspected | Condition recorded per line by Storekeeper | Posted |
+| Posted | Stock/cost updated (re-credit and/or write-off adjustment raised) | (terminal) |
+| Cancelled | Cancelled before inspection | (terminal) |
+
+### Tool Issue Status
+
+| Status | Description | Allowed transitions to |
+|---|---|---|
+| Pending Approval | Restricted tool requested, awaiting Supervisor approval | Issued, Rejected |
+| Issued | Tool with custodian, before due date | Returned, Overdue, Lost |
+| Overdue | Past due date, not yet returned | Returned, Lost |
+| Returned | Returned in good condition | (terminal) |
+| Damaged | Returned damaged — Damage Report raised | (terminal) |
+| Lost | Not returned — loss charge raised | (terminal) |
+| Rejected | Restricted tool request rejected | (terminal) |
+
 ---
 
 ## 3. Workflow Summary
@@ -200,6 +271,14 @@ Material Return Workflow:
   → Storekeeper inspects condition
   → Reusable: stock added back + reversal cost
   → Damaged/Waste: write-off raised (requires Store Supervisor approval)
+
+Tool Issue / Return Workflow:
+  Requester (or Storekeeper on their behalf) requests a tool
+  → [If tool is restricted] Supervisor approves
+  → Storekeeper issues tool to custodian (condition-out recorded)
+  → Tool in use (overdue reminders after due date, until returned)
+  → Custodian returns tool → Storekeeper records condition-in
+  → Good: tool back to Available / Damaged: Damage Report raised / Lost: loss charge raised
 
 Inter-Project Transfer:
   Store Supervisor A requests transfer
@@ -229,9 +308,11 @@ Physical Stock Take:
 | Cost Control (COST) | INV → COST | Every movement posts cost transaction (debit/credit by cost code) |
 | BOQ (BOQ) | BOQ → INV | Material budget codes and unit rates populate item master defaults |
 | QAQC (QAQC) | INV → QAQC | Incoming inspection request raised when GRN has inspection flag |
-| Notification (NTF) | INV → NTF | Low-stock alerts, pending approvals, overdue transfers |
+| Notification (NTF) | INV → NTF | Low-stock alerts, pending approvals, overdue transfers, overdue tools |
 | Audit Log (AUD) | INV → AUD | All movements and approvals logged |
-| Reporting (RPT) | INV → RPT | Stock balances, consumption, aging, cost reports |
+| Reporting (RPT) | INV → RPT | Stock balances, consumption, aging, cost reports, tool utilisation |
+| Procurement (PRC) | INV → PRC | Reorder-alert bridge: low-stock alert surfaces suggested reorder quantity for a draft PR (F10) |
+| HR / User Management (USR) | INV uses USR | Tool custodian is a DCOS user/employee; HR offboarding checklist should confirm no open tool issues before clearance [TBD — human to confirm offboarding integration timing] |
 
 ---
 
@@ -239,6 +320,11 @@ Physical Stock Take:
 
 - **Single currency per project:** Multi-currency support is Phase 4 (FX module). For Phase 3, all inventory costs are in project's base currency.
 - **FIFO costing:** Stock is valued using FIFO (First In, First Out) by default. Weighted Average Cost is a Phase 4 option. [TBD — human to confirm preferred costing method per client type]
-- **No barcode scanning:** Phase 3 uses manual entry. Barcode/RFID integration is Phase 4.
+- **Barcode/QR scanning is target design for CWIMS Stage 2, not yet delivered:** F12 describes the intended generation/printing/scan-driven data entry; this phase ships only a placeholder text-label renderer (see F12 Implementation Status). Manual entry is the only working input method today. RFID integration remains a later-phase enhancement.
 - **Material test certificates:** Stored as file attachments on GRN; QAQC module manages the test record itself.
 - **Negative stock:** System blocks negative stock. Backdated entries that would create negative stock are rejected.
+- **Deferred to a later phase (CWIMS Stage 3/4 — explicitly out of scope this phase):**
+  - Equipment Assignment / plant custody integration (CWIMS UC-08) — remains entirely in the Equipment module (Module 30).
+  - Dangerous Goods (DG) compliance workflow — DG store type and DG item/location flags are captured this phase; the DG safety checklist workflow is not built.
+  - Full wall-to-wall physical inventory (freeze, dual-count, recount) — this phase covers cycle counting (Stock Take, F9) only.
+  - Batch/FEFO valuation and month-end period-close — `is_batch_managed` and `shelf_life_days` are captured on the item master this phase for readiness only; batch-level FIFO/FEFO picking, expiry enforcement, and valuation period-lock are not built this phase.

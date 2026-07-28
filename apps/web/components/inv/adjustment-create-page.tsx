@@ -53,7 +53,7 @@ export function AdjustmentCreatePage() {
     const supabase = createClient()
     Promise.all([
       supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("*").eq("is_active", true).order("name"),
+      supabase.from("inv_stores").select("*").eq("status", "active").order("name"),
       supabase.from("inv_items").select("*").eq("is_active", true).order("name"),
     ]).then(([pRes, sRes, iRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])

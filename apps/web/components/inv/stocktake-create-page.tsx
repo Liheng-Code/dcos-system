@@ -32,7 +32,7 @@ export function StocktakeCreatePage() {
     const supabase = createClient()
     Promise.all([
       supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("*").eq("is_active", true).order("name"),
+      supabase.from("inv_stores").select("*").eq("status", "active").order("name"),
     ]).then(([pRes, sRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])
       if (sRes.data) setStores(sRes.data as InvStore[])

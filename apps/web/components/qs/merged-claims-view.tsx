@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { AlertTriangle, CreditCard, DollarSign, FileText, Loader2, Shield } from "lucide-react";
+import { AlertTriangle, CreditCard, DollarSign, FileText, Loader2, Shield, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ProgressClaimList } from "@/components/qs/progress-claim-list";
 import { RetentionRegister } from "@/components/qs/retention-register";
+import { AdvanceRecoveryRegister } from "@/components/qs/advance-recovery-register";
 import { getQsPaymentVouchers, type QsPaymentVoucher } from "@/lib/qs-service";
 
 const SUB_TABS = [
   { id: "claims",   label: "Progress Claims", icon: FileText },
   { id: "subipcs",  label: "Sub-IPCs",         icon: DollarSign },
   { id: "retention", label: "Retention",        icon: Shield },
+  { id: "advance",  label: "Advance Recovery", icon: Wallet },
   { id: "payments", label: "Payments",          icon: CreditCard },
 ] as const;
 
@@ -220,6 +222,7 @@ export function MergedClaimsView({ projectId, projectName }: Props) {
       {subTab === "claims"    && <ProgressClaimList projectId={projectId} projectName={projectName} />}
       {subTab === "subipcs"   && <SubIpcList projectId={projectId} />}
       {subTab === "retention" && <RetentionRegister projectId={projectId} projectName={projectName} />}
+      {subTab === "advance"   && <AdvanceRecoveryRegister projectId={projectId} projectName={projectName} />}
       {subTab === "payments"  && <PaymentVoucherList projectId={projectId} />}
     </div>
   );

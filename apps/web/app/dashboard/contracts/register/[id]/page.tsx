@@ -37,6 +37,7 @@ export default function ContractDetailPage() {
       status: form.status, start_date: form.start_date || null, end_date: form.end_date || null,
       signed_date: form.signed_date || null, termination_date: form.termination_date || null,
       governing_law: form.governing_law || null, dispute_resolution: form.dispute_resolution || null,
+      payment_terms: form.payment_terms || null,
       notes: form.notes || null, updated_at: new Date().toISOString(),
     }).eq("id", id);
     if (error) { toast.error(error.message); setSaving(false); return; }
@@ -121,6 +122,7 @@ export default function ContractDetailPage() {
               <div className="space-y-1"><label className="text-xs font-medium">Termination Date</label><input type="date" value={form.termination_date} onChange={e => setForm({...form, termination_date: e.target.value})} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
               <div className="col-span-2 space-y-1"><label className="text-xs font-medium">Governing Law</label><input value={form.governing_law} onChange={e => setForm({...form, governing_law: e.target.value})} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
               <div className="col-span-2 space-y-1"><label className="text-xs font-medium">Dispute Resolution</label><input value={form.dispute_resolution} onChange={e => setForm({...form, dispute_resolution: e.target.value})} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
+              <div className="col-span-2 space-y-1"><label className="text-xs font-medium">Payment Terms</label><textarea value={form.payment_terms || ""} onChange={e => setForm({...form, payment_terms: e.target.value})} placeholder="e.g. Net 30 days from certification, retention 5%, advance 10% recovered pro-rata" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
               <div className="col-span-2 space-y-1"><label className="text-xs font-medium">Notes</label><textarea value={form.notes || ""} onChange={e => setForm({...form, notes: e.target.value})} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -145,6 +147,7 @@ export default function ContractDetailPage() {
               {c.termination_date && <div><dt className="text-muted-foreground">Terminated</dt><dd className="font-medium">{c.termination_date}</dd></div>}
               {c.governing_law && <div className="col-span-2"><dt className="text-muted-foreground">Governing Law</dt><dd className="font-medium">{c.governing_law}</dd></div>}
               {c.dispute_resolution && <div className="col-span-2"><dt className="text-muted-foreground">Dispute Resolution</dt><dd className="font-medium">{c.dispute_resolution}</dd></div>}
+              {c.payment_terms && <div className="col-span-2"><dt className="text-muted-foreground">Payment Terms</dt><dd className="font-medium whitespace-pre-wrap">{c.payment_terms}</dd></div>}
               {c.notes && <div className="col-span-2"><dt className="text-muted-foreground">Notes</dt><dd className="font-medium">{c.notes}</dd></div>}
             </dl>
           </CardContent>

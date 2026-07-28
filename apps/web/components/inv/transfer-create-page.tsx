@@ -55,7 +55,7 @@ export function TransferCreatePage() {
   useEffect(() => {
     Promise.all([
       supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("id, store_code, name, project_id, is_active").eq("is_active", true).order("name"),
+      supabase.from("inv_stores").select("id, store_code, name, project_id, status").eq("status", "active").order("name"),
     ]).then(([projRes, storeRes]) => {
       setProjects((projRes.data ?? []) as ProjectOption[])
       setStores((storeRes.data ?? []) as InvStore[])

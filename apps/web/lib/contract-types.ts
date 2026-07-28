@@ -8,6 +8,7 @@ export interface ContractRegister {
   signed_date: string | null; termination_date: string | null;
   governing_law: string | null; dispute_resolution: string | null;
   notes: string | null; attachment_url: string | null;
+  payment_terms: string | null;
   created_by: string | null; created_at: string; updated_at: string;
   projects?: { project_name: string } | null;
 }

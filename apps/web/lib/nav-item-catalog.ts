@@ -11,8 +11,8 @@
 //     to FolderHeader's `navKey` prop
 //
 // Keyed by module_key, matching module_settings.module_key exactly:
-// project, reporting, document_control, planning, design, procurement, qs,
-// construction, hr, account, administration.
+// project, reporting, document_control, planning, design, procurement, inventory,
+// qs, construction, hr, account, administration.
 
 export interface NavCatalogEntry {
   navKey: string;
@@ -89,22 +89,51 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
   ],
 
   procurement: [
-    { navKey: "/dashboard/procurement", label: "Dashboard", nodeType: "item" },
-    { navKey: "/dashboard/procurement/analytics", label: "Analytics", nodeType: "item" },
-    { navKey: "/dashboard/procurement/boq", label: "BOQ", nodeType: "item" },
-    { navKey: "/dashboard/procurement/supplier-portal", label: "Supplier Portal", nodeType: "item" },
-    { navKey: "/dashboard/procurement/suppliers", label: "Suppliers", nodeType: "item" },
-    { navKey: "/dashboard/procurement/prequalification", label: "Supplier PQ", nodeType: "item" },
-    { navKey: "/dashboard/procurement/supplier-performance", label: "Supplier Perf.", nodeType: "item" },
-    { navKey: "/dashboard/procurement/pr", label: "Purchase Requisitions", nodeType: "item" },
-    { navKey: "/dashboard/procurement/rfq", label: "RFQs", nodeType: "item" },
-    { navKey: "/dashboard/procurement/po", label: "Purchase Orders", nodeType: "item" },
-    { navKey: "/dashboard/procurement/inventory", label: "Inventory", nodeType: "item" },
-    { navKey: "/dashboard/procurement/auto-reorder", label: "Auto Reorder", nodeType: "item" },
-    { navKey: "/dashboard/procurement/goods-receipt", label: "Goods Receipt", nodeType: "item" },
-    { navKey: "/dashboard/procurement/invoice-matches", label: "Invoice Matching", nodeType: "item" },
-    { navKey: "/dashboard/procurement/notifications", label: "Notifications", nodeType: "item" },
-    { navKey: "/dashboard/procurement/audit-log", label: "Audit Log", nodeType: "item" },
+    { navKey: "group:procurement:overview", label: "Overview", nodeType: "group" },
+    { navKey: "/dashboard/procurement", label: "Dashboard", nodeType: "item", parentGroupKey: "group:procurement:overview" },
+    { navKey: "/dashboard/procurement/analytics", label: "Analytics", nodeType: "item", parentGroupKey: "group:procurement:overview" },
+    { navKey: "group:procurement:suppliers", label: "Suppliers", nodeType: "group" },
+    { navKey: "/dashboard/procurement/supplier-portal", label: "Supplier Portal", nodeType: "item", parentGroupKey: "group:procurement:suppliers" },
+    { navKey: "/dashboard/procurement/suppliers", label: "Supplier List", nodeType: "item", parentGroupKey: "group:procurement:suppliers" },
+    { navKey: "/dashboard/procurement/prequalification", label: "Pre-Qualification", nodeType: "item", parentGroupKey: "group:procurement:suppliers" },
+    { navKey: "/dashboard/procurement/supplier-performance", label: "Performance", nodeType: "item", parentGroupKey: "group:procurement:suppliers" },
+    { navKey: "group:procurement:cost_management", label: "Cost Management", nodeType: "group" },
+    { navKey: "/dashboard/procurement/boq", label: "BOQ", nodeType: "item", parentGroupKey: "group:procurement:cost_management" },
+    { navKey: "group:procurement:sourcing", label: "Sourcing & Ordering", nodeType: "group" },
+    { navKey: "/dashboard/procurement/pr", label: "Purchase Requisitions", nodeType: "item", parentGroupKey: "group:procurement:sourcing" },
+    { navKey: "/dashboard/procurement/rfq", label: "RFQs", nodeType: "item", parentGroupKey: "group:procurement:sourcing" },
+    { navKey: "/dashboard/procurement/po", label: "Purchase Orders", nodeType: "item", parentGroupKey: "group:procurement:sourcing" },
+    { navKey: "/dashboard/procurement/auto-reorder", label: "Auto Reorder", nodeType: "item", parentGroupKey: "group:procurement:sourcing" },
+    { navKey: "group:procurement:receiving", label: "Receiving & Settlement", nodeType: "group" },
+    { navKey: "/dashboard/procurement/goods-receipt", label: "Goods Receipt", nodeType: "item", parentGroupKey: "group:procurement:receiving" },
+    { navKey: "/dashboard/procurement/invoice-matches", label: "Invoice Matching", nodeType: "item", parentGroupKey: "group:procurement:receiving" },
+    { navKey: "group:procurement:administration", label: "Administration", nodeType: "group" },
+    { navKey: "/dashboard/procurement/notifications", label: "Notifications", nodeType: "item", parentGroupKey: "group:procurement:administration" },
+    { navKey: "/dashboard/procurement/audit-log", label: "Audit Log", nodeType: "item", parentGroupKey: "group:procurement:administration" },
+  ],
+
+  inventory: [
+    { navKey: "group:inventory:overview", label: "Overview", nodeType: "group" },
+    { navKey: "/dashboard/inventory", label: "Dashboard", nodeType: "item", parentGroupKey: "group:inventory:overview" },
+    { navKey: "/dashboard/inventory/stock", label: "Stock", nodeType: "item", parentGroupKey: "group:inventory:overview" },
+
+    { navKey: "group:inventory:master_data", label: "Master Data", nodeType: "group" },
+    { navKey: "/dashboard/inventory/items", label: "Item Master", nodeType: "item", parentGroupKey: "group:inventory:master_data" },
+    { navKey: "/dashboard/inventory/stores", label: "Stores & Locations", nodeType: "item", parentGroupKey: "group:inventory:master_data" },
+
+    { navKey: "group:inventory:receiving", label: "Receiving & Issuing", nodeType: "group" },
+    { navKey: "/dashboard/inventory/grns", label: "GRN", nodeType: "item", parentGroupKey: "group:inventory:receiving" },
+    { navKey: "/dashboard/inventory/mrs", label: "Material Requisitions", nodeType: "item", parentGroupKey: "group:inventory:receiving" },
+    { navKey: "/dashboard/inventory/returns", label: "Returns", nodeType: "item", parentGroupKey: "group:inventory:receiving" },
+    { navKey: "/dashboard/inventory/transfers", label: "Transfers", nodeType: "item", parentGroupKey: "group:inventory:receiving" },
+
+    { navKey: "group:inventory:assets", label: "Tools & Equipment", nodeType: "group" },
+    { navKey: "/dashboard/inventory/tools", label: "Tools", nodeType: "item", parentGroupKey: "group:inventory:assets" },
+
+    { navKey: "group:inventory:stock_control", label: "Stock Control", nodeType: "group" },
+    { navKey: "/dashboard/inventory/adjustments", label: "Adjustments", nodeType: "item", parentGroupKey: "group:inventory:stock_control" },
+    { navKey: "/dashboard/inventory/stocktakes", label: "Stocktakes", nodeType: "item", parentGroupKey: "group:inventory:stock_control" },
+    { navKey: "/dashboard/inventory/movements", label: "Movements", nodeType: "item", parentGroupKey: "group:inventory:stock_control" },
   ],
 
   qs: [

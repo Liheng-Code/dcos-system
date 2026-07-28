@@ -3,7 +3,18 @@ export interface InvStore {
   store_code: string
   name: string
   project_id: string
-  is_active: boolean
+  // inv_stores has no is_active column — active/closed is tracked via `status`.
+  status: "active" | "closed"
+  // Optional — present when fetched via the full store master query
+  // (store-list.tsx / store-detail-page.tsx); omitted from the lighter
+  // selects used by GRN/MR/Adjustment pickers.
+  store_type?: "central" | "site" | "temporary" | "yard" | "dg"
+  location_description?: string | null
+  responsible_user_id?: string | null
+  capacity_qty?: number | null
+  capacity_uom?: string | null
+  tenant_id?: string
+  created_at?: string
 }
 
 export interface InvItem {
@@ -16,6 +27,19 @@ export interface InvItem {
   reorder_quantity: number | null
   is_inspection_required: boolean
   is_active: boolean
+  // Optional — present when fetched via the full item master query
+  // (item-list.tsx / item-form.tsx); omitted from the lighter selects
+  // used elsewhere (GRN/MR/Adjustment item pickers).
+  sub_category?: string | null
+  default_cost_code?: string | null
+  max_stock_level?: number | null
+  lead_time_days?: number | null
+  barcode?: string | null
+  is_dg?: boolean
+  is_batch_managed?: boolean
+  shelf_life_days?: number | null
+  tenant_id?: string
+  created_at?: string
 }
 
 export interface StockRow {
@@ -258,9 +282,19 @@ export const INV_STATUS_LABELS: Record<string, string> = {
   pending_approval: "Pending Approval",
   completed: "Completed",
   pending: "Pending",
-  in_transit: "In Transit",
-  discrepancy: "Discrepancy",
   resolved: "Resolved",
+  // Returns (inv_returns.status)
+  inspected: "Inspected",
+  posted: "Posted",
+  // Tools (inv_tools.status)
+  available: "Available",
+  maintenance: "Maintenance",
+  disposed: "Disposed",
+  // Tool issues (inv_tool_issues.status)
+  overdue: "Overdue",
+  returned: "Returned",
+  damaged: "Damaged",
+  lost: "Lost",
 }
 
 export const CATEGORIES = [
@@ -271,3 +305,106 @@ export const CATEGORIES = [
   { value: "consumables", label: "Consumables" },
   { value: "others", label: "Others" },
 ]
+
+// ── Store / Location ────────────────────────────────────────────────────────
+
+export interface LocationRow {
+  id: string
+  store_id: string
+  parent_id: string | null
+  code: string
+  location_type: "zone" | "aisle" | "rack" | "bin"
+  is_dg_allowed: boolean
+  capacity_qty: number | null
+  status: "active" | "inactive"
+  tenant_id?: string
+  created_at?: string
+}
+
+export const STORE_TYPE_LABELS: Record<string, string> = {
+  central: "Central",
+  site: "Site",
+  temporary: "Temporary",
+  yard: "Yard",
+  dg: "Dangerous Goods (DG)",
+}
+
+export const LOCATION_TYPE_LABELS: Record<string, string> = {
+  zone: "Zone",
+  aisle: "Aisle",
+  rack: "Rack",
+  bin: "Bin",
+}
+
+// ── Returns ──────────────────────────────────────────────────────────────────
+
+export interface ReturnRow {
+  id: string
+  return_number: string
+  project_id: string
+  store_id: string
+  mr_id: string | null
+  return_date: string
+  status: "draft" | "submitted" | "inspected" | "posted" | "cancelled"
+  returned_by: string
+  created_at: string
+  inv_return_lines?: { count: number }[] | ReturnLineRow[]
+  inv_stores?: { name: string; store_code: string } | null
+  profiles?: { full_name: string | null; email: string } | null
+}
+
+export interface ReturnLineRow {
+  id: string
+  return_id: string
+  item_id: string
+  quantity: number
+  condition: "good" | "damaged" | "scrap"
+  unit_cost: number | null
+  remarks: string | null
+  inv_items?: { item_code: string; name: string; unit_of_measure: string }
+}
+
+export const RETURN_CONDITION_LABELS: Record<string, string> = {
+  good: "Good",
+  damaged: "Damaged",
+  scrap: "Scrap",
+}
+
+// ── Tools ────────────────────────────────────────────────────────────────────
+
+export interface ToolRow {
+  id: string
+  tool_code: string
+  name: string
+  serial_no: string | null
+  category: string | null
+  purchase_value: number | null
+  is_restricted: boolean
+  status: "available" | "issued" | "maintenance" | "lost" | "disposed"
+  tenant_id?: string
+  created_at?: string
+}
+
+export interface ToolIssueRow {
+  id: string
+  tool_id: string
+  custodian_id: string
+  project_id: string
+  wbs_node_id: string | null
+  issued_at: string
+  due_date: string
+  condition_out: string | null
+  returned_at: string | null
+  condition_in: "good" | "damaged" | "lost" | null
+  status: "issued" | "overdue" | "returned" | "damaged" | "lost"
+  created_at: string
+  profiles?: { full_name: string | null; email: string } | null
+  projects?: { project_code: string; project_name: string } | null
+  wbs_nodes?: { wbs_code: string; wbs_name: string } | null
+}
+
+export const TOOL_CONDITION_LABELS: Record<string, string> = {
+  good: "Good",
+  damaged: "Damaged",
+  lost: "Lost",
+}

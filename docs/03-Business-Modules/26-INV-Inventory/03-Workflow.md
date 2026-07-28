@@ -1,6 +1,8 @@
 # Inventory / Stock Module — Workflow
-**Document Code:** DCOS-WF-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-WF-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Material Return workflow (Section 3) enhanced with Damage Report / Disposal steps and the return-window rule per CWIMS UC-03 / Doc 07 §7.2. Tool Issue / Return workflow (Section 8) added per CWIMS UC-07 / Doc 07 §7.4. Author: Solution Architect. Status: Draft.
 
 ---
 
@@ -99,37 +101,54 @@ Submits MR for approval
 
 ## 3. Material Return to Store Workflow
 
+Ref: CWIMS UC-03 / Doc 07 §7.2. Recorded as its own return header/lines record (`inv_returns` / `inv_return_lines`) — see `04-Database-Schema.md`.
+
 ```
-Site Engineer / Supervisor identifies unused materials on site
+Site identifies surplus / wrong / damaged material on site
         │
         ▼
-Raises Material Return (references original MR)
-  - Selects items and return quantities
-  - Provides reason for return
+Site Engineer / Supervisor creates Material Return (Draft)
+  - References original MR (and MR line where applicable)
+  - Selects items, return quantities, and reason
+  - Attaches photo evidence (required if condition is expected to be Damaged/Waste)
         │
         ▼
-Storekeeper receives returned materials
-  - Inspects condition
-  - Records condition per item: Reusable / Damaged / Waste
+Submits Return (Status: Submitted)
+  - Notification → Storekeeper
         │
-        ├──[All Reusable]
+        ├──[Within return window: 30 days of issue, configurable]
+        │        Valued at original issue cost
+        │
+        └──[Outside return window]
+                 Requires Store Supervisor approval; valued at current stock
+                 cost, variance posted to project cost
+        │
+        ▼
+Storekeeper inspects (Status: Inspected)
+  - Records condition per item: GOOD (Reusable) / DAMAGED / SCRAP (Waste)
+        │
+        ├──[GOOD]
         │        │
         │        ▼
-        │  Stock added back to Available
-        │  Reversal cost transaction posted to Cost Control
+        │  Stock re-credited to Available at issue value
+        │  Reversal cost transaction posted to Cost Control (reverses WBS cost)
         │
-        ├──[Damaged or Waste portion]
+        ├──[DAMAGED]
         │        │
         │        ▼
-        │  Write-off record created for damaged/waste portion
-        │  Write-off requires Store Supervisor approval
-        │        │
-        │        ├──[Approved]──► Write-off posted, cost written off
-        │        │
-        │        └──[Rejected]──► Reason recorded, Storekeeper to re-inspect
+        │  Item moved to Damaged location/status
+        │  Damage Report raised → repair / supplier claim / dispose decision
+        │  If disposed: write-off adjustment raised (requires Store Supervisor approval)
         │
-        └──[Mixed: Reusable + Damaged]
-                 Both paths followed for respective quantities
+        └──[SCRAP]
+                 │
+                 ▼
+           Disposal workflow (see `12-SOP.md`)
+           Write-off adjustment raised (requires Store Supervisor approval)
+        │
+        ▼
+Return Posted (Status: Posted)
+  Audit + notification to Site Engineer, Store Supervisor, PM, QS
 ```
 
 ---
@@ -252,7 +271,52 @@ GRN marked with partial return notation
 
 ---
 
-## 7. Status Transition Diagrams
+## 7. Tool Issue / Return Workflow
+
+Ref: CWIMS UC-07 / Doc 07 §7.4.
+
+```
+Requester (any site staff) identifies need for a tool
+        │
+        ▼
+Requester (or Storekeeper on their behalf) scans/selects tool in Tool Master
+        │
+        ├──[Tool is restricted]
+        │        │
+        │        ▼
+        │  Supervisor approval required
+        │        │
+        │        ├──[Approved]──────────────────────────────►
+        │        └──[Rejected]──► Requester notified, workflow ends
+        │
+        └──[Tool is not restricted]────────────────────────────►
+                                                                  │
+        ◄─────────────────────────────────────────────────────────┘
+        ▼
+Storekeeper issues tool to custodian
+  - Records custodian, project/WBS, due date, condition-out photo
+  - Status: Issued
+        │
+        ▼
+Tool in use with custodian
+  - Daily overdue check: if due date passed and not returned → Status: Overdue
+  - Overdue alert to custodian + Supervisor, repeats daily until returned
+        │
+        ▼
+Custodian returns tool — Storekeeper scans tool and records condition-in
+        │
+        ├──[Good]──────► Status: Returned. Tool status → Available.
+        │
+        ├──[Damaged]───► Status: Damaged. Damage Report raised;
+        │                tool held pending repair/disposal decision.
+        │
+        └──[Lost]──────► Status: Lost. Loss-charge adjustment raised
+                          against custodian per company policy.
+```
+
+---
+
+## 8. Status Transition Diagrams
 
 ### GRN
 ```
@@ -282,4 +346,19 @@ Pending ──► Approved ──► In Transit ──► Received (terminal)
 ```
 Open ──► Counting ──► Pending Approval ──► Completed (terminal)
                   └───────────────────────► Cancelled (terminal)
+```
+
+### Material Return
+```
+Draft ──► Submitted ──► Inspected ──► Posted (terminal)
+      └──► Cancelled (terminal, from Draft or Submitted)
+```
+
+### Tool Issue
+```
+Pending Approval ──► Issued ──► Returned (terminal)
+        │                  └──► Overdue ──► Returned (terminal)
+        │                              └──► Lost (terminal)
+        │                  └──► Damaged (terminal)
+        └──► Rejected (terminal)
 ```

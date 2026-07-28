@@ -1,6 +1,8 @@
 # Inventory / Stock Module — UAT Test Cases
-**Document Code:** DCOS-UAT-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-UAT-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Adds TC-13 (Tool Issue & Return with restricted-tool approval), TC-14 (Barcode/QR tenant-scope rejection), and TC-15 (Material Return via the formalised lifecycle with return-window rule), per CWIMS Appendix A.3 Stage 1+2. Author: Solution Architect. Status: Draft.
 
 ---
 
@@ -230,6 +232,62 @@
 
 ---
 
+### TC-13: Tool Issue & Return (Restricted Tool)
+
+**BR Reference:** BR-F11-02, BR-F11-04, BR-F11-05, BR-F11-06
+**Actor:** Requester, Site Supervisor, Storekeeper
+**Pre-condition:** Tool "TL-DRL-0107" (Hilti Rotary Hammer Drill) exists, `is_restricted = true`, status = Available
+
+| Step | Action | Expected Result |
+|---|---|---|
+| 1 | Requester requests TL-DRL-0107, due date = 2 days from now | Issue created, status = Pending Approval; Supervisor notified (N31) |
+| 2 | Storekeeper attempts to release the tool before approval | Error: `INV_TOOL_APPROVAL_REQUIRED` |
+| 3 | Site Supervisor approves | Status = Issued; tool status = Issued; custodian notified (N30) |
+| 4 | Attempt to request the same tool for a second custodian | Error: `INV_TOOL_ALREADY_ISSUED` |
+| 5 | Fast-forward past due date without return | Status = Overdue; daily reminder to custodian + Supervisor (N28) |
+| 6 | Storekeeper processes return, condition-in = Good | Status = Returned; tool status = Available |
+
+**Pass Criteria:** Restricted tool cannot bypass approval; one open issue per tool enforced; overdue alerting fires.
+
+---
+
+### TC-14: Barcode / QR Scan — Tenant Isolation
+
+**BR Reference:** BR-F12-03
+**Actor:** Storekeeper
+
+| Step | Action | Expected Result |
+|---|---|---|
+| 1 | Generate a QR code for an item in Tenant A | QR assigned, encodes Tenant A's tenant checksum |
+| 2 | Log in as a Storekeeper in Tenant B | |
+| 3 | Scan (POST `/scan/resolve`) Tenant A's item QR code | `INV_TENANT_SCOPE_VIOLATION` error returned — not resolved to any record |
+| 4 | Verify audit log | `INV.SCAN.TENANT_VIOLATION` entry present, Critical severity |
+| 5 | Scan a valid Tenant B item QR code | Resolves correctly to the Tenant B item |
+
+**Pass Criteria:** Cross-tenant scans are rejected, never silently resolved; violation is a Critical audit event.
+
+---
+
+### TC-15: Material Return — Formalised Lifecycle with Return Window
+
+**BR Reference:** BR-F5-01 to BR-F5-08
+**Actor:** Site Engineer, Storekeeper, Store Supervisor
+**Pre-condition:** MR-001 issued 45 days ago (outside the default 30-day return window); 50 bags Cement issued
+
+| Step | Action | Expected Result |
+|---|---|---|
+| 1 | Site Engineer creates Return referencing MR-001, 10 bags, reason "Excess" | Return created, status = Draft; `is_outside_return_window` = true |
+| 2 | Submit Return | Status = Submitted; Storekeeper notified |
+| 3 | Storekeeper attempts to post before window approval | Error: `INV_RETURN_WINDOW_EXCEEDED` |
+| 4 | Store Supervisor approves the out-of-window return | `window_approved_by`/`window_approved_at` set |
+| 5 | Storekeeper inspects: condition = Reusable | Status = Inspected |
+| 6 | Storekeeper posts return | Status = Posted; stock +10 bags at **current** cost (not original issue cost); reversal cost posted (N29) |
+| 7 | Verify audit log | `INV.RETURN.WINDOW_APPROVE` (High) and `INV.RETURN.POST` (Medium) entries present |
+
+**Pass Criteria:** Return window rule enforced; valuation basis switches to current cost outside the window; full lifecycle (Draft → Submitted → Inspected → Posted) traceable in the audit log.
+
+---
+
 ## UAT Sign-Off Checklist
 
 | Test Case | Pass ✅ / Fail ❌ | Tester | Date |
@@ -246,6 +304,9 @@
 | TC-10: Low Stock Alert | | | |
 | TC-11: Tenant Isolation | | | |
 | TC-12: Consumption Report | | | |
+| TC-13: Tool Issue & Return (Restricted) | | | |
+| TC-14: Barcode/QR Tenant Isolation | | | |
+| TC-15: Material Return — Lifecycle + Return Window | | | |
 
 **UAT Approved By:** ___________________ **Date:** ___________________
 

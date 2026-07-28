@@ -17,15 +17,15 @@ interface Supplier {
 type Tab = "pos" | "rfqs" | "delivery";
 
 const TABS: { key: Tab; label: string; icon: typeof Package }[] = [
-  { key: "pos", label: "Purchase Orders", icon: Package },
   { key: "rfqs", label: "RFQ Responses", icon: FileSearch },
+  { key: "pos", label: "Purchase Orders", icon: Package },
   { key: "delivery", label: "Delivery Notice", icon: Truck },
 ];
 
 export function SupplierPortal() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [tab, setTab] = useState<Tab>("pos");
+  const [tab, setTab] = useState<Tab>("rfqs");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

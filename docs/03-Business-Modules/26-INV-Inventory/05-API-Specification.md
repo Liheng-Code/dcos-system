@@ -1,6 +1,8 @@
 # Inventory / Stock Module — API Specification
-**Document Code:** DCOS-API-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-API-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Adds endpoints for Tools (issue/return), the formalised Returns lifecycle, Locations, and label/barcode generation, per CWIMS Appendix A.3 Stage 1+2. Item Master and Store endpoints (Sections 1–2) gain new fields (barcode, is_dg, is_batch_managed, shelf_life_days, capacity, broadened store_type). Author: Solution Architect. Status: Draft.
 
 All endpoints require a valid Supabase JWT. `tenant_id` is extracted from `auth.jwt() ->> 'tenant_id'` — never from the request body.
 
@@ -29,9 +31,14 @@ Base path: `/api/inv`
   "max_stock_level": 5000,
   "reorder_quantity": 2000,
   "lead_time_days": 7,
-  "is_inspection_required": true
+  "is_inspection_required": true,
+  "is_dg": false,
+  "is_batch_managed": false,
+  "shelf_life_days": null
 }
 ```
+
+`barcode` is not accepted on create — call `POST /items/:id/generate-barcode` (Section 13) to assign one after creation.
 
 ---
 
@@ -44,6 +51,21 @@ Base path: `/api/inv`
 | POST | `/stores` | Create store | Project Manager, Admin |
 | PATCH | `/stores/:id` | Update store | Project Manager, Admin |
 | PATCH | `/stores/:id/close` | Close store | Project Manager, Admin |
+
+**POST /stores body:**
+```json
+{
+  "project_id": "uuid",
+  "store_code": "STR-PRJ01-002",
+  "name": "Yard Store — Laydown Area B",
+  "store_type": "yard",
+  "location_description": "North laydown yard, Gate 2",
+  "responsible_user_id": "uuid",
+  "capacity_qty": 500,
+  "capacity_uom": "m2"
+}
+```
+`store_type` accepts `central`, `site`, `temporary`, `yard`, `dg` (broadened from the original `main`/`sub`/`temporary`).
 
 ---
 
@@ -150,12 +172,19 @@ Base path: `/api/inv`
 
 ## 6. Material Returns to Store
 
+Header/lines persisted in `inv_returns` / `inv_return_lines` (see `04-Database-Schema.md`). Lifecycle: Draft → Submitted → Inspected → Posted (CWIMS UC-03 / Doc 07 §7.8).
+
 | Method | Path | Purpose | Auth Role |
 |---|---|---|---|
-| GET | `/returns?project_id=` | List material returns | All staff |
-| GET | `/returns/:id` | Return detail | All staff |
-| POST | `/returns` | Create return | Site Engineer, Supervisor, Storekeeper |
-| POST | `/returns/:id/confirm` | Storekeeper confirms receipt and condition | Storekeeper |
+| GET | `/returns?project_id=&status=` | List material returns | All staff |
+| GET | `/returns/:id` | Return detail with lines | All staff |
+| POST | `/returns` | Create draft return | Site Engineer, Supervisor, Storekeeper |
+| PATCH | `/returns/:id` | Update draft return | Site Engineer (own), Storekeeper |
+| POST | `/returns/:id/submit` | Submit for inspection | Site Engineer, Supervisor |
+| POST | `/returns/:id/inspect` | Storekeeper records condition per line | Storekeeper |
+| POST | `/returns/:id/approve-window` | Store Supervisor approves an out-of-return-window return | Store Supervisor |
+| POST | `/returns/:id/post` | Post return — re-credits reusable lines, raises write-off adjustment for damaged/waste lines | Storekeeper, Store Supervisor |
+| POST | `/returns/:id/cancel` | Cancel return before inspection | Site Engineer, Supervisor, Storekeeper |
 
 **POST /returns body:**
 ```json
@@ -163,17 +192,35 @@ Base path: `/api/inv`
   "project_id": "uuid",
   "store_id": "uuid",
   "original_mr_id": "uuid",
+  "return_reason": "Excess from task completion",
   "lines": [
     {
       "mr_line_id": "uuid",
       "item_id": "uuid",
-      "quantity_returned": 20,
-      "condition": "reusable",
-      "return_reason": "Excess from task completion"
+      "quantity_returned": 20
     }
   ]
 }
 ```
+
+**POST /returns/:id/inspect body:**
+```json
+{
+  "lines": [
+    {
+      "return_line_id": "uuid",
+      "condition": "reusable",
+      "condition_notes": "Unopened bags, good condition"
+    },
+    {
+      "return_line_id": "uuid",
+      "condition": "damaged",
+      "condition_notes": "Torn bags, wet"
+    }
+  ]
+}
+```
+`evidence_document_ids` on the return header is required before `inspect` can be submitted if any line's condition is `damaged` or `waste`.
 
 ---
 
@@ -250,6 +297,106 @@ Base path: `/api/inv`
 
 ---
 
+## 13. Tools (Custody Tracking)
+
+| Method | Path | Purpose | Auth Role |
+|---|---|---|---|
+| GET | `/tools?status=&project_id=` | List tools | All staff |
+| GET | `/tools/:id` | Tool detail, including current custody if issued | All staff |
+| POST | `/tools` | Create tool | Admin, Store Supervisor |
+| PATCH | `/tools/:id` | Update tool | Admin, Store Supervisor |
+| PATCH | `/tools/:id/deactivate` | Deactivate tool (blocked if an issue is open) | Admin |
+| GET | `/tool-issues?project_id=&status=&custodian_id=` | List tool issue/return records | All staff |
+| GET | `/tool-issues/:id` | Tool issue detail | All staff |
+| POST | `/tool-issues` | Request/issue a tool to a custodian | Storekeeper, Requester |
+| POST | `/tool-issues/:id/approve` | Approve a restricted-tool issue request | Supervisor |
+| POST | `/tool-issues/:id/reject` | Reject a restricted-tool issue request | Supervisor |
+| POST | `/tool-issues/:id/return` | Record return and condition-in | Storekeeper |
+| POST | `/tool-issues/:id/mark-lost` | Mark tool lost, raise loss-charge adjustment | Storekeeper, Store Supervisor |
+
+**POST /tools body:**
+```json
+{
+  "tool_code": "TL-DRL-0107",
+  "name": "Hilti Rotary Hammer Drill",
+  "serial_number": "SN-88213",
+  "category": "power_tool",
+  "purchase_value": 450.00,
+  "is_restricted": false,
+  "home_store_id": "uuid"
+}
+```
+
+**POST /tool-issues body:**
+```json
+{
+  "tool_id": "uuid",
+  "project_id": "uuid",
+  "wbs_node_id": "uuid",
+  "custodian_id": "uuid",
+  "due_date": "2026-08-05",
+  "condition_out_notes": "Good condition, full case, charger included",
+  "condition_out_document_id": "uuid"
+}
+```
+If `inv_tools.is_restricted = true`, status is set to `pending_approval` and the tool is not released to the custodian until `POST /tool-issues/:id/approve` succeeds.
+
+**POST /tool-issues/:id/return body:**
+```json
+{
+  "condition_in": "good",
+  "condition_in_document_id": "uuid",
+  "condition_notes": "Returned in working order"
+}
+```
+
+---
+
+## 14. Locations
+
+| Method | Path | Purpose | Auth Role |
+|---|---|---|---|
+| GET | `/locations?store_id=` | List locations for a store (flat or tree) | All staff |
+| GET | `/locations/:id` | Location detail | All staff |
+| POST | `/locations` | Create location | Admin, Project Manager, Store Supervisor |
+| PATCH | `/locations/:id` | Update location | Admin, Project Manager, Store Supervisor |
+| PATCH | `/locations/:id/deactivate` | Deactivate (blocked if stock or open GRN/transfer/tool issue references it) | Admin, Project Manager |
+
+**POST /locations body:**
+```json
+{
+  "store_id": "uuid",
+  "parent_location_id": "uuid",
+  "location_code": "Z01-A03-R02-B15",
+  "location_type": "bin",
+  "is_dg_allowed": false,
+  "capacity_qty": 200,
+  "capacity_uom": "bags"
+}
+```
+
+---
+
+## 15. Labels / Barcode / QR
+
+| Method | Path | Purpose | Auth Role |
+|---|---|---|---|
+| POST | `/items/:id/generate-barcode` | Generate/assign a barcode/QR value to an item | Procurement Manager, Admin |
+| POST | `/locations/:id/generate-barcode` | Generate/assign a QR value to a location | Admin, Store Supervisor |
+| POST | `/tools/:id/generate-barcode` | Generate/assign a QR value to a tool | Admin, Store Supervisor |
+| GET | `/labels/print?type=item\|location\|tool&ids=` | Generate a printable label batch (Code-128 for items/locations, QR for tools) | Storekeeper, Store Supervisor, Admin |
+| POST | `/scan/resolve` | Resolve a scanned barcode/QR value to its entity — used by scan-driven data entry on GRN, MR issue, tool issue/return | All staff |
+
+**POST /scan/resolve body:**
+```json
+{
+  "code": "signed-qr-payload-or-barcode-value"
+}
+```
+**Response:** entity type, entity id, and display fields, or a `INV_TENANT_SCOPE_VIOLATION` error if the code's tenant checksum does not match the caller's tenant. Every label reprint via `/labels/print` is audit-logged (who, when, which records).
+
+---
+
 ## Error Responses
 
 All endpoints return standard DCOS error envelope:
@@ -279,3 +426,7 @@ All endpoints return standard DCOS error envelope:
 | `INV_QUARANTINE_ISSUE` | Attempted issue from quarantined stock |
 | `INV_INVALID_TRANSITION` | Invalid status transition |
 | `INV_APPROVAL_REQUIRED` | Action requires approval not yet granted |
+| `INV_TENANT_SCOPE_VIOLATION` | Scanned barcode/QR resolves to a record in a different tenant — request rejected, not resolved |
+| `INV_TOOL_ALREADY_ISSUED` | Tool has an open (unreturned) issue and cannot be issued to another custodian |
+| `INV_TOOL_APPROVAL_REQUIRED` | Restricted tool cannot be released until Supervisor approval is granted |
+| `INV_RETURN_WINDOW_EXCEEDED` | Return submitted after the configured return window; requires Store Supervisor approval before posting |

@@ -1,6 +1,8 @@
 # Inventory / Stock Module — Audit Requirements
-**Document Code:** DCOS-AUD-26-001 | **Version:** R0 | **Date:** June 2026
+**Document Code:** DCOS-AUD-26-001 | **Version:** R1 | **Date:** 2026-07-27 (originally June 2026)
 **Module Code:** INV | **Domain:** Supply Chain | **Phase:** 3
+
+**Revision Note (R1):** Adds a `severity` column on `inv_audit_log` and the CWIMS Doc 26 severity mapping, plus audit events for Returns (formalised), Tools, Locations, and barcode label reprints, per CWIMS Appendix A.3 Stage 1+2. Author: Solution Architect. Status: Draft.
 
 ---
 
@@ -18,7 +20,19 @@ The Inventory module manages physical materials that have direct monetary value.
 
 ## 2. Audit Log Events
 
-All events are written to the system-wide `audit_logs` table via the Audit Engine. Format: `module = 'INV'`, `entity_type`, `entity_id`, `action`, `actor_id`, `old_value (JSON)`, `new_value (JSON)`, `ip_address`, `created_at`.
+**Implementation note:** audit events for this module are persisted to the module-local, append-only `inv_audit_log` table (`tenant_id`, `table_name`, `record_id`, `action`, `old_status`, `new_status`, `performed_by`, `details` jsonb, `created_at`, plus the new `severity` column below) rather than directly to a shared `audit_logs` table — this follows the same per-module pattern used by other DCOS modules (HR, Procurement). The `module = 'INV'` / action-code taxonomy documented below is recorded in the `action` column of `inv_audit_log`.
+
+### Severity (new — R1)
+
+`inv_audit_log.severity` is `text`, `NOT NULL`, `CHECK (severity in ('low','medium','high','critical'))`. Mapping per CWIMS Doc 26:
+
+| Severity | Applies to |
+|---|---|
+| Medium | Routine postings — `INV.GRN.CONFIRM`, `INV.MR.ISSUE`, `INV.TRF.DISPATCH`, `INV.TRF.RECEIVE`, `INV.RETURN.POST` (reusable line), `INV.ST.COUNT_SUBMIT` |
+| High | Approvals and adjustments — `INV.MR.APPROVE`/`REJECT`, `INV.ADJ.APPROVE`/`REJECT`, `INV.TRF.APPROVE_SOURCE`/`APPROVE_DEST`, `INV.ST.VAR_APPROVE`, `INV.ST.COMPLETE`, `INV.RETURN.WINDOW_APPROVE`, `INV.TOOL.ISSUE_APPROVE`/`REJECT` |
+| Critical | Negative-stock override, adjustment with `reason_code = 'theft_loss'`, any cross-tenant / `INV_TENANT_SCOPE_VIOLATION` access attempt, period-reopen (Phase 4) |
+
+Format (conceptually, matching the CWIMS-style event/action list below): `module = 'INV'`, `entity_type`, `entity_id`, `action`, `actor_id`, `old_value (JSON)`, `new_value (JSON)`, `severity`, `ip_address`, `created_at`.
 
 ### Item Master
 
@@ -62,12 +76,45 @@ All events are written to the system-wide `audit_logs` table via the Audit Engin
 
 ### Material Return
 
-| Event | Action Code | Captured Data |
-|---|---|---|
-| Return raised | `INV.RETURN.CREATE` | Actor, original MR reference, items, quantities |
-| Return confirmed (Reusable) | `INV.RETURN.CONFIRM_REUSABLE` | Storekeeper, items, quantities added back |
-| Return confirmed (Damaged) | `INV.RETURN.CONFIRM_DAMAGED` | Storekeeper, damage description, write-off triggered |
-| Write-off approved | `INV.RETURN.WRITEOFF_APPROVED` | Approver, items, quantities, cost impact |
+| Event | Action Code | Severity | Captured Data |
+|---|---|---|---|
+| Return created (draft) | `INV.RETURN.CREATE` | Medium | Actor, original MR reference, items, quantities |
+| Return submitted | `INV.RETURN.SUBMIT` | Medium | Actor, timestamp, whether outside return window |
+| Return inspected (condition recorded) | `INV.RETURN.INSPECT` | Medium | Storekeeper, per-line condition (reusable/damaged/waste), notes |
+| Out-of-window return approved | `INV.RETURN.WINDOW_APPROVE` | High | Store Supervisor, valuation basis (current cost vs. issue cost) |
+| Return posted (Reusable lines) | `INV.RETURN.POST` | Medium | Storekeeper, items, quantities added back, reversal cost |
+| Write-off raised (Damaged/Waste lines) | `INV.RETURN.WRITEOFF_RAISED` | High | Items, quantities, linked `inv_adjustments` id |
+| Write-off approved | `INV.RETURN.WRITEOFF_APPROVED` | High | Approver, items, quantities, cost impact |
+
+### Locations
+
+| Event | Action Code | Severity | Captured Data |
+|---|---|---|---|
+| Location created | `INV.LOC.CREATE` | Medium | Full location record, parent location |
+| Location updated | `INV.LOC.UPDATE` | Medium | Changed fields |
+| Location deactivated | `INV.LOC.DEACTIVATE` | Medium | Actor, timestamp |
+
+### Tools (Custody Tracking)
+
+| Event | Action Code | Severity | Captured Data |
+|---|---|---|---|
+| Tool created | `INV.TOOL.CREATE` | Medium | Full tool record |
+| Tool updated | `INV.TOOL.UPDATE` | Medium | Changed fields |
+| Tool issue requested | `INV.TOOL.ISSUE_REQUEST` | Medium | Requester, custodian, tool, due date |
+| Restricted tool issue approved | `INV.TOOL.ISSUE_APPROVE` | High | Approver, timestamp |
+| Restricted tool issue rejected | `INV.TOOL.ISSUE_REJECT` | High | Approver, reason |
+| Tool released to custodian | `INV.TOOL.ISSUE` | Medium | Storekeeper, custodian, condition-out |
+| Tool returned (Good) | `INV.TOOL.RETURN_GOOD` | Medium | Storekeeper, condition-in |
+| Tool returned (Damaged) | `INV.TOOL.RETURN_DAMAGED` | High | Storekeeper, damage description, Damage Report reference |
+| Tool marked lost | `INV.TOOL.LOST` | High | Actor, loss-charge amount, custodian |
+
+### Barcode / QR
+
+| Event | Action Code | Severity | Captured Data |
+|---|---|---|---|
+| Barcode/QR generated | `INV.BARCODE.GENERATE` | Low | Entity type/id, actor |
+| Label printed / reprinted | `INV.LABEL.PRINT` | Low | Entity type/id(s), actor, print batch size |
+| Cross-tenant scan attempt | `INV.SCAN.TENANT_VIOLATION` | Critical | Scanning user, tenant id, scanned code's tenant checksum |
 
 ### Transfers
 
@@ -113,7 +160,9 @@ Every row inserted into `inventory_movements` is itself the audit record. The mo
 | `inventory_movements` | INSERT only. No UPDATE or DELETE permitted. Corrections via offsetting movements only. |
 | `inventory_grns` (confirmed) | No UPDATE after status = Confirmed. Corrections via Credit GRN. |
 | `inventory_stocktakes` (completed) | No UPDATE after status = Completed. |
-| `audit_logs` | INSERT only. No UPDATE or DELETE by any user. |
+| `audit_logs` / `inv_audit_log` | INSERT only. No UPDATE or DELETE by any user. |
+| `inv_returns` (posted) | No UPDATE after status = Posted. Corrections via a new adjustment. |
+| `inv_tool_issues` (returned/lost) | No UPDATE after status = Returned/Damaged/Lost. |
 
 ---
 
@@ -127,7 +176,9 @@ Every row inserted into `inventory_movements` is itself the audit record. The mo
 | Adjustment records | 7 years | |
 | Audit log entries | 7 years | System-wide policy |
 | Low-stock alert history | 2 years | Operational only |
-| Notification history | 1 year | |
+| Notification history (`inv_notifications`) | 1 year | |
+| Material Return records (`inv_returns`) | 7 years | Financial audit |
+| Tool custody records (`inv_tool_issues`) | 3 years after return | Operational + loss-claim evidence |
 
 ---
 
@@ -153,3 +204,10 @@ Audit investigation path:
 2. Check `inventory_movements` for those items since last stock take → trace all issues and receipts
 3. Check `audit_logs` for any adjustments → were adjustments approved or unauthorized?
 4. Check MR issues to confirm valid WBS task references
+
+### Scenario D: Tool reported lost, or custodian disputes issue
+Audit investigation path:
+1. Check `inv_tool_issues` for the tool → identify current/last custodian, issue date, due date
+2. Check `inv_audit_log` for `INV.TOOL.ISSUE` → confirm Storekeeper who released it and condition-out evidence
+3. If restricted tool: check `INV.TOOL.ISSUE_APPROVE` → confirm Supervisor authorised the release
+4. If marked lost: check `INV.TOOL.LOST` → loss-charge amount and linked `inv_adjustments` record

@@ -23,6 +23,18 @@ const STATUS_CLASSES: Record<string, string> = {
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   pending: "bg-blue-50 text-blue-700 border-blue-200",
   resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  // Returns
+  inspected: "bg-amber-50 text-amber-700 border-amber-200",
+  posted: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  // Tools
+  available: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  maintenance: "bg-amber-50 text-amber-700 border-amber-200",
+  disposed: "bg-gray-100 text-gray-600 border-gray-200",
+  // Tool issues
+  overdue: "bg-red-50 text-red-700 border-red-200",
+  returned: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  damaged: "bg-red-50 text-red-700 border-red-200",
+  lost: "bg-red-50 text-red-700 border-red-200",
 }
 
 export function InvStatusBadge({ status }: { status: string }) {

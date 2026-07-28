@@ -597,7 +597,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="advance_payment">Advance Payment</Label>
+                <Label htmlFor="advance_payment">Advance Payment (%)</Label>
                 <input
                   id="advance_payment"
                   type="number"

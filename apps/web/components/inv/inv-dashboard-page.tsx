@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import {
   DollarSign, AlertTriangle, Truck, ClipboardList, ArrowLeftRight,
-  Package, Plus, Eye, PlayCircle, RefreshCw,
+  Package, Plus, Eye, PlayCircle, RefreshCw, Undo2, Wrench,
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -23,6 +23,10 @@ interface DashboardStats {
   pendingMrs: number
   pendingTransfers: number
   stockTakeInProgress: boolean
+  pendingReturns: number
+  toolsAvailable: number
+  toolsIssued: number
+  toolsOverdue: number
 }
 
 function StatCard({
@@ -68,11 +72,21 @@ export function InvDashboardPage() {
     try {
       const supabase = createClient()
 
-      const [stockRes, grnRes, mrRes, transferRes, stocktakeRes, movRes] = await Promise.all([
+      const [stockRes, lowStockRes, grnRes, mrRes, transferRes, stocktakeRes, movRes, returnsRes, toolsAvailRes, toolsIssuedRes, toolIssuesRes] = await Promise.all([
         supabase
           .from("inv_stock")
-          .select("quantity_available, unit_cost_fifo, inv_items!inner(reorder_quantity)")
+          .select("quantity_available, unit_cost_fifo, inv_items!inner(is_active)")
           .eq("inv_items.is_active", true),
+
+        // Low-stock aggregation: start from inv_items (not inv_stock) and left-join
+        // stock, the same shape used by the rewired procurement/auto-reorder.tsx —
+        // this also catches items that have never received a delivery (zero stock
+        // rows), which an inner join on inv_stock would silently miss.
+        supabase
+          .from("inv_items")
+          .select("id, min_stock_level, inv_stock(quantity_available)")
+          .eq("is_active", true)
+          .not("min_stock_level", "is", null),
 
         supabase
           .from("inv_grns")
@@ -100,22 +114,42 @@ export function InvDashboardPage() {
           .select("*, inv_items!inner(item_code, name, unit_of_measure)")
           .order("created_at", { ascending: false })
           .limit(20),
+
+        supabase
+          .from("inv_returns")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["draft", "submitted", "inspected"]),
+
+        supabase
+          .from("inv_tools")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "available"),
+
+        supabase
+          .from("inv_tools")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "issued"),
+
+        supabase
+          .from("inv_tool_issues")
+          .select("due_date")
+          .in("status", ["issued", "overdue"]),
       ])
 
-      type StockSummary = {
-        quantity_available: number
-        unit_cost_fifo: number
-        inv_items: { reorder_quantity: number | null }
-      }
+      type StockSummary = { quantity_available: number; unit_cost_fifo: number }
       const stockData = (stockRes.data ?? []) as unknown as StockSummary[]
+      const totalValue = stockData.reduce((sum, s) => sum + s.quantity_available * s.unit_cost_fifo, 0)
 
-      let totalValue = 0
-      let belowReorder = 0
-      for (const s of stockData) {
-        totalValue += s.quantity_available * s.unit_cost_fifo
-        const reorder = s.inv_items?.reorder_quantity ?? 0
-        if (reorder > 0 && s.quantity_available <= reorder) belowReorder++
-      }
+      type LowStockItem = { id: string; min_stock_level: number | null; inv_stock: { quantity_available: number | null }[] | null }
+      const lowStockData = (lowStockRes.data ?? []) as unknown as LowStockItem[]
+      const belowReorder = lowStockData.filter(item => {
+        const onHand = (item.inv_stock ?? []).reduce((sum, s) => sum + (s.quantity_available ?? 0), 0)
+        return onHand <= (item.min_stock_level ?? 0)
+      }).length
+
+      const today = new Date()
+      const overdueIssues = ((toolIssuesRes.data ?? []) as unknown as { due_date: string }[])
+        .filter(i => new Date(i.due_date) < today)
 
       setStats({
         totalStockValue: totalValue,
@@ -124,6 +158,10 @@ export function InvDashboardPage() {
         pendingMrs: mrRes.count ?? 0,
         pendingTransfers: transferRes.count ?? 0,
         stockTakeInProgress: !!stocktakeRes.data,
+        pendingReturns: returnsRes.count ?? 0,
+        toolsAvailable: toolsAvailRes.count ?? 0,
+        toolsIssued: toolsIssuedRes.count ?? 0,
+        toolsOverdue: overdueIssues.length,
       })
       setMovements((movRes.data ?? []) as unknown as MovementRow[])
     } catch {
@@ -140,7 +178,7 @@ export function InvDashboardPage() {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+          {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
@@ -214,6 +252,33 @@ export function InvDashboardPage() {
               </p>
               {s.stockTakeInProgress && (
                 <Badge variant="outline" className="mt-1 text-xs border-red-300 text-red-700 bg-red-50">Store Locked</Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <StatCard
+          label="Pending Returns"
+          value={s.pendingReturns}
+          sub="to inspect / post"
+          icon={Undo2}
+          href="/dashboard/inventory/returns"
+        />
+        <Card className={cn(s.toolsOverdue > 0 ? "border-red-300 bg-red-50/50" : "")}>
+          <CardContent className="flex items-start gap-4 pt-5 pb-5 px-5">
+            <div className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+              s.toolsOverdue > 0 ? "bg-red-100" : "bg-primary/10",
+            )}>
+              <Wrench className={cn("h-5 w-5", s.toolsOverdue > 0 ? "text-red-600" : "text-primary")} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground truncate">Tool Utilization</p>
+              <p className="mt-0.5 text-2xl font-bold tabular-nums leading-none">{s.toolsIssued} / {s.toolsIssued + s.toolsAvailable}</p>
+              <p className="mt-1 text-xs text-muted-foreground">issued of total tracked</p>
+              {s.toolsOverdue > 0 && (
+                <Badge variant="outline" className="mt-1 text-xs border-red-300 text-red-700 bg-red-50">
+                  {s.toolsOverdue} overdue
+                </Badge>
               )}
             </div>
           </CardContent>

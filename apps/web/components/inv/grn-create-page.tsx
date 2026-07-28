@@ -76,8 +76,8 @@ export function GrnCreatePage() {
   useEffect(() => {
     supabase
       .from("inv_stores")
-      .select("id, store_code, name, project_id, is_active")
-      .eq("is_active", true)
+      .select("id, store_code, name, project_id, status")
+      .eq("status", "active")
       .order("name")
       .then(({ data }) => setStores((data ?? []) as InvStore[]))
   // eslint-disable-next-line react-hooks/exhaustive-deps
