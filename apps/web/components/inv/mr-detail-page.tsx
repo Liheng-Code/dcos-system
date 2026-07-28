@@ -35,7 +35,7 @@ interface AuditEntry {
   old_status: string | null
   new_status: string | null
   details: Record<string, unknown> | null
-  profiles?: { full_name: string | null; email: string } | null
+  profiles?: { full_name: string | null; email: string }
 }
 
 interface MrDetailData extends Omit<MrRow, "inv_mr_lines"> {
@@ -53,7 +53,7 @@ interface MrDetailData extends Omit<MrRow, "inv_mr_lines"> {
   inv_mr_lines: MrLineRow[]
   wbs_nodes?: { wbs_code: string; wbs_name: string; full_path: string | null } | null
   inv_stores?: { name: string; store_code: string } | null
-  profiles?: { full_name: string | null; email: string } | null
+  profiles?: { full_name: string | null; email: string }
   approver?: { full_name: string | null; email: string } | null
 }
 
