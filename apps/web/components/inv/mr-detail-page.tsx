@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -82,60 +82,55 @@ export function MrDetailPage({ id }: { id: string }) {
   const [showIssueDialog, setShowIssueDialog] = useState(false)
   const [issueQtys, setIssueQtys] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const { data: mrData, error: mrErr } = await supabase
-          .from("inv_material_requisitions")
-          .select(`
-            *,
-            inv_mr_lines(
-              id, item_id, quantity_requested, quantity_approved, quantity_issued,
-              unit_cost_at_issue, remarks,
-              inv_items(item_code, name, unit_of_measure)
-            ),
-            wbs_nodes!wbs_node_id(wbs_code, wbs_name, full_path),
-            inv_stores!store_id(name, store_code),
-            profiles!requested_by(full_name, email),
-            approver:profiles!approved_by(full_name, email)
-          `)
-          .eq("id", id)
-          .single()
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { data: mrData, error: mrErr } = await supabase
+        .from("inv_material_requisitions")
+        .select(`
+          *,
+          inv_mr_lines(
+            id, item_id, quantity_requested, quantity_approved, quantity_issued,
+            unit_cost_at_issue, remarks,
+            inv_items(item_code, name, unit_of_measure)
+          ),
+          wbs_nodes!wbs_node_id(wbs_code, wbs_name, full_path),
+          inv_stores!store_id(name, store_code),
+          profiles!requested_by(full_name, email),
+          approver:profiles!approved_by(full_name, email)
+        `)
+        .eq("id", id)
+        .single()
 
-        if (cancelled) return
-        if (mrErr || !mrData) { setError("MR not found"); setLoading(false); return }
+      if (mrErr || !mrData) { setError("MR not found"); setLoading(false); return }
 
-        setMr(mrData as unknown as MrDetailData)
+      setMr(mrData as unknown as MrDetailData)
 
-        const qtyMap: Record<string, string> = {}
-        const lines = (mrData as unknown as MrDetailData).inv_mr_lines ?? []
-        for (const line of lines) {
-          const approved = line.quantity_approved ?? line.quantity_requested
-          qtyMap[line.id] = String(approved - line.quantity_issued)
-        }
-        setIssueQtys(qtyMap)
-
-        const { data: auditData } = await supabase
-          .from("inv_audit_log")
-          .select("*, profiles!performed_by(full_name, email)")
-          .eq("table_name", "inv_material_requisitions")
-          .eq("record_id", id)
-          .order("created_at", { ascending: true })
-
-        if (cancelled) return
-        setAuditLog((auditData ?? []) as AuditEntry[])
-      } catch {
-        if (!cancelled) setError("Failed to load MR details")
-      } finally {
-        if (!cancelled) setLoading(false)
+      const qtyMap: Record<string, string> = {}
+      const lines = (mrData as unknown as MrDetailData).inv_mr_lines ?? []
+      for (const line of lines) {
+        const approved = line.quantity_approved ?? line.quantity_requested
+        qtyMap[line.id] = String(approved - line.quantity_issued)
       }
+      setIssueQtys(qtyMap)
+
+      const { data: auditData } = await supabase
+        .from("inv_audit_log")
+        .select("*, profiles!performed_by(full_name, email)")
+        .eq("table_name", "inv_material_requisitions")
+        .eq("record_id", id)
+        .order("created_at", { ascending: true })
+
+      setAuditLog((auditData ?? []) as AuditEntry[])
+    } catch {
+      setError("Failed to load MR details")
+    } finally {
+      setLoading(false)
     }
-    load()
-    return () => { cancelled = true }
   }, [id, supabase])
+
+  useEffect(() => { load() }, [load])
 
   function updateIssueQty(lineId: string, val: string) {
     setIssueQtys(prev => ({ ...prev, [lineId]: val }))
