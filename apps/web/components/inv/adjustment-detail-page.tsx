@@ -163,7 +163,7 @@ export function AdjustmentDetailPage({ id }: Props) {
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-xs text-muted-foreground">Store</p>
-            <p className="font-medium">{((adj as Record<string, unknown>).inv_stores as { name: string } | undefined)?.name ?? adj.store_id.slice(0, 8) + "…"}</p>
+            <p className="font-medium">{adj.inv_stores?.name ?? adj.store_id.slice(0, 8) + "…"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Reason</p>
