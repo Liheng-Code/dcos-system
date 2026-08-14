@@ -235,12 +235,13 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     return (
       <div className="flex items-start gap-4 p-0">
         <aside className="w-52 flex-shrink-0">
-          <div className="sticky top-0">
+          <div className="sticky mt-[4.75rem] top-[calc(1.5rem+4.75rem)]">
             {/* Nav card — starts flush with the right panel */}
-            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
               {/* Back link + current page title */}
               <div className="mb-1 flex items-center gap-2">
-                <Link href="/dashboard/hr/dashboard" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
                 <span className="text-xs text-muted-foreground font-medium">Payroll</span>
@@ -302,10 +303,11 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     return (
       <div className="flex items-start gap-4 p-0">
         <aside className="w-52 flex-shrink-0">
-          <div className="sticky top-0">
-            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)]">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
               <div className="mb-1 flex items-center gap-2">
-                <Link href="/dashboard/hr/dashboard" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
                 <span className="text-xs text-muted-foreground font-medium">OT Management</span>
@@ -375,10 +377,11 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     <div className="flex items-start gap-4 p-0">
       {/* Leave sub-nav sidebar */}
       <aside className="w-52 flex-shrink-0">
-        <div className="sticky mt-[74px] top-[calc(1.5rem+74px)] rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)] relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
           <div className="mb-4 flex items-center gap-2">
             <Link
-              href="/dashboard/hr/dashboard"
+              href="/dashboard/hr/attendance"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />

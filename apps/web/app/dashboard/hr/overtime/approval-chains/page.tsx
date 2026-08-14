@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { computeApprovalChainFromData, type ProfileData, type RoleData } from "@/lib/hr/approval-chain";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GitBranch, Pencil, X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 
 interface ProfileRow {
   id: string;
@@ -309,14 +309,11 @@ export default function OtApprovalChainsPage() {
     <div className="space-y-6">
 
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <GitBranch className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">All Approval Chains</h2>
-            <p className="text-muted-foreground">
-              OT approval chains for all staff — auto-derived from role hierarchy
-            </p>
-          </div>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">All Approval Chains</h2>
+          <p className="text-muted-foreground">
+            OT approval chains for all staff — auto-derived from role hierarchy
+          </p>
         </div>
         {!loading && (
           <div className="flex gap-3 text-sm">
@@ -333,9 +330,11 @@ export default function OtApprovalChainsPage() {
       )}
 
       {loading ? (
-        <p className="text-muted-foreground">Computing chains for all staff\u2026</p>
+        <p className="text-muted-foreground">Computing chains for all staff...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b border-border">
               <tr>
@@ -370,7 +369,7 @@ export default function OtApprovalChainsPage() {
 
                   <td className="py-3 px-4">
                     {row.isExcluded ? (
-                      <span className="text-muted-foreground">\u2014</span>
+                      <span className="text-muted-foreground">{"\u2014"}</span>
                     ) : row.firstApprover?.name ? (
                       <span className="font-medium">{row.firstApprover.name}</span>
                     ) : row.firstApprover === null ? (
@@ -386,7 +385,7 @@ export default function OtApprovalChainsPage() {
 
                   <td className="py-3 px-4">
                     {row.isExcluded ? (
-                      <span className="text-muted-foreground">\u2014</span>
+                      <span className="text-muted-foreground">{"\u2014"}</span>
                     ) : row.hrApprover.name ? (
                       <span className="font-medium">{row.hrApprover.name}</span>
                     ) : (
@@ -401,7 +400,7 @@ export default function OtApprovalChainsPage() {
                   {canManage && (
                     <td className="py-3 px-4">
                       {row.isExcluded ? (
-                        <span className="text-muted-foreground text-xs">\u2014</span>
+                        <span className="text-muted-foreground text-xs">{"\u2014"}</span>
                       ) : (
                         <div className="flex items-center justify-center gap-2">
                           <Button
@@ -421,6 +420,7 @@ export default function OtApprovalChainsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

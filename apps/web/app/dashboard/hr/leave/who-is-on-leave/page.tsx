@@ -141,10 +141,12 @@ export default function WhoIsOnLeavePage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header">
-        <h2 className="text-2xl font-bold tracking-tight">Who's on Leave</h2>
-        <p className="text-muted-foreground">
-          Employees on leave from {format(new Date(startDate), "dd MMM yyyy")} to {format(new Date(endDate), "dd MMM yyyy")}
-        </p>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Who's on Leave</h2>
+          <p className="text-muted-foreground">
+            Employees on leave from {format(new Date(startDate), "dd MMM yyyy")} to {format(new Date(endDate), "dd MMM yyyy")}
+          </p>
+        </div>
       </div>
 
       {/* ── Filters ── */}

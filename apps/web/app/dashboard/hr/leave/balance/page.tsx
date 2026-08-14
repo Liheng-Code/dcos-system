@@ -166,7 +166,9 @@ export default function LeaveBalancePage() {
         {history.length === 0 ? (
           <p className="text-muted-foreground text-sm">No leave requests this year.</p>
         ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
@@ -193,6 +195,7 @@ export default function LeaveBalancePage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

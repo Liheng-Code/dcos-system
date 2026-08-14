@@ -61,17 +61,12 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header flex items-center gap-3">
-        <div className="relative">
-          <Bell className="h-6 w-6 text-muted-foreground" />
-          {pending > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white">
-              {pending}
-            </span>
-          )}
-        </div>
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
-          <p className="text-muted-foreground">Leave activity and status updates</p>
+          <p className="text-muted-foreground">
+            Leave activity and status updates
+            {pending > 0 && <span className="text-red-600 font-medium"> · {pending} pending</span>}
+          </p>
         </div>
       </div>
 

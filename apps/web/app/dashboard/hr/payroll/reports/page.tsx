@@ -276,55 +276,64 @@ export default function PayrollReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Payroll Reports</h2>
           <p className="text-muted-foreground text-sm">Export and review payroll data by period</p>
         </div>
-        <Button onClick={exportCSV} disabled={reportData.length === 0} variant="outline" size="sm" className="gap-1.5">
-          <Download className="h-4 w-4" /> Export CSV
-        </Button>
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {/* Period selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-muted-foreground">Period:</span>
+            {periods.slice(0, 8).map((p) => (
+              <button key={p.id} onClick={() => setSelectedPeriod(p)} className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors", selectedPeriod?.id === p.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:bg-muted")}>
+                {p.label ?? runNo(p.period_year, p.period_month)}
+              </button>
+            ))}
+          </div>
+          <Button onClick={exportCSV} disabled={reportData.length === 0} variant="outline" size="sm" className="gap-1.5">
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
-      {/* Period selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-muted-foreground">Period:</span>
-        {periods.slice(0, 8).map((p) => (
-          <button key={p.id} onClick={() => setSelectedPeriod(p)} className={cn("rounded-full px-3 py-1 text-xs font-medium border transition-colors", selectedPeriod?.id === p.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:bg-muted")}>
-            {p.label ?? runNo(p.period_year, p.period_month)}
-          </button>
-        ))}
-      </div>
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
 
-      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
-        {/* Report list */}
-        <div className="space-y-0.5">
+        {/* Report type tabs */}
+        <div className="flex gap-1 border-b border-border px-4 pt-3 flex-wrap">
           {REPORT_DEFS.map((def) => {
             const Icon = def.icon;
             return (
-              <button key={def.key} onClick={() => setActiveReport(def.key)} className={cn("w-full flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors", activeReport === def.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-                <Icon className="h-4 w-4 mt-0.5 shrink-0" />
-                <div><p className="text-sm font-medium">{def.label}</p><p className="text-[11px] text-muted-foreground">{def.userAccess}</p></div>
+              <button
+                key={def.key}
+                onClick={() => setActiveReport(def.key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                  activeReport === def.key
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {def.label}
               </button>
             );
           })}
         </div>
 
-        {/* Report content */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="text-sm font-semibold">{activeDef?.label}</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">{selectedPeriod?.label ?? "—"} · {reportData.length} employees</p>
-            </div>
-            {reportData.length > 0 && (
-              <p className="text-xs text-muted-foreground">Net: <span className="font-semibold text-emerald-600">{fmt(totals.net)}</span></p>
-            )}
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto"><ReportTable /></div>
-          </CardContent>
-        </Card>
+        {/* Report summary */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-3 flex-wrap gap-2">
+          <div>
+            <p className="text-sm font-semibold">{activeDef?.label}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{selectedPeriod?.label ?? "—"} · {reportData.length} employees · {activeDef?.userAccess}</p>
+          </div>
+          {reportData.length > 0 && (
+            <p className="text-xs text-muted-foreground">Net: <span className="font-semibold text-emerald-600">{fmt(totals.net)}</span></p>
+          )}
+        </div>
+
+        <div className="overflow-x-auto"><ReportTable /></div>
       </div>
 
       <Card className="border-dashed">

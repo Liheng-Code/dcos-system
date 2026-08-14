@@ -127,7 +127,7 @@ export default function PayrollPeriodsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Payroll Periods</h2>
           <p className="text-muted-foreground text-sm">Manage monthly payroll periods and their status</p>
         </div>

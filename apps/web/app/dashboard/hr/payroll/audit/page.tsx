@@ -119,50 +119,48 @@ export default function PayrollAuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h2 className="text-2xl font-bold tracking-tight">Payroll Audit Log</h2>
         <p className="text-muted-foreground text-sm">Complete record of all payroll workflow events</p>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-52">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search user, period, or action…" className="pl-9" />
-        </div>
-        <select
-          value={actionFilter}
-          onChange={(e) => setActionFilter(e.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-        >
-          <option value="">All actions</option>
-          {uniqueActions.map((a) => <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>)}
-        </select>
-        {(search || actionFilter) && (
-          <button onClick={() => { setSearch(""); setActionFilter(""); }} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
-        )}
-      </div>
-
-      {/* Summary counts */}
-      <div className="text-xs text-muted-foreground">
-        Showing {filtered.length} of {events.length} events
-      </div>
-
-      {/* Timeline */}
-      {filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            {events.length === 0
-              ? "No audit events yet. Workflow transitions will appear here once payroll runs are processed."
-              : "No events match your filters."}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Audit Timeline</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+      <Card>
+        <CardHeader className="pb-3 flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold">Audit Timeline</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="h-8 w-52 pl-8 text-xs"
+              />
+            </div>
+            <select
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">All actions</option>
+              {uniqueActions.map((a) => <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>)}
+            </select>
+            {(search || actionFilter) && (
+              <button onClick={() => { setSearch(""); setActionFilter(""); }} className="text-xs text-muted-foreground hover:text-foreground shrink-0">Clear</button>
+            )}
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {filtered.length} of {events.length}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              {events.length === 0
+                ? "No audit events yet. Workflow transitions will appear here once payroll runs are processed."
+                : "No events match your filters."}
+            </div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[720px]">
                 <thead>
@@ -227,9 +225,9 @@ export default function PayrollAuditPage() {
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

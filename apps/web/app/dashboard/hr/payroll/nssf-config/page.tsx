@@ -185,7 +185,7 @@ export default function NSSFConfigPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h2 className="text-2xl font-bold tracking-tight">NSSF Configuration</h2>
         <p className="text-muted-foreground text-sm">Manage National Social Security Fund contribution rates</p>
       </div>

@@ -221,8 +221,10 @@ export default function ApprovalsPage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header">
-        <h2 className="text-2xl font-bold tracking-tight">Approvals</h2>
-        <p className="text-muted-foreground">Leave requests awaiting your decision</p>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Approvals</h2>
+          <p className="text-muted-foreground">Leave requests awaiting your decision</p>
+        </div>
       </div>
 
       <Card>

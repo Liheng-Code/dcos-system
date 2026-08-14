@@ -484,12 +484,14 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {/* ── Page header (full width, above both columns) ─── */}
       {title && (
         <div className="leave-page-header">
-          <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-          {description && <p className="text-muted-foreground text-sm">{description}</p>}
+          <div className="-ml-56">
+            <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
+            {description && <p className="text-muted-foreground">{description}</p>}
+          </div>
         </div>
       )}
 

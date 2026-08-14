@@ -280,12 +280,12 @@ export default function LeaveDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3">
+      <section className="space-y-6">
         {/* Header */}
         <div className="leave-page-header flex items-start justify-between">
-          <div className="-ml-[4rem]">
+          <div className="-ml-56">
             <h2 className="text-2xl font-bold tracking-tight">Leave Balance</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="text-muted-foreground">
               View your leave balances for the current year
             </p>
           </div>

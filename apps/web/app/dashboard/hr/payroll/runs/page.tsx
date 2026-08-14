@@ -141,7 +141,7 @@ export default function PayrollRunsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Payroll Runs</h2>
           <p className="text-muted-foreground text-sm">All monthly payroll processing cycles</p>
         </div>

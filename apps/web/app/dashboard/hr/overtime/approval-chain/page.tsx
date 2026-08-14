@@ -7,7 +7,7 @@ import { resolveApprovalChain, type ApprovalChainResult } from "@/lib/hr/approva
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GitBranch, ShieldAlert, User, Award, AlertTriangle, Pencil } from "lucide-react";
+import { ShieldAlert, User, Award, AlertTriangle, Pencil } from "lucide-react";
 
 interface ChainStep {
   stepNumber: number;
@@ -102,25 +102,22 @@ export default function OtApprovalChainPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <GitBranch className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">My Approval Chain</h2>
-            <p className="text-muted-foreground">
-              Who approves your overtime requests
-              {myRoleLabel && (
-                <>
-                  {" · "}
-                  <span className="font-medium text-foreground">{myRoleLabel}</span>
-                </>
-              )}
-              {isManual && (
-                <Badge className="ml-2 bg-purple-100 text-purple-700 text-xs border-0 align-middle">
-                  Configured by HR
-                </Badge>
-              )}
-            </p>
-          </div>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">My Approval Chain</h2>
+          <p className="text-muted-foreground">
+            Who approves your overtime requests
+            {myRoleLabel && (
+              <>
+                {" · "}
+                <span className="font-medium text-foreground">{myRoleLabel}</span>
+              </>
+            )}
+            {isManual && (
+              <Badge className="ml-2 bg-purple-100 text-purple-700 text-xs border-0 align-middle">
+                Configured by HR
+              </Badge>
+            )}
+          </p>
         </div>
 
         {canManage && (

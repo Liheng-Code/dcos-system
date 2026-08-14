@@ -116,7 +116,7 @@ function MyRequestsContent() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">My Requests</h2>
           <p className="text-muted-foreground">Your leave request history</p>
         </div>

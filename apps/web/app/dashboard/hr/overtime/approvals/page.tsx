@@ -125,7 +125,7 @@ export default function OTApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h1 className="text-2xl font-bold tracking-tight">OT Approvals</h1>
         <p className="text-muted-foreground">Review and respond to pending overtime requests</p>
       </div>

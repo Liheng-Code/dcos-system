@@ -77,12 +77,9 @@ export default function ReplacementLeavePage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Replacement Leave</h2>
-            <p className="text-muted-foreground">Compensation for working on rest days or public holidays</p>
-          </div>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Replacement Leave</h2>
+          <p className="text-muted-foreground">Compensation for working on rest days or public holidays</p>
         </div>
         <Button onClick={() => router.push("/dashboard/hr/leave/apply")} className="gap-2">
           <Plus className="h-4 w-4" /> Apply

@@ -37,7 +37,7 @@ export default function OTAnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h1 className="text-2xl font-bold tracking-tight">OT Analytics</h1>
         <p className="text-muted-foreground">Overtime trends and breakdowns</p>
       </div>

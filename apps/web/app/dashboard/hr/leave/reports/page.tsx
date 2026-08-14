@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart2 } from "lucide-react";
 
 interface ReportRow {
   employee_name: string;
@@ -98,8 +97,7 @@ export default function LeaveReportsPage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header flex items-center gap-3">
-        <BarChart2 className="h-6 w-6 text-muted-foreground" />
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Leave Reports</h2>
           <p className="text-muted-foreground">Organisation-wide leave utilisation - {currentYear}</p>
         </div>

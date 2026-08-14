@@ -7,7 +7,7 @@ import { resolveApprovalChain, type ApprovalChainResult } from "@/lib/hr/approva
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GitBranch, ShieldAlert, User, Award, AlertTriangle, Pencil } from "lucide-react";
+import { ShieldAlert, User, Award, AlertTriangle, Pencil } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ChainStep {
@@ -96,9 +96,7 @@ export default function MyApprovalChainPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="leave-page-header flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <GitBranch className="h-6 w-6 text-muted-foreground" />
-          <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">My Approval Chain</h2>
           <p className="text-muted-foreground">
             Who approves your leave requests
@@ -114,7 +112,6 @@ export default function MyApprovalChainPage() {
               </Badge>
             )}
           </p>
-          </div>
         </div>
 
         {canManage && (

@@ -101,7 +101,7 @@ export default function SeniorityConfigPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Seniority Payment Configuration</h2>
           <p className="text-muted-foreground text-sm">Cambodia twice-yearly seniority payment (Prakas 443: 7.5 days of wages every June and December)</p>
         </div>

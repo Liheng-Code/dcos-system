@@ -50,29 +50,29 @@ export default function SalarySetupPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Salary Setup</h2>
           <p className="text-muted-foreground text-sm">Configure base salary and allowances per employee</p>
         </div>
-        <div className="text-right text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{withStructure}</span> / {employees.length} configured
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name or department…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9"
-        />
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-sm font-semibold">Employees ({filtered.length})</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or department..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{withStructure}</span> / {employees.length} configured
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (

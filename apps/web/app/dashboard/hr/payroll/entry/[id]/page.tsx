@@ -127,7 +127,7 @@ export default function PayrollEntryDetailPage({ params }: { params: Promise<{ i
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+        <div className="-ml-56">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold tracking-tight">{entry.employee_name}</h2>
             <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize", STATUS_COLORS[entry.status] ?? "bg-gray-100 text-gray-600")}>

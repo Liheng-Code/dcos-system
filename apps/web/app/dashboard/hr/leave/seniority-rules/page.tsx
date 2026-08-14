@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
 
 interface SeniorityRule {
   id: string;
@@ -149,12 +149,9 @@ export default function SeniorityRulesAdminPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <TrendingUp className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Seniority Rules</h2>
-            <p className="text-muted-foreground">Leave entitlements based on years of service — applies to seniority-based leave types only</p>
-          </div>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Seniority Rules</h2>
+          <p className="text-muted-foreground">Leave entitlements based on years of service — applies to seniority-based leave types only</p>
         </div>
         <Button onClick={openCreate} size="sm" className="gap-1.5">
           <Plus className="h-4 w-4" /> Add Rule
@@ -164,7 +161,9 @@ export default function SeniorityRulesAdminPage() {
       {loading ? (
         <p className="text-muted-foreground">Loading...</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b border-border">
               <tr>
@@ -201,6 +200,7 @@ export default function SeniorityRulesAdminPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

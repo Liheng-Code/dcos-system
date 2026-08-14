@@ -142,7 +142,7 @@ function MyPayslipInner() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">My Payslip</h2>
           <p className="text-muted-foreground text-sm">View and download your monthly payslips</p>
         </div>

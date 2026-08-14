@@ -292,7 +292,7 @@ export default function TeamCalendarPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="leave-page-header flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Team Calendar</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Who is on leave this month

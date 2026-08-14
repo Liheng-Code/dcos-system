@@ -74,15 +74,7 @@ export default function OtNotificationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="relative">
-          <Bell className="h-6 w-6 text-muted-foreground" />
-          {unread > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white">
-              {unread}
-            </span>
-          )}
-        </div>
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
           <p className="text-muted-foreground">Overtime activity and status updates</p>
           {unread > 0 && (

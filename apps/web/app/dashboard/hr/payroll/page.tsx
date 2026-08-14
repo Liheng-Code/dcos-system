@@ -212,41 +212,43 @@ export default function PayrollDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Payroll Dashboard</h2>
           <p className="text-muted-foreground text-sm">Monthly payroll status and overview</p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/hr/payroll/runs">View All Runs</Link>
-          </Button>
-          <Button asChild size="sm" className="gap-1">
-            <Link href="/dashboard/hr/payroll/run"><Plus className="h-4 w-4" />Run Payroll</Link>
-          </Button>
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {/* Period selector */}
+          {periods.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-muted-foreground">Period:</span>
+              {periods.slice(0, 8).map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedPeriod(p)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
+                    selectedPeriod?.id === p.id
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {p.label ?? runNo(p.period_year, p.period_month)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/hr/payroll/runs">View All Runs</Link>
+            </Button>
+            <Button asChild size="sm" className="gap-1">
+              <Link href="/dashboard/hr/payroll/run"><Plus className="h-4 w-4" />Run Payroll</Link>
+            </Button>
+          </div>
         </div>
       </div>
-
-      {/* Period selector */}
-      {periods.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground">Period:</span>
-          {periods.slice(0, 8).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setSelectedPeriod(p)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium border transition-colors",
-                selectedPeriod?.id === p.id
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {p.label ?? runNo(p.period_year, p.period_month)}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Alerts panel */}
       {!loadingAlerts && alerts.length > 0 && (

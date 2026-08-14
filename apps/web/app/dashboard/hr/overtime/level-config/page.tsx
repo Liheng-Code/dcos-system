@@ -79,7 +79,7 @@ export default function OTLevelConfigPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h1 className="text-2xl font-bold tracking-tight">OT Level Eligibility</h1>
           <p className="text-muted-foreground">Configure which staff levels can request overtime</p>
         </div>

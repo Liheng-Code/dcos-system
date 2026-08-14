@@ -73,6 +73,9 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "border-slate-200 bg-slate-100 text-slate-500",
 };
 
+const TAB_TRIGGER_CLS =
+  "rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground data-[active]:border-primary data-[active]:bg-transparent data-[active]:text-primary data-[active]:shadow-none";
+
 // ─── Bracket overlap validation ───────────────────────────────────────────────
 
 function hasBracketOverlap(brackets: Bracket[]): boolean {
@@ -252,22 +255,26 @@ export default function TaxConfigPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h2 className="text-2xl font-bold tracking-tight">Tax Configuration — Cambodia TOS</h2>
         <p className="text-muted-foreground text-sm">Manage Tax on Salary brackets, dependent relief, and exchange rates</p>
       </div>
 
-      <Tabs defaultValue="brackets">
-        <TabsList className="flex h-auto flex-wrap gap-1 bg-muted/30 p-1 rounded-lg">
-          <TabsTrigger value="brackets">Tax Brackets</TabsTrigger>
-          <TabsTrigger value="relief">Dependent Relief</TabsTrigger>
-          <TabsTrigger value="flat">Non-Resident / FBT</TabsTrigger>
-          <TabsTrigger value="exchange">Exchange Rate</TabsTrigger>
-          <TabsTrigger value="history">Rate History</TabsTrigger>
-        </TabsList>
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
 
-        {/* ── Tax Brackets ─────────────────────────────────────────────── */}
-        <TabsContent value="brackets" className="mt-6 space-y-4">
+        <Tabs defaultValue="brackets" className="gap-0">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-border bg-transparent px-4 pt-3 pb-0 text-muted-foreground">
+            <TabsTrigger value="brackets" className={TAB_TRIGGER_CLS}>Tax Brackets</TabsTrigger>
+            <TabsTrigger value="relief" className={TAB_TRIGGER_CLS}>Dependent Relief</TabsTrigger>
+            <TabsTrigger value="flat" className={TAB_TRIGGER_CLS}>Non-Resident / FBT</TabsTrigger>
+            <TabsTrigger value="exchange" className={TAB_TRIGGER_CLS}>Exchange Rate</TabsTrigger>
+            <TabsTrigger value="history" className={TAB_TRIGGER_CLS}>Rate History</TabsTrigger>
+          </TabsList>
+
+          <div className="p-4">
+          {/* ── Tax Brackets ─────────────────────────────────────────────── */}
+          <TabsContent value="brackets" className="mt-0 space-y-4">
           {overlapping && (
             <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -275,14 +282,15 @@ export default function TaxConfigPage() {
             </div>
           )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <CardTitle className="text-sm font-semibold">Cambodia TOS Brackets (KHR / Month)</CardTitle>
+          <div>
+            <div className="flex flex-row items-center justify-between pb-3">
+              <h3 className="text-sm font-semibold">Cambodia TOS Brackets (KHR / Month)</h3>
               <Button size="sm" variant="outline" onClick={addBracket} className="gap-1">
                 <Plus className="h-3.5 w-3.5" /> Add Bracket
               </Button>
-            </CardHeader>
-            <CardContent className="p-0">
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
@@ -373,8 +381,9 @@ export default function TaxConfigPage() {
               {brackets.length === 0 && (
                 <p className="py-10 text-center text-sm text-muted-foreground">No brackets defined. Add the first bracket.</p>
               )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          </div>
 
           {/* Preview of active brackets */}
           {activeBrackets.length > 0 && (
@@ -412,151 +421,135 @@ export default function TaxConfigPage() {
         </TabsContent>
 
         {/* ── Dependent Relief ─────────────────────────────────────────── */}
-        <TabsContent value="relief" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Dependent Relief Amounts</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                Relief is deducted from taxable income (KHR) before applying TOS brackets. Spouse relief requires marital_status = married on employee tax profile.
+        <TabsContent value="relief" className="mt-0 space-y-4">
+          <h3 className="text-sm font-semibold">Dependent Relief Amounts</h3>
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            Relief is deducted from taxable income (KHR) before applying TOS brackets. Spouse relief requires marital_status = married on employee tax profile.
+          </div>
+          {relief.map((r, idx) => (
+            <div key={r.id ?? idx} className="grid gap-4 md:grid-cols-4 items-end rounded-lg border border-border p-4 transition-all duration-150 hover:border-indigo-300 hover:bg-indigo-50/40 hover:shadow-sm cursor-default">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Relief Type</Label>
+                <div className="font-medium capitalize">{r.relief_type} Dependent</div>
               </div>
-              {relief.map((r, idx) => (
-                <div key={r.id ?? idx} className="grid gap-4 md:grid-cols-4 items-end rounded-lg border border-border p-4 transition-all duration-150 hover:border-indigo-300 hover:bg-indigo-50/40 hover:shadow-sm cursor-default">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Relief Type</Label>
-                    <div className="font-medium capitalize">{r.relief_type} Dependent</div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Amount (KHR / Month)</Label>
-                    <Input
-                      type="number"
-                      value={r.amount_khr}
-                      onChange={(e) => setRelief((prev) => prev.map((x, i) => i === idx ? { ...x, amount_khr: Number(e.target.value) } : x))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Effective Date</Label>
-                    <Input
-                      type="date"
-                      value={r.effective_date}
-                      onChange={(e) => setRelief((prev) => prev.map((x, i) => i === idx ? { ...x, effective_date: e.target.value } : x))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Status</Label>
-                    <Badge variant="outline" className={cn("capitalize", STATUS_COLORS[r.status] ?? "")}>
-                      {r.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-              {relief.length === 0 && (
-                <p className="py-6 text-center text-sm text-muted-foreground">No relief rules configured.</p>
-              )}
-              <div className="flex justify-end">
-                <Button onClick={saveRelief} disabled={saving} className="gap-2">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Relief
-                </Button>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Amount (KHR / Month)</Label>
+                <Input
+                  type="number"
+                  value={r.amount_khr}
+                  onChange={(e) => setRelief((prev) => prev.map((x, i) => i === idx ? { ...x, amount_khr: Number(e.target.value) } : x))}
+                />
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Effective Date</Label>
+                <Input
+                  type="date"
+                  value={r.effective_date}
+                  onChange={(e) => setRelief((prev) => prev.map((x, i) => i === idx ? { ...x, effective_date: e.target.value } : x))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Badge variant="outline" className={cn("capitalize", STATUS_COLORS[r.status] ?? "")}>
+                  {r.status}
+                </Badge>
+              </div>
+            </div>
+          ))}
+          {relief.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">No relief rules configured.</p>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={saveRelief} disabled={saving} className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Relief
+            </Button>
+          </div>
         </TabsContent>
 
         {/* ── Non-Resident / FBT ───────────────────────────────────────── */}
-        <TabsContent value="flat" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Flat Tax Rates</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {flatRates.map((fr, idx) => (
-                <div key={fr.id ?? idx} className="grid gap-4 md:grid-cols-4 items-end rounded-lg border border-border p-4 transition-all duration-150 hover:border-violet-300 hover:bg-violet-50/40 hover:shadow-sm cursor-default">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Rate Type</Label>
-                    <div className="font-medium capitalize">{fr.rate_type === "non_resident" ? "Non-Resident Salary Tax" : "Fringe Benefit Tax"}</div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Rate %</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={fr.rate_percent}
-                      onChange={(e) => setFlatRates((prev) => prev.map((x, i) => i === idx ? { ...x, rate_percent: Number(e.target.value) } : x))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Effective Date</Label>
-                    <Input
-                      type="date"
-                      value={fr.effective_date}
-                      onChange={(e) => setFlatRates((prev) => prev.map((x, i) => i === idx ? { ...x, effective_date: e.target.value } : x))}
-                    />
-                  </div>
-                  <Badge variant="outline" className={cn("capitalize self-end mb-1.5", STATUS_COLORS[fr.status] ?? "")}>
-                    {fr.status}
-                  </Badge>
-                </div>
-              ))}
-              <div className="flex justify-end">
-                <Button onClick={saveFlatRates} disabled={saving} className="gap-2">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-                </Button>
+        <TabsContent value="flat" className="mt-0 space-y-4">
+          <h3 className="text-sm font-semibold">Flat Tax Rates</h3>
+          {flatRates.map((fr, idx) => (
+            <div key={fr.id ?? idx} className="grid gap-4 md:grid-cols-4 items-end rounded-lg border border-border p-4 transition-all duration-150 hover:border-violet-300 hover:bg-violet-50/40 hover:shadow-sm cursor-default">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Rate Type</Label>
+                <div className="font-medium capitalize">{fr.rate_type === "non_resident" ? "Non-Resident Salary Tax" : "Fringe Benefit Tax"}</div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Rate %</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={fr.rate_percent}
+                  onChange={(e) => setFlatRates((prev) => prev.map((x, i) => i === idx ? { ...x, rate_percent: Number(e.target.value) } : x))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Effective Date</Label>
+                <Input
+                  type="date"
+                  value={fr.effective_date}
+                  onChange={(e) => setFlatRates((prev) => prev.map((x, i) => i === idx ? { ...x, effective_date: e.target.value } : x))}
+                />
+              </div>
+              <Badge variant="outline" className={cn("capitalize self-end mb-1.5", STATUS_COLORS[fr.status] ?? "")}>
+                {fr.status}
+              </Badge>
+            </div>
+          ))}
+          <div className="flex justify-end">
+            <Button onClick={saveFlatRates} disabled={saving} className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+            </Button>
+          </div>
         </TabsContent>
 
         {/* ── Exchange Rate ─────────────────────────────────────────────── */}
-        <TabsContent value="exchange" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Monthly USD → KHR Exchange Rate</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                TOS is calculated in KHR. Salaries paid in USD are converted using the exchange rate set for each payroll period.
+        <TabsContent value="exchange" className="mt-0 space-y-4">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Monthly USD → KHR Exchange Rate</h3>
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              TOS is calculated in KHR. Salaries paid in USD are converted using the exchange rate set for each payroll period.
+            </div>
+            <div className="grid gap-4 md:grid-cols-4 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Year</Label>
+                <Input
+                  type="number"
+                  value={currentRate.period_year}
+                  onChange={(e) => setCurrentRate((p) => ({ ...p, period_year: Number(e.target.value), id: undefined }))}
+                />
               </div>
-              <div className="grid gap-4 md:grid-cols-4 items-end">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Year</Label>
-                  <Input
-                    type="number"
-                    value={currentRate.period_year}
-                    onChange={(e) => setCurrentRate((p) => ({ ...p, period_year: Number(e.target.value), id: undefined }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Month</Label>
-                  <select
-                    value={currentRate.period_month}
-                    onChange={(e) => setCurrentRate((p) => ({ ...p, period_month: Number(e.target.value), id: undefined }))}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        {new Date(2000, i, 1).toLocaleDateString(undefined, { month: "long" })}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Rate (KHR per 1 USD)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={currentRate.rate_khr_per_usd}
-                    onChange={(e) => setCurrentRate((p) => ({ ...p, rate_khr_per_usd: Number(e.target.value) }))}
-                  />
-                </div>
-                <Button onClick={saveExchangeRate} disabled={saving} className="gap-2">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Rate
-                </Button>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Month</Label>
+                <select
+                  value={currentRate.period_month}
+                  onChange={(e) => setCurrentRate((p) => ({ ...p, period_month: Number(e.target.value), id: undefined }))}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {new Date(2000, i, 1).toLocaleDateString(undefined, { month: "long" })}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Rate (KHR per 1 USD)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={currentRate.rate_khr_per_usd}
+                  onChange={(e) => setCurrentRate((p) => ({ ...p, rate_khr_per_usd: Number(e.target.value) }))}
+                />
+              </div>
+              <Button onClick={saveExchangeRate} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Rate
+              </Button>
+            </div>
+          </div>
 
           {/* Previous rates */}
           {exchangeRates.length > 0 && (
@@ -589,54 +582,54 @@ export default function TaxConfigPage() {
         </TabsContent>
 
         {/* ── Rate History ─────────────────────────────────────────────── */}
-        <TabsContent value="history" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Tax Rule History</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                    <th className="px-4 py-2.5 text-right font-medium">From (KHR)</th>
-                    <th className="px-4 py-2.5 text-right font-medium">To (KHR)</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Rate %</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Tolerance (KHR)</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Effective Date</th>
-                    <th className="px-4 py-2.5 text-center font-medium">Status</th>
+        <TabsContent value="history" className="mt-0">
+          <h3 className="text-sm font-semibold pb-3">Tax Rule History</h3>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                  <th className="px-4 py-2.5 text-right font-medium">From (KHR)</th>
+                  <th className="px-4 py-2.5 text-right font-medium">To (KHR)</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Rate %</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Tolerance (KHR)</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Effective Date</th>
+                  <th className="px-4 py-2.5 text-center font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {brackets.sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime()).map((b, i) => (
+                  <tr key={b.id ?? i} className={cn(
+                    "border-l-[3px] border-l-transparent transition-colors duration-100",
+                    b.status === "active" && "hover:bg-emerald-50 hover:border-l-emerald-400",
+                    b.status === "draft" && "hover:bg-slate-50 hover:border-l-slate-400",
+                    b.status === "archived" && "hover:bg-slate-50/60 hover:border-l-slate-300 opacity-60",
+                  )}>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{fmtKHR(b.from_khr)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{b.to_khr ? fmtKHR(b.to_khr) : "Unlimited"}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{b.rate_percent}%</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {(b.tolerance_khr ?? 0) > 0 ? fmtKHR(b.tolerance_khr) : "—"}
+                    </td>
+                    <td className="px-4 py-2.5">{b.effective_date}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <Badge variant="outline" className={cn("capitalize text-[10px]", STATUS_COLORS[b.status] ?? "")}>
+                        {b.status}
+                      </Badge>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {brackets.sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime()).map((b, i) => (
-                    <tr key={b.id ?? i} className={cn(
-                      "border-l-[3px] border-l-transparent transition-colors duration-100",
-                      b.status === "active" && "hover:bg-emerald-50 hover:border-l-emerald-400",
-                      b.status === "draft" && "hover:bg-slate-50 hover:border-l-slate-400",
-                      b.status === "archived" && "hover:bg-slate-50/60 hover:border-l-slate-300 opacity-60",
-                    )}>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{fmtKHR(b.from_khr)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{b.to_khr ? fmtKHR(b.to_khr) : "Unlimited"}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{b.rate_percent}%</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                        {(b.tolerance_khr ?? 0) > 0 ? fmtKHR(b.tolerance_khr) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5">{b.effective_date}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <Badge variant="outline" className={cn("capitalize text-[10px]", STATUS_COLORS[b.status] ?? "")}>
-                          {b.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {brackets.length === 0 && (
-                <p className="py-10 text-center text-sm text-muted-foreground">No bracket history yet.</p>
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </tbody>
+            </table>
+            {brackets.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">No bracket history yet.</p>
+            )}
+            </div>
+          </div>
         </TabsContent>
-      </Tabs>
+          </div>
+        </Tabs>
+      </div>
     </div>
   );
 }

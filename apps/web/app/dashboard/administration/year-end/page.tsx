@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Calendar } from "lucide-react";
+import { ArrowLeft, Calendar } from "lucide-react";
 
 interface YearEndLog {
   id: string;
@@ -135,7 +136,13 @@ export default function YearEndAdminPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Calendar className="h-6 w-6 text-muted-foreground" />
+          <Link
+            href="/dashboard/hr/leave"
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title="Back to E-Leave"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Year-End Run</h2>
             <p className="text-muted-foreground">Generate next-year leave opening balances</p>

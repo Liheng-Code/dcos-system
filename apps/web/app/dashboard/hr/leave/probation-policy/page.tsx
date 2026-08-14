@@ -193,27 +193,29 @@ export default function ProbationPolicyPage() {
   }
 
   return (
-    <div className="space-y-4 p-1 max-w-full overflow-x-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-semibold">Probation Leave Policy</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Configure which leave types are available per employment status during probation</p>
+    <div className="space-y-6">
+      <div className="leave-page-header flex items-center justify-between">
+        <div className="-ml-56">
+          <h1 className="text-2xl font-bold tracking-tight">Probation Leave Policy</h1>
+          <p className="text-muted-foreground">Configure which leave types are available per employment status during probation</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {saveSuccess && <span className="text-xs text-green-600 font-medium">Saved successfully</span>}
           {saveError && (
             <span className="flex items-center gap-1 text-xs text-red-600">
               <AlertTriangle className="h-3 w-3" /> {saveError}
             </span>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saving || !hasChanges} className="gap-1.5">
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <Button onClick={handleSave} disabled={saving || !hasChanges} className="gap-1.5">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save Changes
           </Button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+        <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/50">
@@ -262,6 +264,7 @@ export default function ProbationPolicyPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-700">

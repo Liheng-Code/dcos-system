@@ -75,7 +75,7 @@ export default function OTRatesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h1 className="text-2xl font-bold tracking-tight">OT Rates Configuration</h1>
           <p className="text-muted-foreground">Configure overtime rate multipliers by type</p>
         </div>

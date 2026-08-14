@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Globe, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PublicHoliday {
@@ -243,12 +243,9 @@ export default function PublicHolidaysPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="leave-page-header flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <Globe className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Public Holidays</h2>
-            <p className="text-muted-foreground">Cambodia — {selectedYear} national public holidays</p>
-          </div>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Public Holidays</h2>
+          <p className="text-muted-foreground">Cambodia — {selectedYear} national public holidays</p>
         </div>
 
         <div className="flex items-center gap-3">

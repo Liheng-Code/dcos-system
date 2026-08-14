@@ -293,7 +293,7 @@ export default function CostAllocationPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="-ml-56">
         <h2 className="text-2xl font-bold tracking-tight">Payroll Cost Allocation</h2>
         <p className="text-muted-foreground text-sm">Allocate payroll cost to projects, WBS, and departments</p>
       </div>

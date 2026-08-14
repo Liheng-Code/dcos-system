@@ -535,32 +535,38 @@ export default function LeaveAdminPage() {
   return (
     <div className="space-y-6">
       <div className="leave-page-header">
-        <h2 className="text-2xl font-bold tracking-tight">Leave Admin Setup</h2>
-        <p className="text-muted-foreground">Configure leave types, approver chains, capacity limits, and year-end processing</p>
+        <div className="-ml-56">
+          <h2 className="text-2xl font-bold tracking-tight">Leave Admin Setup</h2>
+          <p className="text-muted-foreground">Configure leave types, approver chains, capacity limits, and year-end processing</p>
+        </div>
       </div>
 
-      {/* Section tabs */}
-      <div className="flex gap-1 border-b border-border">
-        {SECTIONS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveSection(key)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeSection === key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
 
-      {loading ? (
-        <p className="text-muted-foreground">Loading configuration...</p>
-      ) : (
-        <>
+        {/* Section tabs */}
+        <div className="flex gap-1 border-b border-border px-4 pt-3">
+          {SECTIONS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveSection(key)}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeSection === key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4">
+        {loading ? (
+          <p className="text-muted-foreground">Loading configuration...</p>
+        ) : (
+          <>
           {/* ── Leave Types ──────────────────────────────────────────────── */}
           {activeSection === "leave_types" && (
             <div className="space-y-4">
@@ -571,7 +577,8 @@ export default function LeaveAdminPage() {
                 </Button>
               </div>
 
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -636,6 +643,7 @@ export default function LeaveAdminPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
@@ -678,6 +686,7 @@ export default function LeaveAdminPage() {
               </Card>
 
               <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -700,6 +709,7 @@ export default function LeaveAdminPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
@@ -712,6 +722,7 @@ export default function LeaveAdminPage() {
                 Only applies to leave types with <em>seniority_based = true</em>.
               </p>
               <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -737,6 +748,7 @@ export default function LeaveAdminPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
@@ -767,7 +779,8 @@ export default function LeaveAdminPage() {
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -820,6 +833,7 @@ export default function LeaveAdminPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -940,7 +954,8 @@ export default function LeaveAdminPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="rounded-lg border border-border overflow-x-auto">
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 border-b border-border">
                       <tr>
@@ -989,12 +1004,14 @@ export default function LeaveAdminPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
 
               <div>
                 <h3 className="text-base font-semibold mb-3">Processing History</h3>
                 <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 border-b border-border">
                       <tr>
@@ -1019,12 +1036,15 @@ export default function LeaveAdminPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-        </>
-      )}
+          </>
+        )}
+        </div>
+      </div>
 
       {/* ── Delete Confirmation Modal ────────────────────────────────────────── */}
       {deletingType && (
