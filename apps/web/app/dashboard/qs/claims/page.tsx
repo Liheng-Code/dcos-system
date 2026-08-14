@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { FileText, Loader2 } from "lucide-react";
@@ -40,7 +40,7 @@ export default function ClaimsPage() {
       </div>
       <div className="flex-1 overflow-y-auto p-6">
         {projectId
-          ? <MergedClaimsView projectId={projectId} projectName={projectName} />
+          ? <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}><MergedClaimsView projectId={projectId} projectName={projectName} /></Suspense>
           : <div className="flex items-center justify-center py-20 text-sm text-slate-400">Select a project from the top bar.</div>}
       </div>
     </div>

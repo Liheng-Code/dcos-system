@@ -1,5 +1,6 @@
 import type { QsProgressClaim, QsClaimItem } from "@/lib/qs-service";
 import type { TenderCoverSummary, TenderSubmissionData } from "@/lib/tender-cost-service";
+import { amountInWords } from "@/lib/number-to-words";
 
 const BASE_STYLE = `
   <style>
@@ -396,6 +397,303 @@ export function printRetentionStatement(
   `;
 
   openPrint(html, `Retention-${projectName}`);
+}
+
+interface BudgetConfirmationRecord {
+  bc_number: string;
+  bc_title: string | null;
+  bc_type: string | null;
+  ai_ref_no: string | null;
+  to_name: string | null;
+  to_role: string | null;
+  cc: string | null;
+  registered_after_approved: boolean;
+  signature_pic: string | null;
+  reason_design_defect: boolean;
+  reason_design_missing: boolean;
+  reason_design_change_vo: boolean;
+  reason_change_order: boolean;
+  reason_design_change_no_cost: boolean;
+  reason_design_change_mgmt_no_cost: boolean;
+  reason_other: string | null;
+  budget_status: string | null;
+  reason_over_budget: string | null;
+  attachment_detail_comparison: boolean;
+  attachment_quotation: boolean;
+  attachment_detail_budget: boolean;
+  attachment_drawing: boolean;
+  attachment_other: string | null;
+  prepared_by_position: string | null;
+  prepared_at: string | null;
+  verified_by_position: string | null;
+  verified_at: string | null;
+  approved_by_position: string | null;
+  approved_at: string | null;
+}
+
+interface BudgetConfirmationItem {
+  line_no: number;
+  budget_code: string | null;
+  item_description: string;
+  contract_target_budget: number | null;
+  estimated_amount: number | null;
+  remaining_work_amount: number | null;
+}
+
+export function printBudgetConfirmation(
+  bc: BudgetConfirmationRecord,
+  items: BudgetConfirmationItem[],
+  names: { preparedBy: string; verifiedBy: string; approvedBy: string },
+  prNumber: string,
+  projectName: string,
+): void {
+  const check = (v: boolean) => (v ? "☑" : "☐");
+
+  const reasonRows = [
+    check(bc.reason_design_defect) + " Design Defect",
+    check(bc.reason_design_missing) + " Design Missing",
+    check(bc.reason_design_change_vo) + " Design change as per Client Comment (VO)",
+    check(bc.reason_change_order) + " Change Order",
+    check(bc.reason_design_change_no_cost) + " Design change as per Client Comment (No Cost Incur)",
+    check(bc.reason_design_change_mgmt_no_cost) + " Design change as per management Comment (No Cost Incur to client)",
+    bc.reason_other ? `Other: ${bc.reason_other}` : "",
+  ].filter(Boolean).join("<br>");
+
+  const attachmentRows = [
+    check(bc.attachment_detail_comparison) + " Detail Comparison",
+    check(bc.attachment_quotation) + " Quotation",
+    check(bc.attachment_detail_budget) + " Detail Budget",
+    check(bc.attachment_drawing) + " Drawing",
+    bc.attachment_other ? `Other: ${bc.attachment_other}` : "",
+  ].filter(Boolean).join("<br>");
+
+  const itemRows = items.map((item) => `
+    <tr>
+      <td>${item.line_no}</td>
+      <td>${item.budget_code ?? "—"}</td>
+      <td>${item.item_description}</td>
+      <td class="right">$ ${fmt(item.contract_target_budget ?? 0)}</td>
+      <td class="right">$ ${fmt(item.estimated_amount ?? 0)}</td>
+      <td class="right" style="font-size:10.5pt;font-weight:bold;color:${(item.remaining_work_amount ?? 0) >= 0 ? "#16a34a" : "#dc2626"}">$ ${fmt(item.remaining_work_amount ?? 0)}</td>
+    </tr>
+  `).join("");
+
+  const html = `
+    <div class="header">
+      <div>
+        <div class="logo">DCOS</div>
+        <div style="font-size:8pt;color:#555">Digital Construction Operating System</div>
+      </div>
+      <div class="doc-ref">
+        <strong>BUDGET CONFIRMATION</strong><br>
+        BC No.: <strong>${bc.bc_number}</strong><br>
+        PR Ref.: ${prNumber}<br>
+        Project: ${projectName}<br>
+        BC Type: ${bc.bc_type ?? "—"} ${bc.ai_ref_no ? " · AI Ref: " + bc.ai_ref_no : ""}
+      </div>
+    </div>
+
+    <table class="summary-table" style="width:100%;margin-bottom:12px">
+      <tr><td>To</td><td>${[bc.to_name, bc.to_role].filter(Boolean).join(", ") || "—"}</td></tr>
+      <tr><td>CC</td><td>${bc.cc ?? "—"}</td></tr>
+      <tr><td>BC Title</td><td>${bc.bc_title ?? "—"}</td></tr>
+      <tr><td>Registered after Approved</td><td>${bc.registered_after_approved ? "Yes" : "No"}${bc.signature_pic ? " — PIC: " + bc.signature_pic : ""}</td></tr>
+    </table>
+
+    <h3>Reason of Budget Confirmation</h3>
+    <p style="font-size:8.5pt;line-height:1.6">${reasonRows || "—"}</p>
+
+    <h3>Summary Items Budget</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px">#</th>
+          <th style="width:70px">Budget Group</th>
+          <th>Description</th>
+          <th style="width:100px">Contract Target Budget (A)</th>
+          <th style="width:140px;white-space:nowrap">Amount raise PR (B)</th>
+          <th style="width:120px;white-space:normal">Remain Budget Amount (C=A-B)</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <h3>Budget Confirmation Status</h3>
+    <p style="font-size:8.5pt">
+      <strong style="color:${bc.budget_status === "over_budget" ? "#dc2626" : "#16a34a"}">${bc.budget_status === "over_budget" ? "OVER BUDGET" : "UNDER BUDGET"}</strong>
+      ${bc.budget_status === "over_budget" && bc.reason_over_budget ? " — Reason: " + bc.reason_over_budget : ""}
+    </p>
+
+    <h3>Attachment</h3>
+    <p style="font-size:8.5pt;line-height:1.6">${attachmentRows || "—"}</p>
+
+    <div style="display:flex;gap:40px;margin-top:32px;flex-wrap:wrap">
+      <div style="min-width:160px">
+        <div class="sig-line">Prepared by</div>
+        <p style="font-size:8pt;color:#555;margin-top:4px">Name: ${names.preparedBy || "—"}</p>
+        <p style="font-size:8pt;color:#555">Position: ${bc.prepared_by_position ?? "—"}</p>
+        <p style="font-size:8pt;color:#555">Date: ${bc.prepared_at ?? "—"}</p>
+      </div>
+      <div style="min-width:160px">
+        <div class="sig-line">Verify by</div>
+        <p style="font-size:8pt;color:#555;margin-top:4px">Name: ${names.verifiedBy || "—"}</p>
+        <p style="font-size:8pt;color:#555">Position: ${bc.verified_by_position ?? "—"}</p>
+        <p style="font-size:8pt;color:#555">Date: ${bc.verified_at ?? "—"}</p>
+      </div>
+      <div style="min-width:160px">
+        <div class="sig-line">Approved by</div>
+        <p style="font-size:8pt;color:#555;margin-top:4px">Name: ${names.approvedBy || "—"}</p>
+        <p style="font-size:8pt;color:#555">Position: ${bc.approved_by_position ?? "—"}</p>
+        <p style="font-size:8pt;color:#555">Date: ${bc.approved_at ?? "—"}</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>Generated by DCOS — ${new Date().toLocaleDateString()}</span>
+      <span>${bc.bc_number} · ${projectName}</span>
+    </div>
+  `;
+
+  openPrint(html, `Budget-Confirmation-${bc.bc_number}`);
+}
+
+interface POPrintRecord {
+  po_number: string;
+  po_date: string | null;
+  currency: string;
+  vat_rate: number | null;
+  total_amount: number | null;
+  tax_amount: number | null;
+  grand_total: number | null;
+  delivery_address: string | null;
+  advance_payment_terms: string | null;
+  other_payment_terms: string | null;
+  payment_terms: string | null;
+  vendor_address: string | null;
+  vendor_contact_person: string | null;
+  vendor_contact_no: string | null;
+}
+
+interface POPrintItem {
+  line_no: number;
+  item_type: string;
+  item_description: string;
+  materials_code: string | null;
+  brand: string | null;
+  country: string | null;
+  unit: string | null;
+  quantity_ordered: number;
+  unit_rate_labor: number | null;
+  unit_rate_materials: number | null;
+  total_price: number;
+}
+
+interface POPrintRevision {
+  rev_no: number;
+  description: string;
+  rev_date: string;
+}
+
+export function printPO(
+  po: POPrintRecord,
+  items: POPrintItem[],
+  revisions: POPrintRevision[],
+  supplierName: string,
+  projectName: string,
+  prNumber: string | null,
+): void {
+  const itemRows = items.map((item) => item.item_type === "section"
+    ? `<tr class="section-row"><td colspan="9">${item.item_description}</td></tr>`
+    : `
+    <tr>
+      <td>${item.line_no}</td>
+      <td style="white-space:pre-line">${item.item_description}</td>
+      <td>${item.materials_code ?? "—"}</td>
+      <td>${item.brand ?? "—"}</td>
+      <td>${item.country ?? "—"}</td>
+      <td>${item.unit ?? ""}</td>
+      <td class="right">${item.quantity_ordered}</td>
+      <td class="right">${fmt(item.unit_rate_labor ?? 0)}</td>
+      <td class="right">${fmt(item.unit_rate_materials ?? 0)}</td>
+      <td class="right">${fmt(item.total_price)}</td>
+    </tr>
+  `).join("");
+
+  const revisionRows = revisions.map(r => `
+    <tr><td>${r.rev_no}</td><td>${r.description}</td><td>${r.rev_date}</td></tr>
+  `).join("");
+
+  const html = `
+    <div class="header">
+      <div>
+        <div class="logo">DCOS</div>
+        <div style="font-size:8pt;color:#555">Digital Construction Operating System</div>
+      </div>
+      <div class="doc-ref">
+        <strong>PROJECT PURCHASE ORDER (SUPPLY AND INSTALLATION)</strong><br>
+        PPO No.: <strong>${po.po_number}</strong><br>
+        Date: ${po.po_date ?? "—"}<br>
+        Project: ${projectName}<br>
+        PR No.: ${prNumber ?? "—"}
+      </div>
+    </div>
+
+    <table class="summary-table" style="width:100%;margin-bottom:10px">
+      <tr><td>Vendor Name</td><td>${supplierName}</td></tr>
+      <tr><td>Vendor Address</td><td style="white-space:pre-line">${po.vendor_address ?? "—"}</td></tr>
+      <tr><td>Contact Person</td><td>${po.vendor_contact_person ?? "—"}</td></tr>
+      <tr><td>Contact No.</td><td>${po.vendor_contact_no ?? "—"}</td></tr>
+      <tr><td>Ship To</td><td>${po.delivery_address ?? "—"}</td></tr>
+      <tr><td>Advance Payment</td><td>${po.advance_payment_terms ?? po.payment_terms ?? "—"}</td></tr>
+      <tr><td>Other Payment</td><td>${po.other_payment_terms ?? "—"}</td></tr>
+    </table>
+
+    ${revisions.length > 0 ? `
+    <h3>Revisions</h3>
+    <table style="margin-bottom:10px">
+      <thead><tr><th style="width:40px">Rev</th><th>Description</th><th style="width:90px">Date</th></tr></thead>
+      <tbody>${revisionRows}</tbody>
+    </table>` : ""}
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px">No.</th>
+          <th>Description</th>
+          <th style="width:70px">Materials Code</th>
+          <th style="width:60px">Brand</th>
+          <th style="width:60px">Country</th>
+          <th style="width:40px">Unit</th>
+          <th style="width:45px">Qty</th>
+          <th style="width:75px">Rate (Labor)</th>
+          <th style="width:75px">Rate (Materials)</th>
+          <th style="width:85px">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <table class="summary-table" style="width:360px;margin-left:auto;margin-top:10px">
+      <tr><td>Total Amount</td><td>${po.currency} ${fmt(po.total_amount)}</td></tr>
+      <tr><td>VAT (${po.vat_rate ?? 0}%)</td><td>${po.currency} ${fmt(po.tax_amount)}</td></tr>
+      <tr class="total-row"><td>Grand Total</td><td>${po.currency} ${fmt(po.grand_total)}</td></tr>
+    </table>
+    <p style="margin-top:8px;font-size:8.5pt"><strong>Amount in Text:</strong> ${amountInWords(po.grand_total ?? 0, po.currency)}</p>
+    <p style="font-size:7.5pt;color:#888;margin-top:4px">*Import Duties: The materials already include import duties and VAT</p>
+
+    <div style="display:flex;gap:60px;margin-top:32px">
+      <div><div class="sig-line">Prepared by</div></div>
+      <div><div class="sig-line">Approved by</div></div>
+      <div><div class="sig-line">Received by (Supplier)</div></div>
+    </div>
+
+    <div class="footer">
+      <span>Generated by DCOS — ${new Date().toLocaleDateString()}</span>
+      <span>${po.po_number} · ${projectName}</span>
+    </div>
+  `;
+
+  openPrint(html, `PO-${po.po_number}`);
 }
 
 export function printTenderCoverSummary(

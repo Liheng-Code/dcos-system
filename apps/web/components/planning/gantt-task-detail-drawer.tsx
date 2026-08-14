@@ -16,8 +16,8 @@ interface GanttTaskDetailDrawerProps {
 export function GanttTaskDetailDrawer({ task, allTasks, onClose, onEdit }: GanttTaskDetailDrawerProps) {
   if (!task) return null;
 
-  const predecessors = task.dependency_task_ids
-    ?.map((id, i) => {
+  const predecessors = (task.dependency_task_ids ?? [])
+    .map((id, i) => {
       const t = allTasks.find((at) => at.id === id);
       if (!t) return null;
       return {

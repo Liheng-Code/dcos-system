@@ -1,20 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { GitBranch, Loader2, Plus, Trash2, FileText, CheckCircle, AlertTriangle, Clock } from "lucide-react";
+import { GitBranch, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { VariationOrderList } from "@/components/qs/variation-order-list";
 
-const SUB_TABS = [
-  { id: "main",  label: "Main Contract", icon: GitBranch },
-  { id: "sub",   label: "Subcontract",    icon: FileText },
-] as const;
-
-type SubTab = (typeof SUB_TABS)[number]["id"];
+const SUB_TAB_IDS = ["main", "sub"] as const;
+type SubTab = (typeof SUB_TAB_IDS)[number];
 
 interface SubVariation {
   id: string; subcontract_id: string;
@@ -179,29 +176,12 @@ interface Props {
 }
 
 export function MergedVariationsView({ projectId, projectName }: Props) {
-  const [subTab, setSubTab] = useState<SubTab>("main");
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as SubTab | null;
+  const subTab: SubTab = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "main";
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-lg bg-slate-100 p-1">
-        {SUB_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubTab(t.id)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              subTab === t.id
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-800",
-            )}
-          >
-            <t.icon className="h-3.5 w-3.5" />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {subTab === "main" && <VariationOrderList projectId={projectId} projectName={projectName} />}
       {subTab === "sub"  && <SubVariationList projectId={projectId} />}
     </div>

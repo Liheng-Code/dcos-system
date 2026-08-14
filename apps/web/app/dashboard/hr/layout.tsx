@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { checkHrPermissions, type HrPermissions } from "@/lib/hr/permissions";
 import { cn } from "@/lib/utils";
+import { ModulePageLayout } from "@/components/dashboard/module-page-layout";
+import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
+import { getActiveHrGroup } from "@/lib/hr-nav";
 import {
   LogOut,
   CheckSquare,
@@ -208,9 +211,13 @@ export default function HRLayout({ children }: { children: ReactNode }) {
   }, []);
 
   // Outside leave/payroll/overtime sections, the main sidebar's HR Management folder
-  // provides navigation — no second sidebar needed.
+  // provides navigation — just the shared header tab bar, no second sidebar needed.
   if (!inLeave && !inPayroll && !inOvertime) {
-    return <>{children}</>;
+    return (
+      <ModulePageLayout headerTabs={<ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />}>
+        {children}
+      </ModulePageLayout>
+    );
   }
 
   // ── Payroll sub-nav ──────────────────────────────────────────────────────

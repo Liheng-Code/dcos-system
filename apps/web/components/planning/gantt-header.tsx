@@ -10,10 +10,11 @@ interface GanttHeaderProps {
   rangeMin: Date;
   rangeMax: Date;
   totalDays: number;
+  dayWidth?: number;
 }
 
-export function GanttHeader({ zoom, rangeMin, rangeMax, totalDays }: GanttHeaderProps) {
-  const dayW = getZoomDayWidth(zoom);
+export function GanttHeader({ zoom, rangeMin, rangeMax, totalDays, dayWidth }: GanttHeaderProps) {
+  const dayW = dayWidth ?? getZoomDayWidth(zoom);
   const chartW = totalDays * dayW;
 
   const days = useMemo(() => {

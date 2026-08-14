@@ -88,26 +88,26 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
           label="Contract Value"
           value={formatCurrency(kpis?.contractValue ?? 0)}
           icon={<DollarSign className="h-4 w-4" />}
-          color="text-blue-600 bg-blue-50"
+          color="border-t-blue-500 text-blue-600 bg-blue-50"
         />
         <KpiCard
           label="BOQ Total (Locked)"
           value={formatCurrency(kpis?.boqTotal ?? 0)}
           subtitle={`${kpis?.boqItemCount ?? 0} items`}
           icon={<FileText className="h-4 w-4" />}
-          color="text-emerald-600 bg-emerald-50"
+          color="border-t-emerald-500 text-emerald-600 bg-emerald-50"
         />
         <KpiCard
           label="Variations"
           value={formatCurrency(kpis?.variationTotal ?? 0)}
           icon={<TrendingUp className="h-4 w-4" />}
-          color="text-amber-600 bg-amber-50"
+          color="border-t-amber-500 text-amber-600 bg-amber-50"
         />
         <KpiCard
           label="Claims Certified"
           value={formatCurrency(kpis?.claimsTotal ?? 0)}
           icon={<CheckCircle2 className="h-4 w-4" />}
-          color="text-purple-600 bg-purple-50"
+          color="border-t-purple-500 text-purple-600 bg-purple-50"
         />
       </div>
 
@@ -117,14 +117,14 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
           label="Retention Held"
           value={formatCurrency(kpis?.retentionHeld ?? 0)}
           icon={<Shield className="h-4 w-4" />}
-          color="text-cyan-600 bg-cyan-50"
+          color="border-t-cyan-500 text-cyan-600 bg-cyan-50"
         />
         <KpiCard
           label="BOQ Items (Baseline)"
           value={`${kpis?.boqItemCount ?? 0}`}
           subtitle="locked"
           icon={<BarChart3 className="h-4 w-4" />}
-          color="text-indigo-600 bg-indigo-50"
+          color="border-t-indigo-500 text-indigo-600 bg-indigo-50"
         />
         {snapshot && (
           <KpiCard
@@ -132,7 +132,7 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
             value={formatCurrency(snapshot.total_bid_price)}
             subtitle={`OH ${snapshot.overhead_pct}% / Profit ${snapshot.profit_pct}%`}
             icon={<DollarSign className="h-4 w-4" />}
-            color="text-rose-600 bg-rose-50"
+            color="border-t-rose-500 text-rose-600 bg-rose-50"
           />
         )}
       </div>
@@ -267,15 +267,16 @@ function KpiCard({
   icon: React.ReactNode;
   color: string;
 }) {
+  const [borderClass, textClass, bgClass] = color.split(" ");
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className={cn("rounded-xl border border-border bg-card p-5 border-t-4", borderClass)}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-        <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg", color)}>
+        <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg", bgClass)}>
           {icon}
         </div>
       </div>
-      <p className="text-xl font-bold">{value}</p>
+      <p className={cn("text-xl font-bold", textClass)}>{value}</p>
       {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
     </div>
   );

@@ -1,18 +1,10 @@
 "use client";
 
-import { Search, Maximize, Minimize, Layers } from "lucide-react";
-import type { GanttZoom, ScheduleLevel } from "./gantt-types";
+import { Search, Maximize, Minimize, Plus, Filter, Download } from "lucide-react";
+import type { GanttZoom } from "./gantt-types";
 import { ZOOM_LABELS } from "./gantt-types";
-import { SCHEDULE_LEVELS } from "./schedule-levels";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 interface GanttToolbarProps {
@@ -26,9 +18,9 @@ interface GanttToolbarProps {
   onFullscreenToggle: () => void;
   taskCount: number;
   filteredCount: number;
-  scheduleLevel?: ScheduleLevel;
-  onScheduleLevelChange?: (level: ScheduleLevel) => void;
-  levelLabel?: string;
+  highlightCritical?: boolean;
+  onHighlightCriticalChange?: (show: boolean) => void;
+  onAddActivity?: () => void;
 }
 
 export function GanttToolbar({
@@ -42,35 +34,17 @@ export function GanttToolbar({
   onFullscreenToggle,
   taskCount,
   filteredCount,
-  scheduleLevel,
-  onScheduleLevelChange,
-  levelLabel,
+  highlightCritical,
+  onHighlightCriticalChange,
+  onAddActivity,
 }: GanttToolbarProps) {
   const zooms: GanttZoom[] = ["day", "week", "month"];
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-xs">
-      {/* Left: schedule level + zoom + search */}
+      {/* Left group */}
       <div className="flex items-center gap-2">
-        {/* Schedule Level Selector */}
-        {onScheduleLevelChange && (
-          <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1">
-            <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-            <select
-              value={scheduleLevel ?? 3}
-              onChange={(e) => onScheduleLevelChange(Number(e.target.value) as ScheduleLevel)}
-              className="h-6 rounded border-0 bg-transparent px-1 text-[11px] font-medium outline-none cursor-pointer"
-            >
-              {SCHEDULE_LEVELS.map((sl) => (
-                <option key={sl.level} value={sl.level}>
-                  L{sl.level}: {sl.shortLabel}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Zoom */}
+        {/* Zoom toggle */}
         <div className="flex items-center rounded-md bg-muted/50 p-0.5">
           {zooms.map((z) => (
             <button
@@ -100,16 +74,30 @@ export function GanttToolbar({
             className="h-8 w-44 rounded-md border border-input bg-transparent pl-7 pr-2 text-xs outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
           />
         </div>
+
+        {/* Filter dropdown placeholder */}
+        <div className="relative group">
+          <Button variant="ghost" size="icon" className="h-7 w-7" title="Filter">
+            <Filter className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        {/* Add Activity */}
+        {onAddActivity && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-[11px] gap-1 rounded-md"
+            onClick={onAddActivity}
+          >
+            <Plus className="h-3 w-3" /> Activity
+          </Button>
+        )}
       </div>
 
-      {/* Right: toggles + actions */}
+      {/* Right group */}
       <div className="flex items-center gap-2">
-        {levelLabel && (
-          <Badge variant="secondary" className="text-[10px] h-5">
-            {levelLabel}
-          </Badge>
-        )}
-
+        {/* Show Baseline toggle */}
         <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
           <input
             type="checkbox"
@@ -120,9 +108,27 @@ export function GanttToolbar({
           Baseline
         </label>
 
+        {/* Highlight Critical Path toggle */}
+        {onHighlightCriticalChange !== undefined && (
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={highlightCritical}
+              onChange={(e) => onHighlightCriticalChange(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-red-500"
+            />
+            <span className="text-red-600">Critical</span>
+          </label>
+        )}
+
         <Badge variant="outline" className="text-[10px] h-5">
           {filteredCount}/{taskCount} tasks
         </Badge>
+
+        {/* Export PDF */}
+        <Button variant="ghost" size="icon" className="h-7 w-7" title="Export PDF">
+          <Download className="h-3.5 w-3.5" />
+        </Button>
 
         <Button
           variant="ghost"

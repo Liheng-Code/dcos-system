@@ -18,7 +18,7 @@ export default function Home() {
     // so a stale JWT from a restarted Supabase instance doesn't slip through.
     supabase.auth.getUser().then(({ data, error }) => {
       if (data.user && !error) {
-        router.push("/dashboard");
+        router.push("/modules");
       } else {
         // Clear any invalid session tokens before showing the login form
         supabase.auth.signOut().finally(() => setChecking(false));

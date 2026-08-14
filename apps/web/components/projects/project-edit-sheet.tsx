@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -112,6 +112,13 @@ const TIME_ZONES = [
 
 const CURRENCIES = ["USD", "KHR", "THB", "VND", "SGD", "MYR", "JPY", "EUR"];
 
+function formatNumber(value: string): string {
+  if (!value) return "";
+  const num = parseFloat(value.replace(/,/g, ""));
+  if (isNaN(num)) return value;
+  return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 interface ProjectEditSheetProps {
   project: Project | null;
   onClose: () => void;
@@ -132,6 +139,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
   const [addingTeamKey, setAddingTeamKey] = useState<string | null>(null);
   const [addMemberStaffId, setAddMemberStaffId] = useState("");
   const [addMemberRole, setAddMemberRole] = useState("");
+  const contractValueRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     project_code: project?.project_code ?? "",
@@ -556,11 +564,22 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
             <div className="space-y-1.5">
               <Label htmlFor="contract_value">Contract Value</Label>
               <input
+                ref={contractValueRef}
                 id="contract_value"
-                type="number"
-                step="0.01"
-                value={form.contract_value}
-                onChange={(e) => update("contract_value", e.target.value)}
+                type="text"
+                inputMode="numeric"
+                value={formatNumber(form.contract_value)}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  update("contract_value", raw);
+                  requestAnimationFrame(() => {
+                    const el = contractValueRef.current;
+                    if (!el) return;
+                    const formatted = formatNumber(raw);
+                    const pos = formatted.indexOf(".");
+                    if (pos > 0) el.setSelectionRange(pos, pos);
+                  });
+                }}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
               />
             </div>
@@ -638,63 +657,19 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
 
           <fieldset className="space-y-3">
             <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Management</legend>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="project_director">Project Director</Label>
-                <select
-                  id="project_director"
-                  value={form.project_director_id}
-                  onChange={(e) => update("project_director_id", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
-                >
-                  <option value="">— Select —</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="project_manager">Project Manager</Label>
-                <select
-                  id="project_manager"
-                  value={form.project_manager_id}
-                  onChange={(e) => update("project_manager_id", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
-                >
-                  <option value="">— Select —</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="engineering_manager">Engineering Manager</Label>
-                <select
-                  id="engineering_manager"
-                  value={form.engineering_manager_id}
-                  onChange={(e) => update("engineering_manager_id", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
-                >
-                  <option value="">— Select —</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="planning_manager">Planning Manager</Label>
-                <select
-                  id="planning_manager"
-                  value={form.planning_manager_id}
-                  onChange={(e) => update("planning_manager_id", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
-                >
-                  <option value="">— Select —</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="project_manager">Project Manager</Label>
+              <select
+                id="project_manager"
+                value={form.project_manager_id}
+                onChange={(e) => update("project_manager_id", e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+              >
+                <option value="">— Select —</option>
+                {staff.map((s) => (
+                  <option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="project_status">Status</Label>

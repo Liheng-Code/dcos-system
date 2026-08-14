@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, AlertTriangle, Clock, ListChecks } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ReportExport } from "@/components/reports/layout/report-export";
+
+const SUB_TAB_IDS = ["delay", "summary", "milestone"] as const;
+type ReportType = (typeof SUB_TAB_IDS)[number];
 
 interface TaskSummary {
   id: string; task_code: string; task_name: string; status: string;
@@ -22,9 +25,11 @@ interface TaskSummary {
 export function PlanScheduleReports() {
   const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as ReportType | null;
+  const reportType: ReportType = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "delay";
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [reportType, setReportType] = useState<"delay" | "summary" | "milestone">("delay");
 
   useEffect(() => {
     if (!selectedProjectId) { setTasks([]); setLoading(false); return; }
@@ -61,19 +66,6 @@ export function PlanScheduleReports() {
 
   return (
     <div className="space-y-4">
-      {/* Report type selector */}
-      <div className="flex items-center gap-2">
-        <Button variant={reportType === "delay" ? "default" : "outline"} size="sm" onClick={() => setReportType("delay")}>
-          <AlertTriangle className="mr-1 h-4 w-4" /> Delay Analysis
-        </Button>
-        <Button variant={reportType === "summary" ? "default" : "outline"} size="sm" onClick={() => setReportType("summary")}>
-          <ListChecks className="mr-1 h-4 w-4" /> Schedule Summary
-        </Button>
-        <Button variant={reportType === "milestone" ? "default" : "outline"} size="sm" onClick={() => setReportType("milestone")}>
-          <Clock className="mr-1 h-4 w-4" /> Milestones
-        </Button>
-      </div>
-
       {/* Report content */}
       {reportType === "delay" && (
         <div className="space-y-4">

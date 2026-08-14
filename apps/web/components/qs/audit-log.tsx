@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,9 +37,12 @@ function getChangedFields(entry: QsAuditEntry): { field: string; from: string; t
 interface Props { projectId: string }
 
 export function QsAuditLog({ projectId }: Props) {
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub");
+  const tableFilter = subParam && subParam in TABLE_LABELS ? subParam : "all";
+
   const [entries, setEntries] = useState<QsAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tableFilter, setTableFilter] = useState("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -52,7 +56,6 @@ export function QsAuditLog({ projectId }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const tables = ["all", ...Object.keys(TABLE_LABELS)];
   const filtered = tableFilter === "all" ? entries : entries.filter((e) => e.table_name === tableFilter);
 
   if (loading) {
@@ -64,24 +67,6 @@ export function QsAuditLog({ projectId }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{filtered.length} audit entr{filtered.length !== 1 ? "ies" : "y"}</p>
-      </div>
-
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-2">
-        {tables.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTableFilter(t)}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors",
-              tableFilter === t
-                ? "bg-slate-800 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-            )}
-          >
-            {TABLE_LABELS[t] ?? "All"}
-          </button>
-        ))}
       </div>
 
       {/* Entries */}

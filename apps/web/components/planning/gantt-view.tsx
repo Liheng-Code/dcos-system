@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
 import { cn } from "@/lib/utils";
 
-import type { GanttZoom, GanttTask, GanttGroupRow, ScheduleLevel } from "./gantt-types";
+import type { GanttZoom, GanttTask, GanttGroupRow, GanttDisplayRow } from "./gantt-types";
 import { DAY_W, ROW_HEIGHT, HEADER_H, LABEL_W } from "./gantt-types";
 import {
   computeDateRange,
@@ -15,10 +15,11 @@ import {
   toX,
   getBarWidth,
   getZoomDayWidth,
+  daysBetween,
 } from "./gantt-utils";
-import { getScheduleLevelConfig, getLevelZoom, showSummaryBars, isLookaheadLevel, isPortfolioLevel } from "./schedule-levels";
 
 import { GanttToolbar } from "./gantt-toolbar";
+import { GanttCommandBar } from "./gantt-command-bar";
 import { GanttHeader } from "./gantt-header";
 import { GanttBar } from "./gantt-bar";
 import { GanttMilestone } from "./gantt-milestone";
@@ -26,56 +27,125 @@ import { GanttTaskTree } from "./gantt-task-tree";
 import { GanttDependencyLines } from "./gantt-dependency-lines";
 import { GanttLegend } from "./gantt-legend";
 import { GanttTaskDetailDrawer } from "./gantt-task-detail-drawer";
-import { PortfolioGantt } from "./portfolio-gantt";
-import { LookaheadGantt } from "./lookahead-gantt";
 
 interface GanttViewProps {
   projectId?: string;
   mode?: "full" | "embedded";
-  tasks?: import("./gantt-types").GanttTask[];
-  scheduleLevel?: ScheduleLevel;
-  onScheduleLevelChange?: (level: ScheduleLevel) => void;
+  tasks?: GanttTask[];
+}
+
+interface WbsNode {
+  id: string;
+  parent_id: string | null;
+  wbs_code: string;
+  wbs_name: string;
+}
+
+interface WbsTreeNode {
+  id: string;
+  wbs_code: string;
+  wbs_name: string;
+  depth: number;
+  children: WbsTreeNode[];
+  tasks: GanttTask[];
+}
+
+// ---------------------------------------------------------------------------
+// Build a tree from flat wbs_nodes list
+// ---------------------------------------------------------------------------
+function buildWbsTree(
+  nodes: WbsNode[],
+  tasks: GanttTask[],
+  depthMap: Map<string, number>,
+): WbsTreeNode[] {
+  const childMap = new Map<string, WbsNode[]>();
+  const taskByNode = new Map<string, GanttTask[]>();
+
+  for (const t of tasks) {
+    if (!t.wbs_node_id) continue;
+    const list = taskByNode.get(t.wbs_node_id) || [];
+    list.push(t);
+    taskByNode.set(t.wbs_node_id, list);
+  }
+
+  for (const node of nodes) {
+    if (node.parent_id) {
+      const siblings = childMap.get(node.parent_id) || [];
+      siblings.push(node);
+      childMap.set(node.parent_id, siblings);
+    }
+  }
+
+  function toTree(n: WbsNode): WbsTreeNode {
+    const children = (childMap.get(n.id) || []).map(toTree);
+    return {
+      id: n.id,
+      wbs_code: n.wbs_code,
+      wbs_name: n.wbs_name,
+      depth: depthMap.get(n.id) ?? 0,
+      children,
+      tasks: taskByNode.get(n.id) || [],
+    };
+  }
+
+  return nodes.filter((n) => !n.parent_id).map(toTree);
 }
 
 export function GanttView({
   projectId: propProjectId,
   mode = "full",
   tasks: propTasks,
-  scheduleLevel: propScheduleLevel,
-  onScheduleLevelChange,
 }: GanttViewProps) {
   const supabase = useMemo(() => createClient(), []);
-  const { selectedProjectId, loading: projectLoading } = useProject();
+  const { selectedProjectId, selectedProject, loading: projectLoading } = useProject();
   const projectId = propProjectId || selectedProjectId;
 
-  const effectiveLevel = propScheduleLevel ?? (propTasks ? undefined : 3) as any;
-  const levelConfig = effectiveLevel ? getScheduleLevelConfig(effectiveLevel) : null;
-
   const [fetchedTasks, setFetchedTasks] = useState<GanttTask[]>([]);
-  const [wbsNodes, setWbsNodes] = useState<{ id: string; parent_id: string | null; wbs_code: string; wbs_name: string }[]>([]);
+  const [wbsNodes, setWbsNodes] = useState<WbsNode[]>([]);
   const [criticalIds, setCriticalIds] = useState<Set<string>>(new Set());
   const [floatMap, setFloatMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(mode === "full");
 
-  const [zoom, setZoom] = useState<GanttZoom>(levelConfig?.defaultZoom ?? "week");
+  const [zoom, setZoom] = useState<GanttZoom>("week");
+  const [zoomScale, setZoomScale] = useState(1);
+  const [levelFilter, setLevelFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showBaseline, setShowBaseline] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(["__project__"]));
   const [rowOffsets, setRowOffsets] = useState<Map<string, number>>(new Map());
+  const [highlightCritical, setHighlightCritical] = useState(true);
+  const [autoScheduleActive, setAutoScheduleActive] = useState(true);
+  const [dataDate, setDataDate] = useState<string | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
+  const taskTreeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const isSyncingScroll = useRef(false);
 
-  // Sync zoom when schedule level changes
-  useEffect(() => {
-    if (levelConfig) {
-      setZoom(levelConfig.defaultZoom);
-    }
-  }, [propScheduleLevel]);
+  // Sync vertical scroll between task tree and timeline
+  const handleTaskTreeScroll = useCallback(() => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    const treeEl = taskTreeRef.current;
+    const tlEl = timelineRef.current;
+    if (treeEl && tlEl) tlEl.scrollTop = treeEl.scrollTop;
+    requestAnimationFrame(() => { isSyncingScroll.current = false; });
+  }, []);
 
-  // Fetch data — filter by schedule_level if specified
+  const handleTimelineScroll = useCallback(() => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    const treeEl = taskTreeRef.current;
+    const tlEl = timelineRef.current;
+    if (treeEl && tlEl) treeEl.scrollTop = tlEl.scrollTop;
+    requestAnimationFrame(() => { isSyncingScroll.current = false; });
+  }, []);
+
+  // -----------------------------------------------------------------------
+  // Data fetching
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (mode === "embedded" && propTasks) {
       setFetchedTasks(propTasks);
@@ -89,32 +159,27 @@ export function GanttView({
     }
     setLoading(true);
 
-    const tasksQuery = supabase
-      .from("wbs_tasks")
-      .select(`
-        id, task_code, task_name, discipline, wbs_node_id, owner_name,
-        start_date, end_date, progress, status, delay_status, priority,
-        dependency_task_ids, dependency_types, dependency_lag_days,
-        is_milestone, constraint_type,
-        baseline_start_date, baseline_finish_date, schedule_level
-      `)
-      .eq("project_id", projectId)
-      .order("sort_order", { ascending: true })
-      .order("start_date", { ascending: true })
-      .limit(500);
-
-    if (effectiveLevel) {
-      tasksQuery.eq("schedule_level", effectiveLevel);
-    }
-
     Promise.all([
-      tasksQuery,
+      supabase
+        .from("wbs_tasks")
+        .select(`
+          id, task_code, task_name, discipline, wbs_node_id, owner_name,
+          start_date, end_date, progress, status, delay_status, priority,
+          dependency_task_ids, dependency_types, dependency_lag_days,
+          is_milestone, constraint_type,
+          baseline_start_date, baseline_finish_date
+        `)
+        .eq("project_id", projectId)
+        .order("sort_order", { ascending: true })
+        .order("start_date", { ascending: true })
+        .limit(500),
       supabase.from("wbs_nodes")
-        .select("id, parent_id, wbs_code, wbs_name, node_type, is_summary, schedule_level")
+        .select("id, parent_id, wbs_code, wbs_name")
         .eq("project_id", projectId)
         .order("wbs_code", { ascending: true }),
       supabase.rpc("get_critical_path_tasks", { p_project_id: projectId }).then((r) => r.data),
-    ]).then(([tRes, wRes, cpData]) => {
+      supabase.from("projects").select("data_date").eq("id", projectId).maybeSingle(),
+    ]).then(([tRes, wRes, cpData, projRes]) => {
       if (tRes.error) toast.error(tRes.error.message);
       else setFetchedTasks((tRes.data || []) as unknown as GanttTask[]);
       if (wRes.data) setWbsNodes(wRes.data);
@@ -122,9 +187,11 @@ export function GanttView({
         setCriticalIds(new Set(cpData.map((r: any) => r.id)));
         setFloatMap(new Map(cpData.map((r: any) => [r.id, r.total_float_days as number])));
       }
+      if (projRes.data?.data_date) setDataDate(projRes.data.data_date);
+      setLoading(false);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [supabase, projectId, mode, propTasks, effectiveLevel]);
+  }, [supabase, projectId, mode, propTasks]);
 
   // Enrich tasks
   const tasks = useMemo<GanttTask[]>(() => {
@@ -133,50 +200,75 @@ export function GanttView({
       dependency_lag_days: (t as any).dependency_lag_days || [],
       is_critical: criticalIds.has(t.id),
       total_float: floatMap.get(t.id) ?? null,
-      schedule_level: (t as any).schedule_level ?? effectiveLevel ?? 3,
     }));
-  }, [fetchedTasks, criticalIds, floatMap, effectiveLevel]);
+  }, [fetchedTasks, criticalIds, floatMap]);
 
-  // Build WBS groups
-  const { groups, taskMap } = useMemo(() => {
-    const m = new Map(tasks.map((t) => [t.id, t]));
+  const projectName = selectedProject?.project_name || "";
+  const projectCode = selectedProject?.project_code || "";
 
-    const nodeMap = new Map(wbsNodes.map((n) => [n.id, n]));
-    const nodeDepth = new Map<string, number>();
+  // -----------------------------------------------------------------------
+  // WBS tree & depth calculation
+  // -----------------------------------------------------------------------
+  // Augment WBS nodes: insert a virtual project root at the top
+  const augmentedWbsNodes = useMemo<WbsNode[]>(() => {
+    if (!projectName) return wbsNodes;
+    return [
+      { id: "__project__", parent_id: null, wbs_code: projectCode || "PROJ", wbs_name: projectName },
+      ...wbsNodes.map((n) => (n.parent_id ? n : { ...n, parent_id: "__project__" })),
+    ];
+  }, [wbsNodes, projectName, projectCode]);
+
+  const { groups, nodeDepthMap } = useMemo(() => {
+    const nodeMap = new Map(augmentedWbsNodes.map((n) => [n.id, n]));
+    const depthCache = new Map<string, number>();
 
     function getDepth(nodeId: string): number {
-      if (nodeDepth.has(nodeId)) return nodeDepth.get(nodeId)!;
+      if (depthCache.has(nodeId)) return depthCache.get(nodeId)!;
       const node = nodeMap.get(nodeId);
-      if (!node || !node.parent_id) {
-        nodeDepth.set(nodeId, 0);
-        return 0;
-      }
+      if (!node || !node.parent_id) { depthCache.set(nodeId, 0); return 0; }
       const d = getDepth(node.parent_id) + 1;
-      nodeDepth.set(nodeId, d);
+      depthCache.set(nodeId, d);
       return d;
     }
 
-    const tasksWithDepth = tasks.map((t) => {
-      const depth = t.wbs_node_id ? getDepth(t.wbs_node_id) : 0;
-      return { ...t, wbs_depth: depth };
-    });
-    m.clear();
-    tasksWithDepth.forEach((t) => m.set(t.id, t));
+    // Build parent→children map
+    const childrenOfNode = new Map<string, string[]>();
+    for (const node of augmentedWbsNodes) {
+      if (node.parent_id) {
+        const siblings = childrenOfNode.get(node.parent_id) || [];
+        siblings.push(node.id);
+        childrenOfNode.set(node.parent_id, siblings);
+      }
+    }
 
     const tasksByNode = new Map<string, GanttTask[]>();
-    for (const t of tasksWithDepth) {
+    for (const t of tasks) {
+      if (!t.wbs_node_id) continue;
       const list = tasksByNode.get(t.wbs_node_id) || [];
       list.push(t);
       tasksByNode.set(t.wbs_node_id, list);
     }
 
-    const grps: GanttGroupRow[] = [];
-    for (const node of wbsNodes) {
-      const nodeTasks = tasksByNode.get(node.id);
-      if (!nodeTasks || nodeTasks.length === 0) continue;
+    // Collect ALL descendant tasks (recursive) for summary aggregation
+    function getAllDescendantTasks(nodeId: string): GanttTask[] {
+      const result: GanttTask[] = [];
+      const children = childrenOfNode.get(nodeId) || [];
+      for (const childId of children) {
+        const childTasks = tasksByNode.get(childId) || [];
+        result.push(...childTasks);
+        result.push(...getAllDescendantTasks(childId));
+      }
+      return result;
+    }
 
-      const startDates = nodeTasks.map((t) => t.start_date).filter(Boolean) as string[];
-      const endDates = nodeTasks.map((t) => t.end_date).filter(Boolean) as string[];
+    const grps: GanttGroupRow[] = [];
+    for (const node of augmentedWbsNodes) {
+      const directTasks = tasksByNode.get(node.id) || [];
+      const descendantTasks = getAllDescendantTasks(node.id);
+      const allTasks = [...directTasks, ...descendantTasks];
+
+      const startDates = allTasks.map((t) => t.start_date).filter(Boolean) as string[];
+      const endDates = allTasks.map((t) => t.end_date).filter(Boolean) as string[];
 
       grps.push({
         id: node.id,
@@ -184,85 +276,136 @@ export function GanttView({
         wbs_code: node.wbs_code,
         wbs_name: node.wbs_name,
         wbs_depth: getDepth(node.id),
-        is_expanded: expandedGroups.has(node.id),
-        children: nodeTasks.map((t) => t.id),
+        is_expanded: expandedNodes.has(node.id),
+        children: directTasks.map((t) => t.id),
         start_date: startDates.length ? startDates.sort()[0] : null,
         end_date: endDates.length ? endDates.sort()[endDates.length - 1] : null,
-        progress: nodeTasks.length
-          ? Math.round(nodeTasks.reduce((s, t) => s + t.progress, 0) / nodeTasks.length)
+        progress: allTasks.length
+          ? Math.round(allTasks.reduce((s, t) => s + t.progress, 0) / allTasks.length)
           : 0,
-        task_count: nodeTasks.length,
+        task_count: allTasks.length,
       });
     }
 
-    return { groups: grps, taskMap: m };
-  }, [tasks, wbsNodes, expandedGroups]);
+    return { groups: grps, nodeDepthMap: depthCache };
+  }, [tasks, wbsNodes, expandedNodes]);
 
-  // Date range
-  const dateRange = useMemo(() => computeDateRange(tasks), [tasks]);
-  const totalDays = getTotalDays(dateRange.min, dateRange.max);
-  const dayW = getZoomDayWidth(zoom);
-  const chartW = totalDays * dayW;
+  const taskMap = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
-  // Filter by search
-  const filteredTasks = useMemo(() => {
-    if (!searchQuery) return tasks;
-    const q = searchQuery.toLowerCase();
-    return tasks.filter(
-      (t) =>
-        t.task_name.toLowerCase().includes(q) ||
-        t.task_code.toLowerCase().includes(q) ||
-        t.owner_name?.toLowerCase().includes(q),
-    );
-  }, [tasks, searchQuery]);
-
-  const visibleTaskIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const t of filteredTasks) {
-      const group = groups.find((g) => g.children.includes(t.id));
-      if (group && !expandedGroups.has(group.id)) continue;
-      ids.add(t.id);
-    }
-    return ids;
-  }, [filteredTasks, groups, expandedGroups]);
-
-  const visibleTasks = useMemo(
-    () => filteredTasks.filter((t) => visibleTaskIds.has(t.id)),
-    [filteredTasks, visibleTaskIds],
+  // WBS tree root nodes
+  const rootNodes = useMemo(
+    () => buildWbsTree(augmentedWbsNodes, tasks, nodeDepthMap),
+    [augmentedWbsNodes, tasks, nodeDepthMap],
   );
 
-  // Row offset tracking for dependency lines
-  const updateRowOffset = useCallback((taskId: string, element: HTMLDivElement | null) => {
-    if (element) {
-      rowRefs.current.set(taskId, element);
-      const parent = timelineRef.current;
-      if (parent) {
-        const parentRect = parent.getBoundingClientRect();
-        const rect = element.getBoundingClientRect();
-        setRowOffsets((prev) => {
-          const next = new Map(prev);
-          next.set(taskId, rect.top - parentRect.top + parent.scrollTop);
-          return next;
-        });
+  // -----------------------------------------------------------------------
+  // Unified display rows driving BOTH the tree panel and the timeline
+  // -----------------------------------------------------------------------
+  const displayRows = useMemo<GanttDisplayRow[]>(() => {
+    const rows: GanttDisplayRow[] = [];
+    const taskFilter = (t: GanttTask) =>
+      !searchQuery ||
+      t.task_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.task_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.owner_name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const groupMap = new Map(groups.map((g) => [g.id, g]));
+
+    function walk(node: WbsTreeNode) {
+      const group = groupMap.get(node.id);
+      // Always show the node row (even with 0 tasks) so the tree is navigable
+      if (group) {
+        rows.push({ id: group.id, kind: "group", data: group, depth: node.depth });
+      }
+      if (!expandedNodes.has(node.id)) return;
+      for (const child of node.children) walk(child);
+      for (const t of node.tasks) {
+        if (taskFilter(t)) rows.push({ id: t.id, kind: "task", data: t, depth: node.depth + 1 });
       }
     }
+
+    for (const root of rootNodes) walk(root);
+
+    // Ungrouped tasks (no wbs_node_id or pointing to a node not in our list)
+    const wbsNodeIds = new Set(augmentedWbsNodes.map((n) => n.id));
+    const ungroupedTasks = tasks.filter(
+      (t) => (!t.wbs_node_id || !wbsNodeIds.has(t.wbs_node_id)) && taskFilter(t),
+    );
+    if (ungroupedTasks.length > 0) {
+      for (const t of ungroupedTasks) {
+        rows.push({ id: t.id, kind: "task", data: t, depth: 0 });
+      }
+    }
+
+    return rows;
+  }, [rootNodes, groups, expandedNodes, searchQuery, tasks, wbsNodes]);
+
+  // -----------------------------------------------------------------------
+  // Date range & zoom
+  // -----------------------------------------------------------------------
+  const dateRange = useMemo(() => computeDateRange(tasks), [tasks]);
+  const totalDays = getTotalDays(dateRange.min, dateRange.max);
+  const dayW = getZoomDayWidth(zoom) * zoomScale;
+  const chartW = totalDays * dayW;
+
+  const maxWbsLevel = useMemo(
+    () => Math.max(0, ...Array.from(nodeDepthMap.values())) + 1,
+    [nodeDepthMap],
+  );
+
+  const weightedProgress = useMemo(() => {
+    let totalDuration = 0;
+    let weighted = 0;
+    for (const t of tasks) {
+      if (!t.start_date || !t.end_date) continue;
+      const dur = daysBetween(t.start_date, t.end_date);
+      totalDuration += dur;
+      weighted += dur * t.progress;
+    }
+    return totalDuration > 0 ? Math.round(weighted / totalDuration) : 0;
+  }, [tasks]);
+
+  const completedTaskCount = useMemo(
+    () => tasks.filter((t) => t.status === "completed").length,
+    [tasks],
+  );
+
+  const dependencyLinksCount = useMemo(
+    () => tasks.reduce((sum, t) => sum + (t.dependency_task_ids?.length || 0), 0),
+    [tasks],
+  );
+
+  // -----------------------------------------------------------------------
+  // Row offset tracking for dependency lines
+  // -----------------------------------------------------------------------
+  const storeRowRef = useCallback((rowId: string, element: HTMLDivElement | null) => {
+    if (element) {
+      rowRefs.current.set(rowId, element);
+    } else {
+      rowRefs.current.delete(rowId);
+    }
+  }, []);
+
+  const computeRowOffsets = useCallback(() => {
+    const c = timelineRef.current;
+    if (!c) return;
+    const offsets = new Map<string, number>();
+    const pr = c.getBoundingClientRect();
+    for (const [id, el] of rowRefs.current.entries()) {
+      const rr = el.getBoundingClientRect();
+      offsets.set(id, rr.top - pr.top + c.scrollTop);
+    }
+    setRowOffsets(offsets);
   }, []);
 
   useEffect(() => {
-    const container = timelineRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const newOffsets = new Map<string, number>();
-      const parentRect = container.getBoundingClientRect();
-      for (const [id, el] of rowRefs.current.entries()) {
-        const rect = el.getBoundingClientRect();
-        newOffsets.set(id, rect.top - parentRect.top + container.scrollTop);
-      }
-      setRowOffsets(newOffsets);
-    };
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
+    const c = timelineRef.current;
+    if (!c) return;
+    computeRowOffsets();
+    const onScroll = () => computeRowOffsets();
+    c.addEventListener("scroll", onScroll);
+    return () => c.removeEventListener("scroll", onScroll);
+  }, [computeRowOffsets, displayRows.length]);
 
   const selectedTask = useMemo(
     () => tasks.find((t) => t.id === selectedTaskId) ?? null,
@@ -271,11 +414,11 @@ export function GanttView({
 
   const delayedCount = tasks.filter((t) => t.delay_status === "delayed").length;
 
-  const handleToggleGroup = useCallback((groupId: string) => {
-    setExpandedGroups((prev) => {
+  const handleToggleNode = useCallback((nodeId: string) => {
+    setExpandedNodes((prev) => {
       const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
       return next;
     });
   }, []);
@@ -284,11 +427,62 @@ export function GanttView({
     setIsFullscreen((prev) => !prev);
   }, []);
 
-  const now = new Date();
-  const todayX = now >= dateRange.min && now <= dateRange.max
-    ? toX(now.toISOString().slice(0, 10), dateRange.min, dayW)
-    : -1;
+  const handleExpandAll = useCallback(() => {
+    setExpandedNodes(new Set(augmentedWbsNodes.map((n) => n.id)));
+    setLevelFilter("all");
+  }, [augmentedWbsNodes]);
 
+  const handleCollapseAll = useCallback(() => {
+    setExpandedNodes(new Set());
+    setLevelFilter("all");
+  }, []);
+
+  const handleLevelFilterChange = useCallback((level: number | "all") => {
+    setLevelFilter(level);
+    if (level === "all") {
+      setExpandedNodes(new Set(augmentedWbsNodes.map((n) => n.id)));
+      return;
+    }
+    const next = new Set<string>();
+    for (const node of augmentedWbsNodes) {
+      const depth = nodeDepthMap.get(node.id) ?? 0;
+      if (depth < level - 1) next.add(node.id);
+    }
+    setExpandedNodes(next);
+  }, [augmentedWbsNodes, nodeDepthMap]);
+
+  const handleAutoScheduleToggle = useCallback(() => {
+    setAutoScheduleActive((prev) => !prev);
+  }, []);
+
+  const handleReschedule = useCallback(async (taskId: string, newStart: string, newEnd: string) => {
+    const { error } = await supabase
+      .from("wbs_tasks")
+      .update({ start_date: newStart, end_date: newEnd })
+      .eq("id", taskId);
+    if (error) toast.error("Failed to reschedule: " + error.message);
+    else {
+      toast.success("Task rescheduled");
+      setFetchedTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, start_date: newStart, end_date: newEnd } : t)),
+      );
+    }
+  }, [supabase]);
+
+  const now = new Date();
+  const todayX =
+    now >= dateRange.min && now <= dateRange.max
+      ? toX(now.toISOString().slice(0, 10), dateRange.min, dayW)
+      : -1;
+  const dataDateX = dataDate ? toX(dataDate, dateRange.min, dayW) : -1;
+
+  const handleScrollToToday = useCallback(() => {
+    const el = timelineRef.current;
+    if (!el || todayX < 0) return;
+    el.scrollLeft = Math.max(0, todayX - el.clientWidth / 2);
+  }, [todayX]);
+
+  // Guard: loading
   if (loading || projectLoading) {
     return (
       <div className="flex h-60 items-center justify-center">
@@ -297,6 +491,7 @@ export function GanttView({
     );
   }
 
+  // Guard: no project
   if (mode === "full" && !projectId) {
     return (
       <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
@@ -305,36 +500,66 @@ export function GanttView({
     );
   }
 
-  if (effectiveLevel === 1) {
-    return <PortfolioGantt scheduleLevel={1} />;
-  }
-
-  if (effectiveLevel === 5) {
-    return <LookaheadGantt projectId={projectId} />;
-  }
-
   return (
     <div className={cn("flex flex-col", isFullscreen ? "fixed inset-0 z-50 bg-background" : "")}>
+      {/* Toolbar */}
       <div className="shrink-0 px-4 pt-3 pb-2">
-        <GanttToolbar
-          zoom={zoom}
-          onZoomChange={setZoom}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          showBaseline={showBaseline}
-          onBaselineToggle={setShowBaseline}
-          isFullscreen={isFullscreen}
-          onFullscreenToggle={handleFullscreenToggle}
-          taskCount={tasks.length}
-          filteredCount={filteredTasks.length}
-          scheduleLevel={effectiveLevel}
-          onScheduleLevelChange={onScheduleLevelChange}
-          levelLabel={levelConfig?.shortLabel}
-        />
+        {mode === "full" ? (
+          <GanttCommandBar
+            zoom={zoom}
+            onZoomChange={setZoom}
+            zoomScale={zoomScale}
+            onZoomScaleChange={setZoomScale}
+            levelFilter={levelFilter}
+            maxLevel={maxWbsLevel}
+            onLevelFilterChange={handleLevelFilterChange}
+            onExpandAll={handleExpandAll}
+            onCollapseAll={handleCollapseAll}
+            onToday={handleScrollToToday}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            showBaseline={showBaseline}
+            onBaselineToggle={setShowBaseline}
+            isFullscreen={isFullscreen}
+            onFullscreenToggle={handleFullscreenToggle}
+            visibleRows={displayRows.length}
+            weightedProgress={weightedProgress}
+            completedTasks={completedTaskCount}
+            totalTasks={tasks.length}
+            dependencyLinksCount={dependencyLinksCount}
+            highlightCritical={highlightCritical}
+            onHighlightCriticalChange={setHighlightCritical}
+            autoScheduleActive={autoScheduleActive}
+            onAutoScheduleToggle={handleAutoScheduleToggle}
+            rangeMin={dateRange.min}
+            rangeMax={dateRange.max}
+            totalDays={totalDays}
+          />
+        ) : (
+          <GanttToolbar
+            zoom={zoom}
+            onZoomChange={setZoom}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            showBaseline={showBaseline}
+            onBaselineToggle={setShowBaseline}
+            isFullscreen={isFullscreen}
+            onFullscreenToggle={handleFullscreenToggle}
+            taskCount={tasks.length}
+            filteredCount={displayRows.length}
+            highlightCritical={highlightCritical}
+            onHighlightCriticalChange={setHighlightCritical}
+            onAddActivity={() => {}}
+          />
+        )}
       </div>
 
+      {/* Main Gantt area */}
       <div className="flex flex-1 overflow-hidden px-4 pb-3">
+        {/* Left: WBS Tree */}
         <div
+          ref={taskTreeRef}
+          onScroll={handleTaskTreeScroll}
           className="shrink-0 overflow-y-auto border border-border rounded-l-lg bg-card"
           style={{ width: LABEL_W }}
         >
@@ -342,21 +567,21 @@ export function GanttView({
             className="sticky top-0 z-10 bg-muted/50 border-b border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
             style={{ height: HEADER_H }}
           >
-            {levelConfig?.shortLabel ?? "Task"}
+            WBS
           </div>
           <GanttTaskTree
-            tasks={tasks}
-            groups={groups}
-            expandedGroups={expandedGroups}
-            onToggleGroup={handleToggleGroup}
+            displayRows={displayRows}
+            expandedNodes={expandedNodes}
+            onToggleNode={handleToggleNode}
             onSelectTask={(t) => setSelectedTaskId(t.id)}
             selectedTaskId={selectedTaskId}
-            searchQuery={searchQuery}
           />
         </div>
 
+        {/* Right: Timeline */}
         <div
           ref={timelineRef}
+          onScroll={handleTimelineScroll}
           className="flex-1 overflow-auto border border-l-0 border-border rounded-r-lg bg-card"
         >
           <div className="min-w-fit">
@@ -365,11 +590,13 @@ export function GanttView({
               rangeMin={dateRange.min}
               rangeMax={dateRange.max}
               totalDays={totalDays}
+              dayWidth={dayW}
             />
 
             <div className="relative" style={{ width: chartW }}>
+              {/* Dependency lines — only for task rows */}
               <GanttDependencyLines
-                tasks={visibleTasks}
+                tasks={displayRows.filter((r) => r.kind === "task").map((r) => (r.data as GanttTask))}
                 taskMap={taskMap}
                 rangeMin={dateRange.min}
                 dayWidth={dayW}
@@ -378,60 +605,63 @@ export function GanttView({
                 containerWidth={chartW}
               />
 
-              {visibleTasks.map((task) => {
+              {/* Bars */}
+              {displayRows.map((row) => {
+                if (row.kind === "group") {
+                  const group = row.data;
+                  const es = group.start_date || dateRange.min.toISOString().slice(0, 10);
+                  const ef = group.end_date || dateRange.max.toISOString().slice(0, 10);
+                  const x = toX(es, dateRange.min, dayW);
+                  const w = getBarWidth(es, ef, dayW);
+                  return (
+                    <div
+                      key={row.id}
+                      ref={(el) => storeRowRef(row.id, el)}
+                      className="relative border-b border-border/30 bg-muted/5"
+                      style={{ height: ROW_HEIGHT }}
+                    >
+                      {group.task_count > 0 && (
+                        <GanttSummaryBar
+                          group={group}
+                          left={x}
+                          width={w}
+                          dayWidth={dayW}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                const task = row.data as GanttTask;
                 const es = task.start_date || task.baseline_start_date || dateRange.min.toISOString().slice(0, 10);
                 const ef = task.end_date || task.baseline_finish_date || dateRange.max.toISOString().slice(0, 10);
                 const x = toX(es, dateRange.min, dayW);
                 const w = getBarWidth(es, ef, dayW);
 
-                const isSummaryLevel = showSummaryBars(effectiveLevel ?? 3) &&
-                  groups.some((g) => g.children.length > 0 && g.children.includes(task.id));
-
                 return (
                   <div
-                    key={task.id}
-                    ref={(el) => updateRowOffset(task.id, el)}
-                    className={cn(
-                      "relative border-b border-border/30 transition-colors",
-                      isSummaryLevel ? "bg-muted/5" : "hover:bg-muted/10",
-                    )}
+                    key={row.id}
+                    ref={(el) => storeRowRef(row.id, el)}
+                    className="relative border-b border-border/30 transition-colors hover:bg-muted/10"
                     style={{ height: ROW_HEIGHT }}
                   >
-                    {todayX >= 0 && todayX <= chartW && (
+                    {/* Today / Data Date lines */}
+                    {dataDateX >= 0 && dataDateX <= chartW && dataDateX !== todayX && (
                       <div
-                        className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
-                        style={{ left: todayX }}
+                        className="absolute top-0 bottom-0 w-px z-10 pointer-events-none"
+                        style={{ left: dataDateX, background: "repeating-linear-gradient(to bottom, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)" }}
                       >
-                        <span className="absolute top-0 left-1 text-[8px] font-semibold text-red-400 whitespace-nowrap">
-                          Today
-                        </span>
+                        <span className="absolute top-0 left-1 text-[8px] font-semibold text-slate-400 whitespace-nowrap">Data Date</span>
+                      </div>
+                    )}
+                    {todayX >= 0 && todayX <= chartW && (
+                      <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none" style={{ left: todayX }}>
+                        <span className="absolute top-0 left-1 text-[8px] font-semibold text-red-400 whitespace-nowrap">Today</span>
                       </div>
                     )}
 
-                    {showBaseline && task.baseline_start_date && task.baseline_finish_date && (
-                      <div
-                        className="absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-slate-300 border border-dashed border-slate-400 opacity-50"
-                        style={{
-                          left: toX(task.baseline_start_date, dateRange.min, dayW),
-                          width: getBarWidth(task.baseline_start_date, task.baseline_finish_date, dayW),
-                        }}
-                      />
-                    )}
-
                     {task.is_milestone ? (
-                      <GanttMilestone
-                        left={x}
-                        onClick={() => setSelectedTaskId(task.id)}
-                      />
-                    ) : isSummaryLevel ? (
-                      <GanttSummaryBar
-                        task={task}
-                        left={x}
-                        width={w}
-                        dayWidth={dayW}
-                        onClick={() => setSelectedTaskId(task.id)}
-                        group={groups.find((g) => g.children.includes(task.id))}
-                      />
+                      <GanttMilestone left={x} name={task.task_name} date={task.start_date || undefined} onClick={() => setSelectedTaskId(task.id)} />
                     ) : (
                       <GanttBar
                         task={task}
@@ -439,15 +669,15 @@ export function GanttView({
                         width={w}
                         dayWidth={dayW}
                         onClick={() => setSelectedTaskId(task.id)}
+                        onReschedule={handleReschedule}
+                        zoom={zoom}
+                        rangeMin={dateRange.min}
                       />
                     )}
 
                     {task.total_float !== null && task.is_milestone && (
                       <span
-                        className={cn(
-                          "absolute top-0 text-[9px] font-semibold px-0.5 rounded",
-                          task.total_float <= 0 ? "text-red-600" : "text-slate-400",
-                        )}
+                        className={cn("absolute top-0 text-[9px] font-semibold px-0.5 rounded", task.total_float <= 0 ? "text-red-600" : "text-slate-400")}
                         style={{ left: x + dayW + 2 }}
                       >
                         F:{task.total_float}d
@@ -457,9 +687,20 @@ export function GanttView({
                 );
               })}
 
-              {visibleTasks.length === 0 && (
-                <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-                  {searchQuery ? "No tasks match your search" : "No tasks at this schedule level"}
+              {/* Empty state */}
+              {displayRows.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground gap-2">
+                  {searchQuery ? (
+                    <>
+                      <p>No tasks match &quot;{searchQuery}&quot;</p>
+                      <button type="button" onClick={() => setSearchQuery("")} className="text-xs text-primary underline">Clear search</button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-base font-medium">No tasks found</p>
+                      <p className="text-xs">Add tasks to this project to see them in the Gantt chart.</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -467,21 +708,25 @@ export function GanttView({
         </div>
       </div>
 
-      <div className="shrink-0 px-4 pb-3">
-        <GanttLegend
-          items={[
-            { label: "On Track", color: "bg-green-500", active: true },
-            { label: "Risk", color: "bg-amber-500", active: true },
-            { label: "Delayed", color: "bg-red-500", active: true },
-            { label: "Blocked", color: "bg-slate-400", active: true },
-            { label: "Milestone", color: "bg-amber-400", active: true },
-          ]}
-          showBaseline={showBaseline}
-          criticalCount={criticalIds.size}
-          delayedCount={delayedCount}
-        />
-      </div>
+      {/* Legend — embedded mode only; full mode shows it in the command bar */}
+      {mode !== "full" && (
+        <div className="shrink-0 px-4 pb-3">
+          <GanttLegend
+            items={[
+              { label: "On Track", color: "bg-green-500", active: true },
+              { label: "Risk", color: "bg-amber-500", active: true },
+              { label: "Delayed", color: "bg-red-500", active: true },
+              { label: "Blocked", color: "bg-slate-400", active: true },
+              { label: "Milestone", color: "bg-amber-400", active: true },
+            ]}
+            showBaseline={showBaseline}
+            criticalCount={criticalIds.size}
+            delayedCount={delayedCount}
+          />
+        </div>
+      )}
 
+      {/* Detail drawer */}
       {selectedTask && (
         <GanttTaskDetailDrawer
           task={selectedTask}
@@ -493,36 +738,37 @@ export function GanttView({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Summary bar — a compact bar representing an aggregated WBS group
+// ---------------------------------------------------------------------------
 function GanttSummaryBar({
-  task,
+  group,
   left,
   width,
   dayWidth,
-  onClick,
-  group,
 }: {
-  task: GanttTask;
+  group: GanttGroupRow;
   left: number;
   width: number;
   dayWidth: number;
-  onClick?: () => void;
-  group?: GanttGroupRow;
 }) {
   const minWidth = Math.max(dayWidth, width);
 
   return (
     <div
-      className="absolute top-1/2 -translate-y-1/2 cursor-pointer group/bar"
-      style={{ left, width: minWidth, height: 18 }}
-      onClick={onClick}
+      className="absolute top-1/2 -translate-y-1/2 cursor-default"
+      style={{ left, width: minWidth, height: 20 }}
     >
-      <div className="relative h-full w-full rounded-full bg-slate-700/70 shadow-sm">
+      {/* Background bar */}
+      <div className="relative h-full w-full rounded-md bg-slate-700/60 shadow-sm overflow-hidden">
+        {/* Progress fill */}
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-slate-500/40"
-          style={{ width: `${task.progress}%`, minWidth: task.progress > 0 ? 4 : 0 }}
+          className="absolute inset-y-0 left-0 rounded-md bg-slate-500/40 transition-all"
+          style={{ width: `${group.progress}%`, minWidth: group.progress > 0 ? 4 : 0 }}
         />
-        <span className="absolute inset-0 flex items-center px-2 text-[9px] font-semibold text-white/90 leading-none truncate">
-          {task.progress}% · {group?.task_count ?? 0} tasks
+        {/* Label */}
+        <span className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-white/90 leading-none truncate">
+          {group.wbs_code} · {group.progress}% · {group.task_count} tasks
         </span>
       </div>
     </div>

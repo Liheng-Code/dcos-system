@@ -42,6 +42,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 export function PRList() {
   const router = useRouter();
   const [prs, setPrs] = useState<PR[]>([]);
+  const [projectsMap, setProjectsMap] = useState<Record<string, { project_code: string; project_name: string }>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -51,7 +52,18 @@ export function PRList() {
   function fetchPRs() {
     const supabase = createClient();
     supabase.from("procurement_prs").select("*").order("created_at", { ascending: false }).then(({ data }) => {
-      if (data) setPrs(data as PR[]);
+      const records = (data ?? []) as PR[];
+      setPrs(records);
+      const projectIds = [...new Set(records.map(r => r.project_id).filter(Boolean))] as string[];
+      if (projectIds.length > 0) {
+        supabase.from("projects").select("id, project_code, project_name").in("id", projectIds).then(({ data: projs }) => {
+          if (projs) {
+            const map: Record<string, { project_code: string; project_name: string }> = {};
+            projs.forEach(p => { map[p.id] = p; });
+            setProjectsMap(map);
+          }
+        });
+      }
       setLoading(false);
     });
   }
@@ -154,6 +166,7 @@ export function PRList() {
                 <input type="checkbox" className="h-4 w-4" checked={selected.size > 0 && selected.size === filtered.length} onChange={toggleAll} />
               </th>
               <th className="text-left font-medium text-muted-foreground py-3 px-4">PR #</th>
+              <th className="text-left font-medium text-muted-foreground py-3 px-4">Project</th>
               <th className="text-left font-medium text-muted-foreground py-3 px-4">Priority</th>
               <th className="text-left font-medium text-muted-foreground py-3 px-4">Required</th>
               <th className="text-right font-medium text-muted-foreground py-3 px-4">Total</th>
@@ -170,10 +183,15 @@ export function PRList() {
                   <input type="checkbox" className="h-4 w-4" checked={selected.has(pr.id)} onChange={() => toggleSelect(pr.id)} />
                 </td>
                 <td className="px-4 py-3 text-sm font-medium">{pr.pr_number}</td>
+                <td className="px-4 py-3 text-sm text-muted-foreground">
+                  {pr.project_id && projectsMap[pr.project_id]
+                    ? `${projectsMap[pr.project_id].project_code}`
+                    : "—"}
+                </td>
                 <td className="px-4 py-3"><Badge className={PRIORITY_COLORS[pr.priority] ?? ""}>{pr.priority}</Badge></td>
                 <td className="px-4 py-3 text-sm">{pr.required_date ?? "—"}</td>
                 <td className="px-4 py-3 text-sm text-right">{pr.total_estimated_cost != null ? `$${Number(pr.total_estimated_cost).toLocaleString()}` : "—"}</td>
-                <td className="px-4 py-3"><Badge className={STATUS_COLORS[pr.approval_status] ?? ""} variant="outline">{pr.approval_status.replace(/_/g, " ")}</Badge></td>
+                <td className="px-4 py-3 text-center"><Badge className={STATUS_COLORS[pr.approval_status] ?? ""} variant="outline">{pr.approval_status.replace(/_/g, " ")}</Badge></td>
                 <td className="px-4 py-3 text-right stop-click">
                   <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/procurement/pr/${pr.id}`)}><Eye className="h-4 w-4" /></Button>
                 </td>

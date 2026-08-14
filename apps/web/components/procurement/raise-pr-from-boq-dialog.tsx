@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ShoppingCart } from "lucide-react";
+import { Loader2, ShoppingCart, Hash, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -22,6 +24,9 @@ import type { BoqItemForPr } from "@/lib/qs-service";
 interface Props {
   projectId: string;
   projectName?: string;
+  projectCode?: string;
+  companyCode?: string | null;
+  projectLocation?: string | null;
   boqItemIds: string[];
   triggerLabel?: string;
   triggerSize?: "sm" | "default";
@@ -31,6 +36,9 @@ interface Props {
 export function RaisePrFromBoqDialog({
   projectId,
   projectName,
+  projectCode,
+  companyCode,
+  projectLocation,
   boqItemIds,
   triggerLabel,
   triggerSize = "sm",
@@ -41,14 +49,14 @@ export function RaisePrFromBoqDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sourceItems, setSourceItems] = useState<BoqItemForPr[]>([]);
-
-  const [siteLocations, setSiteLocations] = useState<{ id: string; name: string; address: string | null }[]>([]);
+  const [generatedPrNumber, setGeneratedPrNumber] = useState("");
 
   const [form, setForm] = useState({
+    preparation_date: new Date().toISOString().slice(0, 10),
     required_date: "",
-    delivery_location: "",
+    ship_to: "",
     priority: "normal",
-    notes: "",
+    purpose: "",
   });
 
   const [lineItems, setLineItems] = useState<{
@@ -62,39 +70,69 @@ export function RaisePrFromBoqDialog({
     notes: string;
   }[]>([]);
 
+  const generatePrNumber = useCallback(async () => {
+    const supabase = createClient();
+    let pc = projectCode ?? "";
+    let cc = companyCode ?? "";
+    if (!pc || !cc) {
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("project_code, company_code")
+        .eq("id", projectId)
+        .single();
+      if (proj) {
+        pc = proj.project_code;
+        cc = proj.company_code ?? "";
+      }
+    }
+    const { data: existingPRs } = await supabase
+      .from("procurement_prs")
+      .select("pr_number")
+      .eq("project_id", projectId);
+    const prefix = `${pc}-${cc || "DCOS"}-PR-`;
+    let maxSeq = 0;
+    for (const pr of (existingPRs ?? [])) {
+      if (pr.pr_number.startsWith(prefix)) {
+        const num = parseInt(pr.pr_number.slice(prefix.length), 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+    setGeneratedPrNumber(`${prefix}${String(maxSeq + 1).padStart(3, "0")}`);
+  }, [projectId, projectCode, companyCode]);
+
   useEffect(() => {
     if (!open || boqItemIds.length === 0) return;
     setLoading(true);
     const supabase = createClient();
-    Promise.all([
-      supabase
-        .from("qs_v_boq_requisition_status")
-        .select("*")
-        .in("boq_item_id", boqItemIds),
-      supabase
-        .from("site_locations")
-        .select("id, name, address")
-        .eq("is_active", true)
-        .order("name"),
-    ]).then(([boqRes, locRes]) => {
+    supabase.from("qs_v_boq_requisition_status").select("*").in("boq_item_id", boqItemIds).then((boqRes) => {
       if (boqRes.error) { toast.error(boqRes.error.message); return; }
       const rows = (boqRes.data ?? []) as BoqItemForPr[];
       setSourceItems(rows);
       setLineItems(
         rows.map((bi) => ({
           boq_item_id: bi.boq_item_id,
-          item_code: bi.item_code ?? "",
+          item_code: bi.item_no ?? bi.item_code ?? "",
           description: bi.description,
           unit: bi.unit,
           quantity: bi.remaining_quantity,
           unit_rate: bi.unit_rate,
-          budget_code: "",
+          budget_code: bi.elemental_category ?? "",
           notes: "",
         })),
       );
-      if (locRes.data) setSiteLocations(locRes.data);
-    }, () => {}).then(() => { setLoading(false); });
-  }, [open, boqItemIds]);
+    }, () => {}).then(() => {
+      setLoading(false);
+      generatePrNumber();
+    });
+    if (projectLocation) {
+      setForm(prev => ({ ...prev, ship_to: projectLocation }));
+    } else {
+      const supabase = createClient();
+      supabase.from("projects").select("location").eq("id", projectId).single().then(({ data }) => {
+        if (data?.location) setForm(prev => ({ ...prev, ship_to: data.location }));
+      });
+    }
+  }, [open, boqItemIds, projectLocation, projectId, generatePrNumber]);
 
   function updateLine(idx: number, field: string, value: string | number) {
     setLineItems((prev) =>
@@ -106,11 +144,25 @@ export function RaisePrFromBoqDialog({
     return lineItems.reduce((s, i) => s + (i.quantity || 0) * (i.unit_rate || 0), 0);
   }
 
+  const hasOverReq = lineItems.some((l, i) => {
+    const remaining = sourceItems[i]?.remaining_quantity ?? 0;
+    return l.quantity > remaining;
+  });
+
   async function handleSubmit() {
     if (!lineItems.length) {
       toast.error("No items to requisition");
       return;
     }
+    const overItem = lineItems.find((l, i) => {
+      const remaining = sourceItems[i]?.remaining_quantity ?? 0;
+      return l.quantity > remaining;
+    });
+    if (overItem) {
+      toast.error("One or more items exceed the remaining BOQ quantity");
+      return;
+    }
+
     const valid = lineItems.filter((l) => l.description.trim() && l.quantity > 0);
     if (!valid.length) {
       toast.error("At least one item must have a description and quantity > 0");
@@ -124,12 +176,13 @@ export function RaisePrFromBoqDialog({
       .from("procurement_prs")
       .insert([
         {
-          pr_number: `PR-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
+          pr_number: generatedPrNumber,
           project_id: projectId,
+          preparation_date: form.preparation_date || null,
           required_date: form.required_date || null,
-          delivery_location: form.delivery_location || null,
+          ship_to: form.ship_to || null,
           priority: form.priority,
-          notes: form.notes || null,
+          notes: form.purpose || null,
         },
       ])
       .select("id")
@@ -195,7 +248,21 @@ export function RaisePrFromBoqDialog({
           </div>
         ) : (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono">
+              <Hash className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{generatedPrNumber || "Generating..."}</span>
+            </div>
+
             <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Date Prepared</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={form.preparation_date}
+                  onChange={(e) => setForm((p) => ({ ...p, preparation_date: e.target.value }))}
+                />
+              </div>
               <div className="space-y-1">
                 <Label className="text-xs">Required Date</Label>
                 <Input
@@ -204,19 +271,6 @@ export function RaisePrFromBoqDialog({
                   value={form.required_date}
                   onChange={(e) => setForm((p) => ({ ...p, required_date: e.target.value }))}
                 />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Delivery Location</Label>
-                <select
-                  className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
-                  value={form.delivery_location}
-                  onChange={(e) => setForm((p) => ({ ...p, delivery_location: e.target.value }))}
-                >
-                  <option value="">Select location...</option>
-                  {siteLocations.map(loc => (
-                    <option key={loc.id} value={loc.name}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</option>
-                  ))}
-                </select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Priority</Label>
@@ -234,79 +288,111 @@ export function RaisePrFromBoqDialog({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
+              <Label className="text-xs">Ship To</Label>
               <Input
                 className="h-8 text-xs"
-                value={form.notes}
-                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                placeholder="Optional notes"
+                value={form.ship_to}
+                onChange={(e) => setForm((p) => ({ ...p, ship_to: e.target.value }))}
+                placeholder="Project location"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Purpose</Label>
+              <textarea
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 outline-none resize-y min-h-[50px]"
+                value={form.purpose}
+                onChange={(e) => setForm((p) => ({ ...p, purpose: e.target.value }))}
+                placeholder="Describe the purpose of this requisition..."
+                rows={2}
               />
             </div>
 
             <div className="rounded-lg border">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-muted/50 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <th className="px-3 py-2 text-left">Code</th>
-                    <th className="px-3 py-2 text-left">Description</th>
-                    <th className="px-3 py-2 text-center">Unit</th>
-                    <th className="px-3 py-2 text-right">BOQ Qty</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Rate</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineItems.map((item, idx) => (
-                    <tr key={idx} className="border-t">
-                      <td className="px-3 py-1.5 text-muted-foreground">{item.item_code || "—"}</td>
-                      <td className="px-3 py-1.5">{item.description}</td>
-                      <td className="px-3 py-1.5 text-center">{item.unit}</td>
-                      <td className="px-3 py-1.5 text-right text-muted-foreground">
-                        {sourceItems[idx]?.boq_quantity.toLocaleString()}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          className="h-7 w-20 text-right text-xs"
-                          value={item.quantity}
-                          onChange={(e) => updateLine(idx, "quantity", parseFloat(e.target.value) || 0)}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="h-7 w-24 text-right text-xs"
-                          value={item.unit_rate}
-                          onChange={(e) => updateLine(idx, "unit_rate", parseFloat(e.target.value) || 0)}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-medium">
-                        ${((item.quantity || 0) * (item.unit_rate || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <tr className="bg-muted/50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <th className="px-3 py-2 text-left">Code</th>
+                      <th className="px-3 py-2 text-left">Description</th>
+                      <th className="px-3 py-2 text-center">Unit</th>
+                      <th className="px-3 py-2 text-right">BOQ Qty</th>
+                      <th className="px-3 py-2 text-right">Remaining</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Rate</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.map((item, idx) => {
+                      const src = sourceItems[idx];
+                      const remainingQty = src?.remaining_quantity ?? 0;
+                      const over = item.quantity > remainingQty;
+                      return (
+                      <tr key={idx} className={cn("border-t", over && "bg-red-50")}>
+                        <td className="px-3 py-1.5 text-muted-foreground">{item.item_code || "—"}</td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex items-center gap-1">
+                            <span>{item.description}</span>
+                            {over && <AlertTriangle className="h-3 w-3 shrink-0 text-red-500" />}
+                          </div>
+                        </td>
+                        <td className="px-3 py-1.5 text-center">{item.unit}</td>
+                        <td className="px-3 py-1.5 text-right text-muted-foreground">
+                          {src?.boq_quantity.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-medium text-amber-600">
+                          {remainingQty.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            className={cn("h-7 w-20 text-right text-xs", over && "border-red-400 text-red-600")}
+                            value={item.quantity}
+                            onChange={(e) => updateLine(idx, "quantity", parseFloat(e.target.value) || 0)}
+                          />
+                          {over && <p className="mt-0.5 text-[10px] text-red-500">Exceeds remaining by {(item.quantity - remainingQty).toLocaleString()}</p>}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-7 w-24 text-right text-xs"
+                            value={item.unit_rate}
+                            onChange={(e) => updateLine(idx, "unit_rate", parseFloat(e.target.value) || 0)}
+                          />
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-medium">
+                          ${((item.quantity || 0) * (item.unit_rate || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t font-semibold">
+                      <td colSpan={7} className="px-3 py-2 text-right">Total</td>
+                      <td className="px-3 py-2 text-right">
+                        ${totalEstimated().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t font-semibold">
-                    <td colSpan={6} className="px-3 py-2 text-right">Total</td>
-                    <td className="px-3 py-2 text-right">
-                      ${totalEstimated().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
+                  </tfoot>
               </table>
             </div>
           </div>
         )}
 
+        {hasOverReq && (
+          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>Some items exceed the remaining BOQ quantity. Reduce quantities before submitting.</span>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={() => void handleSubmit()} disabled={saving || loading} className="gap-2">
+          <Button onClick={() => void handleSubmit()} disabled={saving || loading || hasOverReq} className="gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
             Create PR
           </Button>

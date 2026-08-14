@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Loader2, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Loader2, Plus, ShoppingCart, Trash2, CheckCircle2, AlertTriangle, Circle, Package, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import {
   type QsBoqItem,
   type QsBoqSection,
@@ -45,11 +46,12 @@ interface Props {
 export function BoqBuilder({ projectId, boqId }: Props) {
   const { can } = useQsPermissions();
 
-  const [sections, setSections]     = useState<QsBoqSection[]>([]);
-  const [itemsMap, setItemsMap]     = useState<Record<string, QsBoqItem[]>>({});
-  const [expanded, setExpanded]     = useState<Set<string>>(new Set());
-  const [library, setLibrary]       = useState<QsCostItem[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [sections, setSections]         = useState<QsBoqSection[]>([]);
+  const [itemsMap, setItemsMap]         = useState<Record<string, QsBoqItem[]>>({});
+  const [procurementMap, setProcurementMap] = useState<Record<string, { requisitioned: number; ordered: number; delivered: number; remaining: number; po_ids: string | null }>>({});
+  const [expanded, setExpanded]         = useState<Set<string>>(new Set());
+  const [library, setLibrary]           = useState<QsCostItem[]>([]);
+  const [loading, setLoading]           = useState(true);
 
   const [showAddSec, setShowAddSec] = useState(false);
   const [secTitle, setSecTitle]     = useState("");
@@ -60,9 +62,27 @@ export function BoqBuilder({ projectId, boqId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [secs, lib] = await Promise.all([getBoqSections(projectId, boqId), getCostItems()]);
+      const supabase = createClient();
+      const [secs, lib, procRes] = await Promise.all([
+        getBoqSections(projectId, boqId),
+        getCostItems(),
+        supabase.from("qs_v_boq_requisition_status").select("boq_item_id, requisitioned_quantity, ordered_quantity, delivered_quantity, remaining_quantity, po_ids").eq("project_id", projectId),
+      ]);
       setSections(secs);
       setLibrary(lib);
+      const procmap: Record<string, { requisitioned: number; ordered: number; delivered: number; remaining: number; po_ids: string | null }> = {};
+      if (procRes.data) {
+        for (const row of procRes.data) {
+          procmap[row.boq_item_id] = {
+            requisitioned: row.requisitioned_quantity,
+            ordered:       row.ordered_quantity,
+            delivered:     row.delivered_quantity,
+            remaining:     row.remaining_quantity,
+            po_ids:        row.po_ids,
+          };
+        }
+      }
+      setProcurementMap(procmap);
       const maps: Record<string, QsBoqItem[]> = {};
       await Promise.all(secs.map(async (s) => { maps[s.id] = await getBoqItems(projectId, s.id, boqId); }));
       setItemsMap(maps);
@@ -274,7 +294,13 @@ export function BoqBuilder({ projectId, boqId }: Props) {
               <span className="flex-1 text-sm font-semibold text-slate-800">{section.title}</span>
               <span className="text-xs text-slate-400">{items.length} item{items.length !== 1 ? "s" : ""}</span>
               <span className="min-w-[7rem] text-right text-sm font-medium text-slate-700">${fmt(sectionTotal)}</span>
-              {items.length > 0 && (
+              {(() => {
+                const allFulfilled = items.length > 0 && items.every(i => {
+                  const p = procurementMap[i.id];
+                  return p && p.remaining <= 0;
+                });
+                if (allFulfilled) return null;
+                return (
                 <RaisePrFromBoqDialog
                   projectId={projectId}
                   boqItemIds={items.map((i) => i.id)}
@@ -282,7 +308,8 @@ export function BoqBuilder({ projectId, boqId }: Props) {
                   triggerSize="sm"
                   triggerClassName="ml-2 gap-1 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
                 />
-              )}
+                );
+              })()}
               {can("boq", "delete") && (
                 <button
                   onClick={(e) => { e.stopPropagation(); if (!baselineLocked) void handleDeleteSection(section.id); }}
@@ -304,34 +331,95 @@ export function BoqBuilder({ projectId, boqId }: Props) {
                         <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
                           <th className="w-8 px-3 py-2 text-left">#</th>
                           <th className="px-3 py-2 text-left">Description</th>
-                          <th className="w-20 px-3 py-2 text-center">Unit</th>
-                          <th className="w-24 px-3 py-2 text-right">Qty</th>
-                          <th className="w-28 px-3 py-2 text-right">Rate</th>
-                          <th className="w-28 px-3 py-2 text-right">Total</th>
-                          <th className="w-8 px-3 py-2"></th>
+                          <th className="w-14 px-3 py-2 text-center">Unit</th>
+                          <th className="w-[72px] px-3 py-2 text-right">Qty</th>
+                          <th className="w-[88px] px-3 py-2 text-right">Rate</th>
+                          <th className="w-[88px] px-3 py-2 text-right">Total</th>
+                          <th className="w-[72px] px-3 py-2 text-right">PR</th>
+                          <th className="w-[72px] px-3 py-2 text-right">PO</th>
+                          <th className="w-[72px] px-3 py-2 text-right">Dlv</th>
+                          <th className="w-[72px] px-3 py-2 text-right">Rem</th>
+                          <th className="w-24 px-3 py-2 text-center">Status</th>
+                          <th className="px-3 py-2 text-left">PO</th>
+                          <th className="w-20 px-3 py-2"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((item, idx) => (
-                          <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50/40">
+                        {items.map((item, idx) => {
+                          const proc = procurementMap[item.id];
+                          const reqd      = proc?.requisitioned ?? 0;
+                          const ordered   = proc?.ordered ?? 0;
+                          const delivered = proc?.delivered ?? 0;
+                          const remaining = proc?.remaining ?? Number(item.quantity);
+                          const boqQty    = Number(item.quantity);
+                          const isFulfilled = remaining <= 0;
+                          let Badge: React.ReactNode;
+                          if (isFulfilled && delivered >= ordered && ordered > 0) {
+                            Badge = <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700"><CheckCircle2 className="h-3 w-3" /> Delivered</span>;
+                          } else if (isFulfilled && ordered > 0) {
+                            Badge = <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700"><Package className="h-3 w-3" /> Ordered</span>;
+                          } else if (isFulfilled) {
+                            Badge = <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500"><CheckCircle2 className="h-3 w-3" /> Fulfilled</span>;
+                          } else if (reqd > 0) {
+                            Badge = <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"><AlertTriangle className="h-3 w-3" /> Partial</span>;
+                          } else {
+                            Badge = <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700"><Circle className="h-3 w-3" /> Open</span>;
+                          }
+                          return (
+                          <tr key={item.id} className={cn(
+                            "border-t border-slate-100 transition-colors",
+                            isFulfilled ? "opacity-50" : "hover:bg-slate-50/40",
+                          )}>
                             <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                            <td className="max-w-[280px] px-3 py-2 text-slate-700">
+                            <td className="max-w-[200px] px-3 py-2 text-slate-700">
                               {item.description}
                               {item.is_provisional && <span className="ml-1 text-[9px] text-amber-500">(P)</span>}
                             </td>
                             <td className="px-3 py-2 text-center text-slate-500">{item.unit}</td>
-                            <td className="px-3 py-2 text-right text-slate-600">{Number(item.quantity).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{boqQty.toLocaleString()}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{fmt(Number(item.unit_rate))}</td>
                             <td className="px-3 py-2 text-right font-medium text-slate-700">${fmt(Number(item.total_amount ?? 0))}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{reqd > 0 ? reqd.toLocaleString() : "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{ordered > 0 ? ordered.toLocaleString() : "—"}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{delivered > 0 ? delivered.toLocaleString() : "—"}</td>
+                            <td className={cn(
+                              "px-3 py-2 text-right font-medium",
+                              isFulfilled ? "text-slate-400" : remaining < boqQty ? "text-amber-600" : "text-emerald-600",
+                            )}>
+                              {remaining.toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 text-center">{Badge}</td>
+                            <td className="max-w-[120px] truncate px-3 py-2 text-[10px] text-slate-400">
+                              {proc?.po_ids || "—"}
+                            </td>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-0.5">
-                                <RaisePrFromBoqDialog
-                                  projectId={projectId}
-                                  boqItemIds={[item.id]}
-                                  triggerLabel=""
-                                  triggerSize="sm"
-                                  triggerClassName="h-7 w-7 p-0 justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
-                                />
+                                {!isFulfilled ? (
+                                  <RaisePrFromBoqDialog
+                                    projectId={projectId}
+                                    boqItemIds={[item.id]}
+                                    triggerLabel=""
+                                    triggerSize="sm"
+                                    triggerClassName="h-7 w-7 p-0 justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                  />
+                                ) : ordered > 0 ? (
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded text-[10px] text-slate-300 cursor-not-allowed" title={"Covered by PO"}>
+                                    <Package className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded text-[10px] text-slate-300 cursor-not-allowed" title={"Fully requisitioned"}>
+                                    <ShoppingCart className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
+                                {reqd > 0 && ordered === 0 && (
+                                  <a
+                                    href={`/dashboard/procurement/po/new?boq_item_ids=${item.id}`}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                    title="Create PO from this BOQ item"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
                                 {can("boq", "delete") && (
                                   <button
                                     onClick={() => { if (!baselineLocked) void handleDeleteItem(section.id, item.id); }}
@@ -344,7 +432,8 @@ export function BoqBuilder({ projectId, boqId }: Props) {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

@@ -72,6 +72,16 @@ export function ProjectCarousel() {
           />
         </div>
       ))}
+      {projects.map((project, i) => (
+        <div
+          key={`caption-${project.name}`}
+          className="absolute bottom-6 right-6 z-10 rounded-md bg-black/40 px-3 py-2 text-right backdrop-blur-sm transition-opacity duration-1000"
+          style={{ opacity: i === index ? 1 : 0 }}
+        >
+          <p className="text-sm font-semibold text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.6)]">{project.name}</p>
+          <p className="text-xs font-medium text-white/80">{project.location}</p>
+        </div>
+      ))}
       {!loaded && (
         <div className="absolute inset-0 bg-zinc-900 animate-pulse" />
       )}

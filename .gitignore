@@ -10,3 +10,8 @@ dist/
 docs/env local.md
 *.bak
 dev-server*.log
+.dev-server*.log
+.devserver*.log
+temp/
+docs/04-Business-Modules/31-cwims/TLY*.xlsx
+docs/04-Business-Modules/31-cwims/TLY*.csv

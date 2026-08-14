@@ -88,6 +88,7 @@ export function isRouteBlocked(pathname: string, activeKeys: string[]): boolean 
     "/dashboard/tenders": "qs",
     "/dashboard/subcontractors": "qs",
     "/dashboard/contracts": "qs",
+    "/dashboard/qto": "qs",
     "/dashboard/site": "construction",
     "/dashboard/qaqc": "construction",
     "/dashboard/hse": "construction",

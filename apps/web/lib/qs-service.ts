@@ -91,8 +91,15 @@ export interface BoqItemForPr {
   unit_rate: number;
   total_amount: number;
   elemental_category: string | null;
+  budget_code_id: string | null;
+  budget_code_letter: string | null;
+  budget_group_name: string | null;
+  baseline_status: string | null;
   requisitioned_quantity: number;
+  ordered_quantity: number;
+  delivered_quantity: number;
   remaining_quantity: number;
+  po_ids: string | null;
 }
 
 export interface QsCostTransaction {

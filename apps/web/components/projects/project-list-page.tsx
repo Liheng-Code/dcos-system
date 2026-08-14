@@ -29,6 +29,15 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "bg-slate-500/10 text-slate-600 border-slate-200",
 };
 
+const STATUS_BORDERS: Record<string, string> = {
+  draft: "border-t-amber-500",
+  pending_approval: "border-t-orange-500",
+  active: "border-t-emerald-500",
+  on_hold: "border-t-blue-500",
+  completed: "border-t-gray-400",
+  archived: "border-t-slate-500",
+};
+
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   pending_approval: "Pending Approval",
@@ -359,7 +368,11 @@ export function ProjectListPage() {
                         setShowPostcontractDetail(true);
                       }
                     }}
-                    className="group flex flex-col rounded-xl border border-border bg-card p-4 text-left transition-all hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5"
+                    className={cn(
+                      "group flex flex-col rounded-xl border border-border bg-card p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5",
+                      "border-t-4",
+                      STATUS_BORDERS[p.project_status] ?? "border-t-muted",
+                    )}
                   >
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="min-w-0">

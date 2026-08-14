@@ -250,7 +250,7 @@ export default function PayrollDashboardPage() {
 
       {/* Alerts panel */}
       {!loadingAlerts && alerts.length > 0 && (
-        <Card className={cn("border", criticalAlerts.length > 0 ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30")}>
+        <Card gradient={criticalAlerts.length > 0 ? "from-red-500 to-rose-600" : "from-amber-500 to-orange-600"} className={cn("relative overflow-hidden border", criticalAlerts.length > 0 ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30")}>
           <CardHeader className="pb-2">
             <CardTitle className={cn("text-sm font-semibold flex items-center justify-between", criticalAlerts.length > 0 ? "text-red-700" : "text-amber-700")}>
               <div className="flex items-center gap-2">
@@ -290,16 +290,16 @@ export default function PayrollDashboardPage() {
 
       {/* KPI cards — 4 columns on wide screens */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KPICard icon={Users} title="Headcount" value={kpis.headcount.toString()} sub="on payroll" />
-        <KPICard icon={DollarSign} title="Gross Payroll" value={fmt(kpis.gross)} sub="before deductions" />
-        <KPICard icon={Receipt} title="Total TOS" value={fmt(kpis.tos)} sub="tax on salary" color="text-red-600" />
-        <KPICard icon={Shield} title="NSSF Employee" value={fmt(kpis.nssfEE)} sub="employee contribution" color="text-red-600" />
-        <KPICard icon={Shield} title="NSSF Employer" value={fmt(kpis.nssfER)} sub="employer contribution" color="text-amber-600" />
-        <KPICard icon={TrendingDown} title="Total Deductions" value={fmt(kpis.nssfEE + kpis.tos)} sub="TOS + NSSF EE" color="text-red-600" />
-        <KPICard icon={Wallet} title="Net Payroll" value={fmt(kpis.net)} sub="disbursed to staff" color="text-emerald-600" />
+        <KPICard icon={Users} title="Headcount" value={kpis.headcount.toString()} sub="on payroll" gradient="from-rose-500 to-pink-600" />
+        <KPICard icon={DollarSign} title="Gross Payroll" value={fmt(kpis.gross)} sub="before deductions" gradient="from-blue-500 to-indigo-600" />
+        <KPICard icon={Receipt} title="Total TOS" value={fmt(kpis.tos)} sub="tax on salary" color="text-red-600" gradient="from-red-500 to-rose-600" />
+        <KPICard icon={Shield} title="NSSF Employee" value={fmt(kpis.nssfEE)} sub="employee contribution" color="text-red-600" gradient="from-sky-500 to-blue-600" />
+        <KPICard icon={Shield} title="NSSF Employer" value={fmt(kpis.nssfER)} sub="employer contribution" color="text-amber-600" gradient="from-amber-500 to-orange-600" />
+        <KPICard icon={TrendingDown} title="Total Deductions" value={fmt(kpis.nssfEE + kpis.tos)} sub="TOS + NSSF EE" color="text-red-600" gradient="from-rose-500 to-red-600" />
+        <KPICard icon={Wallet} title="Net Payroll" value={fmt(kpis.net)} sub="disbursed to staff" color="text-emerald-600" gradient="from-emerald-500 to-teal-600" />
         <div className="grid grid-cols-2 gap-3 contents md:block">
-          <KPICard icon={AlertCircle} title="Pending Approval" value={kpis.pending.toString()} sub="entries" color="text-amber-600" />
-          <KPICard icon={CheckCircle2} title="Paid" value={kpis.paid.toString()} sub="entries" color="text-emerald-600" />
+          <KPICard icon={AlertCircle} title="Pending Approval" value={kpis.pending.toString()} sub="entries" color="text-amber-600" gradient="from-amber-500 to-orange-600" />
+          <KPICard icon={CheckCircle2} title="Paid" value={kpis.paid.toString()} sub="entries" color="text-emerald-600" gradient="from-emerald-500 to-teal-600" />
         </div>
       </div>
 
@@ -432,15 +432,17 @@ function KPICard({
   value,
   sub,
   color = "text-foreground",
+  gradient = "from-slate-500 to-slate-700",
 }: {
   icon: typeof Users;
   title: string;
   value: string;
   sub: string;
   color?: string;
+  gradient?: string;
 }) {
   return (
-    <Card>
+    <Card gradient={gradient}>
       <CardHeader className="pb-2">
         <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
           <Icon className="h-3.5 w-3.5" /> {title}

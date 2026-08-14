@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, ClipboardCheck } from "lucide-react";
 import {
@@ -14,7 +14,6 @@ import {
 import { ItpManager } from "@/components/qaqc/itp-manager";
 import { InspectionRequestList } from "@/components/qaqc/inspection-request-list";
 import { NcrList } from "@/components/qaqc/ncr-list";
-import { cn } from "@/lib/utils";
 
 interface Project {
   id: string;
@@ -22,20 +21,18 @@ interface Project {
   project_code: string | null;
 }
 
-const TABS = [
-  { id: "itps",        label: "Inspection & Test Plans" },
-  { id: "inspections", label: "Inspection Requests" },
-  { id: "ncrs",        label: "NCRs" },
-] as const;
+const SUB_TAB_IDS = ["itps", "inspections", "ncrs"] as const;
+type SubTab = (typeof SUB_TAB_IDS)[number];
 
-type Tab = (typeof TABS)[number]["id"];
-
-export default function QaqcPage() {
+function QaqcPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as SubTab | null;
+  const tab: SubTab = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "itps";
+
   const [checking, setChecking] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [tab, setTab] = useState<Tab>("itps");
   const [pendingNcrIrId, setPendingNcrIrId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,7 +55,7 @@ export default function QaqcPage() {
 
   function handleRaiseNcr(irId: string) {
     setPendingNcrIrId(irId);
-    setTab("ncrs");
+    router.push("/dashboard/qaqc?sub=ncrs");
   }
 
   if (checking) {
@@ -97,26 +94,6 @@ export default function QaqcPage() {
             </SelectContent>
           </Select>
         </div>
-
-        {/* Tabs */}
-        <div className="mt-4 inline-flex rounded-lg bg-slate-100 p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                tab === t.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-800",
-              )}
-            >
-              {t.label}
-              {t.id === "ncrs" && pendingNcrIrId && (
-                <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white">!</span>
-              )}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Content */}
@@ -142,5 +119,13 @@ export default function QaqcPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function QaqcPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+      <QaqcPageContent />
+    </Suspense>
   );
 }

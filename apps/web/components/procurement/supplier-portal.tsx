@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Package, FileSearch, Truck, Building2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, Building2 } from "lucide-react";
 import { SupplierPOView } from "./supplier-po-view";
 import { SupplierRFQResponse } from "./supplier-rfq-response";
 import { SupplierDeliveryForm } from "./supplier-delivery-form";
@@ -16,16 +16,15 @@ interface Supplier {
 
 type Tab = "pos" | "rfqs" | "delivery";
 
-const TABS: { key: Tab; label: string; icon: typeof Package }[] = [
-  { key: "rfqs", label: "RFQ Responses", icon: FileSearch },
-  { key: "pos", label: "Purchase Orders", icon: Package },
-  { key: "delivery", label: "Delivery Notice", icon: Truck },
-];
+const TAB_IDS: Tab[] = ["rfqs", "pos", "delivery"];
 
 export function SupplierPortal() {
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as Tab | null;
+  const tab: Tab = subParam && TAB_IDS.includes(subParam) ? subParam : "rfqs";
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [tab, setTab] = useState<Tab>("rfqs");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,21 +63,6 @@ export function SupplierPortal() {
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="flex gap-1 border-b">
-        {TABS.map(t => (
-          <Button
-            key={t.key}
-            variant={tab === t.key ? "default" : "ghost"}
-            size="sm"
-            className="rounded-b-none gap-2"
-            onClick={() => setTab(t.key)}
-          >
-            <t.icon className="h-4 w-4" />
-            {t.label}
-          </Button>
-        ))}
       </div>
 
       {tab === "pos" && <SupplierPOView supplierId={selectedSupplierId || activeSupplier.id} />}

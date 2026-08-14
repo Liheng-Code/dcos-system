@@ -50,6 +50,11 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+function wbsOptionLabel(node: WbsNodeRecord) {
+  if (node.full_path) return node.wbs_name ? `${node.full_path} · ${node.wbs_name}` : node.full_path;
+  return node.wbs_name ? `${node.wbs_code} · ${node.wbs_name}` : node.wbs_code;
+}
+
 function statusColor(status: string) {
   const map: Record<string, string> = {
     open: "bg-slate-100 text-slate-700 border-slate-200",
@@ -90,11 +95,13 @@ function FilePreview({ file }: { file: File }) {
   return <img src={url} alt={file.name} className="h-10 w-10 rounded object-cover border border-border shrink-0" />;
 }
 
-export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], onClose, onSave, fullPage }: WbsTaskEditSheetProps) {
+export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbsNodes = [], onClose, onSave, fullPage }: WbsTaskEditSheetProps) {
   const isCreating = task === null;
-  const defaultCreateWbsNodeId = wbsNodeId ?? wbsNodes[0]?.id ?? "";
+  const defaultCreateWbsNodeId = wbsNodeId ?? propWbsNodes[0]?.id ?? "";
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+
+  const [wbsNodes, setWbsNodes] = useState<WbsNodeRecord[]>(propWbsNodes);
 
   const [form, setForm] = useState({
     wbs_node_id: task?.wbs_node_id ?? defaultCreateWbsNodeId,
@@ -164,6 +171,30 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], on
     if (!task?.id) return;
     void markTaskRead(task.id);
   }, [task?.id, markTaskRead]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    supabase
+      .from("wbs_nodes")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("full_path", { ascending: true, nullsFirst: false })
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const fresh = data as WbsNodeRecord[];
+        setWbsNodes(fresh);
+        if (isCreating) {
+          setForm((prev) => {
+            const currentValid = prev.wbs_node_id && fresh.some((node) => node.id === prev.wbs_node_id);
+            if (currentValid) return prev;
+            const nextId = wbsNodeId ?? fresh[0]?.id ?? "";
+            return nextId !== prev.wbs_node_id ? { ...prev, wbs_node_id: nextId } : prev;
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [projectId, supabase, isCreating, wbsNodeId]);
 
   // Load candidate predecessor tasks when the picker opens (lazy, once per mount)
   useEffect(() => {
@@ -254,7 +285,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], on
   const isApprovedTask = !!task && (task.status === "approved" || task.status === "completed" || task.status === "closed" || task.qa_status === "approved");
   const isTaskLocked = isApprovedTask && !isSuperAdminL0;
   const canEditAssignee = !isTaskLocked && ((!isOwner && perms ? hasPermission(perms.permissions, "task_management", "assign_task", "can_create") : false) || isSuperAdminL0);
-  const canEditReceiver = !isTaskLocked && ((isOwner && perms ? hasPermission(perms.permissions, "task_management", "update_progress", "edit") : false) || isSuperAdminL0);
+  const canEditReceiver = !isTaskLocked && (isOwner || (perms ? hasPermission(perms.permissions, "task_management", "update_progress", "edit") : false) || isSuperAdminL0);
   const canApprove = !isTaskLocked && (perms ? hasPermission(perms.permissions, "task_management", "approve_task", "approve") : false);
   const canReject = !isTaskLocked && (perms ? hasPermission(perms.permissions, "task_management", "approve_task", "reject") : false);
 
@@ -390,7 +421,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], on
     setSaving(false);
     setSelectedFiles([]);
     setNoteText("");
-    setProgressVal(task.progress.toString());
+    setProgressVal(String(newProgress));
 
     toast.success("Update posted");
     onSave();
@@ -1365,7 +1396,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], on
                   <select id="wbs_node_id" value={form.wbs_node_id} onChange={(e) => update("wbs_node_id", e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary">
                     <option value="">Select WBS location</option>
                     {wbsNodes.map((node) => (
-                      <option key={node.id} value={node.id}>{node.full_path ?? `${node.wbs_code} · ${node.wbs_name}`}</option>
+                      <option key={node.id} value={node.id}>{wbsOptionLabel(node)}</option>
                     ))}
                   </select>
                 </div>
@@ -1492,7 +1523,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes = [], on
                 <select id="sheet_wbs_node_id" value={form.wbs_node_id} onChange={(e) => update("wbs_node_id", e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary">
                   <option value="">Select WBS location</option>
                   {wbsNodes.map((node) => (
-                    <option key={node.id} value={node.id}>{node.full_path ?? `${node.wbs_code} · ${node.wbs_name}`}</option>
+                    <option key={node.id} value={node.id}>{wbsOptionLabel(node)}</option>
                   ))}
                 </select>
               </div>

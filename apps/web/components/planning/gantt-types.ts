@@ -44,8 +44,8 @@ export interface GanttGroupRow {
 }
 
 export type GanttDisplayRow =
-  | { kind: "task"; data: GanttTask; depth: number }
-  | { kind: "group"; data: GanttGroupRow; depth: number };
+  | { kind: "task"; id: string; data: GanttTask; depth: number }
+  | { kind: "group"; id: string; data: GanttGroupRow; depth: number };
 
 export const ZOOM_LABELS: Record<GanttZoom, string> = {
   day: "Day",
@@ -62,7 +62,7 @@ export const DAY_W: Record<GanttZoom, number> = {
 export const BAR_HEIGHT = 24;
 export const ROW_HEIGHT = 36;
 export const HEADER_H = 48;
-export const LABEL_W = 300;
+export const LABEL_W = 400;
 export const GROUP_HEADER_H = 28;
 
 export const STATUS_BADGE: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {

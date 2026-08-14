@@ -17,7 +17,7 @@ export function RightPanel() {
           </div>
           <div className="text-center">
             <h2 className="text-xl font-semibold tracking-tight">
-              Welcome to DC/OS
+              Welcome to DCOS
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
               Sign in to manage your construction projects

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Save, RotateCcw, Loader2, ChevronDown, Plus, Trash2, Pencil } from "lucide-react";
+import { Save, RotateCcw, Loader2, ChevronDown, Plus, Copy, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -15,6 +15,7 @@ import {
   createCase,
   deleteCase,
   renameCase,
+  duplicateCase,
 } from "@/lib/prelim-library-service";
 
 interface SiteDataPanelProps {
@@ -56,6 +57,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
   const [saving, setSaving] = useState(false);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newSourceId, setNewSourceId] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -144,12 +146,15 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     if (!trimmed) return;
     setSaving(true);
     try {
-      const c = await createCase(trimmed, local);
+      const c = newSourceId && newSourceId !== "__local__"
+        ? await duplicateCase(newSourceId, trimmed)
+        : await createCase(trimmed, local);
       setActiveCaseId(c.id);
       setActiveCaseName(c.name);
       setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default }]);
       setShowNewDialog(false);
       setNewName("");
+      setNewSourceId("");
     } catch { /* silent */ }
     setSaving(false);
   }
@@ -163,6 +168,21 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     setCases((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
     if (id === activeCaseId) setActiveCaseName(trimmed);
     setRenamingId(null);
+  }
+
+  // ── Duplicate ─────────────────────────────────────────────────────────────────
+
+  async function handleDuplicateCase(id: string, name: string) {
+    const newName = name + " (Copy)";
+    try {
+      const c = await duplicateCase(id, newName);
+      setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default }]);
+      setActiveCaseId(c.id);
+      setActiveCaseName(c.name);
+      setLocal(c.params);
+      onParamsChange(c.params);
+      onRecalculate();
+    } catch { /* silent */ }
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────────
@@ -236,6 +256,14 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                           <button
                             type="button"
+                            onClick={(e) => { e.stopPropagation(); handleDuplicateCase(c.id, c.name); }}
+                            className="p-1 rounded hover:bg-muted"
+                            title="Duplicate"
+                          >
+                            <Copy className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); setRenamingId(c.id); setRenameValue(c.name); }}
                             className="p-1 rounded hover:bg-muted"
                           >
@@ -257,7 +285,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
                   <div className="border-t border-border p-1">
                     <button
                       type="button"
-                      onClick={() => { setShowNewDialog(true); setDropdownOpen(false); setNewName(activeCaseName + " (Copy)"); }}
+                      onClick={() => { setShowNewDialog(true); setDropdownOpen(false); setNewName(activeCaseName + " (Copy)"); setNewSourceId(activeCaseId); }}
                       className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50"
                     >
                       <Plus className="h-3.5 w-3.5" /> Save as new case…
@@ -280,21 +308,36 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
 
         {/* New case dialog */}
         {showNewDialog && (
-          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
-            <label className="text-xs text-muted-foreground shrink-0">New case name:</label>
-            <input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreateCase(); if (e.key === "Escape") setShowNewDialog(false); }}
-              className="flex-1 rounded border border-border px-2 py-1 text-sm"
-            />
-            <Button size="sm" onClick={handleCreateCase} disabled={saving || !newName.trim()}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowNewDialog(false)}>
-              Cancel
-            </Button>
+          <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground shrink-0">Duplicate from:</label>
+              <select
+                value={newSourceId}
+                onChange={(e) => setNewSourceId(e.target.value)}
+                className="flex-1 rounded border border-border px-2 py-1 text-sm"
+              >
+                <option value="__local__">Current values</option>
+                {cases.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground shrink-0">New name:</label>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateCase(); if (e.key === "Escape") setShowNewDialog(false); }}
+                className="flex-1 rounded border border-border px-2 py-1 text-sm"
+              />
+              <Button size="sm" onClick={handleCreateCase} disabled={saving || !newName.trim()}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowNewDialog(false); setNewSourceId(""); }}>
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
 

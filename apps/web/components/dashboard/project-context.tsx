@@ -10,6 +10,8 @@ interface Project {
   project_type: string;
   project_status: string;
   progress_percentage: number;
+  company_code?: string | null;
+  location?: string | null;
 }
 
 interface ProjectContextValue {

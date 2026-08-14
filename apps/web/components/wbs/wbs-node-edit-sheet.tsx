@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { X, Loader2, Save, Ruler } from "lucide-react";
 import { toast } from "sonner";
@@ -55,6 +56,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
     is_external_works: node?.is_external_works ?? false,
   });
   const [saving, setSaving] = useState(false);
+  const [sortOrderTouched, setSortOrderTouched] = useState(false);
 
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -89,6 +91,13 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
         onSave();
       }
     } else {
+      // When creating a node, keep it in code order among its siblings unless the
+      // user explicitly set a Sort Order. Without this, a new node falls back to
+      // sort_order = 0 and jumps to the top of its parent.
+      const sortOrder = sortOrderTouched
+        ? parseInt(form.sort_order) || 0
+        : await computeCreateSortOrder(supabase, projectId, parentId, form.wbs_code);
+
       const { error } = await supabase.from("wbs_nodes").insert({
         project_id: projectId,
         parent_id: parentId,
@@ -96,7 +105,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
         wbs_name: form.wbs_name,
         node_type: form.node_type,
         status: form.status,
-        sort_order: parseInt(form.sort_order) || 0,
+        sort_order: sortOrder,
         is_below_ground: form.is_below_ground,
         is_external_works: form.is_external_works,
       });
@@ -199,7 +208,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
                   id="sort_order"
                   type="number"
                   value={form.sort_order}
-                  onChange={(e) => update("sort_order", e.target.value)}
+                  onChange={(e) => { setSortOrderTouched(true); update("sort_order", e.target.value); }}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
                 />
               </div>
@@ -261,7 +270,6 @@ function GfaFieldset({ wbsNodeId }: { wbsNodeId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     getWbsNodeGfa(wbsNodeId).then((gfa) => {
       if (cancelled) return;
       if (gfa) {
@@ -374,4 +382,50 @@ function GfaFieldset({ wbsNodeId }: { wbsNodeId: string }) {
       )}
     </fieldset>
   );
+}
+
+// Computes a sort_order that keeps a new sibling in code order among its
+// existing siblings (same parent). The tree is ordered by sort_order first and
+// falls back to wbs_code, so this interpolates the sort_order between the two
+// code-neighbours instead of defaulting to 0 (which would push the node to the
+// top of the parent).
+function computeInsertSortOrder(
+  siblings: Array<{ wbs_code: string; sort_order: number }>,
+  newCode: string,
+): number {
+  if (siblings.length === 0) return 0;
+
+  const byCode = [...siblings].sort((a, b) => a.wbs_code.localeCompare(b.wbs_code));
+  let insertIndex = byCode.findIndex((s) => s.wbs_code.localeCompare(newCode) > 0);
+  if (insertIndex === -1) insertIndex = byCode.length;
+
+  const before = insertIndex > 0 ? byCode[insertIndex - 1] : null;
+  const after = insertIndex < byCode.length ? byCode[insertIndex] : null;
+
+  if (!before && !after) return 0;
+
+  const sortValues = siblings.map((s) => s.sort_order ?? 0);
+  if (!before) return Math.min(...sortValues) - 10;
+  if (!after) return Math.max(...sortValues) + 10;
+
+  const beforeSort = before.sort_order ?? 0;
+  const afterSort = after.sort_order ?? 0;
+  if (afterSort === beforeSort) return beforeSort;
+  return Math.floor((beforeSort + afterSort) / 2);
+}
+
+async function computeCreateSortOrder(
+  supabase: SupabaseClient,
+  projectId: string,
+  parentId: string | null,
+  wbsCode: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("wbs_nodes")
+    .select("wbs_code, sort_order")
+    .eq("project_id", projectId)
+    .eq("parent_id", parentId);
+
+  const siblings = (data ?? []) as Array<{ wbs_code: string; sort_order: number }>;
+  return computeInsertSortOrder(siblings, wbsCode.toUpperCase());
 }

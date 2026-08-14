@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { AlertTriangle, CreditCard, DollarSign, FileText, Loader2, Shield, Wallet } from "lucide-react";
+import { CreditCard, DollarSign, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ProgressClaimList } from "@/components/qs/progress-claim-list";
@@ -10,15 +11,8 @@ import { RetentionRegister } from "@/components/qs/retention-register";
 import { AdvanceRecoveryRegister } from "@/components/qs/advance-recovery-register";
 import { getQsPaymentVouchers, type QsPaymentVoucher } from "@/lib/qs-service";
 
-const SUB_TABS = [
-  { id: "claims",   label: "Progress Claims", icon: FileText },
-  { id: "subipcs",  label: "Sub-IPCs",         icon: DollarSign },
-  { id: "retention", label: "Retention",        icon: Shield },
-  { id: "advance",  label: "Advance Recovery", icon: Wallet },
-  { id: "payments", label: "Payments",          icon: CreditCard },
-] as const;
-
-type SubTab = (typeof SUB_TABS)[number]["id"];
+const SUB_TAB_IDS = ["claims", "subipcs", "retention", "advance", "payments"] as const;
+type SubTab = (typeof SUB_TAB_IDS)[number];
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -196,29 +190,12 @@ function PaymentVoucherList({ projectId }: { projectId: string }) {
 }
 
 export function MergedClaimsView({ projectId, projectName }: Props) {
-  const [subTab, setSubTab] = useState<SubTab>("claims");
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as SubTab | null;
+  const subTab: SubTab = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "claims";
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-lg bg-slate-100 p-1">
-        {SUB_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubTab(t.id)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              subTab === t.id
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-800",
-            )}
-          >
-            <t.icon className="h-3.5 w-3.5" />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {subTab === "claims"    && <ProgressClaimList projectId={projectId} projectName={projectName} />}
       {subTab === "subipcs"   && <SubIpcList projectId={projectId} />}
       {subTab === "retention" && <RetentionRegister projectId={projectId} projectName={projectName} />}

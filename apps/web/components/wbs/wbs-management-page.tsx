@@ -208,7 +208,7 @@ function NodeRow({ node, selectedId, onSelect, onEdit, onDelete, onDuplicate, on
       {active && !projectRoot && (
         <div className="flex items-center gap-0.5 shrink-0">
           <button type="button" onClick={(e) => { e.stopPropagation(); onDuplicate(data.id); }} className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/20" aria-label={`Duplicate ${data.wbs_name}`}><Copy className="h-3 w-3" /></button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEdit({ ...data, project_id: "", parent_id: null, sort_order: 0 } as WbsNodeRecord); }} className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/20" aria-label={`Edit ${data.wbs_name}`}><Pencil className="h-3 w-3" /></button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); onEdit({ ...data, project_id: "", parent_id: null, sort_order: data.sort_order } as WbsNodeRecord); }} className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/20" aria-label={`Edit ${data.wbs_name}`}><Pencil className="h-3 w-3" /></button>
           <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-0.5 rounded text-red-300 hover:text-red-200 hover:bg-red-500/30" aria-label={`Delete ${data.wbs_name}`}><Trash2 className="h-3 w-3" /></button>
         </div>
       )}
@@ -239,8 +239,26 @@ export function WbsManagementPage() {
   const [addingChild, setAddingChild] = useState(false);
   const [movingNode, setMovingNode] = useState(false);
   const [treePanelCollapsed, setTreePanelCollapsed] = useState(false);
+  const [treeHeight, setTreeHeight] = useState(500);
+
+  const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    setDataVersion((v) => v + 1);
+  }, [treeData, nodes]);
 
   const treeRef = useRef<TreeApi<WbsNodeData>>(null);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = treeContainerRef.current;
+    if (!el || treePanelCollapsed) return;
+    const updateHeight = () => setTreeHeight(el.clientHeight);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [treePanelCollapsed, dataVersion]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedNode) return null;
@@ -537,7 +555,7 @@ export function WbsManagementPage() {
       {/* Main 2-column layout */}
       <main className={cn("grid grid-cols-1 gap-4 flex-1 min-h-0", treePanelCollapsed ? "xl:grid-cols-[48px_minmax(0,1fr)]" : "xl:grid-cols-[55%_minmax(0,1fr)]")}>
         {/* Left: WBS Tree */}
-        <aside className={cn("rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col", treePanelCollapsed ? "items-center p-2" : "p-3")}>
+        <aside className={cn("rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col min-h-0", treePanelCollapsed ? "items-center p-2" : "p-3")}>
           <div className={cn("mb-2 flex items-center shrink-0", treePanelCollapsed ? "flex-col gap-2 px-0" : "justify-between px-1")}>
             {treePanelCollapsed ? (
               <FolderTree className="h-4 w-4 text-slate-500" />
@@ -583,7 +601,7 @@ export function WbsManagementPage() {
               </Button>
             </div>
           </div>
-          {!treePanelCollapsed && <div className="scrollbar-hidden flex-1 overflow-y-auto min-h-0">
+          {!treePanelCollapsed && <div ref={treeContainerRef} className="overflow-y-auto flex-1 min-h-0">
             {treeData.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-slate-400">
                 <FolderTree className="h-8 w-8 mb-2" />
@@ -614,8 +632,9 @@ export function WbsManagementPage() {
                     handleSelectNode(nodes[0].data, nodes[0].id);
                   }
                 }}
+                height={treeHeight}
                 width="100%"
-                className="scrollbar-hidden w-full"
+                className="w-full"
               >
                 {(props) => (
                   <NodeRow

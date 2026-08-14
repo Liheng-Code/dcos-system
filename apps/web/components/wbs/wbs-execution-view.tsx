@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { differenceInDays } from "date-fns";
-import { Users, UserCheck, GitBranch, FileText, Camera, MoreHorizontal, Copy, Pencil, Trash2, Bell } from "lucide-react";
+import { Users, UserCheck, GitBranch, FileText, Camera, MoreHorizontal, Copy, Pencil, Trash2, Bell, Loader2 } from "lucide-react";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -61,6 +62,86 @@ function nextCopyCode(baseCode: string, existingCodes: Set<string>) {
 
 function duplicateTaskCodeMessage(code: string) {
   return `Task code "${code}" already exists in this project. Please use a different code.`;
+}
+
+function QuickProgressEditor({ task, onRefresh }: { task: WbsTaskRecord; onRefresh: () => void }) {
+  const [value, setValue] = useState(String(task.progress));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValue(String(task.progress));
+  }, [task.progress]);
+
+  const isLocked = ["approved", "completed", "closed"].includes(task.status) || task.qa_status === "approved";
+
+  async function commit() {
+    const next = Math.max(0, Math.min(100, parseInt(value) || 0));
+    if (next === task.progress) {
+      setValue(String(task.progress));
+      return;
+    }
+    setSaving(true);
+    const supabase = createClient();
+    const updates: Record<string, unknown> = { progress: next, updated_at: new Date().toISOString() };
+    if (next === 100 && task.status !== "closed" && task.status !== "cancelled") {
+      updates.status = "submitted";
+    } else if (next > 0 && task.status === "open") {
+      updates.status = "in_progress";
+    }
+    const { error } = await supabase.from("wbs_tasks").update(updates).eq("id", task.id);
+    if (error) {
+      toast.error(error.message);
+      setValue(String(task.progress));
+    } else {
+      await supabase.from("wbs_audit_log").insert({
+        wbs_task_id: task.id,
+        wbs_node_id: task.wbs_node_id,
+        project_id: task.project_id,
+        action: "Progress Updated",
+        field_name: "progress",
+        old_value: String(task.progress),
+        new_value: String(next),
+      });
+      toast.success(`Progress updated to ${next}%`);
+      onRefresh();
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div
+      className="flex items-center gap-1"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      title={isLocked ? "Approved tasks are locked" : "Type progress and press Enter to save"}
+    >
+      {saving ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+      ) : (
+        <>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={value}
+            disabled={isLocked}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                (e.target as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                setValue(String(task.progress));
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className="w-14 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-center text-[11px] font-medium tabular-nums outline-none focus:border-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <span className="text-[10px] text-slate-400">%</span>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, onRefresh }: WbsExecutionViewProps) {
@@ -191,7 +272,7 @@ export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, o
                   </div>
                 </td>
                 <td className="px-2">
-                  <span className="text-[10px] font-medium tabular-nums">{task.progress}%</span>
+                  <QuickProgressEditor task={task} onRefresh={onRefresh} />
                 </td>
                 <td className="px-2 whitespace-nowrap">
                   <div className="text-[10px]">{task.start_date ?? "—"} → {task.end_date ?? "—"}</div>

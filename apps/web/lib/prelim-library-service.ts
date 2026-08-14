@@ -533,6 +533,17 @@ export async function createCase(name: string, params: SiteDataParams): Promise<
   return { ...data, params: mergeWithDefaults(data.params as Record<string, number>) } as PrelimCase;
 }
 
+export async function getCalculatedItemsForCase(caseId: string): Promise<CalculatedPrelimTree> {
+  const c = await getCase(caseId);
+  const items = await getLibraryItemsWithComponents();
+  return calculatePrelimTree(items, c.params);
+}
+
+export async function duplicateCase(id: string, newName: string): Promise<PrelimCase> {
+  const original = await getCase(id);
+  return createCase(newName, original.params);
+}
+
 export async function deleteCase(id: string): Promise<void> {
   const { error } = await createClient()
     .from("prelim_library_cases")

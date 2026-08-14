@@ -166,7 +166,7 @@ export default function AttendancePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card gradient="from-emerald-500 to-teal-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Present Today</CardTitle>
           </CardHeader>
@@ -174,7 +174,7 @@ export default function AttendancePage() {
             <p className="text-2xl font-bold">{todayStats.present}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card gradient="from-rose-500 to-red-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Absent Today</CardTitle>
           </CardHeader>
@@ -182,7 +182,7 @@ export default function AttendancePage() {
             <p className="text-2xl font-bold">{todayStats.absent}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card gradient="from-amber-500 to-orange-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Late Arrivals</CardTitle>
           </CardHeader>
@@ -190,7 +190,7 @@ export default function AttendancePage() {
             <p className="text-2xl font-bold">{todayStats.late}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card gradient="from-sky-500 to-blue-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">On Leave</CardTitle>
           </CardHeader>
@@ -200,7 +200,7 @@ export default function AttendancePage() {
         </Card>
       </div>
 
-      <Card>
+      <Card gradient="from-indigo-500 to-violet-600">
         <CardHeader>
           <CardTitle>Attendance Records</CardTitle>
           <CardDescription>View recent attendance logs</CardDescription>

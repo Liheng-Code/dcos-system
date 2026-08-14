@@ -4,11 +4,22 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ArrowLeft, Send, CheckCircle, XCircle, RotateCcw, type LucideIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Send, CheckCircle, XCircle, RotateCcw, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PRRecord {
   id: string;
@@ -17,7 +28,9 @@ interface PRRecord {
   wbs_node_id: string | null;
   task_id: string | null;
   requested_by: string | null;
+  preparation_date: string | null;
   required_date: string | null;
+  ship_to: string | null;
   delivery_location: string | null;
   priority: string;
   budget_code: string | null;
@@ -29,8 +42,15 @@ interface PRRecord {
   approved_at: string | null;
   total_estimated_cost: number | null;
   notes: string | null;
+  budget_confirmation_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface BCSummary {
+  id: string;
+  bc_number: string;
+  budget_status: string | null;
 }
 
 interface PRItem {
@@ -89,9 +109,15 @@ interface PRDetailProps {
 
 export function PRDetail({ id }: PRDetailProps) {
   const router = useRouter();
+  const { can } = useProcurementPermissions(["pr"]);
   const [pr, setPr] = useState<PRRecord | null>(null);
   const [items, setItems] = useState<PRItem[]>([]);
+  const [projectInfo, setProjectInfo] = useState<{ project_name: string; project_code: string } | null>(null);
+  const [budgetGroupName, setBudgetGroupName] = useState<string | null>(null);
+  const [budgetConfirmation, setBudgetConfirmation] = useState<BCSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const fetchDetail = useCallback(() => {
     const supabase = createClient();
@@ -99,7 +125,25 @@ export function PRDetail({ id }: PRDetailProps) {
       supabase.from("procurement_prs").select("*").eq("id", id).single(),
       supabase.from("procurement_pr_items").select("*, qs_boq_items(item_no, item_code, description)").eq("pr_id", id).order("line_no"),
     ]).then(([prRes, itemsRes]) => {
-      if (prRes.data) setPr(prRes.data as PRRecord);
+      if (prRes.data) {
+        const record = prRes.data as PRRecord;
+        setPr(record);
+        if (record.budget_code) {
+          supabase.from("budget_code_groups").select("name").eq("code_letter", record.budget_code).single().then(({ data }) => {
+            if (data) setBudgetGroupName(data.name);
+          });
+        }
+        if (record.project_id) {
+          supabase.from("projects").select("project_name, project_code").eq("id", record.project_id).single().then(({ data }) => {
+            if (data) setProjectInfo(data);
+          });
+        }
+        if (record.budget_confirmation_id) {
+          supabase.from("procurement_budget_confirmations").select("id, bc_number, budget_status").eq("id", record.budget_confirmation_id).single().then(({ data }) => {
+            if (data) setBudgetConfirmation(data as BCSummary);
+          });
+        }
+      }
       if (itemsRes.data) setItems(itemsRes.data as PRItem[]);
       setLoading(false);
     });
@@ -108,16 +152,9 @@ export function PRDetail({ id }: PRDetailProps) {
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
 
   async function handleAction(nextStatus: string) {
-    let budgetNotes = "";
     if (nextStatus === "rejected" || nextStatus === "returned") {
       const reason = prompt(`Reason for ${nextStatus}:`);
       if (reason === null) return;
-    }
-
-    if (nextStatus === "approved" && pr?.approval_status === "under_budget_review") {
-      const notes = prompt("Budget check notes (optional):");
-      if (notes === null) return;
-      budgetNotes = notes ?? "";
     }
 
     const supabase = createClient();
@@ -128,11 +165,6 @@ export function PRDetail({ id }: PRDetailProps) {
       if (user) {
         update.approved_by = user.id;
         update.approved_at = new Date().toISOString();
-        if (pr?.approval_status === "under_budget_review") {
-          update.budget_checked = true;
-          update.budget_checked_by = user.id;
-          update.budget_check_notes = budgetNotes || null;
-        }
       }
     }
 
@@ -142,10 +174,31 @@ export function PRDetail({ id }: PRDetailProps) {
     fetchDetail();
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("procurement_prs").delete().eq("id", id);
+    if (error) { toast.error(error.message); setDeleting(false); return; }
+    toast.success("Purchase requisition deleted");
+    router.push("/dashboard/procurement/pr");
+  }
+
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (!pr) return <div className="py-20 text-center text-muted-foreground">PR not found.</div>;
 
-  const possibleActions = STATUS_ACTIONS[pr.approval_status] ?? [];
+  const isBudgetReviewStage = pr.approval_status === "under_budget_review";
+  const canBudgetReview = can("pr", "approve");
+  const possibleActions = isBudgetReviewStage && !canBudgetReview ? [] : (STATUS_ACTIONS[pr.approval_status] ?? []);
+  const canEdit = pr.approval_status === "draft" || pr.approval_status === "returned";
+  const canDelete = pr.approval_status === "draft";
+
+  function handleActionClick(action: { nextStatus: string }) {
+    if (action.nextStatus === "approved" && isBudgetReviewStage) {
+      router.push(`/dashboard/procurement/pr/${id}/budget-confirmation/new`);
+      return;
+    }
+    handleAction(action.nextStatus);
+  }
 
   return (
     <div className="space-y-6">
@@ -160,28 +213,74 @@ export function PRDetail({ id }: PRDetailProps) {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/procurement/pr/${id}/edit`)}>
+              <Pencil className="h-4 w-4 mr-1" /> Edit
+            </Button>
+          )}
+          {canDelete && (
+            <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setShowDeleteDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete
+            </Button>
+          )}
+          {isBudgetReviewStage && !canBudgetReview && (
+            <span className="text-sm text-muted-foreground">Awaiting QS budget review</span>
+          )}
           {possibleActions.map(action => (
-            <Button key={action.nextStatus} className={action.color} size="sm" onClick={() => handleAction(action.nextStatus)}>
+            <Button key={action.nextStatus} className={action.color} size="sm" onClick={() => handleActionClick(action)}>
               <action.icon className="h-4 w-4 mr-1" /> {action.label}
             </Button>
           ))}
         </div>
       </div>
 
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this purchase requisition?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {pr.pr_number} and all of its line items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="grid grid-cols-2 gap-4">
         <Card>
           <CardContent className="pt-5 space-y-3">
             <h3 className="font-semibold text-sm">Details</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
+              {projectInfo && (
+                <div className="col-span-2"><span className="text-muted-foreground">Project</span><p className="font-medium">{projectInfo.project_name} ({projectInfo.project_code})</p></div>
+              )}
               <div><span className="text-muted-foreground">Priority</span><p className="font-medium capitalize">{pr.priority}</p></div>
+              <div><span className="text-muted-foreground">Date Prepared</span><p className="font-medium">{pr.preparation_date ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Required Date</span><p className="font-medium">{pr.required_date ?? "—"}</p></div>
-              <div><span className="text-muted-foreground">Delivery Location</span><p className="font-medium">{pr.delivery_location ?? "—"}</p></div>
-              <div><span className="text-muted-foreground">Budget Code</span><p className="font-medium">{pr.budget_code ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Ship To</span><p className="font-medium">{pr.ship_to ?? pr.delivery_location ?? "—"}</p></div>
+              <div><span className="text-muted-foreground">Budget Group</span><p className="font-medium">{pr.budget_code ? `${pr.budget_code} — ${budgetGroupName ?? "..."}` : "—"}</p></div>
               <div><span className="text-muted-foreground">Budget Check</span><p className="font-medium">{pr.budget_checked ? "Checked ✓" : "Not checked"}</p></div>
               {pr.budget_checked && pr.budget_check_notes && <div className="col-span-2"><span className="text-muted-foreground">Budget Notes</span><p className="font-medium">{pr.budget_check_notes}</p></div>}
               <div><span className="text-muted-foreground">Est. Total</span><p className="font-bold">${pr.total_estimated_cost?.toLocaleString() ?? "—"}</p></div>
             </div>
-            {pr.notes && <div className="text-sm"><span className="text-muted-foreground">Notes</span><p>{pr.notes}</p></div>}
+            {pr.notes && <div className="text-sm"><span className="text-muted-foreground">Purpose</span><p>{pr.notes}</p></div>}
+            {budgetConfirmation && (
+              <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Budget Confirmation</span>
+                  <p className="font-medium font-mono">{budgetConfirmation.bc_number}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/procurement/pr/${id}/budget-confirmation`)}>
+                  View
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

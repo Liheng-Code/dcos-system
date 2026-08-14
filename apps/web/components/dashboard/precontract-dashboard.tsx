@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Clock, TrendingUp, AlertTriangle, Users, Calculator, FileSearch, Send } from "lucide-react";
+import { Clock, TrendingUp, AlertTriangle, Users, Calculator, FileSearch, Send, DollarSign } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PrecontractDashboardProps {
   projectId: string;
@@ -115,12 +116,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Deadline Countdown */}
-        <div className={`rounded-xl border p-4 ${deadlineUrgent ? "border-red-200 bg-red-50" : deadlineWarning ? "border-amber-200 bg-amber-50" : "border-border bg-card"}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className={`h-4 w-4 ${deadlineUrgent ? "text-red-600" : deadlineWarning ? "text-amber-600" : "text-muted-foreground"}`} />
-            <span className="text-xs font-medium text-muted-foreground">Submission Deadline</span>
+        <div className={cn("rounded-xl border bg-card p-5 border-t-4", deadlineUrgent ? "border-t-red-500 border-red-200" : deadlineWarning ? "border-t-amber-500 border-amber-200" : "border-t-blue-500 border-border")}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submission Deadline</p>
+            <div className={cn("rounded-lg p-1.5", deadlineUrgent ? "bg-red-50" : deadlineWarning ? "bg-amber-50" : "bg-blue-50")}>
+              <Clock className={cn("h-4 w-4", deadlineUrgent ? "text-red-600" : deadlineWarning ? "text-amber-600" : "text-blue-600")} />
+            </div>
           </div>
-          <p className={`text-2xl font-bold ${deadlineUrgent ? "text-red-700" : deadlineWarning ? "text-amber-700" : "text-foreground"}`}>
+          <p className={cn("text-2xl font-bold", deadlineUrgent ? "text-red-700" : deadlineWarning ? "text-amber-700" : "text-foreground")}>
             {daysUntilDeadline !== null ? (
               daysUntilDeadline > 0 ? `${daysUntilDeadline} days` : daysUntilDeadline === 0 ? "Today" : "Overdue"
             ) : "Not set"}
@@ -133,12 +136,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
         </div>
 
         {/* Bid Price */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Bid Price</span>
+        <div className="rounded-xl border border-t-emerald-500 border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Bid Price</p>
+            <div className="rounded-lg bg-emerald-50 p-1.5">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+            </div>
           </div>
-          <p className="text-2xl font-bold text-foreground">
+          <p className="text-2xl font-bold text-emerald-600">
             {details?.bid_price != null
               ? `${details.bid_currency} ${details.bid_price.toLocaleString()}`
               : details?.estimated_value != null
@@ -149,12 +154,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
         </div>
 
         {/* Risk Summary */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Risk Summary</span>
+        <div className="rounded-xl border border-t-amber-500 border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Risk Summary</p>
+            <div className="rounded-lg bg-amber-50 p-1.5">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+            </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {riskSummary.critical > 0 && (
               <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
                 {riskSummary.critical} Critical
@@ -182,12 +189,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
         </div>
 
         {/* Award Status */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <FileSearch className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Award Status</span>
+        <div className="rounded-xl border border-t-purple-500 border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Award Status</p>
+            <div className="rounded-lg bg-purple-50 p-1.5">
+              <FileSearch className="h-4 w-4 text-purple-600" />
+            </div>
           </div>
-          <p className="text-lg font-semibold capitalize text-foreground">
+          <p className={cn("text-2xl font-bold", details?.award_status === "awarded" ? "text-emerald-600" : "text-foreground")}>
             {details?.award_status?.replace(/_/g, " ") ?? "Pending"}
           </p>
         </div>

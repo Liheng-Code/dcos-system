@@ -16,6 +16,7 @@ interface IssuedPO {
   supplier_id: string;
   procurement_po_items: {
     id: string;
+    item_type: string;
     item_code: string | null;
     item_description: string;
     unit: string;
@@ -52,7 +53,7 @@ export function GoodsReceiptForm() {
     const supabase = createClient();
     supabase
       .from("procurement_pos")
-      .select(`id, po_number, supplier_id, procurement_po_items(id, item_code, item_description, unit, quantity_ordered, quantity_delivered, unit_price)`)
+      .select(`id, po_number, supplier_id, procurement_po_items(id, item_type, item_code, item_description, unit, quantity_ordered, quantity_delivered, unit_price)`)
       .in("status", ["issued", "partially_delivered"])
       .order("created_at", { ascending: false })
       .then(({ data }) => {
@@ -64,7 +65,7 @@ export function GoodsReceiptForm() {
     setSelectedPO(poId);
     const po = pos.find(p => p.id === poId);
     if (po) {
-      setItems(po.procurement_po_items.map(item => ({
+      setItems(po.procurement_po_items.filter(item => item.item_type !== "section").map(item => ({
         po_item_id: item.id,
         item_description: item.item_description,
         unit: item.unit,

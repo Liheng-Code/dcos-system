@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DCOS — Standard Naming Convention | DCOS-NCS-001 | R1.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,400&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ── VARIABLES ────────────────────────────────────── */
+  :root {
+    --navy:       #0F2548;
+    --blue:       #1B4B8F;
+    --blue-mid:   #2E6AC4;
+    --blue-light: #D4E6FA;
+    --blue-pale:  #EBF4FF;
+    --gold:       #C8831A;
+    --gold-light: #FDF3DC;
+    --dark:       #0A0F1E;
+    --ink:        #1A2540;
+    --muted:      #5B6A8A;
+    --border:     #C8D6EC;
+    --row-alt:    #F3F8FF;
+    --white:      #FFFFFF;
+    --code-bg:    #0D1B33;
+    --code-text:  #F5C842;
+    --green:      #166534;
+    --green-bg:   #DCFCE7;
+    --sidebar-w:  260px;
+  }
+
+  /* ── RESET & BASE ─────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Instrument Sans', sans-serif;
+    background: #F0F5FC;
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.7;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── SIDEBAR ──────────────────────────────────────── */
+  .sidebar {
+    width: var(--sidebar-w);
+    min-width: var(--sidebar-w);
+    background: var(--navy);
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+  }
+
+  .sidebar-brand {
+    padding: 28px 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sidebar-brand .sys-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .sidebar-brand .sys-name {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    font-weight: 900;
+    color: #fff;
+    line-height: 1.2;
+  }
+  .sidebar-brand .doc-meta {
+    margin-top: 10px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    line-height: 1.6;
+  }
+  .doc-badge {
+    display: inline-block;
+    background: var(--gold);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 2px 7px;
+    border-radius: 2px;
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  .sidebar-nav { padding: 16px 0 40px; flex: 1; }
+  .nav-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.28);
+    padding: 14px 20px 6px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 20px;
+    color: rgba(255,255,255,0.6);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+  }
+  .nav-item:hover, .nav-item.active {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+    border-left-color: var(--gold);
+  }
+  .nav-item .num {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--gold);
+    min-width: 22px;
+    opacity: 0.9;
+  }
+
+  /* ── MAIN CONTENT ─────────────────────────────────── */
+  .main {
+    margin-left: var(--sidebar-w);
+    flex: 1;
+    max-width: 1180px;
+    padding: 48px 52px 80px;
+  }
+
+  /* ── COVER ────────────────────────────────────────── */
+  .cover {
+    background: var(--navy);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 40px;
+    position: relative;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 40px,
+      rgba(255,255,255,0.015) 40px,
+      rgba(255,255,255,0.015) 41px
+    );
+  }
+  .cover-top {
+    padding: 44px 52px 32px;
+    position: relative;
+  }
+  .cover-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .cover-title {
+    font-family: 'Fraunces', serif;
+    font-size: 40px;
+    font-weight: 900;
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+  .cover-subtitle {
+    font-size: 14px;
+    color: rgba(255,255,255,0.5);
+    font-weight: 400;
+    margin-bottom: 32px;
+  }
+  .cover-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+  .cover-meta-item {
+    background: rgba(15,37,72,0.7);
+    padding: 16px 20px;
+  }
+  .cover-meta-item:first-child { background: rgba(200,131,26,0.15); }
+  .meta-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 4px;
+  }
+  .meta-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    font-family: 'DM Mono', monospace;
+  }
+  .meta-value.accent { color: var(--gold); }
+
+  /* ── SECTION ──────────────────────────────────────── */
+  .section { margin-bottom: 60px; scroll-margin-top: 24px; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 6px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--blue-light);
+  }
+  .section-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--gold);
+    background: var(--gold-light);
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: -0.3px;
+  }
+
+  .subsection { margin: 28px 0 20px; }
+  .subsection-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .subsection-title::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 16px;
+    background: var(--blue-mid);
+    border-radius: 2px;
+  }
+
+  .sub3-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+    margin: 20px 0 10px;
+    padding-left: 14px;
+    border-left: 3px solid var(--border);
+  }
+
+  p.body { margin-bottom: 12px; color: var(--ink); line-height: 1.75; }
+
+  /* ── CODE BLOCK ───────────────────────────────────── */
+  .code-block {
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 16px 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  }
+  .code-label {
+    background: var(--blue);
+    color: rgba(255,255,255,0.85);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 7px 16px;
+  }
+  .code-body {
+    background: var(--code-bg);
+    padding: 16px 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--code-text);
+    line-height: 1.8;
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-left: 4px solid var(--gold);
+  }
+  .code-body .cmt { color: rgba(255,255,255,0.3); font-size: 11px; }
+
+  /* ── NOTE BOX ─────────────────────────────────────── */
+  .note-box {
+    display: flex;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 16px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .note-tag {
+    background: var(--gold);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    padding: 12px 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+  }
+  .note-content {
+    background: var(--gold-light);
+    padding: 14px 18px;
+    font-size: 13px;
+    color: var(--ink);
+    font-style: italic;
+    line-height: 1.7;
+    flex: 1;
+    border: 1px solid #E8D5A3;
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+  }
+
+  /* ── TABLES ───────────────────────────────────────── */
+  .tbl-wrap { overflow-x: auto; margin: 16px 0; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: #fff;
+  }
+  thead tr { background: var(--navy); }
+  thead th {
+    padding: 11px 14px;
+    text-align: left;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #E0EEFF; }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+  .td-code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--blue);
+    white-space: nowrap;
+  }
+  .td-bold { font-weight: 600; color: var(--navy); }
+  .td-reserved {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #B45309;
+  }
+  .td-muted { color: var(--muted); font-size: 12px; }
+  .td-example {
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    color: var(--navy);
+    background: var(--blue-pale);
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+
+  /* group sub-header row inside table */
+  tr.group-row td {
+    background: var(--blue);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 14px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── FULL CODE ASSEMBLY ───────────────────────────── */
+  .assembly-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .assembly-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .assembly-card-head {
+    background: var(--blue);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 9px 16px;
+  }
+  .assembly-card-body {
+    padding: 12px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--navy);
+    line-height: 2;
+  }
+  .assembly-card-body .line { display: flex; gap: 8px; align-items: baseline; }
+  .assembly-card-body .arrow { color: var(--muted); }
+  .assembly-card-body .label { color: var(--muted); font-size: 11px; }
+
+  /* ── REVISION TABLE ───────────────────────────────── */
+  .rev-section {
+    background: #fff;
+    border-radius: 10px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    margin-top: 48px;
+  }
+  .rev-title {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--blue-light);
+  }
+
+  /* ── PRINT / TOC JUMP ─────────────────────────────── */
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 20px; }
+  }
+
+  /* ── RESPONSIVE ───────────────────────────────────── */
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px; }
+    .cover-meta-grid { grid-template-columns: 1fr 1fr; }
+    .assembly-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── SCROLL ANIMATION ─────────────────────────────── */
+  .section { opacity: 0; transform: translateY(18px); transition: opacity 0.45s ease, transform 0.45s ease; }
+  .section.visible { opacity: 1; transform: none; }
+  .cover { opacity: 0; transform: translateY(10px); transition: opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s; }
+  .cover.visible { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sys-label">DCOS Platform</div>
+    <div class="sys-name">Digital Construction<br>Operating System</div>
+    <div class="doc-meta">
+      Standard Naming Convention<br>
+      Doc No.: DCOS-NCS-001<br>
+      Version: R1.0 · May 2026
+    </div>
+    <div class="doc-badge">Controlled Document</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section-label">Contents</div>
+    <a class="nav-item" href="#s1"><span class="num">01</span> Project Code</a>
+    <a class="nav-item" href="#s2"><span class="num">02</span> Building Code</a>
+    <a class="nav-item" href="#s3"><span class="num">03</span> Level Code</a>
+    <a class="nav-item" href="#s4"><span class="num">04</span> Zone Code</a>
+    <a class="nav-item" href="#s5"><span class="num">05</span> Room Code</a>
+    <a class="nav-item" href="#s6"><span class="num">06</span> Drawing Naming</a>
+    <a class="nav-item" href="#s7"><span class="num">07</span> Document Type Codes</a>
+    <a class="nav-item" href="#s8"><span class="num">08</span> Budget Package Code</a>
+    <a class="nav-item" href="#s9"><span class="num">09</span> Transmittal Code</a>
+    <a class="nav-item" href="#s10"><span class="num">10</span> Full Code Assembly</a>
+    <a class="nav-item" href="#rev"><span class="num">—</span> Revision History</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main class="main">
+
+  <!-- COVER -->
+  <div class="cover" id="top">
+    <div class="cover-top">
+      <div class="cover-eyebrow">Digital Construction Operating System</div>
+      <div class="cover-title">Standard Naming<br>Convention</div>
+      <div class="cover-subtitle">Project Code · Building · Level · Zone · Room · Document Coding</div>
+    </div>
+    <div class="cover-meta-grid">
+      <div class="cover-meta-item">
+        <div class="meta-label">Document Code</div>
+        <div class="meta-value accent">DCOS-NCS-001</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Version</div>
+        <div class="meta-value">R1.0</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Effective Date</div>
+        <div class="meta-value">[DD/MM/YYYY]</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Applies To</div>
+        <div class="meta-value">All DCOS Projects</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Prepared By</div>
+        <div class="meta-value">[Document Controller]</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Approved By</div>
+        <div class="meta-value">[Project Director]</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Department</div>
+        <div class="meta-value">All Departments</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="meta-label">Classification</div>
+        <div class="meta-value">Internal · Controlled</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══ SECTION 1 ═══ -->
+  <div class="section" id="s1">
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <h2 class="section-title">Project Code &amp; Name</h2>
+    </div>
+
+    <p class="body">Each project in DCOS is assigned a unique Project Code at the time of project creation. The Project Code is the root identifier for all documents, drawings, WBS nodes, and records within that project. It must remain consistent across all departments throughout the project lifecycle.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">1.1 · Project Code Format</div>
+      <div class="code-block">
+        <div class="code-label">Format</div>
+        <div class="code-body">P[NNN]-[Short Name]
+
+<span class="cmt">P     = Fixed prefix: Project (always uppercase)
+NNN   = 3-digit sequential number, zero-padded (001, 002 …)
+Short = Abbreviated project name, max 6 characters, no spaces</span></div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Component</th><th>Description</th><th>Example</th><th>Remarks</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">P</td><td>Fixed prefix — Project</td><td class="td-bold">P</td><td class="td-muted">Always uppercase</td></tr>
+            <tr><td class="td-code">NNN</td><td>3-digit sequential number</td><td class="td-bold">001</td><td class="td-muted">Zero-padded; assigned by Company Admin</td></tr>
+            <tr><td class="td-code">Short Name</td><td>Abbreviated project name</td><td class="td-bold">HTBT</td><td class="td-muted">Max 6 chars; approved by PM before setup</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">1.2 · Project Code Examples</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Project Code</th><th>Project Full Name</th><th>Short Name</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">P001-HTBT</td><td>Hattha Bank Tower</td><td class="td-bold">HTBT</td><td class="td-muted">Phnom Penh CBD, 30 floors</td></tr>
+            <tr><td class="td-code">P002-CVILA</td><td>Chroy Changvar Villas</td><td class="td-bold">CVILA</td><td class="td-muted">Residential, 52 units</td></tr>
+            <tr><td class="td-code">P003-BMALL</td><td>Borey Peng Huoth Mall</td><td class="td-bold">BMALL</td><td class="td-muted">Commercial, mixed-use</td></tr>
+            <tr><td class="td-code">P004-INTL</td><td>International Airport Expansion</td><td class="td-bold">INTL</td><td class="td-muted">Infrastructure project</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note-box">
+        <div class="note-tag">Note</div>
+        <div class="note-content">The Project Code is configured by Company Admin in DCOS at project creation and <strong>cannot be changed</strong> after the first document is registered. The Short Name must be approved by the Project Manager before system setup.</div>
+      </div>
+    </div>
+  </div><!-- /s1 -->
+
+
+  <!-- ═══ SECTION 2 ═══ -->
+  <div class="section" id="s2">
+    <div class="section-head">
+      <span class="section-num">02</span>
+      <h2 class="section-title">Building Code &amp; Name</h2>
+    </div>
+    <p class="body">All buildings, structures, and external works within a project must be assigned a Building Code. It is the second tier of the WBS hierarchy and is used in all document numbering, drawing references, inspection records, and cost allocations.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">2.1 · Building Code Format</div>
+      <div class="code-block">
+        <div class="code-label">Format</div>
+        <div class="code-body">B[A–Z] — [Building Name]
+
+<span class="cmt">Examples:  BA = Building A (Tower)   BB = Building B (Podium)
+Reserved:  BX = External Works       BY = Landscape       BZ = Permanent Boundary</span></div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Building / Area Type</th><th>Remarks</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">BA</td><td>Building A — Primary Tower</td><td class="td-muted">First building in project</td></tr>
+            <tr><td class="td-code">BB</td><td>Building B — Secondary Structure</td><td class="td-muted">Second building</td></tr>
+            <tr><td class="td-code">BC</td><td>Building C — Podium / Retail</td><td class="td-muted">Third building or podium block</td></tr>
+            <tr><td class="td-code">BD</td><td>Building D — Service Block</td><td class="td-muted">Ancillary / service building</td></tr>
+            <tr><td class="td-code">…</td><td>Continue alphabetically</td><td class="td-muted">Skip I and O (risk of confusion with 1 and 0)</td></tr>
+            <tr><td class="td-reserved">BX</td><td>External Works</td><td class="td-muted">Site drainage, roadworks, boundary — <strong>Reserved</strong></td></tr>
+            <tr><td class="td-reserved">BY</td><td>Landscape</td><td class="td-muted">Hard and soft landscaping — <strong>Reserved</strong></td></tr>
+            <tr><td class="td-reserved">BZ</td><td>Permanent Boundary Works</td><td class="td-muted">Fencing, walls, gates — <strong>Reserved</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note-box">
+        <div class="note-tag">Note</div>
+        <div class="note-content">Skip letters <strong>I</strong> and <strong>O</strong> in building codes to avoid confusion with numbers 1 and 0 in printed documents and drawings.</div>
+      </div>
+    </div>
+  </div><!-- /s2 -->
+
+
+  <!-- ═══ SECTION 3 ═══ -->
+  <div class="section" id="s3">
+    <div class="section-head">
+      <span class="section-num">03</span>
+      <h2 class="section-title">Level Code &amp; Name</h2>
+    </div>
+    <p class="body">The Level Code is the third WBS tier. It provides a sortable, structured identifier for every floor or level within a building — including basements, ground floor, typical floors, roof, mezzanines, and non-applicable levels. The Level Code combines Building Code + Sequence Number + Level Type Prefix.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">3.1 · Level Code Format</div>
+      <div class="code-block">
+        <div class="code-label">Format</div>
+        <div class="code-body">[Building Code]-[Seq No.]-[Level Type][Level No.]
+
+<span class="cmt">Building Code  = BA, BB, BC … (Section 2)
+Seq No.        = 01, 02, 03 … numbered from deepest to highest (sort key)
+Level Type     = B (Basement)  G (Ground)  L (Level)  M (Mezzanine)  R (Roof)  PH (Penthouse)
+Level No.      = 01–99 or 00 for ground/roof</span></div>
+      </div>
+
+      <div class="subsection-title">3.2 · Level Type Prefixes</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Prefix</th><th>Type</th><th>Level Format</th><th>Description</th><th>Example Full Code</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">B</td><td>Basement</td><td class="td-code">B[01–99]</td><td>Underground floors, numbered from deepest</td><td class="td-example">BA-01-B05</td></tr>
+            <tr><td class="td-code">G</td><td>Ground Floor</td><td class="td-code">G00</td><td>Ground floor level, always G00</td><td class="td-example">BA-06-G00</td></tr>
+            <tr><td class="td-code">L</td><td>Upper Level</td><td class="td-code">L[01–99]</td><td>Typical floors above ground</td><td class="td-example">BA-07-L01</td></tr>
+            <tr><td class="td-code">M</td><td>Mezzanine</td><td class="td-code">M[01–99]</td><td>Intermediate floor between main levels</td><td class="td-example">BA-08-M01</td></tr>
+            <tr><td class="td-code">R</td><td>Roof Level</td><td class="td-code">R00</td><td>Main roof slab or roof plant room</td><td class="td-example">BA-34-R00</td></tr>
+            <tr><td class="td-code">PH</td><td>Penthouse</td><td class="td-code">PH[01–09]</td><td>Penthouse floors above main tower</td><td class="td-example">BA-33-PH01</td></tr>
+            <tr><td class="td-reserved">ZZ</td><td>Applies to Some Floors</td><td class="td-code">ZZ</td><td>For items spanning selected but not all floors</td><td class="td-muted">Scheduling only</td></tr>
+            <tr><td class="td-reserved">XX</td><td>Not Applicable</td><td class="td-code">XX</td><td>Level not applicable for this record / discipline</td><td class="td-muted">Scheduling only</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="subsection-title">3.3 · Full Level Code Examples — Building A (30-Floor Tower + 3 Basements)</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Seq No.</th><th>Level Code</th><th>Level Name</th><th>Full Level Code</th><th>Remarks</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">01</td><td class="td-code">B03</td><td>Basement 3</td><td class="td-example">BA-01-B03</td><td class="td-muted">Deepest basement — car park</td></tr>
+            <tr><td class="td-code">02</td><td class="td-code">B02</td><td>Basement 2</td><td class="td-example">BA-02-B02</td><td class="td-muted">Car park</td></tr>
+            <tr><td class="td-code">03</td><td class="td-code">B01</td><td>Basement 1</td><td class="td-example">BA-03-B01</td><td class="td-muted">Car park + MEP plant room</td></tr>
+            <tr><td class="td-code">04</td><td class="td-code">G00</td><td>Ground Floor</td><td class="td-example">BA-04-G00</td><td class="td-muted">Lobby and retail</td></tr>
+            <tr><td class="td-code">05</td><td class="td-code">L01</td><td>Level 1</td><td class="td-example">BA-05-L01</td><td class="td-muted">Commercial / retail</td></tr>
+            <tr><td class="td-code">06</td><td class="td-code">L02</td><td>Level 2</td><td class="td-example">BA-06-L02</td><td class="td-muted">Office floors begin</td></tr>
+            <tr><td class="td-code">…</td><td class="td-code">…</td><td>Typical Office Levels</td><td class="td-code">BA-[##]-L[##]</td><td class="td-muted">Repeat for all upper levels</td></tr>
+            <tr><td class="td-code">32</td><td class="td-code">L30</td><td>Level 30</td><td class="td-example">BA-32-L30</td><td class="td-muted">Top office floor</td></tr>
+            <tr><td class="td-code">33</td><td class="td-code" style="color:#B45309">PH01</td><td>Penthouse 1</td><td class="td-example">BA-33-PH01</td><td class="td-muted">Penthouse level</td></tr>
+            <tr><td class="td-code">34</td><td class="td-code">R00</td><td>Roof Level</td><td class="td-example">BA-34-R00</td><td class="td-muted">Roof slab, plant room</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note-box">
+        <div class="note-tag">Note</div>
+        <div class="note-content">The <strong>Sequence Number (01, 02, 03…)</strong> is critical for digital sorting. Always number from the lowest physical level upward. Do not use the level designation alone (B01, G00) as the sort key — the sequence number ensures consistent ordering across all buildings regardless of basement depth.</div>
+      </div>
+    </div>
+  </div><!-- /s3 -->
+
+
+  <!-- ═══ SECTION 4 ═══ -->
+  <div class="section" id="s4">
+    <div class="section-head">
+      <span class="section-num">04</span>
+      <h2 class="section-title">Zone Code &amp; Name</h2>
+    </div>
+    <p class="body">Zone Codes subdivide a floor or level into functional areas for design coordination, construction sequencing, QA/QC inspection control, and progress reporting. DCOS maintains two separate zone systems: <strong>Design Zones (DZone)</strong> and <strong>Construction Zones (CZone)</strong>.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">4.1 · Design Zone Code (DZone)</div>
+      <p class="body">Defined by the Architecture team during design development to organise finishes, MEP coordination, and design deliverables by functional area.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Zone Code</th><th>Zone Name</th><th>Typical Content</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">DZone1</td><td>Wet / Service Zone</td><td>Toilets, AHU rooms, electrical rooms, shafts</td><td class="td-muted">Common across all floors — defined once</td></tr>
+            <tr><td class="td-code">DZone2</td><td>Core / Circulation Zone</td><td>Lifts, staircases, lobbies, corridors</td><td class="td-muted">Applies to all floors</td></tr>
+            <tr><td class="td-code">DZone3</td><td>Primary Functional Zone A</td><td>Banking hall, main office, retail area</td><td class="td-muted">Floor-specific — defined per floor</td></tr>
+            <tr><td class="td-code">DZone4</td><td>Primary Functional Zone B</td><td>Back-of-house, storage, secondary offices</td><td class="td-muted">Floor-specific — defined per floor</td></tr>
+            <tr><td class="td-reserved">DAll</td><td>All Zones</td><td>Applies to entire floor without subdivision</td><td class="td-muted">Use when item is floor-wide</td></tr>
+            <tr><td class="td-reserved">DZZ</td><td>Applies to Some Floors</td><td>Selected zones only — varies by floor</td><td class="td-muted">Detail in schedule notes</td></tr>
+            <tr><td class="td-code" style="color:var(--muted)">DXX</td><td>Not Applicable</td><td>Zone does not exist on this floor</td><td class="td-muted">Scheduling matrix only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note-box">
+        <div class="note-tag">Note</div>
+        <div class="note-content">Design Zones are used in finish schedules and material approval records. They <strong>must not</strong> appear in construction drawing titles or construction document codes. Construction zoning is managed separately via CZone.</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">4.2 · Construction Zone Code (CZone)</div>
+      <p class="body">Established by the Project Manager and Site Team at the start of construction, reflecting sequencing, crane radius, subcontractor work fronts, and structural pour sequences.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Zone Code</th><th>Zone Name</th><th>Typical Use</th><th>Defined By</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">CZone1</td><td>Construction Zone 1</td><td>First concrete pour sequence / work front</td><td class="td-muted">PM + Site Engineer</td></tr>
+            <tr><td class="td-code">CZone2</td><td>Construction Zone 2</td><td>Second work front or crane zone</td><td class="td-muted">PM + Site Engineer</td></tr>
+            <tr><td class="td-code">CZone3</td><td>Construction Zone 3</td><td>Third zone — finishing or MEP installation</td><td class="td-muted">PM + Site Engineer</td></tr>
+            <tr><td class="td-reserved">CAll</td><td>All Construction Zones</td><td>Floor-wide construction activity</td><td class="td-muted">PM</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /s4 -->
+
+
+  <!-- ═══ SECTION 5 ═══ -->
+  <div class="section" id="s5">
+    <div class="section-head">
+      <span class="section-num">05</span>
+      <h2 class="section-title">Room Code &amp; Name</h2>
+    </div>
+    <p class="body">Room Codes identify individual spaces within a floor for QA/QC inspection tracking, finish schedule assignment, room data sheets, and MEP equipment placement. Every room with a defined boundary, function, or finish specification must have a unique Room Code within its floor.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">5.1 · Specific Room Code (Single Floor)</div>
+      <div class="code-block">
+        <div class="code-label">Format</div>
+        <div class="code-body">[Building Code].[Seq No.].[Level Code]-R[NNN]
+
+<span class="cmt">BA.04.G00-R001  →  Building A, Ground Floor, Room 001 (Banking Hall)
+BA.04.G00-R002  →  Building A, Ground Floor, Room 002 (ATM Lobby)
+BA.05.L01-R001  →  Building A, Level 1, Room 001 (VIP Banking Suite)
+BA.05.L01-R015  →  Building A, Level 1, Room 015 (Server Room)</span></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Component</th><th>Description</th><th>Example</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">BA</td><td>Building Code</td><td class="td-bold">BA</td><td class="td-muted">As defined in Section 2</td></tr>
+            <tr><td class="td-code">04</td><td>Sequence Number</td><td class="td-bold">04</td><td class="td-muted">From Level Code sequence — Section 3</td></tr>
+            <tr><td class="td-code">G00</td><td>Level Type Code</td><td class="td-bold">G00</td><td class="td-muted">From Section 3 level table</td></tr>
+            <tr><td class="td-code">R001</td><td>Room Number</td><td class="td-bold">R001 → R999</td><td class="td-muted">Sequential within floor, 3-digit zero-padded</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">5.2 · Typical Room Code (Multiple Floors)</div>
+      <p class="body">When a room type is identical across multiple floors (toilet core, standard office module), a Typical Room Code is used to avoid duplicating room data sheets.</p>
+      <div class="code-block">
+        <div class="code-label">Format — Typical Room</div>
+        <div class="code-body">[Building Code].00.ZZ-TR[NNN]
+
+<span class="cmt">BA.00.ZZ-TR001  →  Male / Female Toilet Core (all floors L01–L30)
+BA.00.ZZ-TR002  →  Lift Lobby (all floors G00–L30)
+BA.00.ZZ-TR003  →  Standard Office Module (L03–L25, typical office floors)
+BA.00.ZZ-TR004  →  Electrical Risers &amp; Shaft (B01–R00, all floors)</span></div>
+      </div>
+      <div class="note-box">
+        <div class="note-tag">Note</div>
+        <div class="note-content">Typical Room Codes must be documented with the applicable floor range. When a typical room is modified on a specific floor, assign a specific R-type code for that floor and annotate the deviation from the typical layout.</div>
+      </div>
+    </div>
+  </div><!-- /s5 -->
+
+
+  <!-- ═══ SECTION 6 ═══ -->
+  <div class="section" id="s6">
+    <div class="section-head">
+      <span class="section-num">06</span>
+      <h2 class="section-title">Document &amp; Drawing Naming Convention</h2>
+    </div>
+    <p class="body">The document naming convention in DCOS provides a structured, unique, and traceable reference for every document, drawing, and record generated on the project.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">6.1 · Master Document Code Format</div>
+      <div class="code-block">
+        <div class="code-label">Master Format</div>
+        <div class="code-body">[Project Code]-[Company]-[Package No.]-[Doc Type].[Running No.]-[Revision]-[Circulation]</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Segment</th><th>Format</th><th>Example</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">Project Code</td><td class="td-code">P[NNN]-[Short]</td><td class="td-bold">P001-HTBT</td><td>Unique project identifier — Section 1</td></tr>
+            <tr><td class="td-code">Company Code</td><td class="td-muted">Up to 4 letters</td><td class="td-bold">CMED</td><td>Company preparing the document</td></tr>
+            <tr><td class="td-code">Package No.</td><td class="td-code">P[NN] or [Budget Code]</td><td class="td-bold">P01 / A.01</td><td>Work package or budget code group</td></tr>
+            <tr><td class="td-code">Doc Type</td><td class="td-muted">Abbreviation code</td><td class="td-bold">MCL, RFI, NCR…</td><td>From approved code list — Section 7</td></tr>
+            <tr><td class="td-code">Running No.</td><td class="td-code">3-digit zero-padded</td><td class="td-bold">001, 002…</td><td>Sequential within doc type and package</td></tr>
+            <tr><td class="td-code">Revision</td><td class="td-code">R[NN]</td><td class="td-bold">R00, R01, R02…</td><td>R00 = first issue; increment on each revision</td></tr>
+            <tr><td class="td-code">Circulation</td><td class="td-code">INT[NN] / EXT[NN]</td><td class="td-bold">INT01, EXT01…</td><td>Internal or external circulation instance</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">6.2 · Design Drawing Code Format</div>
+      <div class="code-block">
+        <div class="code-label">Drawing Format</div>
+        <div class="code-body">[Project Code]-[Company]-[Discipline]-[Building]-[Level]-[Series No.]-[Revision]
+
+<span class="cmt">P001-HTBT-CMED-ARC-BA-G00-001-R00  →  Architecture, Building A, Ground Floor, Drawing 001, First Issue
+P001-HTBT-CMED-STR-BA-B01-003-R02  →  Structure, Building A, Basement 1, Drawing 003, Revision 2
+P001-HTBT-CMED-FFG-BA-L05-007-R01  →  Fire Fighting, Building A, Level 5, Drawing 007, Revision 1</span></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Discipline</th><th>Code</th><th>Series Prefix</th><th>Remarks</th></tr></thead>
+          <tbody>
+            <tr><td>Architecture</td><td class="td-code">ARC</td><td class="td-code">ARC-[BA]-[L##]-[NNN]</td><td class="td-muted">Plans, elevations, sections, details</td></tr>
+            <tr><td>Structure</td><td class="td-code">STR</td><td class="td-code">STR-[BA]-[L##]-[NNN]</td><td class="td-muted">Foundation, frame, slab, rebar drawings</td></tr>
+            <tr><td>Mechanical</td><td class="td-code">MEC</td><td class="td-code">MEC-[BA]-[L##]-[NNN]</td><td class="td-muted">HVAC, ventilation, mechanical systems</td></tr>
+            <tr><td>Electrical</td><td class="td-code">ELE</td><td class="td-code">ELE-[BA]-[L##]-[NNN]</td><td class="td-muted">Power, lighting, LV, ELV systems</td></tr>
+            <tr><td>Plumbing</td><td class="td-code">PLB</td><td class="td-code">PLB-[BA]-[L##]-[NNN]</td><td class="td-muted">Water supply, drainage, sanitary</td></tr>
+            <tr><td>Fire Fighting</td><td class="td-code">FFG</td><td class="td-code">FFG-[BA]-[L##]-[NNN]</td><td class="td-muted">Sprinkler, fire detection, hose reels</td></tr>
+            <tr><td>Civil / Geotech</td><td class="td-code">CIV</td><td class="td-code">CIV-[BX]-[G00]-[NNN]</td><td class="td-muted">Site drainage, piling, earthworks</td></tr>
+            <tr><td>BIM Coordination</td><td class="td-code">BIM</td><td class="td-code">BIM-[BA]-[L##]-[NNN]</td><td class="td-muted">Clash detection, coordination drawings</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /s6 -->
+
+
+  <!-- ═══ SECTION 7 ═══ -->
+  <div class="section" id="s7">
+    <div class="section-head">
+      <span class="section-num">07</span>
+      <h2 class="section-title">Standard Document Type Code List</h2>
+    </div>
+    <p class="body">The following abbreviations are the approved document type codes pre-configured in DCOS Admin Configuration and apply to all projects company-wide.</p>
+
+    <div class="subsection">
+      <div class="subsection-title">7.1 · Construction Site Documents</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Document Name</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">MCL</td><td class="td-bold">Main Contractor Letter</td><td>Formal correspondence to / from main contractor</td></tr>
+            <tr><td class="td-code">CL</td><td class="td-bold">Client Letter</td><td>Formal client correspondence</td></tr>
+            <tr><td class="td-code">RFI</td><td class="td-bold">Request for Information</td><td>Clarification request from site to design team</td></tr>
+            <tr><td class="td-code">AFI</td><td class="td-bold">Available for Inspection</td><td>Notify QA/QC team that work is ready for inspection</td></tr>
+            <tr><td class="td-code">ITP</td><td class="td-bold">Inspection &amp; Test Plan</td><td>Quality hold-point and witness-point record</td></tr>
+            <tr><td class="td-code">DR</td><td class="td-bold">Daily Report</td><td>Site daily progress and manpower log</td></tr>
+            <tr><td class="td-code">WR</td><td class="td-bold">Weekly Report</td><td>Weekly progress summary</td></tr>
+            <tr><td class="td-code">MR</td><td class="td-bold">Monthly Report</td><td>Monthly progress and cost report</td></tr>
+            <tr><td class="td-code">SCH</td><td class="td-bold">Schedule</td><td>Programme or schedule document</td></tr>
+            <tr><td class="td-code">NCR</td><td class="td-bold">Non-Conformance Report</td><td>Record of non-conforming work on site</td></tr>
+            <tr><td class="td-code">MOM</td><td class="td-bold">Minutes of Meeting</td><td>Official meeting record</td></tr>
+            <tr><td class="td-code">MSRA</td><td class="td-bold">Method Statement — Request for Approval</td><td>Formal method statement submission</td></tr>
+            <tr><td class="td-code">MRA</td><td class="td-bold">Material Request for Approval</td><td>Material sample and test certificate submission</td></tr>
+            <tr><td class="td-code">NOD</td><td class="td-bold">Notice of Delay</td><td>Contractual delay notification to client</td></tr>
+            <tr><td class="td-code">NOC</td><td class="td-bold">Notice of Claim</td><td>Contractual claim notification to client</td></tr>
+            <tr><td class="td-code">CVI</td><td class="td-bold">Confirmation of Verbal Instruction</td><td>Record of verbal instruction received</td></tr>
+            <tr><td class="td-code">AI</td><td class="td-bold">Architect Instruction</td><td>Instruction issued by architect or designer</td></tr>
+            <tr><td class="td-code">NPCC</td><td class="td-bold">Notice of Potential Contra Charge</td><td>Warning of back-charge to subcontractor</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">7.2 · Commercial &amp; Financial Documents</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Document Name</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">IPC</td><td class="td-bold">Interim Payment Certificate</td><td>Monthly billing claim submitted to client</td></tr>
+            <tr><td class="td-code">BQ</td><td class="td-bold">Bill of Quantities</td><td>Contract BOQ or tender BOQ document</td></tr>
+            <tr><td class="td-code">PR</td><td class="td-bold">Purchase Requisition</td><td>Internal material or service request</td></tr>
+            <tr><td class="td-code">PO</td><td class="td-bold">Purchase Order</td><td>Approved supplier order</td></tr>
+            <tr><td class="td-code">INV</td><td class="td-bold">Invoice</td><td>Supplier or subcontractor invoice</td></tr>
+            <tr><td class="td-code">PAY</td><td class="td-bold">Payment Certificate</td><td>Payment approved and issued for release</td></tr>
+            <tr><td class="td-code">VO</td><td class="td-bold">Variation Order</td><td>Approved scope change instruction</td></tr>
+            <tr><td class="td-code">FA</td><td class="td-bold">Final Account</td><td>End-of-project financial settlement</td></tr>
+            <tr><td class="td-code">RET</td><td class="td-bold">Retention Statement</td><td>Retention held or released record</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subsection-title">7.3 · Procurement Documents</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Document Name</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="td-code">EOI</td><td class="td-bold">Expression of Interest</td><td>Issue invitation letter to potential tenderers</td></tr>
+            <tr><td class="td-code">PQ</td><td class="td-bold">Prequalification</td><td>Supplier prequalification assessment record</td></tr>
+            <tr><td class="td-code">TDP</td><td class="td-bold">Tender Package</td><td>Full tender documents issued to bidders</td></tr>
+            <tr><td class="td-code">TDO</td><td class="td-bold">Tender Opening</td><td>Tender opening record</td></tr>
+            <tr><td class="td-code">TDI</td><td class="td-bold">Tender Interview</td><td>Clarification interview record</td></tr>
+            <tr><td class="td-code">SV</td><td class="td-bold">Site Visit</td><td>Tender period site visit record</td></tr>
+            <tr><td class="td-code">TER</td><td class="td-bold">Tender Evaluation Report</td><td>Formal tender scoring and recommendation</td></tr>
+            <tr><td class="td-code">TDA</td><td class="td-bold">Tender Committee Approval</td><td>Formal award approval record</td></tr>
+            <tr><td class="td-code">SCA</td><td class="td-bold">Subcontract Agreement</td><td>Awarded subcontract document</td></tr>
+            <tr><td class="td-code">MSA</td><td class="td-bold">Master Service Agreement</td><td>Framework service agreement</td></tr>
+            <tr><td class="td-code">KOMI</td><td class="td-bold">Kickoff Meeting — Internal</td><td>Internal project kickoff meeting record</td></tr>
+            <tr><td class="td-code">KOMX</td><td class="td-bold">Kickoff Meeting — External</td><td>External kickoff with subcontractor / supplier</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /s7 -->
+
+
+  <!-- ═══ SECTION 8 ═══ -->
+  <div class="section" id="s8">
+    <div class="section-head">
+      <span class="section-num">08</span>
+      <h2 class="section-title">Commercial Budget Package Code</h2>
+    </div>
+    <p class="body">The Commercial Budget Package Code provides a hierarchical breakdown of all project costs into standard group sections. This code is used in Purchase Requisitions, Purchase Orders, invoices, payment certificates, and all financial reports within DCOS to enable budget tracking by work type.</p>
+
+    <div class="code-block">
+      <div class="code-label">Format</div>
+      <div class="code-body">[Group Letter].[Section Number]  →  e.g.  B.1 = Foundation / Piling</div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Group</th><th>Section</th><th>Section Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr class="group-row"><td colspan="4">Group A — Early Works</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.1</td><td class="td-bold">Topography Survey</td><td class="td-muted">Land survey and mapping</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.2</td><td class="td-bold">Soil Investigation</td><td class="td-muted">Borehole, SPT, laboratory testing</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.3</td><td class="td-bold">Mine / UXO Clearance</td><td class="td-muted">Unexploded ordnance and mine clearance</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.4</td><td class="td-bold">Soil Leveling</td><td class="td-muted">Cut and fill, earthworks</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.5</td><td class="td-bold">Demolition</td><td class="td-muted">Existing structure removal</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.6</td><td class="td-bold">Clearing</td><td class="td-muted">Site clearing, tree removal, grubbing</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.7</td><td class="td-bold">Repair Existing Services</td><td class="td-muted">Utility diversion and protection</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.8</td><td class="td-bold">Renovation</td><td class="td-muted">Upgrade of existing structures</td></tr>
+          <tr><td class="td-code">A</td><td class="td-code">A.9</td><td class="td-bold">Specialist Groundworks</td><td class="td-muted">Dewatering, ground improvement, soil nailing</td></tr>
+
+          <tr class="group-row"><td colspan="4">Group B — Sub-Structure</td></tr>
+          <tr><td class="td-code">B</td><td class="td-code">B.1</td><td class="td-bold">Foundation / Piling</td><td class="td-muted">Driven piles, bored piles, micro-piles, raft foundation</td></tr>
+          <tr><td class="td-code">B</td><td class="td-code">B.2</td><td class="td-bold">Basement</td><td class="td-muted">Retaining wall, basement slab, waterproofing</td></tr>
+          <tr><td class="td-code">B</td><td class="td-code">B.3</td><td class="td-bold">Ground Floor Slab</td><td class="td-muted">Ground-bearing or suspended ground slab</td></tr>
+          <tr><td class="td-code">B</td><td class="td-code">B.4</td><td class="td-bold">Super-Structure Podium</td><td class="td-muted">Transfer plate, podium frame, podium slab</td></tr>
+
+          <tr class="group-row"><td colspan="4">Group C — Architecture — External</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.1</td><td class="td-bold">Exterior Wall</td><td class="td-muted">External wall system, curtain wall, cladding</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.2</td><td class="td-bold">Exterior Wall Finishing</td><td class="td-muted">External paint, render, stone cladding</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.3</td><td class="td-bold">Exterior Doors</td><td class="td-muted">Main entrance, fire exit doors — external</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.4</td><td class="td-bold">Exterior Windows</td><td class="td-muted">External glazing, curtain wall infills</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.5</td><td class="td-bold">Exterior Floor</td><td class="td-muted">External hardscape, paving, entrance plaza</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.6</td><td class="td-bold">Exterior Soffit</td><td class="td-muted">Canopy soffits, underside of transfer slab</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.7</td><td class="td-bold">Exterior Stair &amp; Ramp</td><td class="td-muted">External staircases and vehicle ramps</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.8</td><td class="td-bold">Roofing</td><td class="td-muted">Waterproofing membrane, insulation, roof finish</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.9</td><td class="td-bold">Internal Wall Partition</td><td class="td-muted">Lightweight partition walls, wall finish</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.10</td><td class="td-bold">Internal Doors</td><td class="td-muted">Internal door sets — all floors</td></tr>
+          <tr><td class="td-code">C</td><td class="td-code">C.11</td><td class="td-bold">Special Installation</td><td class="td-muted">Feature walls, specialist architectural elements</td></tr>
+
+          <tr class="group-row"><td colspan="4">Group D — Interior Finishes</td></tr>
+          <tr><td class="td-code">D</td><td class="td-code">D.1</td><td class="td-bold">Wall Finish</td><td class="td-muted">Internal paint, wallpaper, tiling, stone — wall</td></tr>
+          <tr><td class="td-code">D</td><td class="td-code">D.2</td><td class="td-bold">Floor Finish</td><td class="td-muted">Tiles, carpet, timber, epoxy, raised floor</td></tr>
+          <tr><td class="td-code">D</td><td class="td-code">D.3</td><td class="td-bold">Ceiling Finish</td><td class="td-muted">Plasterboard, mineral fibre, metal tile ceiling</td></tr>
+
+          <tr class="group-row"><td colspan="4">Group E — Fittings, Furnishings &amp; Equipment</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.1</td><td class="td-bold">General Fittings</td><td class="td-muted">Cubicles, lockers, shelving, standard fittings</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.2</td><td class="td-bold">Kitchen Fittings</td><td class="td-muted">Pantry, kitchen cabinetry, appliances</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.3</td><td class="td-bold">Special Purpose Fittings</td><td class="td-muted">Reception desk, branded elements, specialist furniture</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.4</td><td class="td-bold">Signage</td><td class="td-muted">Internal and external signage, wayfinding</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.5</td><td class="td-bold">Art &amp; Décor</td><td class="td-muted">Artwork, sculptures, decorative elements</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.6</td><td class="td-bold">Non-Mech / Non-Elec Equipment</td><td class="td-muted">Whiteboards, projection screens, safes</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.7</td><td class="td-bold">Internal Planting</td><td class="td-muted">Indoor plants, green walls, irrigation</td></tr>
+          <tr><td class="td-code">E</td><td class="td-code">E.8</td><td class="td-bold">Bird &amp; Vermin Control</td><td class="td-muted">Bird deterrent, pest control systems</td></tr>
+
+          <tr class="group-row"><td colspan="4">Group F — Building Services (MEP)</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.1</td><td class="td-bold">Sanitary Installations</td><td class="td-muted">Water closets, urinals, basins, sanitary fittings</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.2</td><td class="td-bold">Air Conditioning System</td><td class="td-muted">Chilled water, split units, fan coil units</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.3</td><td class="td-bold">Mechanical Ventilation</td><td class="td-muted">Supply, exhaust, pressurisation systems</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.4</td><td class="td-bold">Plumbing — Water Supply</td><td class="td-muted">Cold water, hot water, water tanks, pump sets</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.5</td><td class="td-bold">Drainage System</td><td class="td-muted">Soil waste, stormwater, grease trap</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.6</td><td class="td-bold">Fire Fighting System</td><td class="td-muted">Sprinkler, hydrant, hose reel, pump room</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.7</td><td class="td-bold">Electrical — Power</td><td class="td-muted">Main switchboard, DB, cabling, earthing</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.8</td><td class="td-bold">Electrical — Lighting</td><td class="td-muted">Lighting fixtures, emergency lighting, controls</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.9</td><td class="td-bold">ELV Systems</td><td class="td-muted">CCTV, access control, PA, BMS, MATV, data cabling</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.10</td><td class="td-bold">Lifts &amp; Escalators</td><td class="td-muted">Passenger lifts, service lifts, escalators</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.11</td><td class="td-bold">Generators &amp; UPS</td><td class="td-muted">Standby generator, UPS, battery systems</td></tr>
+          <tr><td class="td-code">F</td><td class="td-code">F.12</td><td class="td-bold">Lightning Protection</td><td class="td-muted">Lightning conductor, earthing system</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><!-- /s8 -->
+
+
+  <!-- ═══ SECTION 9 ═══ -->
+  <div class="section" id="s9">
+    <div class="section-head">
+      <span class="section-num">09</span>
+      <h2 class="section-title">Transmittal Code</h2>
+    </div>
+    <p class="body">Document transmittals are formal records of document issue between parties. Every transmittal in DCOS has a unique code identifying the project, issuing company, receiving company, and a sequential running number.</p>
+
+    <div class="code-block">
+      <div class="code-label">Transmittal Format</div>
+      <div class="code-body">[Project Code]-DT-[Issuing Company]-[Receiving Company]-[NNN]
+
+<span class="cmt">P001-HTBT-DT-CMED-GGD-001  →  First transmittal from CMED to GGD on Project HTBT
+P001-HTBT-DT-CMED-GGD-002  →  Second transmittal from CMED to GGD
+P001-HTBT-DT-CMED-ARC-001  →  First transmittal from CMED to Architect</span></div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Segment</th><th>Example</th><th>Description</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="td-code">Project Code</td><td class="td-bold">P001-HTBT</td><td>Project identifier</td><td class="td-muted">From Section 1</td></tr>
+          <tr><td class="td-code">DT</td><td class="td-bold">DT</td><td>Fixed: Document Transmittal</td><td class="td-muted">Always uppercase, always DT</td></tr>
+          <tr><td class="td-code">Issuing Company</td><td class="td-bold">CMED</td><td>Company sending the transmittal</td><td class="td-muted">Max 4 letters, uppercase</td></tr>
+          <tr><td class="td-code">Receiving Company</td><td class="td-bold">GGD</td><td>Company receiving the transmittal</td><td class="td-muted">Agreed abbreviation per stakeholder setup</td></tr>
+          <tr><td class="td-code">Running No.</td><td class="td-bold">001</td><td>Sequential transmittal number</td><td class="td-muted">3-digit, zero-padded, resets per project</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-box">
+      <div class="note-tag">Note</div>
+      <div class="note-content">All external documents — drawings, reports, letters, submittals, and payment certificates — <strong>must</strong> be transmitted via a registered DCOS transmittal. Documents shared informally without a transmittal are not considered officially issued and carry no revision or approval status.</div>
+    </div>
+  </div><!-- /s9 -->
+
+
+  <!-- ═══ SECTION 10 ═══ -->
+  <div class="section" id="s10">
+    <div class="section-head">
+      <span class="section-num">10</span>
+      <h2 class="section-title">Complete Code Assembly Reference</h2>
+    </div>
+    <p class="body">This section provides a consolidated reference showing how all naming convention elements combine into complete document codes for each major document category used in DCOS.</p>
+
+    <div class="assembly-grid">
+      <div class="assembly-card">
+        <div class="assembly-card-head">WBS Location Code (Full Path)</div>
+        <div class="assembly-card-body">
+          <div>[P001-HTBT] — [BA] — [04] — [G00] — [DZone3] — [R015]</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:6px">Project HTBT · Building A · Seq 04 · Ground Floor · Design Zone 3 · Room 015</div>
+        </div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Architecture Drawing</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-ARC-BA-G00-001-R02
+<span style="color:var(--muted);font-size:11px">Arch Drawing · Bldg A · Ground Floor · No.001 · Rev 2</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Structural Drawing</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-STR-BA-B01-005-R01
+<span style="color:var(--muted);font-size:11px">STR Drawing · Bldg A · Basement 1 · No.005 · Rev 1</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Fire Fighting Drawing</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-FFG-BA-L10-002-R00
+<span style="color:var(--muted);font-size:11px">FFG Drawing · Bldg A · Level 10 · No.002 · First Issue</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Construction Document — RFI</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-P01.RFI.023-R00-INT01
+<span style="color:var(--muted);font-size:11px">RFI No.023 · Package 01 · First Issue · Int. Circ. 01</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Construction Document — NCR</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-P01.NCR.007-R00-INT02
+<span style="color:var(--muted);font-size:11px">NCR No.007 · Package 01 · First Issue · Int. Circ. 02</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Commercial — IPC to Client</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-GGD-IPC.003-R00-INT01
+<span style="color:var(--muted);font-size:11px">IPC No.3 · issued to GGD · First Issue</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Commercial — Variation Order</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-GGD-VO.012-R01-INT01
+<span style="color:var(--muted);font-size:11px">VO No.12 · to GGD · Revision 1</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Procurement — Purchase Requisition</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-B.1.01-01.PR.000-R00-INT01
+<span style="color:var(--muted);font-size:11px">PR · Budget B.1 · Package 1</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Procurement — Purchase Order</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-B.1.01-26.PO.001-R00-INT01
+<span style="color:var(--muted);font-size:11px">PO No.1 · Budget B.1 · Package 1 · First Issue</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Procurement — Tender Evaluation</div>
+        <div class="assembly-card-body">P001-HTBT-CMED-B.1.01-18.TER.001-R00-INT01
+<span style="color:var(--muted);font-size:11px">TER No.1 · Budget B.1 · Package 1</span></div>
+      </div>
+      <div class="assembly-card">
+        <div class="assembly-card-head">Transmittal</div>
+        <div class="assembly-card-body">P001-HTBT-DT-CMED-GGD-001
+<span style="color:var(--muted);font-size:11px">Transmittal No.001 · CMED → GGD · Project HTBT</span></div>
+      </div>
+    </div>
+  </div><!-- /s10 -->
+
+
+  <!-- ═══ REVISION HISTORY ═══ -->
+  <div class="rev-section" id="rev">
+    <div class="rev-title">Document Revision History</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Revision</th><th>Date</th><th>Prepared By</th><th>Description of Changes</th><th>Approved By</th></tr></thead>
+        <tbody>
+          <tr><td class="td-code">R0</td><td>[Date]</td><td>[Name / Role]</td><td>First issue — Initial naming convention</td><td>[Director]</td></tr>
+          <tr><td class="td-code">R1</td><td>[Date]</td><td>[Name / Role]</td><td>Updated for DCOS system integration; added Section 6–10</td><td>[Director]</td></tr>
+          <tr><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><td></td><td></td><td></td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:20px;font-size:11px;color:var(--muted);text-align:center;padding-top:16px;border-top:1px solid var(--border)">
+      DCOS — Digital Construction Operating System &nbsp;|&nbsp; Standard Naming Convention &nbsp;|&nbsp; DCOS-NCS-001 &nbsp;|&nbsp; R1.0 &nbsp;|&nbsp; Internal Controlled Document
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Intersection observer for scroll-in animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.05 });
+
+  document.querySelectorAll('.section, .cover').forEach(el => observer.observe(el));
+
+  // Active nav highlight
+  const sections = document.querySelectorAll('[id]');
+  const navItems = document.querySelectorAll('.nav-item[href]');
+  const onScroll = () => {
+    let current = '';
+    sections.forEach(s => {
+      if (window.scrollY >= s.offsetTop - 60) current = s.id;
+    });
+    navItems.forEach(n => {
+      n.classList.toggle('active', n.getAttribute('href') === '#' + current);
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+</script>
+</body>
+</html>

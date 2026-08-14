@@ -94,6 +94,45 @@
 }
 
 @layer utilities {
+  /* Sidebar module-group button: light sweep that passes across on hover */
+  .qs-group-shine {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .qs-group-shine::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 45%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      oklch(1 0 0 / 0.35),
+      transparent
+    );
+    transform: skewX(-20deg);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease;
+  }
+
+  .qs-group-shine:hover::after {
+    opacity: 1;
+    animation: qs-group-shine 700ms ease;
+  }
+
+  @keyframes qs-group-shine {
+    from {
+      left: -60%;
+    }
+    to {
+      left: 130%;
+    }
+  }
+
   .leave-page-header {
     margin-left: 0;
     width: 100%;
@@ -106,5 +145,29 @@
 
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Animated gradient text */
+  .animate-text-shine {
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shine 6s linear infinite;
+  }
+
+  @keyframes text-shine {
+    from {
+      background-position: 0% center;
+    }
+    to {
+      background-position: -200% center;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-text-shine {
+      animation: none;
+    }
   }
 }

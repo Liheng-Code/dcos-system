@@ -245,7 +245,7 @@ export default function WorkforceDashboard() {
 
       {/* KPI Grid */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card gradient="from-rose-500 to-pink-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
           </CardHeader>
@@ -257,7 +257,7 @@ export default function WorkforceDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card gradient="from-sky-500 to-blue-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Attendance Today</CardTitle>
           </CardHeader>
@@ -269,7 +269,7 @@ export default function WorkforceDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card gradient="from-violet-500 to-purple-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Resource Utilization</CardTitle>
           </CardHeader>
@@ -281,7 +281,7 @@ export default function WorkforceDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card gradient="from-amber-500 to-orange-600">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Overtime Hours</CardTitle>
           </CardHeader>
@@ -296,7 +296,7 @@ export default function WorkforceDashboard() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Expiring Certificates Alert */}
-        <Card className={stats.expiring_certificates > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
+        <Card gradient="from-amber-500 to-orange-600" className={stats.expiring_certificates > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-amber-600" />
@@ -328,7 +328,7 @@ export default function WorkforceDashboard() {
         </Card>
 
         {/* Top Resource Allocations */}
-        <Card>
+        <Card gradient="from-emerald-500 to-teal-600">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -366,7 +366,7 @@ export default function WorkforceDashboard() {
       </div>
 
       {/* Quick Links */}
-      <Card>
+      <Card gradient="from-slate-500 to-slate-700">
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>
           <CardDescription>Common HR operations</CardDescription>

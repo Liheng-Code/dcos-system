@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   BookOpen, DollarSign, ExternalLink, Loader2, BarChart2, Shield,
-  Briefcase, History, AlertTriangle, Activity, ArrowRight,
+  Briefcase, History, AlertTriangle, Activity, ArrowRight, Ruler,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,6 +51,7 @@ const QUICK_ACCESS = [
   { id: "portfolio",    label: "Portfolio",           icon: Briefcase,      desc: "Cross-project cost analytics and EVM",      color: "bg-purple-50 text-purple-600" },
   { id: "audit",        label: "Audit Log",           icon: History,        desc: "Track changes across all QS records",       color: "bg-slate-50 text-slate-600" },
   { id: "currency",     label: "Currency",            icon: DollarSign,     desc: "Multi-currency and exchange rates",         color: "bg-cyan-50 text-cyan-600" },
+  { id: "qto",          label: "Quantity Take-off",   icon: Ruler,          desc: "Measure drawings and build net quantities", color: "bg-teal-50 text-teal-600", href: "/dashboard/qto" },
 ] as const;
 
 interface QsDashboardData {
@@ -235,23 +236,6 @@ function QsContent() {
               Back to Overview
             </Button>
           </div>
-          <div className="mt-3 inline-flex rounded-lg bg-slate-100 p-1">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  tab === t.id
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-800",
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <>
@@ -404,7 +388,7 @@ function QsContent() {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {QUICK_ACCESS.map((m) => (
-                  <Link key={m.id} href={`/dashboard/qs?tab=${m.id}`} onClick={() => setTab(m.id as Tab)}>
+                  <Link key={m.id} href={"href" in m && m.href ? m.href : `/dashboard/qs?tab=${m.id}`} onClick={() => { if (!("href" in m) || !m.href) setTab(m.id as Tab); }}>
                     <Card className="transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer h-full">
                       <CardContent className="flex items-center gap-4 p-5">
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${m.color}`}>

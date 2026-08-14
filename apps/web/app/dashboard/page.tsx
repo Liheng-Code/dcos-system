@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExecutiveDashboard } from "@/components/dashboard/executive-dashboard";
+import { ControlRoom } from "@/components/dashboard/control-room";
 import { useProject } from "@/components/dashboard/project-context";
 import { CostDashboard } from "@/components/qs/cost-control";
 import { ProgressDashboard } from "@/components/dashboard/progress-dashboard";
@@ -19,7 +19,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Project Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            {tab === "executive" ? "Cross-module KPIs and project overview" : tab === "cost" ? "Project-specific cost, cash flow, and commercial controls" : "Execution status, schedule health, and delivery priorities"}
+            {tab === "executive" ? "Project control room — actions, schedule and cost health" : tab === "cost" ? "Project-specific cost, cash flow, and commercial controls" : "Execution status, schedule health, and delivery priorities"}
           </p>
         </div>
         <div className="inline-flex rounded-lg bg-slate-100 p-1">
@@ -47,7 +47,12 @@ export default function DashboardPage() {
         </div>
       </div>
       {tab === "executive" ? (
-        <ExecutiveDashboard />
+        <ControlRoom
+          projectId={selectedProjectId || null}
+          projectName={selectedProject?.project_name}
+          projectCode={selectedProject?.project_code}
+          projectProgress={selectedProject?.progress_percentage}
+        />
       ) : tab === "cost" && selectedProjectId ? (
         <CostDashboard projectId={selectedProjectId} projectName={selectedProject?.project_name} />
       ) : tab === "progress" && selectedProjectId ? (

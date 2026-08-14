@@ -394,32 +394,8 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="wz_project_director">Project Director</Label>
-          <select id="wz_project_director" value={fv(form.project_director_id)} onChange={(e) => update("project_director_id", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
-            <option value="">— Select —</option>
-            {staff.map((s) => (<option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
           <Label htmlFor="wz_project_manager">Project Manager</Label>
           <select id="wz_project_manager" value={fv(form.project_manager_id)} onChange={(e) => update("project_manager_id", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
-            <option value="">— Select —</option>
-            {staff.map((s) => (<option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="wz_engineering_manager">Engineering Manager</Label>
-          <select id="wz_engineering_manager" value={fv(form.engineering_manager_id)} onChange={(e) => update("engineering_manager_id", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
-            <option value="">— Select —</option>
-            {staff.map((s) => (<option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="wz_planning_manager">Planning Manager</Label>
-          <select id="wz_planning_manager" value={fv(form.planning_manager_id)} onChange={(e) => update("planning_manager_id", e.target.value)}
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
             <option value="">— Select —</option>
             {staff.map((s) => (<option key={s.id} value={s.id}>{s.full_name}{s.employee_id ? ` (${s.employee_id})` : ""}</option>))}

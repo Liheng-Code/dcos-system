@@ -20,7 +20,7 @@ export function useSupabaseAuth() {
       setLoading(false);
 
       if (error) throw error;
-      router.push("/dashboard");
+      router.push("/modules");
     },
     [router],
   );
@@ -36,7 +36,7 @@ export function useSupabaseAuth() {
       setLoading(false);
 
       if (error) throw error;
-      router.push("/dashboard");
+      router.push("/modules");
     },
     [router],
   );

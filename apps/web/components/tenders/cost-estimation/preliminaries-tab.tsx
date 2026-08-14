@@ -9,6 +9,7 @@ import {
   getPreliminariesItems, createPreliminariesItem, deletePreliminariesItem, getBudgetCodes,
   type TenderPreliminariesItem, type BudgetCode,
 } from "@/lib/tender-cost-service";
+import LoadLibraryDialog from "@/components/tenders/cost-estimation/load-library-dialog";
 
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
@@ -19,6 +20,7 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
   const [budgetCodes, setBudgetCodes] = useState<BudgetCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showLibraryDialog, setShowLibraryDialog] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -87,9 +89,16 @@ export function PreliminariesTab({ tenderId }: { tenderId: string }) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{items.length} item(s) · Total ${fmt(total)}</p>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => window.open(`/dashboard/tenders/cost-library?tenderId=${tenderId}`, "_blank")}>
+          <Button size="sm" variant="outline" onClick={() => setShowLibraryDialog(true)}>
             <BookOpen className="mr-1 h-4 w-4" /> Load from Library
           </Button>
+          {showLibraryDialog && (
+            <LoadLibraryDialog
+              tenderId={tenderId}
+              onClose={() => setShowLibraryDialog(false)}
+              onLoaded={() => load()}
+            />
+          )}
           {can("tender_preliminaries", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
             <Plus className="mr-1 h-4 w-4" /> Add Item

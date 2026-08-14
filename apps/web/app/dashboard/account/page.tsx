@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { DollarSign, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { CoaTree } from "@/components/account/coa-tree";
 import { ApInvoiceList } from "@/components/account/ap-invoice-list";
 import { ArInvoiceList } from "@/components/account/ar-invoice-list";
@@ -15,8 +14,15 @@ import { BankAccountList } from "@/components/account/bank-account-list";
 import { PaymentRunList } from "@/components/account/payment-run-list";
 import { WithholdingTaxList } from "@/components/account/withholding-tax-list";
 
-export default function AccountPage() {
+const SUB_TAB_IDS = ["coa", "ap", "ar", "payments", "journals", "gl", "bank", "payment-runs", "wht"] as const;
+type SubTab = (typeof SUB_TAB_IDS)[number];
+
+function AccountPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const subParam = searchParams.get("sub") as SubTab | null;
+  const activeTab: SubTab = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "coa";
+
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -27,23 +33,9 @@ export default function AccountPage() {
     });
   }, [router]);
 
-  const [activeTab, setActiveTab] = useState("coa");
-
   if (checking) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-
-  const TABS = [
-    { id: "coa", label: "Chart of Accounts" },
-    { id: "ap", label: "AP Invoices" },
-    { id: "ar", label: "AR Invoices" },
-    { id: "payments", label: "Payments" },
-    { id: "journals", label: "Journal Entries" },
-    { id: "gl", label: "General Ledger" },
-    { id: "bank", label: "Bank Accounts" },
-    { id: "payment-runs", label: "Payment Runs" },
-    { id: "wht", label: "Withholding Tax" },
-  ] as const;
 
   return (
     <div className="flex h-full flex-col">
@@ -61,23 +53,6 @@ export default function AccountPage() {
             </div>
           </div>
         </div>
-        <div className="mt-4 inline-flex rounded-lg bg-slate-100 p-1">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveTab(t.id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                activeTab === t.id
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-800",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -92,5 +67,13 @@ export default function AccountPage() {
         {activeTab === "wht" && <WithholdingTaxList />}
       </div>
     </div>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+      <AccountPageContent />
+    </Suspense>
   );
 }

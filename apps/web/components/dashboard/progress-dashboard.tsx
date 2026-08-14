@@ -114,7 +114,8 @@ export function ProgressDashboard({ projectId, projectName, projectProgress = 0 
       </div>
 
       {/* ── S-Curve ── */}
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -182,27 +183,39 @@ export function ProgressDashboard({ projectId, projectName, projectProgress = 0 
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-600" />
           <div className="mb-5 flex items-center justify-between"><div><h3 className="text-sm font-semibold text-foreground">Progress by workstream</h3><p className="mt-0.5 text-[11px] text-muted-foreground">Average completion across WBS task disciplines</p></div><ClipboardList className="h-4 w-4 text-muted-foreground" /></div>
           {disciplines.length === 0 ? <Empty text="Add WBS tasks to start tracking progress." /> : <div className="space-y-4">{disciplines.slice(0, 6).map((item) => <div key={item.name}><div className="mb-1.5 flex justify-between text-xs"><span className="font-medium text-foreground">{item.name}</span><span className="text-muted-foreground">{item.progress.toFixed(0)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.min(item.progress, 100)}%` }} /></div><p className="mt-1 text-[11px] text-muted-foreground">{item.count} task{item.count === 1 ? "" : "s"}</p></div>)}</div>}
         </section>
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-600" />
           <div className="mb-4 flex items-center gap-2"><div className="relative flex h-16 w-16 items-center justify-center rounded-full border-[7px] border-violet-100"><span className="text-sm font-bold text-violet-700">{metrics.progress.toFixed(0)}%</span></div><div><h3 className="text-sm font-semibold text-foreground">Plan completion</h3><p className="mt-1 text-[11px] text-muted-foreground">Current task progress across the selected project</p></div></div>
           <div className="space-y-2 border-t border-border pt-3"><SmallRow label="Not started" value={tasks.filter((task) => task.status === "open").length} /><SmallRow label="In review / submitted" value={tasks.filter((task) => ["review", "submitted"].includes(task.status)).length} /><SmallRow label="Blocked" value={tasks.filter((task) => task.delay_status === "blocked").length} danger /></div>
         </section>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">Upcoming milestones</h3><CalendarDays className="h-4 w-4 text-muted-foreground" /></div>{upcoming.length === 0 ? <Empty text="No scheduled upcoming tasks." /> : <div className="divide-y divide-border">{upcoming.map((task) => <div key={task.id} className="flex items-center gap-3 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Timer className="h-3.5 w-3.5" /></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-foreground">{task.task_name}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{task.task_code} · Due {task.end_date}</p></div><span className="text-xs font-semibold text-foreground">{Number(task.progress)}%</span></div>)}</div>}<Link href="/dashboard/wbs" className="mt-3 block text-right text-[11px] font-medium text-primary hover:underline">Open WBS workspace →</Link></section>
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">Execution attention</h3><AlertTriangle className={cn("h-4 w-4", attention.length ? "text-amber-500" : "text-emerald-500")} /></div>{attention.length === 0 ? <div className="flex min-h-36 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-2 h-7 w-7 text-emerald-500" /><p className="text-xs font-medium text-foreground">No execution risks flagged</p><p className="mt-1 text-[11px] text-muted-foreground">Tasks are currently on track.</p></div> : <div className="divide-y divide-border">{attention.map((task) => <div key={task.id} className="flex items-center gap-3 py-3"><span className={cn("h-2 w-2 rounded-full", task.delay_status === "blocked" ? "bg-red-500" : "bg-amber-500")} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-foreground">{task.task_name}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{taskStatus(task.status)} · {task.delay_status.replace("_", " ")}</p></div><ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /></div>)}</div>}</section>
+        <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 to-blue-600" /><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">Upcoming milestones</h3><CalendarDays className="h-4 w-4 text-muted-foreground" /></div>{upcoming.length === 0 ? <Empty text="No scheduled upcoming tasks." /> : <div className="divide-y divide-border">{upcoming.map((task) => <div key={task.id} className="flex items-center gap-3 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Timer className="h-3.5 w-3.5" /></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-foreground">{task.task_name}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{task.task_code} · Due {task.end_date}</p></div><span className="text-xs font-semibold text-foreground">{Number(task.progress)}%</span></div>)}</div>}<Link href="/dashboard/wbs" className="mt-3 block text-right text-[11px] font-medium text-primary hover:underline">Open WBS workspace →</Link></section>
+        <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-600" /><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">Execution attention</h3><AlertTriangle className={cn("h-4 w-4", attention.length ? "text-amber-500" : "text-emerald-500")} /></div>{attention.length === 0 ? <div className="flex min-h-36 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-2 h-7 w-7 text-emerald-500" /><p className="text-xs font-medium text-foreground">No execution risks flagged</p><p className="mt-1 text-[11px] text-muted-foreground">Tasks are currently on track.</p></div> : <div className="divide-y divide-border">{attention.map((task) => <div key={task.id} className="flex items-center gap-3 py-3"><span className={cn("h-2 w-2 rounded-full", task.delay_status === "blocked" ? "bg-red-500" : "bg-amber-500")} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-foreground">{task.task_name}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{taskStatus(task.status)} · {task.delay_status.replace("_", " ")}</p></div><ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /></div>)}</div>}</section>
       </div>
     </div>
   );
 }
 
 function Metric({ title, value, note, tone }: { title: string; value: string; note: string; tone: "violet" | "emerald" | "blue" | "amber" }) {
-  const color = { violet: "text-violet-600 bg-violet-50", emerald: "text-emerald-600 bg-emerald-50", blue: "text-blue-600 bg-blue-50", amber: "text-amber-600 bg-amber-50" }[tone];
-  return <section className="rounded-xl border border-border bg-card p-4 shadow-sm"><p className="text-xs font-medium text-muted-foreground">{title}</p><div className="mt-3 flex items-end justify-between gap-3"><p className="text-2xl font-semibold tracking-tight text-foreground">{value}</p><span className={cn("h-2.5 w-2.5 rounded-full", color.split(" ")[1])} /></div><p className="mt-1 text-[11px] text-muted-foreground">{note}</p></section>;
+  const gradient = { violet: "from-violet-500 to-purple-600", emerald: "from-emerald-500 to-teal-600", blue: "from-blue-500 to-indigo-600", amber: "from-amber-500 to-orange-600" }[tone];
+  const dot = { violet: "bg-violet-500", emerald: "bg-emerald-500", blue: "bg-blue-500", amber: "bg-amber-500" }[tone];
+  return (
+    <section className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", gradient)} />
+      <div className="p-4">
+        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+        <div className="mt-3 flex items-end justify-between gap-3"><p className="text-2xl font-semibold tracking-tight text-foreground">{value}</p><span className={cn("h-2.5 w-2.5 rounded-full", dot)} /></div>
+        <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>
+      </div>
+    </section>
+  );
 }
 function SmallRow({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) { return <div className="flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className={cn("font-semibold", danger && value > 0 ? "text-red-600" : "text-foreground")}>{value}</span></div>; }
 function Empty({ text }: { text: string }) { return <p className="py-10 text-center text-xs text-muted-foreground">{text}</p>; }

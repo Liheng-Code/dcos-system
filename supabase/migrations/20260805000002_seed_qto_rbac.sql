@@ -1,0 +1,160 @@
+-- Migration: 20260805000002_seed_qto_rbac.sql
+-- Purpose: RBAC permission rows for the Quantity Takeoff (QTO) module.
+--         10 actions mapping to the QTO screens.
+-- Depends on: role_permissions (20260527000002), roles seed
+--             (20260527000003), pattern: 20260719000001_seed_tender_rbac.sql
+
+INSERT INTO public.role_permissions
+  (role_code, module, action, view, can_create, edit, delete, submit, approve, reject, export, transmit, configure, reassign, scope)
+VALUES
+  -- QTO DASHBOARD
+  ('L0',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_dashboard', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_dashboard', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_dashboard', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO DOCUMENT REGISTER
+  ('L0',      'qto','qto_documents', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_documents', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_documents', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_documents', true,  true,  true,  false, false, false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_documents', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_documents', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_documents', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_documents', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_documents', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_documents', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_documents', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_documents', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_documents', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO DRAWING REGISTER
+  ('L0',      'qto','qto_drawings', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_drawings', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_drawings', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_drawings', true,  true,  true,  false, false, false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_drawings', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_drawings', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_drawings', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_drawings', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_drawings', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_drawings', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_drawings', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_drawings', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_drawings', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO WORKSPACE (measure)
+  ('L0',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_workspace', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_workspace', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_workspace', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_workspace', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_workspace', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_workspace', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_workspace', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_workspace', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO REGISTER (QTO items)
+  ('L0',      'qto','qto_register', true,  true,  true,  true,  true,  false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_register', true,  true,  true,  true,  true,  false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_register', true,  true,  true,  true,  true,  false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_register', true,  true,  true,  false, true,  false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_register', true,  true,  true,  false, true,  false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_register', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_register', true,  true,  true,  false, true,  false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_register', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_register', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_register', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_register', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_register', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_register', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO REVIEW
+  ('L0',      'qto','qto_review', true,  true,  true,  false, false, false, true,  false, false, false, false, 'company'),
+  ('L1',      'qto','qto_review', true,  true,  true,  false, false, false, true,  false, false, false, false, 'company'),
+  ('L2',      'qto','qto_review', true,  true,  true,  false, false, false, true,  false, false, false, false, 'company'),
+  ('L3',      'qto','qto_review', true,  true,  true,  false, false, false, true,  false, false, false, false, 'project'),
+  ('QS',      'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_review', true,  true,  true,  false, false, false, true,  false, false, false, false, 'company'),
+  ('L4',      'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_review', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_review', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_review', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO APPROVAL
+  ('L0',      'qto','qto_approval', true,  false, false, false, false, true,  false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_approval', true,  false, false, false, false, true,  false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_approval', true,  false, false, false, false, true,  false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_approval', true,  false, false, false, false, true,  false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_approval', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_approval', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_approval', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO SUMMARY
+  ('L0',      'qto','qto_summary', true,  true,  true,  false, false, false, false, true,  false, false, false, 'company'),
+  ('L1',      'qto','qto_summary', true,  true,  true,  false, false, false, false, true,  false, false, false, 'company'),
+  ('L2',      'qto','qto_summary', true,  true,  true,  false, false, false, false, true,  false, false, false, 'company'),
+  ('L3',      'qto','qto_summary', true,  true,  true,  false, false, false, false, true,  false, false, false, 'project'),
+  ('QS',      'qto','qto_summary', true,  true,  true,  false, false, false, false, true,  false, false, false, 'company'),
+  ('AC',      'qto','qto_summary', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_summary', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_summary', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_summary', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_summary', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_summary', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_summary', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_summary', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO BOQ MAPPING
+  ('L0',      'qto','qto_boq_mapping', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L1',      'qto','qto_boq_mapping', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L2',      'qto','qto_boq_mapping', true,  true,  true,  true,  false, false, false, false, false, false, false, 'company'),
+  ('L3',      'qto','qto_boq_mapping', true,  true,  true,  false, false, false, false, false, false, false, false, 'project'),
+  ('QS',      'qto','qto_boq_mapping', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('AC',      'qto','qto_boq_mapping', true,  false, false, false, false, false, false, false, false, false, false, 'company'),
+  ('PO',      'qto','qto_boq_mapping', true,  true,  true,  false, false, false, false, false, false, false, false, 'company'),
+  ('L4',      'qto','qto_boq_mapping', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_boq_mapping', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_boq_mapping', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_boq_mapping', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_boq_mapping', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_boq_mapping', false, false, false, false, false, false, false, false, false, false, false, null),
+
+  -- QTO EXPORT
+  ('L0',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('L1',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('L2',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('L3',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'project'),
+  ('QS',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('AC',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('PO',      'qto','qto_export', true,  false, false, false, false, false, false, true,  false, false, false, 'company'),
+  ('L4',      'qto','qto_export', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L5',      'qto','qto_export', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('L6',      'qto','qto_export', false, false, false, false, false, false, false, false, false, false, false, null),
+  ('EXT-CLT', 'qto','qto_export', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-CON', 'qto','qto_export', true,  false, false, false, false, false, false, false, false, false, false, 'project'),
+  ('EXT-SUB', 'qto','qto_export', false, false, false, false, false, false, false, false, false, false, false, null)
+
+ON CONFLICT (role_code, module, action) DO NOTHING;

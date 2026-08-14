@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DC/OS System — Construction Project Intelligence",
+  title: "DCOS System — Construction Project Intelligence",
   description:
     "Next-Generation Construction Project Management Platform",
 };

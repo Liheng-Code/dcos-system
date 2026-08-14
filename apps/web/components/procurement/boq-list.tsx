@@ -2,19 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Search, Plus, Loader2, Pencil, Trash2, ChevronDown, ChevronRight, GripVertical } from "lucide-react";
+import { Search, Plus, Loader2, Pencil, Trash2, ChevronDown, ChevronRight, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { BoqItemEditor } from "./boq-item-editor";
 import { BoqSectionForm } from "./boq-section-form";
-
-interface Project {
-  id: string;
-  project_name: string;
-  project_code: string;
-}
+import { useProject } from "@/components/dashboard/project-context";
 
 interface Section {
   id: string;
@@ -43,8 +38,7 @@ interface BoqItem {
 
 export function BoqList() {
   const supabase = createClient();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
+  const { selectedProjectId, selectedProject } = useProject();
   const [sections, setSections] = useState<Section[]>([]);
   const [items, setItems] = useState<BoqItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,24 +48,18 @@ export function BoqList() {
   const [showSectionForm, setShowSectionForm] = useState(false);
   const [editingSection, setEditingSection] = useState<Section | null>(null);
 
-  useEffect(() => {
-    supabase.from("projects").select("id, project_name, project_code").order("project_name").then(({ data }) => {
-      if (data) setProjects(data as Project[]);
-    });
-  }, []);
-
   const fetchData = useCallback(() => {
-    if (!selectedProject) { setSections([]); setItems([]); setLoading(false); return; }
+    if (!selectedProjectId) { setSections([]); setItems([]); setLoading(false); return; }
     setLoading(true);
     Promise.all([
-      supabase.from("qs_boq_sections").select("*").eq("project_id", selectedProject).order("seq"),
-      supabase.from("qs_boq_items").select("*").eq("project_id", selectedProject).order("seq"),
+      supabase.from("qs_boq_sections").select("*").eq("project_id", selectedProjectId).order("seq"),
+      supabase.from("qs_boq_items").select("*").eq("project_id", selectedProjectId).order("seq"),
     ]).then(([sRes, iRes]) => {
       if (sRes.data) setSections(sRes.data as Section[]);
       if (iRes.data) setItems(iRes.data as BoqItem[]);
       setLoading(false);
     });
-  }, [selectedProject]);
+  }, [selectedProjectId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -159,18 +147,22 @@ export function BoqList() {
 
   return (
     <div className="space-y-4">
-      {/* Project selector + actions */}
+      {/* Project indicator + actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <select
-            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm w-64"
-            value={selectedProject}
-            onChange={e => setSelectedProject(e.target.value)}
-          >
-            <option value="">Select a project...</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.project_name} ({p.project_code})</option>)}
-          </select>
-          {selectedProject && (
+          {selectedProject ? (
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{selectedProject.project_name}</span>
+              <span className="font-mono text-xs text-muted-foreground">({selectedProject.project_code})</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              <Building2 className="h-4 w-4" />
+              <span>No project selected</span>
+            </div>
+          )}
+          {selectedProjectId && (
             <>
               <div className="relative w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -180,12 +172,12 @@ export function BoqList() {
             </>
           )}
         </div>
-        {selectedProject && (
+        {selectedProjectId && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setEditingSection(null); setShowSectionForm(true); }} className="gap-2">
               <Plus className="h-4 w-4" /> Section
             </Button>
-            <Button size="sm" onClick={() => setEditingItem({ project_id: selectedProject } as unknown as BoqItem)} className="gap-2">
+            <Button size="sm" onClick={() => setEditingItem({ project_id: selectedProjectId } as unknown as BoqItem)} className="gap-2">
               <Plus className="h-4 w-4" /> Add Item
             </Button>
           </div>
@@ -196,27 +188,27 @@ export function BoqList() {
       {showSectionForm && (
         <BoqSectionForm
           section={editingSection}
-          projectId={selectedProject}
+          projectId={selectedProjectId}
           onSaved={onSectionSaved}
           onCancel={() => { setShowSectionForm(false); setEditingSection(null); }}
         />
       )}
 
       {/* No project selected */}
-      {!selectedProject && (
+      {!selectedProjectId && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          Select a project to view its Bill of Quantities.
+          Select a project from the top bar to view its Bill of Quantities.
         </div>
       )}
 
       {/* BOQ sections with items */}
-      {selectedProject && sections.length === 0 && items.length === 0 && (
+      {selectedProjectId && sections.length === 0 && items.length === 0 && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           No BOQ data yet. Add a section to get started.
         </div>
       )}
 
-      {selectedProject && sectionTotals.map(section => {
+      {selectedProjectId && sectionTotals.map(section => {
         const sectionItems = filteredItems(section.id);
         const isExpanded = expandedSections.has(section.id);
         return (
