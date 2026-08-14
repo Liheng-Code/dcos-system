@@ -1014,7 +1014,7 @@ export async function receiveTransfer(
 
   for (const rl of data.lines) {
     const line = (tf.inv_transfer_lines as Array<{
-      id: string; item_id: string; quantity_requested: number; quantity_dispatched: number | null
+      id: string; item_id: string; quantity_requested: number; quantity_dispatched: number | null; unit_cost?: number | null
     }>).find(l => l.id === rl.transfer_line_id)
     if (!line) throw new InvError("INV_LINE_NOT_FOUND", `Line ${rl.transfer_line_id} not found`, 404)
 

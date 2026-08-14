@@ -343,7 +343,7 @@ export function AwardConversionDialog({ project, onClose, onConvert }: AwardConv
                       <span>
                         Carry over BOQ items (locked baseline)
                         <span className="block text-xs text-muted-foreground">
-                          {tenderData.boqItems} item{tenderData.boqItems !== 1 ? "s" : ""} — read-only baseline for progress claims
+                          {tenderData?.boqItems} item{tenderData?.boqItems !== 1 ? "s" : ""} — read-only baseline for progress claims
                         </span>
                       </span>
                     </span>
@@ -358,7 +358,7 @@ export function AwardConversionDialog({ project, onClose, onConvert }: AwardConv
                       <span>
                         Carry over preliminaries (locked baseline)
                         <span className="block text-xs text-muted-foreground">
-                          {tenderData.prelims} item{tenderData.prelims !== 1 ? "s" : ""} — locked baseline
+                          {tenderData?.prelims} item{tenderData?.prelims !== 1 ? "s" : ""} — locked baseline
                         </span>
                       </span>
                     </span>
@@ -373,7 +373,7 @@ export function AwardConversionDialog({ project, onClose, onConvert }: AwardConv
                       <span>
                         Carry over price list
                         <span className="block text-xs text-muted-foreground">
-                          {tenderData.priceList} rate{tenderData.priceList !== 1 ? "s" : ""} — locked rates for BOQ pricing
+                          {tenderData?.priceList} rate{tenderData?.priceList !== 1 ? "s" : ""} — locked rates for BOQ pricing
                         </span>
                       </span>
                     </span>
@@ -388,7 +388,7 @@ export function AwardConversionDialog({ project, onClose, onConvert }: AwardConv
                       <span>
                         Carry over risk register
                         <span className="block text-xs text-muted-foreground">
-                          {tenderData.risks} risk{tenderData.risks !== 1 ? "s" : ""} — carry to post-contract risk management
+                          {tenderData?.risks} risk{tenderData?.risks !== 1 ? "s" : ""} — carry to post-contract risk management
                         </span>
                       </span>
                     </span>

@@ -156,7 +156,7 @@ export function ProjectBudgetTab({ tenderId }: { tenderId: string }) {
                 width={60}
               />
               <Tooltip
-                formatter={(value: number | string) => fmt(Number(value))}
+                formatter={(value) => fmt(Number(value))}
                 labelStyle={{ fontWeight: 600 }}
               />
               <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={48}>
@@ -166,7 +166,7 @@ export function ProjectBudgetTab({ tenderId }: { tenderId: string }) {
                 <LabelList
                   dataKey="amount"
                   position="top"
-                  formatter={(v: number | string) => fmtShort(Number(v))}
+                  formatter={(v) => fmtShort(Number(v))}
                   style={{ fontSize: 11 }}
                 />
               </Bar>

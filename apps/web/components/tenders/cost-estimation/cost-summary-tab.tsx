@@ -48,12 +48,12 @@ function MiniChart({ title, data }: { title: string; data: { name: string; amoun
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
           <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} angle={needsRotation ? -35 : 0} textAnchor={needsRotation ? "end" : "middle"} height={needsRotation ? 60 : 30} />
           <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={60} />
-          <Tooltip formatter={(value: number | string) => fmt(Number(value))} labelStyle={{ fontWeight: 600 }} />
+          <Tooltip formatter={(value) => fmt(Number(value))} labelStyle={{ fontWeight: 600 }} />
           <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={56}>
             {data.map((_, i) => (
               <Cell key={i} fill={barColors[i % barColors.length]} />
             ))}
-            <LabelList dataKey="amount" position="top" formatter={(v: number | string) => fmtShort(Number(v))} style={{ fontSize: 11 }} />
+            <LabelList dataKey="amount" position="top" formatter={(v) => fmtShort(Number(v))} style={{ fontSize: 11 }} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

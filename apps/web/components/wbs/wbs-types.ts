@@ -140,4 +140,86 @@ export interface WbsTemplateRecord {
   template_desc: string | null;
   node_type_chain: string[];
   is_active: boolean;
+  template_category?: string | null;
+}
+
+export interface WbsTemplateNodeRecord {
+  id: string;
+  template_id: string;
+  parent_id: string | null;
+  wbs_code: string;
+  wbs_name: string;
+  node_type: string;
+  sort_order: number;
+  source_library_type: string | null;
+  source_library_id: string | null;
+  children?: WbsTemplateNodeRecord[];
+}
+
+export type MasterLibraryType =
+  | "phase"
+  | "building"
+  | "stage"
+  | "level"
+  | "zone"
+  | "room"
+  | "element"
+  | "discipline"
+  | "task_group"
+  | "task_template";
+
+export interface MasterLibraryRecord {
+  id: string;
+  code: string;
+  name: string;
+  type: string | null;
+  category: string | null;
+  discipline: string | null;
+  sequence_no: number | null;
+  sort_order: number | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskTemplateMasterRecord extends MasterLibraryRecord {
+  phase_id: string | null;
+  phase_code: string | null;
+  discipline_id: string | null;
+  discipline_code: string | null;
+  task_group_id: string | null;
+  task_group_code: string | null;
+  default_duration: number | null;
+  duration_unit: string;
+  default_weight: number | null;
+  default_priority: string;
+  predecessor: string | null;
+  successor: string | null;
+  milestone: boolean;
+  approval_required: boolean;
+  requires_document: boolean;
+  requires_photo: boolean;
+  requires_checklist: boolean;
+  requires_inspection: boolean;
+  auto_assign_role: string | null;
+  deliverable: string | null;
+  required_document: string | null;
+  approval_workflow: string | null;
+  dependency: string | null;
+  remarks: string | null;
+}
+
+export interface WbsGenerationVariables {
+  phase_code: string;
+  phase_name: string;
+  building_code: string;
+  building_name: string;
+  basement_count: number;
+  floor_count: number;
+  zone_count: number;
+  room_count: number;
+  elements: { code: string; name: string }[];
+  disciplines: { code: string; name: string }[];
+  task_groups: { code: string; name: string }[];
 }

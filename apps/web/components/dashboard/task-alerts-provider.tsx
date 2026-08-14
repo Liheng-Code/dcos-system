@@ -116,16 +116,14 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
       const currentUserId = authData.user?.id ?? null;
       if (!currentUserId || cancelled) return;
 
-      channel = supabase.channel(`task-alerts-${currentUserId}`);
-      if (channel.state !== "subscribed") {
-        channel
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "task_alerts", filter: `recipient_id=eq.${currentUserId}` },
-            () => { void refresh(); },
-          )
-          .subscribe();
-      }
+      channel = supabase
+        .channel(`task-alerts-${currentUserId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "task_alerts", filter: `recipient_id=eq.${currentUserId}` },
+          () => { void refresh(); },
+        )
+        .subscribe();
     })();
 
     const onFocus = () => { void refresh(); };

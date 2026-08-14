@@ -49,6 +49,7 @@ interface MrDetailData extends Omit<MrRow, "inv_mr_lines"> {
   approved_by: string | null
   approved_at: string | null
   rejection_reason: string | null
+  remarks?: string | null
   created_at: string
   inv_mr_lines: MrLineRow[]
   wbs_nodes?: { wbs_code: string; wbs_name: string; full_path: string | null } | null

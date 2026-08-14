@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DWL_CATEGORIES, DWL_UNITS } from "@/components/qs/dwl-types";
+import { DWL_CATEGORIES, DWL_UNITS, type DwlResource, type DwlUnit } from "@/components/qs/dwl-types";
 
 // SOP §6 Decision D2 — locked coding standard: {M/L/E/S}-{GROUP3}-{NNN}, e.g. M-CON-001.
 const CODE_PATTERN = /^[MLES]-[A-Z]{3}-\d{3}$/;
@@ -101,7 +101,7 @@ export function DwlResourceFormDialog({
           category: editResource.category,
           code: editResource.code,
           description: editResource.description,
-          unit: editResource.unit,
+          unit: editResource.unit as DwlUnit,
           spec_reference: editResource.spec_reference ?? "",
           is_active: editResource.is_active,
         });

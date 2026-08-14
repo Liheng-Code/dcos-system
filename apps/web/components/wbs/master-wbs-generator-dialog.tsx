@@ -22,11 +22,11 @@ const LIBRARY_TYPES = MASTER_LIBRARY_DEFINITIONS.map((d) => d.type);
 const WBS_LIBRARY_TYPES = WBS_MASTER_LIBRARY_DEFINITIONS.map((d) => d.type);
 
 function emptyItems(): LibraryItemsByType {
-  return Object.fromEntries(LIBRARY_TYPES.map((t) => [t, []])) as LibraryItemsByType;
+  return Object.fromEntries(LIBRARY_TYPES.map((t) => [t, []])) as unknown as LibraryItemsByType;
 }
 
 function emptySelections(): LibrarySelections {
-  return Object.fromEntries(LIBRARY_TYPES.map((t) => [t, []])) as LibrarySelections;
+  return Object.fromEntries(LIBRARY_TYPES.map((t) => [t, []])) as unknown as LibrarySelections;
 }
 
 function selectedCount(selections: LibrarySelections) {

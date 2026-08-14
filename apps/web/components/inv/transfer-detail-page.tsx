@@ -34,7 +34,6 @@ interface TransferDetailData extends Omit<TransferRow, "inv_transfer_lines"> {
   source_store_id: string
   destination_project_id: string
   destination_store_id: string
-  status: string
   transfer_reason: string
   requested_by: string
   source_approved_by: string | null
