@@ -107,11 +107,13 @@ export default function OTMyRequestsPage() {
 
   if (selectedId) {
     return (
-      <OTRequestDetail
-        requestId={selectedId}
-        onClose={() => setSelectedId(null)}
-        onStatusChange={fetchRequests}
-      />
+      <div className="pt-[5rem]">
+        <OTRequestDetail
+          requestId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onStatusChange={fetchRequests}
+        />
+      </div>
     );
   }
 

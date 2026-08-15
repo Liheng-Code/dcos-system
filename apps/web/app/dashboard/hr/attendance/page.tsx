@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { BarChart2, Calendar, Clock, LogIn, MapPin, QrCode, Search, Settings2, Users } from "lucide-react";
+import { Clock, LogIn, Search } from "lucide-react";
 import { format } from "date-fns";
 
 interface TodayStatus {
@@ -104,7 +104,7 @@ export default function AttendancePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h2 className="text-2xl font-bold tracking-tight">Attendance Management</h2>
           <p className="text-muted-foreground">Track employee attendance and absences</p>
         </div>
@@ -144,26 +144,6 @@ export default function AttendancePage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Sub-module navigation cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { label: "Check-in",      icon: LogIn,    href: "/dashboard/hr/attendance/checkin",    desc: "Clock in/out" },
-          { label: "My Attendance", icon: Calendar,  href: "/dashboard/hr/attendance/my",         desc: "Personal history" },
-          { label: "Supervisor",    icon: Users,     href: "/dashboard/hr/attendance/supervisor", desc: "Mark team" },
-          { label: "Shifts",        icon: Settings2, href: "/dashboard/hr/attendance/shifts",     desc: "Manage schedules" },
-          { label: "Sites & QR",    icon: QrCode,    href: "/dashboard/hr/attendance/sites",      desc: "QR codes" },
-          { label: "Reports",       icon: BarChart2, href: "/dashboard/hr/attendance/reports",    desc: "Analytics" },
-        ].map(nav => (
-          <Card key={nav.label} className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => router.push(nav.href)}>
-            <CardContent className="pt-4 pb-3 flex flex-col items-center text-center gap-1.5">
-              <nav.icon className="h-5 w-5 text-muted-foreground" />
-              <p className="text-sm font-medium">{nav.label}</p>
-              <p className="text-xs text-muted-foreground">{nav.desc}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card gradient="from-emerald-500 to-teal-600">

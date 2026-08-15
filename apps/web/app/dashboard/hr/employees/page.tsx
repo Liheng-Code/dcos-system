@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { EmployeesTabs } from "@/components/hr/employees/employees-tabs";
 import {
   type EmployeeProfile,
   type Department,
@@ -133,11 +134,8 @@ export default function EmployeesDashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Employee Master</h2>
-          <p className="text-muted-foreground">Overview of workforce statistics</p>
-        </div>
+      <div className="flex items-center justify-between">
+        <EmployeesTabs />
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" asChild>
             <Link href="/dashboard/hr/employees/list">
@@ -152,6 +150,11 @@ export default function EmployeesDashboardPage() {
             </Link>
           </Button>
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Employee Master</h2>
+        <p className="text-muted-foreground">Overview of workforce statistics</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
@@ -209,7 +212,7 @@ const CARD_PALETTES = [
 function HueCard({ name, value, index, icon: Icon }: { name: string; value: number; index: number; icon: typeof Users }) {
   const p = CARD_PALETTES[index % CARD_PALETTES.length];
   return (
-    <Card className={cn("border-t-4", p.border)}>
+    <Card gradient={false} className={cn("border-t-4", p.border)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground truncate" title={labelize(name)}>
           {labelize(name)}
@@ -244,7 +247,7 @@ function SummaryCard({
   }[tone];
 
   return (
-    <Card className={cn("border-t-4", palette.border)}>
+    <Card gradient={false} className={cn("border-t-4", palette.border)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <div className={cn("rounded-full p-1.5", palette.bg)}>

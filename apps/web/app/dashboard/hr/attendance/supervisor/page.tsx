@@ -131,8 +131,8 @@ export default function SupervisorAttendancePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div>
+    <div className="space-y-6">
+      <div className="-ml-56">
         <h1 className="text-2xl font-semibold">Supervisor Attendance Entry</h1>
         <p className="text-sm text-muted-foreground mt-1">Mark attendance on behalf of your team</p>
       </div>

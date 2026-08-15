@@ -34,6 +34,8 @@ import {
   PieChart,
   ClipboardList,
   Clock,
+  LogIn,
+  QrCode,
 } from "lucide-react";
 
 // ── Payroll sub-nav (shown only when inside /hr/payroll) ─────────────────────
@@ -105,6 +107,27 @@ const OT_GROUPS = [
   },
 ];
 
+// ── Attendance sub-nav (shown only when inside /hr/attendance) ───────────────
+const ATTENDANCE_GROUPS = [
+  {
+    label: null,
+    items: [
+      { href: "/dashboard/hr/attendance",           label: "Overview",      icon: LayoutDashboard },
+      { href: "/dashboard/hr/attendance/checkin",    label: "Check-in",      icon: LogIn },
+      { href: "/dashboard/hr/attendance/my",         label: "My Attendance", icon: CalendarDays },
+      { href: "/dashboard/hr/attendance/supervisor", label: "Supervisor",    icon: Users },
+    ],
+  },
+  {
+    label: "ADMIN CONFIG",
+    items: [
+      { href: "/dashboard/hr/attendance/shifts",  label: "Shifts",     icon: Settings },
+      { href: "/dashboard/hr/attendance/sites",   label: "Sites & QR", icon: QrCode },
+      { href: "/dashboard/hr/attendance/reports", label: "Reports",    icon: BarChart2 },
+    ],
+  },
+];
+
 // ── Leave sub-nav (shown only when inside /hr/leave) ─────────────────────────
 
 const LEAVE_GROUPS = [
@@ -155,6 +178,7 @@ export default function HRLayout({ children }: { children: ReactNode }) {
   const inLeave = pathname.startsWith("/dashboard/hr/leave");
   const inPayroll = pathname.startsWith("/dashboard/hr/payroll");
   const inOvertime = pathname.startsWith("/dashboard/hr/overtime");
+  const inAttendance = pathname.startsWith("/dashboard/hr/attendance");
   const [perms, setPerms] = useState<HrPermissions | null>(null);
   const [approvalCount, setApprovalCount] = useState(0);
   const [myPendingCount, setMyPendingCount] = useState(0);
@@ -210,13 +234,75 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Outside leave/payroll/overtime sections, the main sidebar's HR Management folder
-  // provides navigation — just the shared header tab bar, no second sidebar needed.
-  if (!inLeave && !inPayroll && !inOvertime) {
+  // Outside leave/payroll/overtime/attendance sections, the main sidebar's HR Management
+  // folder provides navigation — just the shared header tab bar, no second sidebar needed.
+  if (!inLeave && !inPayroll && !inOvertime && !inAttendance) {
     return (
       <ModulePageLayout headerTabs={<ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />}>
         {children}
       </ModulePageLayout>
+    );
+  }
+
+  // ── Attendance sub-nav ───────────────────────────────────────────────────
+  if (inAttendance) {
+    const allAttendanceItems = ATTENDANCE_GROUPS.flatMap((g) => g.items);
+    const activeItem = allAttendanceItems.find((item) => pathname === item.href);
+
+    return (
+      <div className="flex flex-col gap-4">
+        <ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />
+        <div className="flex items-start gap-4 p-0">
+          <aside className="w-52 flex-shrink-0">
+            <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)]">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+                <div className="mb-1 flex items-center gap-2">
+                  <Link href="/dashboard/hr/dashboard" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Link>
+                  <span className="text-xs text-muted-foreground font-medium">Attendance</span>
+                </div>
+                {activeItem && (
+                  <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
+                )}
+                {!activeItem && <div className="mb-4" />}
+                <nav className="flex flex-col gap-0.5">
+                  {ATTENDANCE_GROUPS.map((group, gi) => (
+                    <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+                      {group.label && (
+                        <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                          {group.label}
+                        </p>
+                      )}
+                      {group.items.map((item) => {
+                        const isActive = pathname === item.href;
+                        const Icon = item.icon;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                              "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
+                              isActive
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </nav>
+              </div>
+            </div>
+          </aside>
+          <main className="flex-1 min-w-0">{children}</main>
+        </div>
+      </div>
     );
   }
 
@@ -233,57 +319,60 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     const activeItem = allPayrollItems.find((item) => pathname === item.href);
 
     return (
-      <div className="flex items-start gap-4 p-0">
-        <aside className="w-52 flex-shrink-0">
-          <div className="sticky mt-[4.75rem] top-[calc(1.5rem+4.75rem)]">
-            {/* Nav card — starts flush with the right panel */}
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
-              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
-              {/* Back link + current page title */}
-              <div className="mb-1 flex items-center gap-2">
-                <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-                <span className="text-xs text-muted-foreground font-medium">Payroll</span>
-              </div>
-              {activeItem && (
-                <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
-              )}
-              {!activeItem && <div className="mb-4" />}
-              <nav className="flex flex-col gap-0.5">
-              {payrollGroups.map((group, gi) => (
-                <div key={gi} className={gi > 0 ? "mt-4" : ""}>
-                  {group.label && (
-                    <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                      {group.label}
-                    </p>
-                  )}
-                  {group.items.map((item) => {
-                    const isActive = pathname === item.href;
-                    const Icon = item.icon;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={cn(
-                          "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{item.label}</span>
-                      </Link>
-                    );
-                  })}
+      <div className="flex flex-col gap-4">
+        <ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />
+        <div className="flex items-start gap-4 p-0">
+          <aside className="w-52 flex-shrink-0">
+            <div className="sticky mt-[4.75rem] top-[calc(1.5rem+4.75rem)]">
+              {/* Nav card — starts flush with the right panel */}
+              <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+                {/* Back link + current page title */}
+                <div className="mb-1 flex items-center gap-2">
+                  <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Link>
+                  <span className="text-xs text-muted-foreground font-medium">Payroll</span>
                 </div>
-              ))}
-              </nav>
-            </div>{/* end nav card */}
-          </div>{/* end sticky */}
-        </aside>
-        <main className="flex-1 min-w-0">{children}</main>
+                {activeItem && (
+                  <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
+                )}
+                {!activeItem && <div className="mb-4" />}
+                <nav className="flex flex-col gap-0.5">
+                {payrollGroups.map((group, gi) => (
+                  <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+                    {group.label && (
+                      <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        {group.label}
+                      </p>
+                    )}
+                    {group.items.map((item) => {
+                      const isActive = pathname === item.href;
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={cn(
+                            "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
+                            isActive
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
+                </nav>
+              </div>{/* end nav card */}
+            </div>{/* end sticky */}
+          </aside>
+          <main className="flex-1 min-w-0">{children}</main>
+        </div>
       </div>
     );
   }
@@ -301,61 +390,64 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     const activeItem = allOtItems.find((item) => pathname === item.href);
 
     return (
-      <div className="flex items-start gap-4 p-0">
-        <aside className="w-52 flex-shrink-0">
-          <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)]">
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
-              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
-              <div className="mb-1 flex items-center gap-2">
-                <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-                <span className="text-xs text-muted-foreground font-medium">OT Management</span>
+      <div className="flex flex-col gap-4">
+        <ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />
+        <div className="flex items-start gap-4 p-0">
+          <aside className="w-52 flex-shrink-0">
+            <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)]">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+                <div className="mb-1 flex items-center gap-2">
+                  <Link href="/dashboard/hr/attendance" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Link>
+                  <span className="text-xs text-muted-foreground font-medium">OT Management</span>
+                </div>
+                {activeItem && (
+                  <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
+                )}
+                {!activeItem && <div className="mb-4" />}
+                <nav className="flex flex-col gap-0.5">
+                  {visibleOtGroups.map((group, gi) => (
+                    <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+                      {group.label && (
+                        <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                          {group.label}
+                        </p>
+                      )}
+                      {group.items.map((item) => {
+                        const isActive = pathname === item.href;
+                        const Icon = item.icon;
+                        const count = item.label === "Notifications" ? otNotifCount : item.label === "Approvals" ? otApprovalCount : 0;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                              "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
+                              isActive
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                            {count > 0 && (
+                              <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
+                                {count}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </nav>
               </div>
-              {activeItem && (
-                <p className="text-sm font-semibold text-foreground mb-4 leading-snug">{activeItem.label}</p>
-              )}
-              {!activeItem && <div className="mb-4" />}
-              <nav className="flex flex-col gap-0.5">
-                {visibleOtGroups.map((group, gi) => (
-                  <div key={gi} className={gi > 0 ? "mt-4" : ""}>
-                    {group.label && (
-                      <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                        {group.label}
-                      </p>
-                    )}
-                    {group.items.map((item) => {
-                      const isActive = pathname === item.href;
-                      const Icon = item.icon;
-                      const count = item.label === "Notifications" ? otNotifCount : item.label === "Approvals" ? otApprovalCount : 0;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={cn(
-                            "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
-                            isActive
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                          )}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                          {count > 0 && (
-                            <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
-                              {count}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ))}
-              </nav>
             </div>
-          </div>
-        </aside>
-        <main className="flex-1 min-w-0">{children}</main>
+          </aside>
+          <main className="flex-1 min-w-0">{children}</main>
+        </div>
       </div>
     );
   }
@@ -374,66 +466,69 @@ export default function HRLayout({ children }: { children: ReactNode }) {
     })
     .filter(Boolean) as typeof LEAVE_GROUPS;
   return (
-    <div className="flex items-start gap-4 p-0">
-      {/* Leave sub-nav sidebar */}
-      <aside className="w-52 flex-shrink-0">
-        <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)] relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
-          <div className="mb-4 flex items-center gap-2">
-            <Link
-              href="/dashboard/hr/attendance"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <h2 className="text-sm font-semibold text-foreground">E-Leave</h2>
+    <div className="flex flex-col gap-4">
+      <ModuleHeaderTabs activeGroup={getActiveHrGroup(pathname)} />
+      <div className="flex items-start gap-4 p-0">
+        {/* Leave sub-nav sidebar */}
+        <aside className="w-52 flex-shrink-0">
+          <div className="sticky mt-[5rem] top-[calc(1.5rem+5rem)] relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+            <div className="mb-4 flex items-center gap-2">
+              <Link
+                href="/dashboard/hr/attendance"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <h2 className="text-sm font-semibold text-foreground">E-Leave</h2>
+            </div>
+
+            <nav className="flex flex-col gap-0.5">
+              {visibleGroups.map((group, gi) => (
+                <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+                  {group.label && (
+                    <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      {group.label}
+                    </p>
+                  )}
+                  {group.items.map((section) => {
+                    const isActive = pathname === section.href;
+                    const Icon = section.icon;
+                    return (
+                      <Link
+                        key={`${section.href}-${section.label}`}
+                        href={section.href}
+                        className={cn(
+                          "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{section.label}</span>
+                        {section.label === "Approvals" && approvalCount > 0 && (
+                          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
+                            {approvalCount}
+                          </span>
+                        )}
+                        {section.label === "My Requests" && myPendingCount > 0 && (
+                          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white leading-none">
+                            {myPendingCount}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
           </div>
+        </aside>
 
-          <nav className="flex flex-col gap-0.5">
-            {visibleGroups.map((group, gi) => (
-              <div key={gi} className={gi > 0 ? "mt-4" : ""}>
-                {group.label && (
-                  <p className="px-3 pb-1 pt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                    {group.label}
-                  </p>
-                )}
-                {group.items.map((section) => {
-                  const isActive = pathname === section.href;
-                  const Icon = section.icon;
-                  return (
-                    <Link
-                      key={`${section.href}-${section.label}`}
-                      href={section.href}
-                      className={cn(
-                        "flex items-center gap-2 rounded px-3 py-2 text-sm font-medium transition-colors",
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{section.label}</span>
-                      {section.label === "Approvals" && approvalCount > 0 && (
-                        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
-                          {approvalCount}
-                        </span>
-                      )}
-                      {section.label === "My Requests" && myPendingCount > 0 && (
-                        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white leading-none">
-                          {myPendingCount}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </nav>
-        </div>
-      </aside>
-
-      {/* Content */}
-      <main className="flex-1 min-w-0">{children}</main>
+        {/* Content */}
+        <main className="flex-1 min-w-0">{children}</main>
+      </div>
     </div>
   );
 }

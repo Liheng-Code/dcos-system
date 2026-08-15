@@ -6,7 +6,7 @@ export function ModulePageLayout({ headerTabs, children }: { headerTabs: React.R
   return (
     <div className="flex h-full flex-col">
       {headerTabs}
-      <div className="flex-1">
+      <div className="flex-1 pt-4">
         {children}
       </div>
     </div>

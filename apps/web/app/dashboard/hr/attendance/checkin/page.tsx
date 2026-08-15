@@ -3,12 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, CheckCircle, Clock, Loader2, LogIn, LogOut, MapPin, QrCode, Scan, Wifi, X } from "lucide-react";
+import { Camera, CheckCircle, Clock, Download, Loader2, LogIn, LogOut, MapPin, QrCode, Scan, Wifi, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePwaInstall } from "@/hooks/use-pwa-install";
 import type jsQRType from "jsqr";
+
+function getInitialTabFromQuery(): "web" | "gps" | "qr" | null {
+  if (typeof window === "undefined") return null;
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab === "qr" || tab === "web" || tab === "gps" ? tab : null;
+}
 
 interface TodayStatus {
   date: string;
@@ -51,6 +58,8 @@ function formatTime(t: string | null) {
 
 export default function CheckInPage() {
   const router = useRouter();
+  const { canInstall, isIOS, promptInstall } = usePwaInstall();
+  const [installHintDismissed, setInstallHintDismissed] = useState(false);
   const [status, setStatus] = useState<TodayStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -84,8 +93,14 @@ export default function CheckInPage() {
 
   useEffect(() => {
     fetchStatus();
+    setInstallHintDismissed(localStorage.getItem("dcos-attendance-install-hint-dismissed") === "1");
     return () => { stopQrScanner(); };
   }, []);
+
+  function dismissInstallHint() {
+    localStorage.setItem("dcos-attendance-install-hint-dismissed", "1");
+    setInstallHintDismissed(true);
+  }
 
   async function fetchStatus() {
     setLoading(true);
@@ -327,12 +342,30 @@ export default function CheckInPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Attendance Check-in</h1>
-        <p className="text-sm text-muted-foreground mt-1">{today}</p>
+    <div className="space-y-6">
+      <div className="-ml-56 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold">Attendance Check-in</h1>
+          <p className="text-sm text-muted-foreground mt-1">{today}</p>
+        </div>
+        {!installHintDismissed && canInstall && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={promptInstall}>
+            <Download className="h-4 w-4" />
+            Install App for Faster Scan
+          </Button>
+        )}
+        {!installHintDismissed && isIOS && !canInstall && (
+          <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+            Tap Share → Add to Home Screen for one-tap scanning
+            <button type="button" onClick={dismissInstallHint} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="space-y-6 lg:order-2">
       <Card>
         <CardContent className="pt-6 space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -399,7 +432,9 @@ export default function CheckInPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
+      <div className="lg:col-span-2 space-y-6 lg:order-1">
       {!attendanceEnabled && (
         <Card className="border-destructive/40">
           <CardHeader>
@@ -433,8 +468,13 @@ export default function CheckInPage() {
 
       {/* Check-in methods */}
       {attendanceEnabled && (!status?.checked_in || siteRequiredCheckout) && (
-        <Tabs defaultValue={siteRequired || siteRequiredCheckout ? "qr" : "web"} onValueChange={() => stopQrScanner()}>
+        <Tabs
+          defaultValue={getInitialTabFromQuery() ?? (siteRequired || siteRequiredCheckout ? "qr" : "web")}
+          onValueChange={() => stopQrScanner()}
+        >
+        <Card className="gap-0 py-0 overflow-hidden">
           {!siteRequiredCheckout && (
+            <div className="border-b px-3 pt-3 pb-3">
             <TabsList className="w-full">
               {!siteRequired && (
                 <>
@@ -450,35 +490,33 @@ export default function CheckInPage() {
                 <QrCode className="mr-1.5 h-4 w-4" />QR Code
               </TabsTrigger>
             </TabsList>
+            </div>
           )}
 
           {/* Web tab */}
           {!siteRequired && (
-          <TabsContent value="web">
-            <Card>
-              <CardHeader>
+          <TabsContent value="web" className="space-y-4">
+              <CardHeader className="pt-4">
                 <CardTitle className="text-base">Web Check-in</CardTitle>
                 <CardDescription>For office and remote staff. One-click attendance.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pb-4">
                 <Button className="w-full h-14 text-base" onClick={handleWebCheckIn} disabled={submitting}>
                   {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <LogIn className="mr-2 h-5 w-5" />}
                   Check In Now
                 </Button>
               </CardContent>
-            </Card>
           </TabsContent>
           )}
 
           {/* GPS + Selfie tab */}
           {!siteRequired && (
-          <TabsContent value="gps">
-            <Card>
-              <CardHeader>
+          <TabsContent value="gps" className="space-y-4">
+              <CardHeader className="pt-4">
                 <CardTitle className="text-base">GPS + Selfie Check-in</CardTitle>
                 <CardDescription>For site/field workers. Validates your location and identity.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pb-4">
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Step 1 — Capture selfie</p>
                   {capturedPhoto ? (
@@ -538,21 +576,19 @@ export default function CheckInPage() {
                   Submit Check-in
                 </Button>
               </CardContent>
-            </Card>
           </TabsContent>
           )}
 
           {/* QR tab */}
-          <TabsContent value="qr">
-            <Card>
-              <CardHeader>
+          <TabsContent value="qr" className="space-y-4">
+              <CardHeader className="pt-4">
                 <CardTitle className="text-base">Site QR {siteRequiredCheckout ? "Check-out" : "Check-in"}</CardTitle>
                 <CardDescription>
                   Scan the fixed QR code posted at your site. Location is verified automatically.
                   {status?.attendance_site?.name ? ` Assigned site: ${status.attendance_site.name}.` : ""}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pb-4">
 
                 {/* Step 1 — Scan or enter token */}
                 <div className="space-y-3">
@@ -683,14 +719,16 @@ export default function CheckInPage() {
                   Submit {siteRequiredCheckout ? "Check-out" : "Check-in"}
                 </Button>
               </CardContent>
-            </Card>
           </TabsContent>
+        </Card>
         </Tabs>
       )}
 
       <Button variant="ghost" size="sm" className="w-full" onClick={() => router.push("/dashboard/hr/attendance/my")}>
         View My Attendance History
       </Button>
+      </div>
+      </div>
     </div>
   );
 }

@@ -89,9 +89,9 @@ export default function MyAttendancePage() {
   const totalHours = records.reduce((acc, r) => acc + (r.hours_worked ?? 0), 0);
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h1 className="text-2xl font-semibold">My Attendance</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Your monthly attendance history</p>
         </div>
@@ -101,7 +101,7 @@ export default function MyAttendancePage() {
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Present", value: presentCount, color: "text-green-600" },
           { label: "Late",    value: lateCount,    color: "text-orange-500" },
@@ -117,6 +117,8 @@ export default function MyAttendancePage() {
         ))}
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="lg:col-span-2">
       {/* Calendar */}
       <Card>
         <CardHeader className="pb-2">
@@ -165,9 +167,10 @@ export default function MyAttendancePage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* Record list */}
-      <Card>
+      <Card className="h-fit">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Daily Log</CardTitle>
         </CardHeader>
@@ -202,6 +205,7 @@ export default function MyAttendancePage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
 import { FillMissingDialog } from "@/components/hr/employees/fill-missing-dialog";
+import { EmployeesTabs } from "@/components/hr/employees/employees-tabs";
 import {
   type EmployeeProfile,
   type Department,
@@ -172,11 +173,8 @@ export default function EmployeesListPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Employee Master</h2>
-          <p className="text-muted-foreground">Search, filter, and update existing staff records</p>
-        </div>
+      <div className="flex items-center justify-between">
+        <EmployeesTabs />
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" onClick={() => setFillDialogOpen(true)}>
             <WandSparkles className="h-4 w-4" />
@@ -189,6 +187,11 @@ export default function EmployeesListPage() {
             </Link>
           </Button>
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Employee Master</h2>
+        <p className="text-muted-foreground">Search, filter, and update existing staff records</p>
       </div>
 
       <Card>

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { LocationPicker } from "@/components/ui/location-picker";
 
 interface SiteLocation {
@@ -231,9 +232,9 @@ export default function SitesPage() {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="-ml-56">
           <h1 className="text-2xl font-semibold">Site Locations & QR</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage geofenced sites and fixed QR codes for attendance</p>
         </div>
@@ -247,7 +248,10 @@ export default function SitesPage() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={cn(
+          "grid gap-4",
+          sites.length <= 1 ? "grid-cols-1" : sites.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3"
+        )}>
           {sites.map(site => {
             const siteAssignments = getUniqueSiteAssignments(assignments, site.id);
             const assignedCount = siteAssignments.length;

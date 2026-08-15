@@ -33,7 +33,7 @@ function ModuleHeaderTab({ item, isActive, pathname, searchParams }: {
           "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
             ? "bg-primary/10 text-primary font-semibold shadow-sm ring-1 ring-primary/15"
-            : "text-muted-foreground hover:bg-background hover:text-foreground",
+            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
         {item.label}
@@ -52,7 +52,7 @@ function ModuleHeaderTab({ item, isActive, pathname, searchParams }: {
           "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
             ? "bg-primary/10 text-primary font-semibold shadow-sm ring-1 ring-primary/15"
-            : "text-muted-foreground hover:bg-background hover:text-foreground",
+            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
         {displayLabel}
@@ -93,7 +93,7 @@ function ModuleHeaderTabsInner({ activeGroup }: { activeGroup: ModuleNavGroup })
   const { isNavItemActive } = useModuleSettings();
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/40 px-4 py-2 shrink-0">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 shadow-sm shrink-0">
       {activeGroup.items.map(item => {
         if (!isNavItemActive(item.href)) return null;
         return (

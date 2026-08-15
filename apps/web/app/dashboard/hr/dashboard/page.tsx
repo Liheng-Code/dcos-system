@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, AlertCircle, TrendingUp, Users, Clock, Zap } from "lucide-react";
+import { Download, AlertCircle, TrendingUp, Users, Clock, Zap, CalendarDays, Timer, DollarSign } from "lucide-react";
 import { format, subDays } from "date-fns";
 
 interface WorkforceDashboardStats {
@@ -38,6 +39,7 @@ interface ResourceUtilization {
 }
 
 export default function WorkforceDashboard() {
+  const router = useRouter();
   const [stats, setStats] = useState<WorkforceDashboardStats>({
     total_employees: 0,
     active_employees: 0,
@@ -373,14 +375,23 @@ export default function WorkforceDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">
-            <Button variant="outline" className="justify-start">
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/employees")}>
               <Users className="mr-2 h-4 w-4" /> View Employees
             </Button>
-            <Button variant="outline" className="justify-start">
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/attendance")}>
               <Clock className="mr-2 h-4 w-4" /> Review Attendance
             </Button>
-            <Button variant="outline" className="justify-start">
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/competency")}>
               <Zap className="mr-2 h-4 w-4" /> Manage Skills
+            </Button>
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/leave")}>
+              <CalendarDays className="mr-2 h-4 w-4" /> E-Leave
+            </Button>
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/overtime")}>
+              <Timer className="mr-2 h-4 w-4" /> OT Management
+            </Button>
+            <Button variant="outline" className="justify-start" onClick={() => router.push("/dashboard/hr/payroll")}>
+              <DollarSign className="mr-2 h-4 w-4" /> Payroll
             </Button>
           </div>
         </CardContent>
