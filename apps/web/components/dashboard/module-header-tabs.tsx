@@ -30,10 +30,10 @@ function ModuleHeaderTab({ item, isActive, pathname, searchParams }: {
       <Link
         href={item.href}
         className={cn(
-          "px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
+          "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
-            ? "border-primary text-foreground"
-            : "border-transparent text-muted-foreground hover:text-foreground",
+            ? "bg-primary/10 text-primary font-semibold shadow-sm ring-1 ring-primary/15"
+            : "text-muted-foreground hover:bg-background hover:text-foreground",
         )}
       >
         {item.label}
@@ -49,10 +49,10 @@ function ModuleHeaderTab({ item, isActive, pathname, searchParams }: {
       <Link
         href={item.href}
         className={cn(
-          "inline-flex items-center gap-1 px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
+          "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
-            ? "border-primary text-foreground"
-            : "border-transparent text-muted-foreground hover:text-foreground",
+            ? "bg-primary/10 text-primary font-semibold shadow-sm ring-1 ring-primary/15"
+            : "text-muted-foreground hover:bg-background hover:text-foreground",
         )}
       >
         {displayLabel}
@@ -93,7 +93,7 @@ function ModuleHeaderTabsInner({ activeGroup }: { activeGroup: ModuleNavGroup })
   const { isNavItemActive } = useModuleSettings();
 
   return (
-    <div className="flex items-center gap-1 border-b border-border bg-background px-4 py-0 shrink-0">
+    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/40 px-4 py-2 shrink-0">
       {activeGroup.items.map(item => {
         if (!isNavItemActive(item.href)) return null;
         return (

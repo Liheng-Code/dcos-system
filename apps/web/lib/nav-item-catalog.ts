@@ -27,6 +27,7 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "/dashboard/projects", label: "Projects", nodeType: "item" },
     { navKey: "/dashboard/wbs", label: "WBS", nodeType: "item" },
     { navKey: "/dashboard/tasks", label: "Tasks", nodeType: "item" },
+    { navKey: "/dashboard/stakeholders", label: "Stakeholders", nodeType: "item" },
   ],
 
   reporting: [
@@ -229,7 +230,6 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
 
   administration: [
     { navKey: "/dashboard/settings", label: "Settings", nodeType: "item" },
-    { navKey: "/dashboard/administration/stakeholders", label: "Stakeholders", nodeType: "item" },
     { navKey: "/dashboard/administration/stakeholder-templates", label: "Stakeholder Templates", nodeType: "item" },
   ],
 };

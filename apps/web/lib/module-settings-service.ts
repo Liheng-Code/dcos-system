@@ -77,6 +77,7 @@ export function isRouteBlocked(pathname: string, activeKeys: string[]): boolean 
     "/dashboard/projects": "project",
     "/dashboard/wbs": "project",
     "/dashboard/tasks": "project",
+    "/dashboard/stakeholders": "project",
     "/dashboard/reports": "reporting",
     "/dashboard/insights": "reporting",
     "/dashboard/documents": "document_control",

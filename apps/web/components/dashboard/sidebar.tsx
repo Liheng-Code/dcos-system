@@ -54,6 +54,7 @@ const PROJECT_ITEMS = [
   { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
   { href: "/dashboard/wbs",                      label: "WBS",          icon: FolderTree },
   { href: "/dashboard/tasks",                    label: "Tasks",        icon: ListChecks },
+  { href: "/dashboard/stakeholders",             label: "Stakeholders", icon: Users },
 
 ] as const;
 
@@ -61,6 +62,7 @@ const PRECONTRACT_ITEMS = [
   { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
   { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
   { href: "/dashboard/wbs",                      label: "WBS (Preliminary)", icon: FolderTree },
+  { href: "/dashboard/stakeholders",             label: "Stakeholders", icon: Users },
 
 ] as const;
 
@@ -677,7 +679,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
             {(collapsed || adminOpen) && (
               <>
                 <NavItem href="/dashboard/settings"                                  label="Settings"               icon={Cog} />
-                <NavItem href="/dashboard/administration/stakeholders"               label="Stakeholders"            icon={Users} />
                 <NavItem href="/dashboard/administration/stakeholder-templates"      label="Stakeholder Templates"   icon={FileText} />
               </>
             )}
