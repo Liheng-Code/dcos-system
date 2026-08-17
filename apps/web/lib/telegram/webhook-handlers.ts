@@ -58,7 +58,7 @@ async function loadSession(
   return (data as AttendanceTelegramSession | null) ?? null;
 }
 
-async function findProfileByTelegramUserId(admin: SupabaseClient, telegramUserId: number) {
+export async function findProfileByTelegramUserId(admin: SupabaseClient, telegramUserId: number) {
   const { data } = await admin
     .from("profiles")
     .select("id, employee_id, full_name, status")
@@ -69,7 +69,7 @@ async function findProfileByTelegramUserId(admin: SupabaseClient, telegramUserId
 }
 
 const START_OVER_MESSAGE = "Send /checkin (or /checkout) again to start.";
-const NOT_LINKED_MESSAGE = "You're not linked yet. Go to DCOS → Attendance → Link Telegram.";
+export const NOT_LINKED_MESSAGE = "You're not linked yet. Go to DCOS → Attendance → Link Telegram.";
 
 export async function handleLinkCommand(
   admin: SupabaseClient,
@@ -293,10 +293,18 @@ export async function handlePhotoMessage(admin: SupabaseClient, message: Telegra
 export async function handleHelp(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
   await sendMessage(
     message.chat.id,
-    "DCOS Attendance Bot\n\n" +
+    "DCOS Bot\n\n" +
+      "Attendance\n" +
       "/link <code> — link your Telegram account (get a code from DCOS → Attendance)\n" +
       "/checkin — check in with your location and a selfie\n" +
-      "/checkout — check out with your location and a selfie\n" +
+      "/checkout — check out with your location and a selfie\n\n" +
+      "Leave\n" +
+      "/apply — get a link to apply for leave\n" +
+      "/balance — your current leave balance\n" +
+      "/myleave — your recent leave requests\n" +
+      "/pending — leave requests awaiting your approval\n" +
+      "/approve <id> — approve a request\n" +
+      "/reject <id> <reason> — reject a request\n\n" +
       "/help — show this message",
   );
 }

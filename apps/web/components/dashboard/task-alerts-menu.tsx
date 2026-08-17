@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, CheckCheck, CircleCheck, ClipboardCheck, RotateCcw, Send, XCircle } from "lucide-react";
+import { Bell, CalendarClock, CheckCheck, CircleCheck, ClipboardCheck, RotateCcw, Send, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -36,17 +36,28 @@ function alertIcon(type: WbsTaskAlertType) {
     task_rejected: XCircle,
     task_progress_updated: ClipboardCheck,
     task_overdue: Bell,
+    leave_pending_approval: CalendarClock,
+    leave_request_approved: CircleCheck,
+    leave_request_rejected: XCircle,
   };
   return map[type];
 }
+
+const LEAVE_ALERT_TYPES = new Set(["leave_pending_approval", "leave_request_approved", "leave_request_rejected"]);
 
 export function TaskAlertsMenu() {
   const router = useRouter();
   const { alerts, unreadCount, loading, markRead, markAllRead } = useTaskAlerts();
 
-  async function openAlertById(alertId: string, taskId: string) {
-    await markRead(alertId);
-    router.push(`/dashboard/tasks/${taskId}`);
+  async function openAlert(alert: { id: string; alert_type: string; wbs_task_id: string | null }) {
+    await markRead(alert.id);
+    if (alert.wbs_task_id) {
+      router.push(`/dashboard/tasks/${alert.wbs_task_id}`);
+    } else if (alert.alert_type === "leave_pending_approval") {
+      router.push("/dashboard/hr/leave/approvals");
+    } else if (LEAVE_ALERT_TYPES.has(alert.alert_type)) {
+      router.push("/dashboard/hr/leave/my-requests");
+    }
   }
 
   return (
@@ -87,7 +98,7 @@ export function TaskAlertsMenu() {
             return (
               <DropdownMenuItem
                 key={alert.id}
-                onClick={() => void openAlertById(alert.id, alert.wbs_task_id)}
+                onClick={() => void openAlert(alert)}
                 className={cn("items-start gap-3 px-3 py-3", unread && "bg-blue-50/70")}
               >
                 <span className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full", unread ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500")}>
@@ -98,7 +109,9 @@ export function TaskAlertsMenu() {
                     <span className={cn("truncate text-sm", unread ? "font-semibold text-foreground" : "font-medium text-slate-700")}>{alert.title}</span>
                     <span className="shrink-0 text-[10px] text-muted-foreground">{formatRelativeTime(alert.created_at)}</span>
                   </span>
-                  <span className="mt-0.5 block truncate text-xs font-medium text-slate-700">{alert.task_code} - {alert.task_name}</span>
+                  {(alert.task_code || alert.task_name) && (
+                    <span className="mt-0.5 block truncate text-xs font-medium text-slate-700">{alert.task_code} - {alert.task_name}</span>
+                  )}
                   {alert.body && <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{alert.body}</span>}
                   {alert.actor_name && <span className="mt-1 block text-[10px] text-muted-foreground">From {alert.actor_name}</span>}
                 </span>

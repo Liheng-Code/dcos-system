@@ -115,20 +115,23 @@ export type WbsTaskAlertType =
   | "task_approved"
   | "task_rejected"
   | "task_progress_updated"
-  | "task_overdue";
+  | "task_overdue"
+  | "leave_pending_approval"
+  | "leave_request_approved"
+  | "leave_request_rejected";
 
 export interface WbsTaskAlertRecord {
   id: string;
-  project_id: string;
-  wbs_task_id: string;
+  project_id: string | null;
+  wbs_task_id: string | null;
   actor_id: string | null;
   actor_name: string | null;
   recipient_id: string;
   alert_type: WbsTaskAlertType;
   title: string;
   body: string | null;
-  task_code: string;
-  task_name: string;
+  task_code: string | null;
+  task_name: string | null;
   metadata: Record<string, unknown>;
   read_at: string | null;
   created_at: string;

@@ -6,8 +6,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 interface TaskAlertRecord {
   id: string;
-  project_id: string;
-  wbs_task_id: string;
+  project_id: string | null;
+  wbs_task_id: string | null;
   recipient_id: string | null;
   alert_type: string;
   title: string;
@@ -68,7 +68,10 @@ serve(async (req) => {
   const authUser = users.find((u) => u.id === alert.recipient_id);
   const recipientEmail = authUser?.email;
 
-  const messageText = `[DCOS] ${alert.title}\n${alert.body ?? ""}\nTask: ${alert.task_code ?? ""} · ${alert.task_name ?? ""}`;
+  const taskLine = alert.task_code || alert.task_name
+    ? `\nTask: ${alert.task_code ?? ""} · ${alert.task_name ?? ""}`
+    : "";
+  const messageText = `[DCOS] ${alert.title}\n${alert.body ?? ""}${taskLine}`;
 
   const results: Record<string, unknown> = {};
 

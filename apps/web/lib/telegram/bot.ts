@@ -9,6 +9,7 @@ function getBotToken(): string {
 export interface SendMessageOptions {
   requestLocation?: boolean;
   removeKeyboard?: boolean;
+  parseMode?: "Markdown";
 }
 
 export async function sendMessage(
@@ -19,6 +20,10 @@ export async function sendMessage(
   const token = getBotToken();
 
   const payload: Record<string, unknown> = { chat_id: chatId, text };
+
+  if (opts?.parseMode) {
+    payload.parse_mode = opts.parseMode;
+  }
 
   if (opts?.requestLocation) {
     payload.reply_markup = {

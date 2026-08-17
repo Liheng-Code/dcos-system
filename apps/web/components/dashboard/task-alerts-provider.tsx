@@ -32,7 +32,13 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
   const [unreadCount, setUnreadCount] = useState(0);
 
   const unreadTaskIds = useMemo(
-    () => new Set(alerts.filter((a) => !a.read_at).map((a) => a.wbs_task_id)),
+    () =>
+      new Set(
+        alerts
+          .filter((a) => !a.read_at)
+          .map((a) => a.wbs_task_id)
+          .filter((id): id is string => id != null),
+      ),
     [alerts],
   );
 

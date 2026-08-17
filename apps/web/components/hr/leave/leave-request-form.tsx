@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveApprovalChain } from "@/lib/hr/approval-chain";
+import { insertLeaveTaskAlert } from "@/lib/hr/leave";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -373,6 +374,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
       .eq("id", approverId)
       .single();
 
+    const body = `${currentUser.full_name} has submitted a leave request for ${daysRequested} day(s) from ${format(new Date(startDate), "dd MMM yyyy")} to ${format(new Date(endDate), "dd MMM yyyy")}. Reason: ${reason}`;
+
     await supabase.from("leave_notifications").insert({
       leave_request_id: requestId,
       event_type: "request_submitted",
@@ -380,7 +383,15 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
       recipient_email: approverProfile?.email,
       recipient_name: approverProfile?.full_name,
       subject: `Leave Request from ${currentUser.full_name}`,
-      body: `${currentUser.full_name} has submitted a leave request for ${daysRequested} day(s) from ${format(new Date(startDate), "dd MMM yyyy")} to ${format(new Date(endDate), "dd MMM yyyy")}. Reason: ${reason}`,
+      body,
+    });
+
+    await insertLeaveTaskAlert(supabase, {
+      recipientId: approverId,
+      alertType: "leave_pending_approval",
+      title: `Leave Request from ${currentUser.full_name}`,
+      body,
+      leaveRequestId: requestId,
     });
   };
 

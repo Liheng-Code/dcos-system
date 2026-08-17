@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckSquare } from "lucide-react";
 import { format } from "date-fns";
 import LeaveRequestDetail from "@/components/hr/leave/leave-request-detail";
+import { insertLeaveTaskAlert } from "@/lib/hr/leave";
 
 interface LeaveRequest {
   id: string;
@@ -118,6 +119,13 @@ export default function ApprovalsPage() {
             `${req.profiles.full_name}'s leave request requires your approval.`,
             req.id
           );
+          await insertLeaveTaskAlert(supabase, {
+            recipientId: req.approver_2_id,
+            alertType: "leave_pending_approval",
+            title: `Leave Request from ${req.profiles.full_name}`,
+            body: `${req.profiles.full_name}'s leave request requires your approval.`,
+            leaveRequestId: req.id,
+          });
         }
       } else if (isApprover2) {
         updates = { approver_2_status: "approved", approver_2_date: now };
@@ -157,12 +165,20 @@ export default function ApprovalsPage() {
           }).eq("id", balance.id);
         }
 
+        const approvedBody = `Your ${req.leave_types.leave_name} request for ${req.days_requested} day(s) from ${format(new Date(req.start_date), "dd MMM yyyy")} has been approved.`;
         await queueNotification(
           "request_approved", req.employee_id,
           "Your Leave Request Has Been Approved",
-          `Your ${req.leave_types.leave_name} request for ${req.days_requested} day(s) from ${format(new Date(req.start_date), "dd MMM yyyy")} has been approved.`,
+          approvedBody,
           req.id
         );
+        await insertLeaveTaskAlert(supabase, {
+          recipientId: req.employee_id,
+          alertType: "leave_request_approved",
+          title: "Your Leave Request Has Been Approved",
+          body: approvedBody,
+          leaveRequestId: req.id,
+        });
       }
 
       await supabase.from("leave_requests").update(updates).eq("id", req.id);
@@ -189,12 +205,20 @@ export default function ApprovalsPage() {
 
       await supabase.from("leave_requests").update(updates).eq("id", req.id);
 
+      const rejectedBody = `Your ${req.leave_types.leave_name} request has been rejected. Reason: ${rejectNotes}`;
       await queueNotification(
         "request_rejected", req.employee_id,
         "Your Leave Request Has Been Rejected",
-        `Your ${req.leave_types.leave_name} request has been rejected. Reason: ${rejectNotes}`,
+        rejectedBody,
         req.id
       );
+      await insertLeaveTaskAlert(supabase, {
+        recipientId: req.employee_id,
+        alertType: "leave_request_rejected",
+        title: "Your Leave Request Has Been Rejected",
+        body: rejectedBody,
+        leaveRequestId: req.id,
+      });
 
       setRejectFormReqId(null);
       setRejectNotes("");

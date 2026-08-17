@@ -10,6 +10,16 @@ import {
   handlePhotoMessage,
   type TelegramMessage,
 } from "@/lib/telegram/webhook-handlers";
+import {
+  handleApplyLeaveCommand,
+  handleApproveCommand,
+  handleBalanceCommand,
+  handleMyLeaveCommand,
+  handlePendingApprovalsCommand,
+  handleRejectCommand,
+} from "@/lib/telegram/leave-handlers";
+
+const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 interface TelegramUpdate {
   message?: TelegramMessage;
@@ -45,6 +55,18 @@ export async function POST(request: NextRequest) {
         await handleCheckinCommand(admin, message);
       } else if (text === "/checkout") {
         await handleCheckoutCommand(admin, message);
+      } else if (text === "/apply") {
+        await handleApplyLeaveCommand(admin, message);
+      } else if (text === "/balance") {
+        await handleBalanceCommand(admin, message);
+      } else if (text === "/myleave") {
+        await handleMyLeaveCommand(admin, message);
+      } else if (text === "/pending") {
+        await handlePendingApprovalsCommand(admin, message);
+      } else if (new RegExp(`^/approve\\s+${UUID_RE}$`, "i").test(text)) {
+        await handleApproveCommand(admin, message);
+      } else if (new RegExp(`^/reject\\s+${UUID_RE}\\s+.+$`, "i").test(text)) {
+        await handleRejectCommand(admin, message);
       } else if (text === "/start" || text === "/help") {
         await handleHelp(admin, message);
       } else if (message.location) {
