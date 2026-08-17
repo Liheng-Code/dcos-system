@@ -27,7 +27,15 @@ export async function POST(request: NextRequest) {
 
     if (message) {
       const admin = createAdminClient();
-      const text = message.text?.trim() ?? "";
+      const rawText = message.text?.trim() ?? "";
+      // Normalize for command matching: mobile keyboards auto-capitalize the
+      // first letter after "/" (e.g. "/Checkin"), and Telegram appends
+      // "@BotUsername" to commands in some contexts (groups, inline mentions).
+      // Only the first token is normalized so the /start and /link deep-link
+      // payloads (which are case-sensitive codes) stay untouched.
+      const [firstToken, ...rest] = rawText.split(/\s+/);
+      const normalizedCommand = (firstToken ?? "").toLowerCase().replace(/@\S+$/, "");
+      const text = [normalizedCommand, ...rest].join(" ");
 
       if (/^\/start\s+link_\d{6}/.test(text)) {
         await handleLinkCommand(admin, message, true);
