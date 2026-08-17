@@ -104,48 +104,60 @@ export default function CheckInPage() {
 
   async function fetchStatus() {
     setLoading(true);
-    const res = await fetch("/api/hr/attendance/today");
-    const data = await res.json().catch(() => null);
-    if (res.ok && data) {
-      setStatus(data);
-    } else {
-      toast.error(data?.error ?? "Failed to load attendance status");
+    try {
+      const res = await fetch("/api/hr/attendance/today");
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) {
+        setStatus(data);
+      } else {
+        toast.error(data?.error ?? "Failed to load attendance status");
+      }
+    } catch {
+      toast.error("Network error — check your connection and try again.");
     }
     setLoading(false);
   }
 
   async function handleCheckOut(payload?: Record<string, unknown>) {
     setSubmitting(true);
-    const res = await fetch("/api/hr/attendance/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload ?? { method: "web" }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      toast.success(`Checked out at ${formatTime(data.check_out_time)}${data.hours_worked ? ` · ${data.hours_worked}h worked` : ""}`);
-      fetchStatus();
-    } else {
-      toast.error(data.error ?? "Check-out failed");
+    try {
+      const res = await fetch("/api/hr/attendance/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload ?? { method: "web" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Checked out at ${formatTime(data.check_out_time)}${data.hours_worked ? ` · ${data.hours_worked}h worked` : ""}`);
+        fetchStatus();
+      } else {
+        toast.error(data.error ?? "Check-out failed");
+      }
+    } catch {
+      toast.error("Network error — check your connection and try again.");
     }
     setSubmitting(false);
   }
 
   async function submitCheckIn(payload: Record<string, unknown>) {
     setSubmitting(true);
-    const res = await fetch("/api/hr/attendance/checkin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      const label = data.attendance_type === "LATE" ? "Late arrival recorded" : "Checked in successfully";
-      toast.success(label);
-      fetchStatus();
-      stopCamera();
-    } else {
-      toast.error(data.error ?? "Check-in failed");
+    try {
+      const res = await fetch("/api/hr/attendance/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const label = data.attendance_type === "LATE" ? "Late arrival recorded" : "Checked in successfully";
+        toast.success(label);
+        fetchStatus();
+        stopCamera();
+      } else {
+        toast.error(data.error ?? "Check-in failed");
+      }
+    } catch {
+      toast.error("Network error — check your connection and try again.");
     }
     setSubmitting(false);
   }
