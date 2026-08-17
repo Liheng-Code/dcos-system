@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Settings, Users, TrendingUp, Calendar, Plus, Pencil, Trash2, X, AlertTriangle, Globe } from "lucide-react";
+import { Settings, Users, TrendingUp, Calendar, Plus, Pencil, Trash2, X, AlertTriangle, Globe, Clock } from "lucide-react";
+import { YearEndRunWizard, type YearEndPreview } from "@/components/hr/leave/year-end-run-wizard";
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 const COLOR_OPTIONS = [
@@ -75,6 +77,9 @@ interface LeaveType {
   cancel_window_days: number;
   deduct_from_type_id: string | null;
   is_active: boolean;
+  rounding_rule: string;
+  carryover_expiry_month: number | null;
+  carryover_expiry_day: number | null;
 }
 
 interface LeaveTypeForm {
@@ -98,6 +103,9 @@ interface LeaveTypeForm {
   cancel_window_days: number;
   deduct_from_type_id: string | null;
   is_active: boolean;
+  rounding_rule: string;
+  carryover_expiry_month: number | null;
+  carryover_expiry_day: number | null;
 }
 
 const DEFAULT_FORM: LeaveTypeForm = {
@@ -110,7 +118,16 @@ const DEFAULT_FORM: LeaveTypeForm = {
   gender_restriction: "all", is_replacement_leave: false,
   seniority_based: false, monthly_accrual: false,
   cancel_window_days: 0, deduct_from_type_id: null, is_active: true,
+  rounding_rule: "none", carryover_expiry_month: null, carryover_expiry_day: null,
 };
+
+const ROUNDING_RULE_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "nearest_half", label: "Nearest 0.5 day" },
+  { value: "nearest_whole", label: "Nearest whole day" },
+  { value: "round_up", label: "Round up" },
+  { value: "round_down", label: "Round down" },
+];
 
 interface SeniorityRule {
   id: string;
@@ -135,40 +152,6 @@ interface YearEndLog {
   days_carried: number;
   days_expired: number;
   profiles: { full_name: string };
-}
-
-interface YearEndPreviewRow {
-  employee_id: string;
-  employee_name: string;
-  department: string;
-  leave_type_name: string;
-  current_remaining: number;
-  service_years: number | null;
-  entitlement_days: number;
-  carry_forward: number;
-  expired_days: number;
-  opening_balance: number;
-  blocking_reason: string | null;
-  warning_reason: string | null;
-  existing_next_year_balance: boolean;
-}
-
-interface YearEndPreview {
-  currentYear: number;
-  nextYear: number;
-  canRun: boolean;
-  hasExistingLogs: boolean;
-  hasNextYearBalances: boolean;
-  runnableRows: number;
-  rows: YearEndPreviewRow[];
-  totals: {
-    employees: number;
-    balances: number;
-    entitlementDays: number;
-    carryForward: number;
-    expiredDays: number;
-    openingBalance: number;
-  };
 }
 
 type ActiveSection = "leave_types" | "capacity" | "seniority" | "year_end" | "public_holidays";
@@ -240,8 +223,9 @@ export default function LeaveAdminPage() {
   const [holidayDeleteLoading, setHolidayDeleteLoading] = useState(false);
 
   // Year-end form
-  const [yearEndRunning, setYearEndRunning] = useState(false);
+  const [yearEndWizardOpen, setYearEndWizardOpen] = useState(false);
   const [yearEndMsg, setYearEndMsg] = useState<string | null>(null);
+  const [carryoverExpiryRunning, setCarryoverExpiryRunning] = useState(false);
   const [yearEndPreview, setYearEndPreview] = useState<YearEndPreview | null>(null);
   const [yearEndPreviewLoading, setYearEndPreviewLoading] = useState(false);
   const [yearEndPreviewSearch, setYearEndPreviewSearch] = useState("");
@@ -326,6 +310,9 @@ export default function LeaveAdminPage() {
       cancel_window_days: lt.cancel_window_days ?? 0,
       deduct_from_type_id: lt.deduct_from_type_id ?? null,
       is_active: lt.is_active ?? true,
+      rounding_rule: lt.rounding_rule || "none",
+      carryover_expiry_month: lt.carryover_expiry_month ?? null,
+      carryover_expiry_day: lt.carryover_expiry_day ?? null,
     });
     setTypeError(null);
     setShowTypeForm(true);
@@ -485,9 +472,7 @@ export default function LeaveAdminPage() {
     setYearEndLogs(data || []);
   };
 
-  const runYearEnd = async () => {
-    setYearEndRunning(true);
-    setYearEndMsg(null);
+  const confirmYearEnd = async (): Promise<{ success: boolean; message: string }> => {
     const res = await fetch("/api/hr/leave/year-end", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -495,12 +480,24 @@ export default function LeaveAdminPage() {
     });
     const body = await res.json().catch(() => ({ error: "Year-end processing failed." })) as { error?: string; message?: string };
     if (!res.ok) {
-      setYearEndMsg(`Error: ${body.error || "Year-end processing failed."}`);
+      return { success: false, message: body.error || "Year-end processing failed." };
+    }
+    await Promise.all([loadYearEndPreview(), refreshYearEndLogs()]);
+    return { success: true, message: body.message || "Year-end processing complete." };
+  };
+
+  const runCarryoverExpiry = async () => {
+    setCarryoverExpiryRunning(true);
+    setYearEndMsg(null);
+    const res = await fetch("/api/hr/leave/carryover-expiry", { method: "POST" });
+    const body = await res.json().catch(() => ({ error: "Carryover expiry sweep failed." })) as { error?: string; message?: string };
+    if (!res.ok) {
+      setYearEndMsg(`Error: ${body.error || "Carryover expiry sweep failed."}`);
     } else {
-      setYearEndMsg(body.message || "Year-end processing complete.");
+      setYearEndMsg(body.message || "Carryover expiry sweep complete.");
       await Promise.all([loadYearEndPreview(), refreshYearEndLogs()]);
     }
-    setYearEndRunning(false);
+    setCarryoverExpiryRunning(false);
   };
 
   const yearEndPreviewDepartments = useMemo(() => {
@@ -612,7 +609,13 @@ export default function LeaveAdminPage() {
                         <td className="py-3 px-4 text-center">{lt.is_paid ? "✓" : "—"}</td>
                         <td className="py-3 px-4 text-center">{lt.half_day_allowed ? "✓" : "—"}</td>
                         <td className="py-3 px-4 text-center">
-                          {lt.carryover_allowed ? `✓ (max ${lt.max_carryover})` : "—"}
+                          {lt.carryover_allowed
+                            ? `✓ (max ${lt.max_carryover})${
+                                lt.carryover_expiry_month && lt.carryover_expiry_day
+                                  ? ` · expires ${String(lt.carryover_expiry_month).padStart(2, "0")}/${String(lt.carryover_expiry_day).padStart(2, "0")}`
+                                  : ""
+                              }`
+                            : "—"}
                         </td>
                         <td className="py-3 px-4 text-center">{lt.advance_notice_days || "—"}</td>
                         <td className="py-3 px-4 text-center capitalize">{lt.gender_restriction === "all" ? "any" : lt.gender_restriction}</td>
@@ -717,10 +720,17 @@ export default function LeaveAdminPage() {
           {/* ── Seniority Rules ───────────────────────────────────────────── */}
           {activeSection === "seniority" && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                These rules define how many leave days employees are entitled to based on years of service.
-                Only applies to leave types with <em>seniority_based = true</em>.
-              </p>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  These rules define how many leave days employees are entitled to based on years of service.
+                  Only applies to leave types with <em>seniority_based = true</em>.
+                </p>
+                <Link href="/dashboard/hr/leave/seniority-rules">
+                  <Button size="sm" className="gap-1.5 flex-shrink-0">
+                    <Pencil className="h-4 w-4" /> Manage Seniority Rules
+                  </Button>
+                </Link>
+              </div>
               <div className="rounded-lg border border-border overflow-hidden">
                 <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -850,12 +860,16 @@ export default function LeaveAdminPage() {
                 <CardHeader className="grid grid-cols-[1fr_auto] items-center gap-4">
                   <CardTitle className="text-base">Year-End Run</CardTitle>
                   <div className="flex flex-wrap justify-end gap-3">
-                    <Button onClick={loadYearEndPreview} disabled={yearEndPreviewLoading || yearEndRunning} variant="outline" size="sm">
+                    <Button onClick={loadYearEndPreview} disabled={yearEndPreviewLoading} variant="outline" size="sm">
                       {yearEndPreviewLoading ? "Loading Preview..." : "Refresh Preview"}
                     </Button>
-                    <Button onClick={runYearEnd} disabled={yearEndRunning || yearEndPreviewLoading || !yearEndPreview?.canRun} className="gap-2" size="sm">
+                    <Button onClick={() => setYearEndWizardOpen(true)} disabled={yearEndPreviewLoading || !yearEndPreview || yearEndPreview.rows.length === 0} className="gap-2" size="sm">
                       <Calendar className="h-4 w-4" />
-                      {yearEndRunning ? "Processing..." : `Confirm Year-End for ${new Date().getFullYear()} -> ${new Date().getFullYear() + 1}`}
+                      {`Confirm Year-End for ${new Date().getFullYear()} -> ${new Date().getFullYear() + 1}`}
+                    </Button>
+                    <Button onClick={runCarryoverExpiry} disabled={carryoverExpiryRunning} variant="outline" className="gap-2" size="sm">
+                      <Clock className="h-4 w-4" />
+                      {carryoverExpiryRunning ? "Sweeping..." : "Apply Carryover Expiry"}
                     </Button>
                   </div>
                 </CardHeader>
@@ -955,9 +969,9 @@ export default function LeaveAdminPage() {
                   </div>
                 </div>
                 <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="overflow-x-auto">
+                  <div className="max-h-[70vh] overflow-y-auto overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/50 border-b border-border">
+                    <thead className="sticky top-0 z-10 bg-muted/50 border-b border-border">
                       <tr>
                         <th className="text-left font-medium py-3 px-4">Employee</th>
                         <th className="text-left font-medium py-3 px-4">Department</th>
@@ -1317,6 +1331,44 @@ export default function LeaveAdminPage() {
                 </div>
               </div>
 
+              {/* Row: Rounding rule | Carryover expiry */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Rounding Rule</label>
+                  <select
+                    className={inputCls}
+                    value={typeForm.rounding_rule}
+                    onChange={(e) => set("rounding_rule", e.target.value)}
+                  >
+                    {ROUNDING_RULE_OPTIONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {typeForm.carryover_allowed && (
+                  <div>
+                    <label className={labelCls}>Carryover Expiry</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min={1} max={12}
+                        className={inputCls}
+                        placeholder="Month"
+                        value={typeForm.carryover_expiry_month ?? ""}
+                        onChange={(e) => set("carryover_expiry_month", e.target.value === "" ? null : Number(e.target.value))}
+                      />
+                      <input
+                        type="number" min={1} max={31}
+                        className={inputCls}
+                        placeholder="Day"
+                        value={typeForm.carryover_expiry_day ?? ""}
+                        onChange={(e) => set("carryover_expiry_day", e.target.value === "" ? null : Number(e.target.value))}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Leave blank for no expiry</p>
+                  </div>
+                )}
+              </div>
+
               {/* Cancel window — full width */}
               <div>
                 <label className={labelCls}>Cancel window (days after submission)</label>
@@ -1413,6 +1465,9 @@ export default function LeaveAdminPage() {
           </div>
         </div>
       )}
+
+      <YearEndRunWizard open={yearEndWizardOpen} onOpenChange={setYearEndWizardOpen} preview={yearEndPreview} onConfirm={confirmYearEnd} />
+
     </div>
   );
 }

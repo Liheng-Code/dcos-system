@@ -22,6 +22,7 @@ import {
   DollarSign,
   Users,
   Clock,
+  XCircle,
 } from "lucide-react";
 import { format, getDaysInMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { toast } from "sonner";
@@ -56,6 +57,12 @@ interface Period {
   director_approved_at: string | null;
   locked_by: string | null;
   locked_at: string | null;
+  rejection_comment: string | null;
+}
+
+interface WorkingTimeSettings {
+  days_per_month?: number;
+  hours_per_day?: number;
 }
 
 interface PreviewRow {
@@ -113,6 +120,22 @@ function getStepIndex(status: string) {
   return idx === -1 ? 0 : idx;
 }
 
+// ─── Guided-stepper groups (4 macro steps built from the 8 detailed statuses) ─
+
+const STEP_GROUPS = [
+  { key: "calculate",   label: "Calculate",       statuses: ["open", "draft"] },
+  { key: "review",      label: "Review & Submit", statuses: ["calculated", "hr_reviewed", "finance_verified"] },
+  { key: "lock_export", label: "Lock & Export",   statuses: ["director_approved", "locked"] },
+  { key: "mark_paid",   label: "Mark Paid",       statuses: ["exported", "paid"] },
+] as const;
+
+type StepGroupKey = typeof STEP_GROUPS[number]["key"];
+
+function getGroupIndex(status: string): number {
+  const idx = STEP_GROUPS.findIndex((g) => (g.statuses as readonly string[]).includes(status));
+  return idx === -1 ? 0 : idx;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -164,6 +187,41 @@ function WorkflowBar({ status }: { status: string }) {
   );
 }
 
+// ─── Guided step indicator (4-group overview above the detailed WorkflowBar) ──
+
+function StepIndicator({ status }: { status: string }) {
+  const currentIdx = getGroupIndex(status);
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {STEP_GROUPS.map((step, idx) => {
+        const done = idx < currentIdx;
+        const current = idx === currentIdx;
+        return (
+          <div key={step.key} className="flex items-center gap-1.5">
+            <div className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap",
+              done && "bg-emerald-600 text-white",
+              current && "bg-primary text-primary-foreground",
+              !done && !current && "bg-muted text-muted-foreground",
+            )}>
+              <span className={cn(
+                "flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold",
+                (done || current) ? "bg-white/25" : "bg-background",
+              )}>
+                {done ? <CheckCircle2 className="h-3 w-3" /> : idx + 1}
+              </span>
+              {step.label}
+            </div>
+            {idx < STEP_GROUPS.length - 1 && (
+              <div className={cn("h-px w-4 shrink-0", done ? "bg-emerald-600" : "bg-border")} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Validation panel ─────────────────────────────────────────────────────────
 
 function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
@@ -191,6 +249,183 @@ function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
             <span>{issue.message}</span>
           </div>
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Guided-step panels (module scope — only the current step's controls render) ─
+
+interface CalculatePanelProps {
+  calculating: boolean;
+  canCalculate: boolean;
+  onCalculate: () => void;
+  hasPreview: boolean;
+  saving: boolean;
+  onSave: () => void;
+}
+
+function CalculatePanel({ calculating, canCalculate, onCalculate, hasPreview, saving, onSave }: CalculatePanelProps) {
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={onCalculate} disabled={calculating || !canCalculate} variant="outline" className="gap-2">
+            {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+            {calculating ? "Calculating…" : "Calculate All"}
+          </Button>
+          {hasPreview && (
+            <Button onClick={onSave} disabled={saving} variant="outline" className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {saving ? "Saving…" : "Confirm & Save"}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const REVIEW_STAGE_MAP: Record<string, { label: string; toStatus: string; action: string }> = {
+  calculated:       { label: "Submit for HR Review", toStatus: "hr_reviewed",       action: "submitted_for_hr_review" },
+  hr_reviewed:      { label: "Submit to Finance",    toStatus: "finance_verified",  action: "submitted_to_finance" },
+  finance_verified: { label: "Submit to Director",   toStatus: "director_approved", action: "submitted_to_director" },
+};
+
+interface ReviewPanelProps {
+  periodStatus: string;
+  rejectionComment: string | null;
+  transitioning: boolean;
+  criticalCount: number;
+  showRejectForm: boolean;
+  rejectComment: string;
+  onRejectCommentChange: (v: string) => void;
+  onAdvance: (toStatus: string, action: string) => void;
+  onOpenReject: () => void;
+  onCancelReject: () => void;
+  onConfirmReject: () => void;
+}
+
+function ReviewPanel({
+  periodStatus, rejectionComment, transitioning, criticalCount,
+  showRejectForm, rejectComment, onRejectCommentChange,
+  onAdvance, onOpenReject, onCancelReject, onConfirmReject,
+}: ReviewPanelProps) {
+  const stage = REVIEW_STAGE_MAP[periodStatus];
+  if (!stage) return null;
+
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-5 space-y-4">
+        {periodStatus === "calculated" && rejectionComment && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">Payroll was rejected and returned for correction</p>
+              <p className="mt-0.5">{rejectionComment}</p>
+            </div>
+          </div>
+        )}
+
+        {showRejectForm ? (
+          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/50 p-3">
+            <p className="text-sm font-medium text-red-700">Reason for rejection</p>
+            <textarea
+              className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm resize-none"
+              rows={3}
+              value={rejectComment}
+              onChange={(e) => onRejectCommentChange(e.target.value)}
+              placeholder="Required — explain why this payroll is being sent back"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={onConfirmReject}
+                disabled={transitioning || !rejectComment.trim()}
+                className="gap-2 bg-red-600 hover:bg-red-700"
+              >
+                {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                Confirm Rejection
+              </Button>
+              <Button size="sm" variant="outline" onClick={onCancelReject} disabled={transitioning}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              onClick={() => onAdvance(stage.toStatus, stage.action)}
+              disabled={transitioning || (periodStatus === "calculated" && criticalCount > 0)}
+              className="gap-2"
+            >
+              {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {stage.label}
+              {periodStatus === "calculated" && criticalCount > 0 && (
+                <Badge className="bg-red-600 text-white ml-1">{criticalCount} issues</Badge>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onOpenReject}
+              disabled={transitioning}
+              className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
+            >
+              <XCircle className="h-4 w-4" />
+              Reject
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface LockExportPanelProps {
+  periodStatus: string;
+  transitioning: boolean;
+  onAdvance: (toStatus: string, action: string) => void;
+}
+
+function LockExportPanel({ periodStatus, transitioning, onAdvance }: LockExportPanelProps) {
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {periodStatus === "director_approved" && (
+            <Button onClick={() => onAdvance("locked", "payroll_locked")} disabled={transitioning} className="gap-2 bg-orange-600 hover:bg-orange-700">
+              {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+              Lock Payroll
+            </Button>
+          )}
+          {periodStatus === "locked" && (
+            <Button onClick={() => onAdvance("exported", "payroll_exported")} disabled={transitioning} className="gap-2">
+              {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              Export to Finance
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface MarkPaidPanelProps {
+  periodStatus: string;
+  transitioning: boolean;
+  onAdvance: (toStatus: string, action: string) => void;
+}
+
+function MarkPaidPanel({ periodStatus, transitioning, onAdvance }: MarkPaidPanelProps) {
+  if (periodStatus !== "exported") return null;
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-5">
+        <Button onClick={() => onAdvance("paid", "payroll_marked_paid")} disabled={transitioning} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+          {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          Mark as Paid
+        </Button>
       </CardContent>
     </Card>
   );
@@ -370,6 +605,8 @@ function RunPayrollInner() {
   const [componentTypeMap, setComponentTypeMap] = useState<Record<string, { id: string; code: string; category: string; is_system: boolean }>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<PreviewRow | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectComment, setRejectComment] = useState("");
 
   // DB-driven tax/NSSF rules
   const [tosBrackets, setTosBrackets] = useState<TOSBracket[]>([]);
@@ -433,6 +670,8 @@ function RunPayrollInner() {
     setSelectedPeriodId(id);
     setSelectedPeriod(periods.find((p) => p.id === id) ?? null);
     setPreview([]);
+    setShowRejectForm(false);
+    setRejectComment("");
   }
 
   // ── Calculate payroll ──────────────────────────────────────────────────────
@@ -456,7 +695,7 @@ function RunPayrollInner() {
     const monthStart = format(new Date(year, month - 1, 1), "yyyy-MM-dd");
     const monthEnd   = format(new Date(year, month - 1, daysInMonth), "yyyy-MM-dd");
 
-    const [empRes, structRes, otRes, leaveRes, attendRes, taxProfileRes, payrollProfileRes] = await Promise.all([
+    const [empRes, structRes, otRes, leaveRes, attendRes, taxProfileRes, payrollProfileRes, settingsRes] = await Promise.all([
       supabase.from("profiles").select("id, full_name, department, job_title"),
       supabase.from("employee_salary_structures")
         .select("employee_id, component_type_id, amount, payroll_component_types(code, category, is_taxable, is_system)")
@@ -483,7 +722,13 @@ function RunPayrollInner() {
       supabase.from("employee_payroll_profiles")
         .select("employee_id, currency")
         .order("effective_date", { ascending: false }),
+      // Fetch configured working days/hours per month (falls back to 26 days / 8 hours)
+      supabase.from("payroll_settings").select("value").eq("key", "working_time").maybeSingle(),
     ]);
+
+    const workingTime = (settingsRes.data?.value ?? {}) as WorkingTimeSettings;
+    const workingDaysInMonth = workingTime.days_per_month ?? 26;
+    const hoursPerDay = workingTime.hours_per_day ?? 8;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const employees = (empRes.data || []) as any[];
@@ -552,8 +797,7 @@ function RunPayrollInner() {
       const taxProfile = taxProfileByEmp[emp.id];
 
       const basic = empStructure.filter((s: { payroll_component_types: { code: string } }) => s.payroll_component_types?.code === "BASIC").reduce((sum: number, s: { amount: number }) => sum + Number(s.amount), 0);
-      const workingDaysInMonth = 26;
-      const hourlyRate = basic / workingDaysInMonth / 8;
+      const hourlyRate = basic / workingDaysInMonth / hoursPerDay;
 
       const ot150Amt     = ot.ot150 * hourlyRate * 1.5;
       const ot200Amt     = ot.ot200 * hourlyRate * 2.0;
@@ -745,6 +989,46 @@ function RunPayrollInner() {
 
   // ── Workflow transitions ───────────────────────────────────────────────────
 
+  interface AdvanceResponse {
+    success: boolean;
+    status?: string;
+    message?: string;
+  }
+
+  /** POSTs to the payroll advance API route and reconciles local state on success. */
+  async function callAdvance(toStatus: string, action: string, comment?: string): Promise<boolean> {
+    if (!selectedPeriod) return false;
+    setTransitioning(true);
+    try {
+      const res = await fetch(`/api/hr/payroll/${selectedPeriod.id}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toStatus, action, ...(comment ? { comment } : {}) }),
+      });
+      const body = await res.json().catch(() => ({ success: false, message: "Unexpected server response" })) as AdvanceResponse;
+
+      if (!res.ok || !body.success || !body.status) {
+        toast.error(body.message || "Failed to update payroll status");
+        return false;
+      }
+
+      const newStatus = body.status;
+      toast.success(`Payroll ${newStatus.replace(/_/g, " ")}`);
+
+      setSelectedPeriod((p) => {
+        if (!p) return p;
+        const next: Period = { ...p, status: newStatus };
+        if (newStatus === "calculated") next.rejection_comment = comment ?? null;
+        if (newStatus === "hr_reviewed") next.rejection_comment = null;
+        return next;
+      });
+      setPeriods((ps) => ps.map((p) => p.id === selectedPeriod.id ? { ...p, status: newStatus } : p));
+      return true;
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
   async function advanceWorkflow(toStatus: string, action: string) {
     if (!selectedPeriod) return;
 
@@ -759,102 +1043,23 @@ function RunPayrollInner() {
       if (!confirmed) return;
     }
 
-    setTransitioning(true);
-    const supabase = createClient();
-    const now = new Date().toISOString();
-
-    const updates: Record<string, unknown> = { status: toStatus };
-    if (toStatus === "hr_reviewed")       { updates.reviewed_by = currentUserId; updates.reviewed_at = now; }
-    if (toStatus === "finance_verified")  { updates.verified_by = currentUserId; updates.verified_at = now; }
-    if (toStatus === "director_approved") { updates.director_approved_by = currentUserId; updates.director_approved_at = now; }
-    if (toStatus === "locked")            { updates.locked_by = currentUserId; updates.locked_at = now; }
-    if (toStatus === "exported")          { updates.exported_at = now; }
-
-    const { error } = await supabase.from("payroll_periods").update(updates).eq("id", selectedPeriod.id);
-    if (error) { toast.error(error.message); setTransitioning(false); return; }
-
-    // Audit log
-    await supabase.from("payroll_audit_log").insert({
-      period_id: selectedPeriod.id,
-      user_id: currentUserId,
-      action,
-      record_type: "period",
-      record_id: selectedPeriod.id,
-      old_value: { status: selectedPeriod.status },
-      new_value: { status: toStatus },
-    });
-
-    toast.success(`Payroll ${toStatus.replace(/_/g, " ")}`);
-    setSelectedPeriod((p) => p ? { ...p, status: toStatus, ...updates } as Period : p);
-    setPeriods((ps) => ps.map((p) => p.id === selectedPeriod.id ? { ...p, status: toStatus } : p));
-    setTransitioning(false);
+    await callAdvance(toStatus, action);
   }
 
-  // ── Action button by status ────────────────────────────────────────────────
+  async function rejectWorkflow(comment: string) {
+    if (!selectedPeriod) return;
+    if (!comment.trim()) { toast.error("A comment is required to reject payroll"); return; }
+    const ok = await callAdvance("calculated", "payroll_rejected", comment.trim());
+    if (ok) { setShowRejectForm(false); setRejectComment(""); }
+  }
+
+  // ── Derived step state — only the current step's controls render ──────────
 
   const allIssues = preview.flatMap((r) => r.validationIssues);
   const criticalCount = allIssues.filter((i) => i.severity === "critical").length;
   const periodStatus = selectedPeriod?.status ?? "open";
-
-  function ActionBar() {
-    const isLocked = ["locked", "exported", "paid"].includes(periodStatus);
-    const canRecalculate = ["open", "draft", "calculated"].includes(periodStatus) && !isLocked;
-
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        {canRecalculate && (
-          <Button onClick={calculate} disabled={calculating || !selectedPeriodId} variant="outline" className="gap-2">
-            {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-            {calculating ? "Calculating…" : "Calculate All"}
-          </Button>
-        )}
-        {preview.length > 0 && canRecalculate && (
-          <Button onClick={savePayroll} disabled={saving} variant="outline" className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            {saving ? "Saving…" : "Confirm & Save"}
-          </Button>
-        )}
-
-        {periodStatus === "calculated" && (
-          <Button onClick={() => advanceWorkflow("hr_reviewed", "submitted_for_hr_review")} disabled={transitioning || criticalCount > 0} className="gap-2">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Submit for HR Review
-            {criticalCount > 0 && <Badge className="bg-red-600 text-white ml-1">{criticalCount} issues</Badge>}
-          </Button>
-        )}
-        {periodStatus === "hr_reviewed" && (
-          <Button onClick={() => advanceWorkflow("finance_verified", "submitted_to_finance")} disabled={transitioning} className="gap-2">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Submit to Finance
-          </Button>
-        )}
-        {periodStatus === "finance_verified" && (
-          <Button onClick={() => advanceWorkflow("director_approved", "submitted_to_director")} disabled={transitioning} className="gap-2">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Submit to Director
-          </Button>
-        )}
-        {periodStatus === "director_approved" && (
-          <Button onClick={() => advanceWorkflow("locked", "payroll_locked")} disabled={transitioning} className="gap-2 bg-orange-600 hover:bg-orange-700">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-            Lock Payroll
-          </Button>
-        )}
-        {periodStatus === "locked" && (
-          <Button onClick={() => advanceWorkflow("exported", "payroll_exported")} disabled={transitioning} className="gap-2">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Export to Finance
-          </Button>
-        )}
-        {periodStatus === "exported" && (
-          <Button onClick={() => advanceWorkflow("paid", "payroll_marked_paid")} disabled={transitioning} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-            {transitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Mark as Paid
-          </Button>
-        )}
-      </div>
-    );
-  }
+  const stepGroupIdx = getGroupIndex(periodStatus);
+  const stepKey: StepGroupKey = STEP_GROUPS[stepGroupIdx].key;
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -922,16 +1127,51 @@ function RunPayrollInner() {
                 )}
               </div>
 
-              {/* Workflow status bar */}
-              {selectedPeriod && <WorkflowBar status={periodStatus} />}
-
-              {/* Action buttons */}
-              <ActionBar />
+              {/* Guided 4-step overview + detailed 8-status workflow bar */}
+              {selectedPeriod && (
+                <div className="space-y-3">
+                  <StepIndicator status={periodStatus} />
+                  <WorkflowBar status={periodStatus} />
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Validation panel */}
-          {allIssues.length > 0 && <ValidationPanel issues={allIssues} />}
+          {/* Step panel — only the current step's controls are shown */}
+          {stepKey === "calculate" && (
+            <CalculatePanel
+              calculating={calculating}
+              canCalculate={!!selectedPeriodId}
+              onCalculate={calculate}
+              hasPreview={preview.length > 0}
+              saving={saving}
+              onSave={savePayroll}
+            />
+          )}
+          {stepKey === "review" && (
+            <ReviewPanel
+              periodStatus={periodStatus}
+              rejectionComment={selectedPeriod?.rejection_comment ?? null}
+              transitioning={transitioning}
+              criticalCount={criticalCount}
+              showRejectForm={showRejectForm}
+              rejectComment={rejectComment}
+              onRejectCommentChange={setRejectComment}
+              onAdvance={advanceWorkflow}
+              onOpenReject={() => { setShowRejectForm(true); setRejectComment(""); }}
+              onCancelReject={() => { setShowRejectForm(false); setRejectComment(""); }}
+              onConfirmReject={() => rejectWorkflow(rejectComment)}
+            />
+          )}
+          {stepKey === "lock_export" && (
+            <LockExportPanel periodStatus={periodStatus} transitioning={transitioning} onAdvance={advanceWorkflow} />
+          )}
+          {stepKey === "mark_paid" && (
+            <MarkPaidPanel periodStatus={periodStatus} transitioning={transitioning} onAdvance={advanceWorkflow} />
+          )}
+
+          {/* Validation panel — only relevant while still in the Calculate step */}
+          {stepKey === "calculate" && allIssues.length > 0 && <ValidationPanel issues={allIssues} />}
 
           {/* Preview table */}
           {preview.length > 0 && (
@@ -1028,13 +1268,13 @@ function RunPayrollInner() {
             </Card>
           )}
 
-          {/* Read-only message for locked periods */}
-          {["locked", "exported", "paid"].includes(periodStatus) && preview.length === 0 && (
+          {/* Read-only message once past the Calculate step and nothing is loaded in this session */}
+          {stepKey !== "calculate" && preview.length === 0 && (
             <Card className="border-orange-200 bg-orange-50/20">
               <CardContent className="py-8 text-center">
                 <Lock className="h-8 w-8 mx-auto text-orange-500 mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  This payroll is <strong>{periodStatus}</strong> and cannot be recalculated.
+                  This payroll is <strong>{periodStatus.replace(/_/g, " ")}</strong> and cannot be recalculated.
                 </p>
                 <Button asChild size="sm" variant="outline" className="mt-3">
                   <Link href={`/dashboard/hr/payroll?period=${selectedPeriod?.id}`}>

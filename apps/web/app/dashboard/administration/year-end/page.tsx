@@ -5,7 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft, Calendar, Clock } from "lucide-react";
+import { YearEndRunWizard, type YearEndPreview } from "@/components/hr/leave/year-end-run-wizard";
 
 interface YearEndLog {
   id: string;
@@ -17,46 +18,13 @@ interface YearEndLog {
   profiles: { full_name: string } | null;
 }
 
-interface YearEndPreviewRow {
-  employee_id: string;
-  employee_name: string;
-  department: string;
-  leave_type_name: string;
-  current_remaining: number;
-  service_years: number | null;
-  entitlement_days: number;
-  carry_forward: number;
-  expired_days: number;
-  opening_balance: number;
-  blocking_reason: string | null;
-  warning_reason: string | null;
-  existing_next_year_balance: boolean;
-}
-
-interface YearEndPreview {
-  currentYear: number;
-  nextYear: number;
-  canRun: boolean;
-  hasExistingLogs: boolean;
-  hasNextYearBalances: boolean;
-  runnableRows: number;
-  rows: YearEndPreviewRow[];
-  totals: {
-    employees: number;
-    balances: number;
-    entitlementDays: number;
-    carryForward: number;
-    expiredDays: number;
-    openingBalance: number;
-  };
-}
-
 export default function YearEndAdminPage() {
   const [logs, setLogs] = useState<YearEndLog[]>([]);
   const [preview, setPreview] = useState<YearEndPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(true);
-  const [running, setRunning] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [carryoverExpiryRunning, setCarryoverExpiryRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewDepartment, setPreviewDepartment] = useState("");
@@ -114,9 +82,7 @@ export default function YearEndAdminPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const runYearEnd = async () => {
-    setRunning(true);
-    setMessage(null);
+  const confirmYearEnd = async (): Promise<{ success: boolean; message: string }> => {
     const res = await fetch("/api/hr/leave/year-end", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -124,12 +90,24 @@ export default function YearEndAdminPage() {
     });
     const body = await res.json().catch(() => ({ error: "Year-end processing failed." })) as { error?: string; message?: string };
     if (!res.ok) {
-      setMessage(`Error: ${body.error || "Year-end processing failed."}`);
+      return { success: false, message: body.error || "Year-end processing failed." };
+    }
+    await Promise.all([refreshLogs(), refreshPreview()]);
+    return { success: true, message: body.message || "Year-end processing complete." };
+  };
+
+  const runCarryoverExpiry = async () => {
+    setCarryoverExpiryRunning(true);
+    setMessage(null);
+    const res = await fetch("/api/hr/leave/carryover-expiry", { method: "POST" });
+    const body = await res.json().catch(() => ({ error: "Carryover expiry sweep failed." })) as { error?: string; message?: string };
+    if (!res.ok) {
+      setMessage(`Error: ${body.error || "Carryover expiry sweep failed."}`);
     } else {
-      setMessage(body.message || "Year-end processing complete.");
+      setMessage(body.message || "Carryover expiry sweep complete.");
       await Promise.all([refreshLogs(), refreshPreview()]);
     }
-    setRunning(false);
+    setCarryoverExpiryRunning(false);
   };
 
   return (
@@ -149,15 +127,21 @@ export default function YearEndAdminPage() {
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-3">
-          <Button onClick={refreshPreview} disabled={previewLoading || running} variant="outline" size="sm">
+          <Button onClick={refreshPreview} disabled={previewLoading} variant="outline" size="sm">
             {previewLoading ? "Loading Preview..." : "Refresh Preview"}
           </Button>
-          <Button onClick={runYearEnd} disabled={running || previewLoading || !preview?.canRun} className="gap-2" size="sm">
+          <Button onClick={() => setWizardOpen(true)} disabled={previewLoading || !preview || preview.rows.length === 0} className="gap-2" size="sm">
             <Calendar className="h-4 w-4" />
-            {running ? "Processing..." : `Confirm Year-End for ${new Date().getFullYear()} -> ${new Date().getFullYear() + 1}`}
+            {`Confirm Year-End for ${new Date().getFullYear()} -> ${new Date().getFullYear() + 1}`}
+          </Button>
+          <Button onClick={runCarryoverExpiry} disabled={carryoverExpiryRunning} variant="outline" className="gap-2" size="sm">
+            <Clock className="h-4 w-4" />
+            {carryoverExpiryRunning ? "Sweeping..." : "Apply Carryover Expiry"}
           </Button>
         </div>
       </div>
+
+      <YearEndRunWizard open={wizardOpen} onOpenChange={setWizardOpen} preview={preview} onConfirm={confirmYearEnd} />
 
       <Card>
         <CardContent className="space-y-4">
@@ -255,9 +239,10 @@ export default function YearEndAdminPage() {
             </Button>
           </div>
         </div>
-        <div className="rounded-lg border border-border overflow-x-auto">
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="max-h-[70vh] overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b border-border">
+            <thead className="sticky top-0 z-10 bg-muted/50 border-b border-border">
               <tr>
                 <th className="text-left font-medium py-3 px-4">Employee</th>
                 <th className="text-left font-medium py-3 px-4">Department</th>
@@ -304,6 +289,7 @@ export default function YearEndAdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

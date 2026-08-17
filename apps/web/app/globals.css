@@ -171,3 +171,28 @@
     }
   }
 }
+
+/* Isolated print area: hides the dashboard shell (sidebar, header, tab bar)
+   and prints only whatever is marked .print-area, regardless of where that
+   element sits in the layout tree. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+
+  .print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+}

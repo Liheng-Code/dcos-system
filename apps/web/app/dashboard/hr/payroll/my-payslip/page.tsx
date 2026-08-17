@@ -3,7 +3,8 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ScrollText } from "lucide-react";
+import { Loader2, ScrollText, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PayslipCard } from "@/components/hr/payroll/payslip-card";
 
 interface Period {
@@ -104,8 +105,7 @@ function MyPayslipInner() {
 
   useEffect(() => {
     if (!selectedPeriodId || !currentUserId) return;
-    setLoadingEntry(true);
-    setEntry(null);
+    window.setTimeout(() => { setLoadingEntry(true); setEntry(null); }, 0);
     const supabase = createClient();
     supabase
       .from("payroll_entries")
@@ -156,32 +156,40 @@ function MyPayslipInner() {
         </div>
       ) : (
         <>
-          {/* Period selector */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm text-muted-foreground">Period:</label>
-            <div className="flex gap-2 flex-wrap">
-              {periods.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedPeriodId(p.id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                    selectedPeriodId === p.id
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+          {/* Toolbar: period selector + print, in one row, hidden when printing */}
+          <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-sm text-muted-foreground">Period:</label>
+              <div className="flex gap-2 flex-wrap">
+                {periods.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedPeriodId(p.id)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                      selectedPeriodId === p.id
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
+            {entry && (
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" /> Print / Save PDF
+              </Button>
+            )}
           </div>
 
-          {/* Payslip */}
+          {/* Payslip — .print-area is the only thing printed; see globals.css */}
           {loadingEntry ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : entry && selectedPeriod && profile ? (
+            <div className="print-area ml-6 print:ml-0">
             <PayslipCard
               data={{
                 period_label: selectedPeriod.label,
@@ -214,6 +222,7 @@ function MyPayslipInner() {
                 })),
               }}
             />
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground py-4">No payslip data for this period.</p>
           )}

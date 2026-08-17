@@ -148,6 +148,92 @@ export function buildPayrollJournalCsv(periodLabel: string, entries: JournalEntr
   return toCsv(["Period", "Employee", "Department", "Account", "DR/CR", "Amount (USD)"], rows);
 }
 
+// ─── Cambodia compliance exports ───────────────────────────────────────────────
+// See docs/04-Business-Modules/17-HR/17-5-Payroll/DCOS-Payroll-Cambodia-Compliance-Plan.md
+// for the statutory background. These are data exports for manual upload/re-entry
+// into the LACMS, GDT, and NSSF portals — not automated filings.
+
+interface EnterpriseLedgerEntry {
+  full_name: string;
+  department: string;
+  basic_wage: number;
+  working_days: number;
+  present_days: number;
+  ot_150_pay: number;
+  ot_200_pay: number;
+  ot_holiday_pay: number;
+  other_components: number;
+  gross_salary: number;
+}
+
+/** MLVT/LACMS enterprise payroll ledger. "Weekly holiday pay" is left blank — not calculated (see plan doc). */
+export function buildEnterprisePayrollLedgerCsv(periodLabel: string, entries: EnterpriseLedgerEntry[]): string {
+  return toCsv(
+    ["Employee", "Department", "Basic Wage", "Working Days", "Present Days", "OT 1.5x Pay", "OT 2.0x Pay", "Holiday OT Pay", "Weekly Holiday Pay (manual)", "Other Wage Components", "Gross Salary", "Period"],
+    entries.map((e) => [
+      e.full_name,
+      e.department,
+      e.basic_wage.toFixed(2),
+      e.working_days,
+      e.present_days,
+      e.ot_150_pay.toFixed(2),
+      e.ot_200_pay.toFixed(2),
+      e.ot_holiday_pay.toFixed(2),
+      "",
+      e.other_components.toFixed(2),
+      e.gross_salary.toFixed(2),
+      periodLabel,
+    ]),
+  );
+}
+
+interface GdtTosEntry {
+  full_name: string;
+  gross_salary: number;
+  tax_relief_khr: number;
+  taxable_income: number;
+  total_tos: number;
+  exchange_rate: number;
+}
+
+/** GDT monthly Tax-on-Salary return, per employee. */
+export function buildGdtTosReturnCsv(periodLabel: string, entries: GdtTosEntry[]): string {
+  return toCsv(
+    ["Employee", "Gross Salary (USD)", "Dependent Relief (KHR)", "Taxable Income (USD)", "Tax on Salary Withheld (USD)", "Exchange Rate (KHR/USD)", "Period"],
+    entries.map((e) => [
+      e.full_name,
+      e.gross_salary.toFixed(2),
+      e.tax_relief_khr.toFixed(0),
+      e.taxable_income.toFixed(2),
+      e.total_tos.toFixed(2),
+      e.exchange_rate.toFixed(2),
+      periodLabel,
+    ]),
+  );
+}
+
+interface NssfD03Entry {
+  full_name: string;
+  wage_base: number;
+  nssf_ee: number;
+  nssf_er: number;
+}
+
+/** NSSF Form D03 monthly contribution declaration, per employee. */
+export function buildNssfD03Csv(periodLabel: string, entries: NssfD03Entry[]): string {
+  return toCsv(
+    ["Employee", "Contribution Wage Base (USD)", "Employee Contribution (USD)", "Employer Contribution (USD)", "Total Contribution (USD)", "Period"],
+    entries.map((e) => [
+      e.full_name,
+      e.wage_base.toFixed(2),
+      e.nssf_ee.toFixed(2),
+      e.nssf_er.toFixed(2),
+      (e.nssf_ee + e.nssf_er).toFixed(2),
+      periodLabel,
+    ]),
+  );
+}
+
 // ─── Seniority ────────────────────────────────────────────────────────────────
 
 export interface SeniorityRule {

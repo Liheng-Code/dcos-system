@@ -21,6 +21,9 @@ interface LeaveTypeRow {
   seniority_based: boolean | null;
   is_active?: boolean | null;
   gender_restriction?: string | null;
+  rounding_rule: string | null;
+  carryover_expiry_month: number | null;
+  carryover_expiry_day: number | null;
 }
 
 interface BalanceRow {
@@ -68,6 +71,7 @@ interface PreviewRow {
   blocking_reason: string | null;
   warning_reason: string | null;
   existing_next_year_balance: boolean;
+  carryover_expiry_date: string | null;
 }
 
 interface YearEndSourceRow {
@@ -87,6 +91,27 @@ const ADMIN_ROLE_CODES = ["admin", "HR_Manager"];
 function numeric(value: number | string | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function applyRounding(value: number, rule: string | null | undefined): number {
+  switch (rule) {
+    case "nearest_half":
+      return Math.round(value * 2) / 2;
+    case "nearest_whole":
+      return Math.round(value);
+    case "round_up":
+      return Math.ceil(value);
+    case "round_down":
+      return Math.floor(value);
+    default:
+      return value;
+  }
+}
+
+function formatDate(year: number, month: number, day: number): string {
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
 }
 
 function serviceYears(joinDate: string, closingYear: number) {
@@ -155,7 +180,7 @@ async function buildPreview(supabase: ReturnType<typeof createAdminClient>, curr
       .select(`
         id, employee_id, leave_type_id, fiscal_year, allocated_days, used_days, remaining_days, carried_over_days,
         profiles(id, full_name, email, department, join_date, gender, status),
-        leave_types(id, leave_code, leave_name, carryover_allowed, max_carryover, max_days_per_year, seniority_based, is_active, gender_restriction)
+        leave_types(id, leave_code, leave_name, carryover_allowed, max_carryover, max_days_per_year, seniority_based, is_active, gender_restriction, rounding_rule, carryover_expiry_month, carryover_expiry_day)
       `)
       .eq("fiscal_year", currentYear),
     supabase
@@ -168,7 +193,7 @@ async function buildPreview(supabase: ReturnType<typeof createAdminClient>, curr
       .order("full_name"),
     supabase
       .from("leave_types")
-      .select("id, leave_code, leave_name, carryover_allowed, max_carryover, max_days_per_year, seniority_based, is_active, gender_restriction")
+      .select("id, leave_code, leave_name, carryover_allowed, max_carryover, max_days_per_year, seniority_based, is_active, gender_restriction, rounding_rule, carryover_expiry_month, carryover_expiry_day")
       .order("leave_name"),
     supabase
       .from("leave_requests")
@@ -244,14 +269,21 @@ async function buildPreview(supabase: ReturnType<typeof createAdminClient>, curr
     const years = profile?.join_date ? serviceYears(profile.join_date, currentYear) : null;
     const rule = years != null ? findRule(rules, source.leaveTypeId, years) : null;
     const fixedEntitlement = numeric(leaveType?.max_days_per_year);
-    const entitlementDays = rule ? numeric(rule.days_per_year) : fixedEntitlement;
+    const entitlementDays = applyRounding(rule ? numeric(rule.days_per_year) : fixedEntitlement, leaveType?.rounding_rule);
     const existingNextYearBalance = existingNextYearBalanceKeys.has(`${source.employeeId}:${source.leaveTypeId}`);
     const currentRemaining = source.generatedFromBalance
       ? source.currentRemaining
       : Math.max(entitlementDays - currentUsed, 0);
     const maxCarryover = numeric(leaveType?.max_carryover);
-    const carryForward = leaveType?.carryover_allowed ? Math.min(currentRemaining, maxCarryover) : 0;
+    const carryForward = applyRounding(
+      leaveType?.carryover_allowed ? Math.min(currentRemaining, maxCarryover) : 0,
+      leaveType?.rounding_rule,
+    );
     const expiredDays = Math.max(currentRemaining - carryForward, 0);
+    const carryoverExpiryDate =
+      carryForward > 0 && leaveType?.carryover_expiry_month != null && leaveType?.carryover_expiry_day != null
+        ? formatDate(nextYear, leaveType.carryover_expiry_month, leaveType.carryover_expiry_day)
+        : null;
     const missingJoinDate = seniorityBased && !profile?.join_date;
     const missingRule = seniorityBased && years != null && !rule;
     const warningReason = missingJoinDate
@@ -290,6 +322,7 @@ async function buildPreview(supabase: ReturnType<typeof createAdminClient>, curr
         ? `Next-year balance already exists`
         : warningReason,
       existing_next_year_balance: existingNextYearBalance,
+      carryover_expiry_date: carryoverExpiryDate,
     };
   });
 
@@ -366,6 +399,7 @@ export async function POST(request: NextRequest) {
           used_days: 0,
           carried_over_days: row.carry_forward,
           remaining_days: row.opening_balance,
+          carryover_expiry_date: row.carryover_expiry_date,
         });
 
       if (balanceError) throw new Error(balanceError.message);

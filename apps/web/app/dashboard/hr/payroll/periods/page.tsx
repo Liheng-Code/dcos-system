@@ -117,11 +117,20 @@ export default function PayrollPeriodsPage() {
       update.approved_at = new Date().toISOString();
     }
     const { error } = await supabase.from("payroll_periods").update(update).eq("id", period.id);
-    if (error) toast.error("Failed to update period status");
-    else {
-      toast.success(`Period moved to ${next}`);
-      load();
+    if (error) { toast.error("Failed to update period status"); return; }
+
+    // Entry-level status must reach a non-"draft" state once the period is paid,
+    // since "My Payslip" only shows entries whose status isn't "draft".
+    if (next === "paid") {
+      const { error: entriesError } = await supabase
+        .from("payroll_entries")
+        .update({ status: "paid" })
+        .eq("period_id", period.id);
+      if (entriesError) toast.error("Period marked paid, but payslips failed to publish: " + entriesError.message);
     }
+
+    toast.success(`Period moved to ${next}`);
+    load();
   }
 
   return (

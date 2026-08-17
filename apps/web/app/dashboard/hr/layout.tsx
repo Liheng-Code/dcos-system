@@ -13,7 +13,6 @@ import {
   LogOut,
   CheckSquare,
   FileText,
-  Award,
   LayoutDashboard,
   Settings,
   ArrowLeft,
@@ -28,14 +27,13 @@ import {
   DollarSign,
   ScrollText,
   Calculator,
-  Receipt,
   Shield,
   ListChecks,
-  PieChart,
   ClipboardList,
   Clock,
   LogIn,
   QrCode,
+  Settings2,
 } from "lucide-react";
 
 // ── Payroll sub-nav (shown only when inside /hr/payroll) ─────────────────────
@@ -43,7 +41,8 @@ const PAYROLL_ALL_GROUPS = [
   {
     label: null,
     items: [
-      { href: "/dashboard/hr/payroll/my-payslip", label: "My Payslip",  icon: ScrollText, description: "View and download your monthly payslips" },
+      { href: "/dashboard/hr/payroll/my-payslip",    label: "My Payslip",   icon: ScrollText, description: "View and download your monthly payslips" },
+      { href: "/dashboard/hr/payroll/notifications", label: "Notifications", icon: Bell,      description: "Payroll workflow activity and status updates" },
     ],
   },
 ];
@@ -54,24 +53,22 @@ const PAYROLL_ADMIN_GROUPS = [
     items: [
       { href: "/dashboard/hr/payroll",          label: "Payroll Dashboard", icon: LayoutDashboard, description: "Manage salary runs, payslips and reports" },
       { href: "/dashboard/hr/payroll/runs",     label: "Payroll Runs",      icon: ListChecks,      description: "View and manage all monthly payroll runs" },
-      { href: "/dashboard/hr/payroll/setup",    label: "Salary Setup",      icon: DollarSign,      description: "Configure base salary and allowances per employee" },
       { href: "/dashboard/hr/payroll/periods",  label: "Payroll Periods",   icon: CalendarDays,    description: "Manage monthly payroll periods and their status" },
       { href: "/dashboard/hr/payroll/run",      label: "Run Payroll",       icon: Calculator,      description: "Calculate salary for a payroll period" },
       { href: "/dashboard/hr/payroll/reports",  label: "Payroll Reports",   icon: BarChart2,       description: "Summary and export for each payroll period" },
+      { href: "/dashboard/hr/payroll/audit",    label: "Audit Log",         icon: ClipboardList,   description: "Full payroll workflow audit trail" },
     ],
   },
   {
-    label: "CONTROL",
+    label: "APPROVAL",
     items: [
-      { href: "/dashboard/hr/payroll/cost-allocation", label: "Cost Allocation", icon: PieChart,       description: "Allocate payroll cost to projects and WBS" },
-      { href: "/dashboard/hr/payroll/audit",           label: "Audit Log",        icon: ClipboardList,  description: "Full payroll workflow audit trail" },
+      { href: "/dashboard/hr/payroll/approvals", label: "Payroll Approvals", icon: CheckSquare, description: "Review payrolls awaiting HR, finance or director sign-off" },
     ],
   },
   {
     label: "CONFIGURATION",
     items: [
-      { href: "/dashboard/hr/payroll/tax-config",  label: "Tax Config (TOS)", icon: Receipt, description: "Cambodia Tax on Salary brackets and relief" },
-      { href: "/dashboard/hr/payroll/nssf-config", label: "NSSF Config",      icon: Shield,  description: "NSSF contribution rules and rates" },
+      { href: "/dashboard/hr/payroll/config", label: "Payroll Config", icon: Settings2, description: "Salary, tax, NSSF, seniority and cost-allocation setup" },
     ],
   },
 ];
@@ -154,10 +151,8 @@ const LEAVE_GROUPS = [
   {
     label: "ADMIN",
     items: [
-      { href: "/dashboard/hr/leave/admin",          label: "Leave Types",       icon: Settings },
+      { href: "/dashboard/hr/leave/admin",          label: "HR Config",         icon: Settings },
       { href: "/dashboard/hr/leave/approval-chains",label: "Approval Chains",   icon: GitBranch },
-      { href: "/dashboard/hr/leave/admin",          label: "Team Capacity",     icon: Users },
-      { href: "/dashboard/hr/leave/seniority-rules",label: "Seniority Rules",   icon: Award },
       { href: "/dashboard/hr/leave/probation-policy",label: "Probation Policy", icon: Shield },
       { href: "/dashboard/hr/leave/reports",        label: "Leave Reports",     icon: BarChart2 },
       { href: "/dashboard/administration/year-end", label: "Year-end Run",      icon: RefreshCw },
@@ -184,6 +179,7 @@ export default function HRLayout({ children }: { children: ReactNode }) {
   const [myPendingCount, setMyPendingCount] = useState(0);
   const [otNotifCount, setOtNotifCount] = useState(0);
   const [otApprovalCount, setOtApprovalCount] = useState(0);
+  const [payrollNotifCount, setPayrollNotifCount] = useState(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -229,6 +225,16 @@ export default function HRLayout({ children }: { children: ReactNode }) {
           .eq("status", "pending")
           .then(({ count }) => {
             if (count !== null) setOtApprovalCount(count);
+          });
+        // payroll_notifications has no is_read column — sent_at IS NULL is the unread marker
+        // (see supabase/migrations/20260618000004_payroll_enhancements.sql §4).
+        supabase
+          .from("payroll_notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("recipient_id", uid)
+          .is("sent_at", null)
+          .then(({ count }) => {
+            if (count !== null) setPayrollNotifCount(count);
           });
       }
     });
@@ -349,6 +355,7 @@ export default function HRLayout({ children }: { children: ReactNode }) {
                     {group.items.map((item) => {
                       const isActive = pathname === item.href;
                       const Icon = item.icon;
+                      const count = item.label === "Notifications" ? payrollNotifCount : 0;
                       return (
                         <Link
                           key={item.href}
@@ -362,6 +369,11 @@ export default function HRLayout({ children }: { children: ReactNode }) {
                         >
                           <Icon className="h-4 w-4 shrink-0" />
                           <span className="truncate">{item.label}</span>
+                          {count > 0 && (
+                            <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white leading-none">
+                              {count}
+                            </span>
+                          )}
                         </Link>
                       );
                     })}

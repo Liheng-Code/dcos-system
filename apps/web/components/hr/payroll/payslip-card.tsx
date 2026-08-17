@@ -2,8 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Printer, CheckCircle2, Clock, Lock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CheckCircle2, Clock, Lock } from "lucide-react";
 
 interface PayslipLine {
   name: string;
@@ -73,18 +72,11 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
 
   return (
     <div>
-      {/* Print button (hidden in print) */}
-      <div className="flex justify-end mb-4 print:hidden">
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Print / Save PDF
-        </Button>
-      </div>
-
       {/* Payslip document */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden print:shadow-none print:border-gray-300">
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden print:shadow-none print:border-gray-300 print:rounded-none">
 
         {/* Header */}
-        <div className="bg-slate-800 px-6 py-5 text-white">
+        <div className="bg-slate-800 px-6 py-5 text-white print:break-inside-avoid">
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-lg font-bold">{companyName}</h2>
@@ -106,7 +98,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
         </div>
 
         {/* Employee information */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-border">
+        <div className="px-6 py-4 bg-slate-50 border-b border-border print:break-inside-avoid">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">Employee</p>
@@ -137,7 +129,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
         </div>
 
         {/* Earnings */}
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-6 py-4 border-b border-border print:break-inside-avoid">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Earnings</h4>
           <div className="space-y-2">
             {earnings.map((line, i) => (
@@ -159,7 +151,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
 
         {/* Tax Relief (shown in KHR) */}
         {(data.tax_relief_khr ?? 0) > 0 && (
-          <div className="px-6 py-4 border-b border-border bg-emerald-50/30">
+          <div className="px-6 py-4 border-b border-border bg-emerald-50/30 print:break-inside-avoid">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Tax Relief (KHR)</h4>
             <div className="space-y-1.5 text-sm">
               {(data.tax_relief_khr ?? 0) > 0 && (
@@ -182,7 +174,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
         )}
 
         {/* Deductions */}
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-6 py-4 border-b border-border print:break-inside-avoid">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Deductions</h4>
           <div className="space-y-2">
             {deductions.map((line, i) => (
@@ -223,7 +215,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
 
         {/* Employer Contributions (info only, not deducted from employee) */}
         {(employerContributions.length > 0 || (data.total_nssf_er ?? 0) > 0) && (
-          <div className="px-6 py-4 border-b border-border bg-amber-50/30">
+          <div className="px-6 py-4 border-b border-border bg-amber-50/30 print:break-inside-avoid">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-3">Employer Contributions (for information)</h4>
             <div className="space-y-1.5 text-sm">
               {employerContributions.map((line, i) => (
@@ -243,7 +235,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
         )}
 
         {/* Net pay */}
-        <div className="px-6 py-5 bg-emerald-50 border-t border-border">
+        <div className="px-6 py-5 bg-emerald-50 border-t border-border print:break-inside-avoid">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-700">Net Pay</p>
@@ -261,7 +253,7 @@ export function PayslipCard({ data, companyName = "DCOS Construction" }: Props) 
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-slate-50 border-t border-border text-[10px] text-muted-foreground flex justify-between">
+        <div className="px-6 py-3 bg-slate-50 border-t border-border text-[10px] text-muted-foreground flex justify-between print:break-inside-avoid">
           <span>Generated by DCOS Payroll System</span>
           <span>{data.period_label}</span>
         </div>

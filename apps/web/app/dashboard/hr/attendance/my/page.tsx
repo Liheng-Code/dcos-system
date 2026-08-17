@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Clock, LogIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TelegramLinkCard } from "@/components/hr/attendance/telegram-link-card";
 import { createClient } from "@/lib/supabase/client";
 
 interface AttendanceRecord {
@@ -169,6 +170,9 @@ export default function MyAttendancePage() {
       </Card>
       </div>
 
+      <div className="space-y-6">
+      <TelegramLinkCard />
+
       {/* Record list */}
       <Card className="h-fit">
         <CardHeader className="pb-2">
@@ -205,6 +209,7 @@ export default function MyAttendancePage() {
           )}
         </CardContent>
       </Card>
+      </div>
       </div>
     </div>
   );
