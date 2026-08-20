@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface MiniAppProfile {
@@ -112,6 +112,16 @@ export function MiniAppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <MiniAppContext.Provider value={{ profile: state.profile, initData: state.initData, loading: false, error: null }}>
+      {/* Persistent identity bar — makes it obvious which linked account is
+          driving the session, since there's otherwise no login screen or
+          account switcher to make that visible. */}
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-[var(--tg-secondary-bg-color,#f3f4f6)] bg-[var(--tg-bg-color)] px-4 py-1.5 text-xs text-[var(--tg-hint-color,#6b7280)]">
+        <User className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {state.profile.fullName ?? "Telegram user"}
+          {state.profile.employeeId ? ` · ${state.profile.employeeId}` : ""}
+        </span>
+      </div>
       {children}
     </MiniAppContext.Provider>
   );
