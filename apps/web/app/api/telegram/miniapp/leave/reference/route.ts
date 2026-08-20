@@ -36,12 +36,17 @@ export async function GET(request: NextRequest) {
 
     const currentYear = new Date().getFullYear();
 
-    const [leaveTypes, balances, holidayDates, occupiedRanges, employmentPolicies] = await Promise.all([
+    const [leaveTypes, balances, holidayDates, occupiedRanges, employmentPolicies, teammatesResult] = await Promise.all([
       getActiveLeaveTypes(admin),
       getLeaveBalanceSummary(admin, authProfile.id, currentYear),
       getActivePublicHolidayDates(admin, [currentYear, currentYear + 1]),
       getOccupiedLeaveRanges(admin, authProfile.id),
       getLeaveEmploymentPolicies(admin, applicant.employment_type ?? "permanent", applicant.probation_status ?? "not_applicable"),
+      admin
+        .from("profiles")
+        .select("id, full_name, department")
+        .neq("id", authProfile.id)
+        .order("full_name"),
     ]);
 
     return NextResponse.json({
@@ -50,6 +55,7 @@ export async function GET(request: NextRequest) {
       publicHolidays: [...holidayDates],
       occupiedRanges,
       employmentPolicies,
+      teammates: teammatesResult.data ?? [],
       applicant: {
         gender: applicant.gender,
         probationStatus: applicant.probation_status,

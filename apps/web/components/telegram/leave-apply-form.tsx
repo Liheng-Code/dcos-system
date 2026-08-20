@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format, isAfter, isSunday, parseISO } from "date-fns";
-import { AlertCircle, CheckCircle2, FileWarning } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileWarning, Users, Plus, X, Paperclip } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useMiniApp } from "@/lib/telegram/miniapp-context";
 import {
@@ -78,14 +79,28 @@ interface Applicant {
   employmentType: string | null;
 }
 
+// Mirrors the `teammates` field built in reference/route.ts:45-49/58 — a
+// plain profiles query (everyone except the current user), used to power
+// the CC "add teammate" picker below. UI-parity only: CC selections are
+// kept in local state and are never sent to the apply endpoint (see
+// leave-request-form.tsx, which never persists them either).
+interface Teammate {
+  id: string;
+  full_name: string | null;
+  department: string | null;
+}
+
 interface ReferenceData {
   leaveTypes: LeaveType[];
   balances: LeaveBalance[];
   publicHolidays: string[];
   occupiedRanges: OccupiedRange[];
   employmentPolicies: EmploymentPolicy[];
+  teammates: Teammate[];
   applicant: Applicant;
 }
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB per file, enforced client-side (see report)
 
 const DAY_OPTIONS: { value: DaySelection; label: string }[] = [
   { value: "full", label: "Full" },
@@ -140,6 +155,23 @@ export default function LeaveApplyForm() {
   // looked up.
   const [overrides, setOverrides] = useState<Record<string, DaySelection>>({});
   const [reason, setReason] = useState("");
+
+  // ── CC state (UI-parity only — never sent to the apply endpoint; mirrors
+  // leave-request-form.tsx:117-133) ───────────────────────────────────────
+  const [ccTeammates, setCcTeammates] = useState<Teammate[]>([]);
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [emailInput, setEmailInput] = useState("");
+
+  // Teammate picker overlay
+  const [showTeammatePicker, setShowTeammatePicker] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerSelected, setPickerSelected] = useState<Teammate[]>([]);
+
+  // Attachments (UI-parity only — never uploaded; mirrors
+  // leave-request-form.tsx:132-133)
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Submission state ──────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
@@ -330,6 +362,53 @@ export default function LeaveApplyForm() {
       webApp.BackButton.hide();
     };
   }, [router]);
+
+  // ── CC & Attachments (UI-parity only) ───────────────────────────────────
+  // Seed the picker's selection with the current CC list, and clear the
+  // search box, each time the overlay opens. Mirrors
+  // leave-request-form.tsx:275-287, minus the profiles fetch — the
+  // teammate list here already came from the reference payload.
+  useEffect(() => {
+    if (!showTeammatePicker) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPickerQuery("");
+    setPickerSelected(ccTeammates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTeammatePicker]);
+
+  const removeTeammate = useCallback((id: string) => {
+    setCcTeammates((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addEmail = useCallback(() => {
+    const trimmed = emailInput.trim();
+    if (trimmed && !ccEmails.includes(trimmed)) {
+      setCcEmails((prev) => [...prev, trimmed]);
+    }
+    setEmailInput("");
+  }, [emailInput, ccEmails]);
+
+  const removeEmail = useCallback((email: string) => {
+    setCcEmails((prev) => prev.filter((e) => e !== email));
+  }, []);
+
+  // Mirrors handleFileChange (leave-request-form.tsx:480-487) — same 5-file
+  // cap via `.slice(0, 5)`. The desktop form's helper text claims a 10 MB
+  // per-file limit but never actually checks it; we add that check here
+  // client-side since it's cheap and avoids silently accepting a file that
+  // will never go anywhere anyway.
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+    const oversized = picked.filter((f) => f.size > MAX_ATTACHMENT_BYTES);
+    const accepted = picked.filter((f) => f.size <= MAX_ATTACHMENT_BYTES);
+    setFileError(oversized.length > 0 ? `${oversized.map((f) => f.name).join(", ")} exceeds 10 MB and wasn't added.` : null);
+    setFiles((prev) => [...prev, ...accepted].slice(0, 5));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const removeFile = useCallback((name: string) => {
+    setFiles((prev) => prev.filter((f) => f.name !== name));
+  }, []);
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -531,6 +610,164 @@ export default function LeaveApplyForm() {
             </CardContent>
           </Card>
 
+          {/* CC (optional) */}
+          <Card gradient={false}>
+            <CardContent className="flex flex-col gap-3 py-1">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-[var(--tg-hint-color)]" />
+                  <span className="text-xs font-medium text-[var(--tg-text-color)]">
+                    CC <span className="font-normal text-[var(--tg-hint-color)]">(optional)</span>
+                  </span>
+                </div>
+                <p className="text-[10px] text-[var(--tg-hint-color)]">
+                  Keep teammates or external contacts in the loop
+                </p>
+              </div>
+
+              {/* Teammates */}
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--tg-hint-color)]">
+                  Teammates
+                </p>
+                {ccTeammates.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {ccTeammates.map((tm) => (
+                      <span
+                        key={tm.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-[var(--tg-secondary-bg-color)] px-2.5 py-0.5 text-xs font-medium text-[var(--tg-text-color)]"
+                      >
+                        {tm.full_name}
+                        {tm.department ? ` · ${tm.department}` : ""}
+                        <button
+                          type="button"
+                          onClick={() => removeTeammate(tm.id)}
+                          className="ml-0.5 hover:opacity-70"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTeammatePicker(true)}
+                  className="h-8 w-fit gap-1 text-xs"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add teammate
+                </Button>
+              </div>
+
+              {/* External emails */}
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--tg-hint-color)]">
+                  External emails
+                </p>
+                {ccEmails.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {ccEmails.map((email) => (
+                      <span
+                        key={email}
+                        className="inline-flex items-center gap-1 rounded-full bg-[var(--tg-secondary-bg-color)] px-2.5 py-0.5 text-xs text-[var(--tg-text-color)]"
+                      >
+                        {email}
+                        <button
+                          type="button"
+                          onClick={() => removeEmail(email)}
+                          className="ml-0.5 hover:opacity-70"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="name@example.com"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addEmail();
+                      }
+                    }}
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-sm text-[var(--tg-text-color)] focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={addEmail} className="h-9 shrink-0">
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Attachments (optional) */}
+          <Card gradient={false}>
+            <CardContent className="flex flex-col gap-2 py-1">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5 text-[var(--tg-hint-color)]" />
+                  <span className="text-xs font-medium text-[var(--tg-text-color)]">
+                    Attachments <span className="font-normal text-[var(--tg-hint-color)]">(optional)</span>
+                  </span>
+                </div>
+                <p className="text-[10px] text-[var(--tg-hint-color)]">Up to 5 files - 10 MB each</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-10 w-full items-center gap-2 rounded-lg border border-input px-3 text-sm font-medium text-[var(--tg-text-color)] transition-colors hover:border-ring"
+              >
+                <Paperclip className="h-4 w-4" />
+                Choose files (PDF, image, doc)
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+
+              {fileError && <p className="text-xs text-red-600">{fileError}</p>}
+
+              {files.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {files.map((f) => (
+                    <div
+                      key={f.name}
+                      className="flex items-center justify-between gap-2 rounded-md bg-[var(--tg-secondary-bg-color)] px-2.5 py-1.5 text-xs"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Paperclip className="h-3 w-3 shrink-0 text-[var(--tg-hint-color)]" />
+                        <span className="truncate">{f.name}</span>
+                        <span className="shrink-0 text-[var(--tg-hint-color)]">
+                          ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(f.name)}
+                        className="shrink-0 text-[var(--tg-hint-color)] hover:text-red-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {submitError && (
             <Card gradient={false}>
               <CardContent className="flex items-start gap-2 py-2 text-red-700">
@@ -542,6 +779,86 @@ export default function LeaveApplyForm() {
 
           {submitting && <p className="px-1 text-center text-xs text-[var(--tg-hint-color)]">Submitting…</p>}
         </>
+      )}
+
+      {/* ── Teammate picker overlay ─────────────────────────────────────── */}
+      {showTeammatePicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowTeammatePicker(false)}
+        >
+          <div
+            className="flex max-h-[70vh] w-[90vw] max-w-sm flex-col rounded-xl bg-[var(--tg-bg-color)] p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[var(--tg-text-color)]">Select teammates</h3>
+              <button
+                type="button"
+                onClick={() => setShowTeammatePicker(false)}
+                className="text-[var(--tg-hint-color)] hover:text-[var(--tg-text-color)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <input
+              autoFocus
+              placeholder="Search by name or department..."
+              value={pickerQuery}
+              onChange={(e) => setPickerQuery(e.target.value)}
+              className="mb-3 h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-[var(--tg-text-color)] focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <div className="max-h-[60vh] flex-1 space-y-0.5 overflow-y-auto">
+              {(reference?.teammates ?? [])
+                .filter(
+                  (p) =>
+                    (p.full_name ?? "").toLowerCase().includes(pickerQuery.toLowerCase()) ||
+                    (p.department ?? "").toLowerCase().includes(pickerQuery.toLowerCase()),
+                )
+                .map((p) => (
+                  <label
+                    key={p.id}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-sm hover:bg-[var(--tg-secondary-bg-color)]"
+                  >
+                    <Checkbox
+                      checked={pickerSelected.some((s) => s.id === p.id)}
+                      onCheckedChange={(checked) =>
+                        setPickerSelected((prev) =>
+                          checked ? [...prev, p] : prev.filter((s) => s.id !== p.id),
+                        )
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-[var(--tg-text-color)]">{p.full_name}</span>
+                      {p.department && (
+                        <span className="block truncate text-[10px] text-[var(--tg-hint-color)]">
+                          {p.department}
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              {(reference?.teammates ?? []).length === 0 && (
+                <p className="px-2 py-3 text-xs text-[var(--tg-hint-color)]">No teammates found.</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2 border-t border-[var(--tg-secondary-bg-color)] pt-3">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowTeammatePicker(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setCcTeammates(pickerSelected);
+                  setShowTeammatePicker(false);
+                }}
+              >
+                Add selected ({pickerSelected.length})
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
