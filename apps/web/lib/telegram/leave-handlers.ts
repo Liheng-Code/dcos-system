@@ -1,22 +1,17 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendMessage } from "@/lib/telegram/bot";
 import { findProfileByTelegramUserId, NOT_LINKED_MESSAGE, type TelegramMessage } from "@/lib/telegram/webhook-handlers";
-import {
-  decideLeaveRequest,
-  getLeaveBalanceSummary,
-  getMyLeaveRequests,
-  getPendingApprovalsForApprover,
-} from "@/lib/hr/leave";
+import { getLeaveBalanceSummary, getMyLeaveRequests, getPendingApprovalsForApprover } from "@/lib/hr/leave";
 
-const APPLY_URL = "https://dcos-system-web.vercel.app/dashboard/hr/leave/apply";
+// Retired text-command flow (/approve <id>, /reject <id> <reason>) now redirects
+// here — decisions are made via the Review button's Mini App screen instead.
+const APPROVE_REJECT_REDIRECT_MESSAGE =
+  "Please use the Review button from /pending to approve or reject requests.";
 
-const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-
-// Telegram's legacy Markdown mode breaks on unescaped _, *, `, [ in dynamic
-// text (e.g. a rejection reason or someone's name) — escape before interpolating.
-function escapeMarkdown(text: string): string {
-  return text.replace(/([_*`[])/g, "\\$1");
-}
+// Cap on individual per-request review buttons in one /pending reply. Telegram
+// inline keyboards technically allow more, but a long unbounded list of rows
+// is unwieldy — beyond this, point people at the full list in the Mini App.
+const MAX_PENDING_REVIEW_BUTTONS = 10;
 
 export async function handleApplyLeaveCommand(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
   const chatId = message.chat.id;
@@ -25,7 +20,16 @@ export async function handleApplyLeaveCommand(admin: SupabaseClient, message: Te
     await sendMessage(chatId, NOT_LINKED_MESSAGE);
     return;
   }
-  await sendMessage(chatId, `Apply for leave here:\n${APPLY_URL}`);
+  const miniAppBaseUrl = process.env.TELEGRAM_MINIAPP_BASE_URL;
+  if (!miniAppBaseUrl) {
+    console.warn("TELEGRAM_MINIAPP_BASE_URL is not configured — cannot send Apply Leave button");
+    await sendMessage(chatId, "Leave application isn't available right now. Please contact HR.");
+    return;
+  }
+
+  await sendMessage(chatId, "Apply for leave:", {
+    inlineKeyboard: [[{ text: "📝 Apply for Leave", web_app: { url: `${miniAppBaseUrl}/leave/apply` } }]],
+  });
 }
 
 export async function handleBalanceCommand(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
@@ -49,7 +53,16 @@ export async function handleBalanceCommand(admin: SupabaseClient, message: Teleg
     return `${b.leave_name}: ${b.remaining_days} remaining (${b.used_days} used of ${b.allocated_days}${carried})`;
   });
 
-  await sendMessage(chatId, `📅 Leave Balance (${year})\n\n${lines.join("\n")}`);
+  const miniAppBaseUrl = process.env.TELEGRAM_MINIAPP_BASE_URL;
+  if (!miniAppBaseUrl) {
+    console.warn("TELEGRAM_MINIAPP_BASE_URL is not configured — skipping Mini App button on /balance reply");
+  }
+
+  await sendMessage(chatId, `📅 Leave Balance (${year})\n\n${lines.join("\n")}`, {
+    inlineKeyboard: miniAppBaseUrl
+      ? [[{ text: "📱 Open in App", web_app: { url: `${miniAppBaseUrl}/leave/balance` } }]]
+      : undefined,
+  });
 }
 
 export async function handleMyLeaveCommand(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
@@ -91,98 +104,43 @@ export async function handlePendingApprovalsCommand(admin: SupabaseClient, messa
     return;
   }
 
-  const blocks = pending.map((r) => {
-    const code = r.employee_code ? ` (${escapeMarkdown(r.employee_code)})` : "";
-    const reasonLine = r.reason ? `\nReason: ${escapeMarkdown(r.reason)}` : "";
-    return (
-      `${escapeMarkdown(r.employee_name)}${code} — ${escapeMarkdown(r.leave_name)}, ${r.days_requested}d (${r.start_date} – ${r.end_date})` +
-      reasonLine +
-      `\n\n\`/approve ${r.id}\`\n\`/reject ${r.id} <reason>\``
-    );
-  });
-
-  await sendMessage(chatId, `🗂 Leave requests awaiting your approval\n\n${blocks.join("\n\n———\n\n")}`, {
-    parseMode: "Markdown",
-  });
-}
-
-function decisionErrorMessage(error: string | undefined): string {
-  switch (error) {
-    case "not_found":
-      return "Leave request not found.";
-    case "not_pending":
-      return "This request has already been decided, or isn't currently awaiting a fresh approval.";
-    case "not_your_turn":
-      return "This request isn't awaiting your decision right now.";
-    case "reason_required":
-      return "Please include a reason: /reject <id> <reason>";
-    default:
-      return "Something went wrong processing that request.";
+  const miniAppBaseUrl = process.env.TELEGRAM_MINIAPP_BASE_URL;
+  if (!miniAppBaseUrl) {
+    console.warn("TELEGRAM_MINIAPP_BASE_URL is not configured — cannot send approval review buttons");
+    await sendMessage(chatId, "Leave approvals aren't available right now. Please contact HR.");
+    return;
   }
+
+  const shown = pending.slice(0, MAX_PENDING_REVIEW_BUTTONS);
+  const buttons = shown.map((r) => [
+    {
+      text: `Review — ${r.employee_name} (${r.days_requested}d)`,
+      web_app: { url: `${miniAppBaseUrl}/leave/approvals/${r.id}` },
+    },
+  ]);
+
+  const truncated = pending.length > MAX_PENDING_REVIEW_BUTTONS;
+  if (truncated) {
+    buttons.push([
+      { text: `📂 Open Approvals (see all ${pending.length})`, web_app: { url: `${miniAppBaseUrl}/leave/approvals` } },
+    ]);
+  }
+
+  const header = truncated
+    ? `🗂 You have ${pending.length} leave requests awaiting your approval. Showing the first ${MAX_PENDING_REVIEW_BUTTONS}:`
+    : `🗂 Leave requests awaiting your approval (${pending.length}):`;
+
+  await sendMessage(chatId, header, { inlineKeyboard: buttons });
 }
 
+// Text commands are retired in favor of the Review button from /pending, which
+// opens the Mini App's approval screen. decideLeaveRequest is still exercised
+// by app/api/telegram/miniapp/leave/{approve,reject}/route.ts — only the bot's
+// raw-UUID command entry point goes away here.
 export async function handleApproveCommand(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
-  const chatId = message.chat.id;
-  const profile = await findProfileByTelegramUserId(admin, message.from.id);
-  if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
-    return;
-  }
-
-  const match = (message.text ?? "").trim().match(new RegExp(`^/approve\\s+(${UUID_RE})\\s*$`, "i"));
-  const requestId = match?.[1];
-  if (!requestId) {
-    await sendMessage(chatId, "Usage: /approve <id>");
-    return;
-  }
-
-  const result = await decideLeaveRequest(admin, { requestId, approverId: profile.id, decision: "approved" });
-
-  if (!result.ok) {
-    await sendMessage(chatId, decisionErrorMessage(result.error));
-    return;
-  }
-
-  if (result.isFinalApproval) {
-    await sendMessage(
-      chatId,
-      `✅ Approved. ${result.employeeName}'s ${result.leaveName} request (${result.daysRequested}d, ${result.startDate} – ${result.endDate}) is now fully approved.`,
-    );
-  } else {
-    await sendMessage(
-      chatId,
-      `✅ Approved your step. Forwarded to ${result.nextApproverName ?? "the next approver"} for final approval.`,
-    );
-  }
+  await sendMessage(message.chat.id, APPROVE_REJECT_REDIRECT_MESSAGE);
 }
 
 export async function handleRejectCommand(admin: SupabaseClient, message: TelegramMessage): Promise<void> {
-  const chatId = message.chat.id;
-  const profile = await findProfileByTelegramUserId(admin, message.from.id);
-  if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
-    return;
-  }
-
-  const match = (message.text ?? "").match(new RegExp(`^/reject\\s+(${UUID_RE})\\s+([\\s\\S]+)$`, "i"));
-  const requestId = match?.[1];
-  const reason = match?.[2]?.trim();
-  if (!requestId || !reason) {
-    await sendMessage(chatId, "Usage: /reject <id> <reason>");
-    return;
-  }
-
-  const result = await decideLeaveRequest(admin, {
-    requestId,
-    approverId: profile.id,
-    decision: "rejected",
-    notes: reason,
-  });
-
-  if (!result.ok) {
-    await sendMessage(chatId, decisionErrorMessage(result.error));
-    return;
-  }
-
-  await sendMessage(chatId, `❌ Rejected ${result.employeeName}'s ${result.leaveName} request.`);
+  await sendMessage(message.chat.id, APPROVE_REJECT_REDIRECT_MESSAGE);
 }

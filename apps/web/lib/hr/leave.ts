@@ -1,5 +1,12 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { eachDayOfInterval, format, parseISO } from "date-fns";
+import { eachDayOfInterval, format, isBefore, parseISO } from "date-fns";
+import { resolveApprovalChain } from "@/lib/hr/approval-chain";
+import {
+  computeLeaveDays,
+  getDefaultDaySelections,
+  getSelectedDates,
+  type DaySelection,
+} from "@/lib/hr/leave-day-calculation";
 
 export interface LeaveEmployeeProfile {
   id: string;
@@ -432,4 +439,419 @@ export async function decideLeaveRequest(
     isFinalApproval,
     nextApproverName,
   };
+}
+
+// ── Apply (create) leave request ────────────────────────────────────────────
+//
+// Ports the validation + submit logic that today lives ONLY client-side in
+// `apps/web/components/hr/leave/leave-request-form.tsx` (`validate()` +
+// `handleSubmit`), so the Telegram Mini App (and any other non-browser
+// caller) gets the same business rules enforced server-side. Every check
+// below is annotated with the line range it was sourced from in that file.
+
+export interface LeaveApplicantProfile {
+  id: string;
+  full_name: string | null;
+  gender: string | null;
+  probation_status: string | null;
+  employment_type: string | null;
+}
+
+export async function getLeaveApplicantProfile(
+  admin: SupabaseClient,
+  employeeId: string,
+): Promise<LeaveApplicantProfile | null> {
+  const { data } = await admin
+    .from("profiles")
+    .select("id, full_name, gender, probation_status, employment_type")
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  return (data as LeaveApplicantProfile | null) ?? null;
+}
+
+export interface ApplicableLeaveType {
+  id: string;
+  leave_code: string;
+  leave_name: string;
+  max_days_per_year: number;
+  is_paid: boolean;
+  half_day_allowed: boolean;
+  skip_team_capacity: boolean;
+  max_days_per_request: number;
+  advance_notice_days: number;
+  probation_required: boolean;
+  gender_restriction: string;
+  is_replacement_leave: boolean;
+  requires_document: boolean;
+  is_active: boolean;
+}
+
+// Column set mirrors leave-request-form.tsx lines 208-210 exactly.
+const LEAVE_TYPE_COLUMNS =
+  "id, leave_code, leave_name, max_days_per_year, is_paid, half_day_allowed, skip_team_capacity, max_days_per_request, advance_notice_days, probation_required, gender_restriction, is_replacement_leave, requires_document, is_active";
+
+export async function getActiveLeaveTypes(admin: SupabaseClient): Promise<ApplicableLeaveType[]> {
+  const { data } = await admin
+    .from("leave_types")
+    .select(LEAVE_TYPE_COLUMNS)
+    .eq("is_active", true)
+    .order("leave_name");
+
+  return (data ?? []) as unknown as ApplicableLeaveType[];
+}
+
+export interface LeaveEmploymentPolicy {
+  leave_type_id: string;
+  allowed: boolean;
+  requires_hr: boolean;
+  requires_attachment: boolean;
+  monthly_accrual: boolean;
+  usable: boolean;
+}
+
+// Bulk equivalent of the form's per-type `leave_employment_policy` fetch
+// (lines 290-301) — one query covering every leave type for the applicant's
+// (employment_type, probation_status) combination instead of one round trip
+// per selected type.
+export async function getLeaveEmploymentPolicies(
+  admin: SupabaseClient,
+  employmentType: string,
+  probationStatus: string,
+): Promise<LeaveEmploymentPolicy[]> {
+  const { data } = await admin
+    .from("leave_employment_policy")
+    .select("leave_type_id, allowed, requires_hr, requires_attachment, monthly_accrual, usable")
+    .eq("employment_type", employmentType)
+    .eq("probation_status", probationStatus);
+
+  return (data ?? []) as unknown as LeaveEmploymentPolicy[];
+}
+
+export interface LeaveDateRange {
+  start_date: string;
+  end_date: string;
+}
+
+// Blocking statuses mirror leave-request-form.tsx line 236 exactly — a
+// leave request only frees up its dates once it leaves this set (rejected,
+// cancelled, withdrawn).
+const BLOCKING_LEAVE_STATUSES = ["submitted", "approved", "pending_cancellation"];
+
+export async function getOccupiedLeaveRanges(
+  admin: SupabaseClient,
+  employeeId: string,
+): Promise<LeaveDateRange[]> {
+  const { data } = await admin
+    .from("leave_requests")
+    .select("start_date, end_date")
+    .eq("employee_id", employeeId)
+    .in("status", BLOCKING_LEAVE_STATUSES);
+
+  return (data ?? []) as LeaveDateRange[];
+}
+
+async function getOccupiedLeaveDateSet(admin: SupabaseClient, employeeId: string): Promise<Set<string>> {
+  const ranges = await getOccupiedLeaveRanges(admin, employeeId);
+  const occupied = new Set<string>();
+  for (const range of ranges) {
+    for (const day of getSelectedDates(range.start_date, range.end_date)) {
+      occupied.add(format(day, "yyyy-MM-dd"));
+    }
+  }
+  return occupied;
+}
+
+export async function getActivePublicHolidayDates(
+  admin: SupabaseClient,
+  years: number[],
+): Promise<Set<string>> {
+  if (years.length === 0) return new Set();
+  const { data } = await admin
+    .from("leave_public_holidays")
+    .select("holiday_date")
+    .in("year", years)
+    .eq("is_active", true);
+
+  return new Set(((data ?? []) as { holiday_date: string }[]).map((h) => h.holiday_date));
+}
+
+export interface CreateLeaveRequestInput {
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  /** Optional per-day overrides; unlisted days default per getDefaultDaySelections. */
+  daySelections?: Record<string, DaySelection>;
+  reason: string;
+}
+
+// Distinct failure modes, one per specific check the form performs in
+// validate() — deliberately not collapsed into a generic catch-all so a
+// caller can react (or localize a message) per rule.
+export type CreateLeaveRequestError =
+  | "invalid_leave_type"
+  | "validation_error"
+  | "gender_restricted"
+  | "probation_not_allowed"
+  | "probation_requires_hr"
+  | "insufficient_balance"
+  | "max_days_exceeded"
+  | "half_day_not_allowed"
+  | "date_conflict";
+
+export type CreateLeaveRequestResult =
+  | { ok: true; requestId: string }
+  | { ok: false; error: CreateLeaveRequestError; message: string };
+
+async function notifyLeaveApprover(
+  admin: SupabaseClient,
+  params: {
+    requestId: string;
+    approverId: string;
+    employeeName: string;
+    daysRequested: number;
+    startDate: string;
+    endDate: string;
+    reason: string;
+  },
+): Promise<void> {
+  const { data: approverProfileData } = await admin
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", params.approverId)
+    .maybeSingle();
+  const approverProfile = approverProfileData as { full_name: string | null; email: string | null } | null;
+
+  // Message format mirrors notifyApprover in leave-request-form.tsx (lines 365-396).
+  const body = `${params.employeeName} has submitted a leave request for ${params.daysRequested} day(s) from ${format(parseISO(params.startDate), "dd MMM yyyy")} to ${format(parseISO(params.endDate), "dd MMM yyyy")}. Reason: ${params.reason}`;
+
+  await admin.from("leave_notifications").insert({
+    leave_request_id: params.requestId,
+    event_type: "request_submitted",
+    recipient_id: params.approverId,
+    recipient_email: approverProfile?.email,
+    recipient_name: approverProfile?.full_name,
+    subject: `Leave Request from ${params.employeeName}`,
+    body,
+  });
+
+  await insertLeaveTaskAlert(admin, {
+    recipientId: params.approverId,
+    alertType: "leave_pending_approval",
+    title: `Leave Request from ${params.employeeName}`,
+    body,
+    leaveRequestId: params.requestId,
+  });
+}
+
+export async function createLeaveRequest(
+  admin: SupabaseClient,
+  employeeId: string,
+  input: CreateLeaveRequestInput,
+): Promise<CreateLeaveRequestResult> {
+  const { leaveTypeId, startDate, endDate, reason } = input;
+
+  // BR: leave-request-form.tsx lines 306-308 — required dates, end >= start.
+  if (!startDate) return { ok: false, error: "validation_error", message: "Please select a start date." };
+  if (!endDate) return { ok: false, error: "validation_error", message: "Please select an end date." };
+  if (isBefore(parseISO(endDate), parseISO(startDate))) {
+    return { ok: false, error: "validation_error", message: "End date cannot be before start date." };
+  }
+
+  const profile = await getLeaveApplicantProfile(admin, employeeId);
+  if (!profile) {
+    return {
+      ok: false,
+      error: "validation_error",
+      message: "Unable to identify current user. Please refresh and try again.",
+    };
+  }
+
+  // BR: leave-request-form.tsx line 305 — leave type must exist and be
+  // selectable. The form only ever offers active types in its dropdown
+  // (line 210's `.eq("is_active", true)`), so an inactive/unknown id here
+  // is treated the same way validate() treats "no type selected".
+  const { data: leaveTypeData } = await admin
+    .from("leave_types")
+    .select(LEAVE_TYPE_COLUMNS)
+    .eq("id", leaveTypeId)
+    .eq("is_active", true)
+    .maybeSingle();
+  const leaveType = (leaveTypeData as unknown as ApplicableLeaveType) ?? null;
+  if (!leaveType) {
+    return { ok: false, error: "invalid_leave_type", message: "Please select a leave type." };
+  }
+
+  // BR: leave-request-form.tsx lines 311-315 — gender restriction.
+  if (leaveType.gender_restriction !== "all") {
+    const userGender = profile.gender || "all";
+    if (userGender !== leaveType.gender_restriction) {
+      return {
+        ok: false,
+        error: "gender_restricted",
+        message: `This leave type is only available for ${leaveType.gender_restriction} employees.`,
+      };
+    }
+  }
+
+  // Public holidays covering the requested range — mirrors the form's
+  // initial-load holiday fetch (lines 212-216), scoped to whichever years
+  // the request actually spans rather than a hardcoded current/next year.
+  const rangeDates = getSelectedDates(startDate, endDate);
+  const years = [...new Set(rangeDates.map((d) => d.getFullYear()))];
+  const holidays = await getActivePublicHolidayDates(admin, years);
+
+  const effectiveDaySelections = getDefaultDaySelections(startDate, endDate, input.daySelections ?? {}, holidays);
+  const calc = computeLeaveDays(startDate, endDate, effectiveDaySelections, holidays);
+
+  // BR: leave-request-form.tsx line 309 — days requested must be > 0.
+  if (calc.daysRequested <= 0) {
+    return { ok: false, error: "validation_error", message: "Days requested must be greater than 0." };
+  }
+
+  // BR: leave-request-form.tsx lines 317-322 — probation-period policy.
+  // Only consulted when the employee is currently on active probation, same
+  // gate as the form (`currentUser?.probation_status === "active" && employmentPolicy`).
+  if (profile.probation_status === "active") {
+    const { data: policyData } = await admin
+      .from("leave_employment_policy")
+      .select("allowed, requires_hr")
+      .eq("employment_type", profile.employment_type ?? "permanent")
+      .eq("probation_status", profile.probation_status ?? "not_applicable")
+      .eq("leave_type_id", leaveType.id)
+      .maybeSingle();
+    const employmentPolicy = policyData as { allowed: boolean; requires_hr: boolean } | null;
+
+    if (employmentPolicy) {
+      if (!employmentPolicy.allowed) {
+        return {
+          ok: false,
+          error: "probation_not_allowed",
+          message: `${leaveType.leave_name} cannot be used during probation period. Please contact HR.`,
+        };
+      }
+      if (employmentPolicy.requires_hr) {
+        return {
+          ok: false,
+          error: "probation_requires_hr",
+          message: `${leaveType.leave_name} requires HR approval during probation period. Your request will be flagged for HR review.`,
+        };
+      }
+    }
+  }
+
+  // BR: leave-request-form.tsx lines 324-328 — balance sufficiency
+  // (replacement leave is exempt, same as `!selectedType.is_replacement_leave`).
+  if (!leaveType.is_replacement_leave) {
+    const currentYear = new Date().getFullYear();
+    const { data: balanceData } = await admin
+      .from("leave_balances")
+      .select("remaining_days")
+      .eq("employee_id", employeeId)
+      .eq("leave_type_id", leaveType.id)
+      .eq("fiscal_year", currentYear)
+      .maybeSingle();
+    // BR: leave-request-form.tsx line 325 — the actual submission-blocking
+    // check falls back to 0 when no balance row exists yet. (Line 184's
+    // `availableBalance` uses a different, more lenient fallback to
+    // `max_days_per_year`, but that memo only feeds the UI's balance-meter
+    // display, not `validate()` — this mirrors `validate()`, not the meter.)
+    const remainingBalance = (balanceData as { remaining_days: number } | null)?.remaining_days ?? 0;
+
+    if (calc.daysRequested > remainingBalance) {
+      return {
+        ok: false,
+        error: "insufficient_balance",
+        message: `Insufficient balance. You have ${remainingBalance} day${remainingBalance !== 1 ? "s" : ""} remaining.`,
+      };
+    }
+  }
+
+  // BR: leave-request-form.tsx lines 330-331 — per-request cap (0 = unlimited).
+  if (leaveType.max_days_per_request > 0 && calc.daysRequested > leaveType.max_days_per_request) {
+    return {
+      ok: false,
+      error: "max_days_exceeded",
+      message: `Maximum ${leaveType.max_days_per_request} days per request allowed.`,
+    };
+  }
+
+  // BR: leave-request-form.tsx lines 333-334 — half-day must be allowed for this type.
+  if (calc.isHalfDay && !leaveType.half_day_allowed) {
+    return { ok: false, error: "half_day_not_allowed", message: "Half-day leave is not allowed for this leave type." };
+  }
+
+  // BR: leave-request-form.tsx line 336 — reason required. Also enforced by
+  // LeaveApplySchema at the API boundary; kept here too since this function
+  // is a public service-layer entry point other callers may use directly.
+  if (!reason.trim()) {
+    return { ok: false, error: "validation_error", message: "Please provide a reason for your leave request." };
+  }
+
+  // BR: leave-request-form.tsx lines 338-347 — date conflict against the
+  // employee's own active leave requests, only for days actually being
+  // requested (skip-marked days never conflict).
+  const occupied = await getOccupiedLeaveDateSet(admin, employeeId);
+  const conflictKeys = calc.requestableDateKeys.filter((key) => {
+    const selection = effectiveDaySelections[key] ?? "full";
+    return selection !== "skip" && occupied.has(key);
+  });
+  if (conflictKeys.length > 0) {
+    const formatted = conflictKeys.map((key) => format(parseISO(key), "dd MMM yyyy"));
+    return {
+      ok: false,
+      error: "date_conflict",
+      message: `You already have a leave request on: ${formatted.join(", ")}. Please select different dates.`,
+    };
+  }
+
+  // Approver resolution — identical call to resolveApprovers() (lines 353-362).
+  const chain = await resolveApprovalChain(admin, employeeId);
+  const approver1Id = chain.firstApprover?.id ?? null;
+  const approver2IdRaw = chain.finalApprover?.id ?? null;
+  const approver2Id = approver2IdRaw && approver2IdRaw !== approver1Id ? approver2IdRaw : null;
+
+  // Insert — same shape/status as handleSubmit's insert (lines 411-431).
+  const { data: request, error: insertError } = await admin
+    .from("leave_requests")
+    .insert({
+      employee_id: employeeId,
+      requested_by_id: employeeId,
+      leave_type_id: leaveType.id,
+      start_date: startDate,
+      end_date: endDate,
+      days_requested: calc.daysRequested,
+      is_half_day: calc.isSingleHalfDayRequest,
+      half_day_period: calc.isSingleHalfDayRequest ? calc.halfDayPeriod : null,
+      reason,
+      status: "submitted",
+      submission_date: new Date().toISOString(),
+      approver_1_id: approver1Id,
+      approver_1_status: approver1Id ? "pending" : null,
+      approver_2_id: approver2Id,
+      approver_2_status: approver2Id ? "pending" : null,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !request) {
+    throw new Error(insertError?.message ?? "Failed to create leave request");
+  }
+
+  // Notify only the first approver — the second is notified when the first
+  // approves (see decideLeaveRequest's forwarding branch above), same as
+  // the form's comment at lines 436-438.
+  if (approver1Id) {
+    await notifyLeaveApprover(admin, {
+      requestId: request.id as string,
+      approverId: approver1Id,
+      employeeName: profile.full_name ?? "Unknown",
+      daysRequested: calc.daysRequested,
+      startDate,
+      endDate,
+      reason,
+    });
+  }
+
+  return { ok: true, requestId: request.id as string };
 }

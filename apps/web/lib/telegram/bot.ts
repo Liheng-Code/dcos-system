@@ -1,15 +1,22 @@
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 
-function getBotToken(): string {
+export function getBotToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   return token;
+}
+
+export interface InlineKeyboardButton {
+  text: string;
+  web_app?: { url: string };
+  callback_data?: string;
 }
 
 export interface SendMessageOptions {
   requestLocation?: boolean;
   removeKeyboard?: boolean;
   parseMode?: "Markdown";
+  inlineKeyboard?: InlineKeyboardButton[][];
 }
 
 export async function sendMessage(
@@ -25,7 +32,11 @@ export async function sendMessage(
     payload.parse_mode = opts.parseMode;
   }
 
-  if (opts?.requestLocation) {
+  if (opts?.inlineKeyboard) {
+    // Mutually exclusive with requestLocation/removeKeyboard — Telegram only
+    // accepts one reply_markup shape per message. inlineKeyboard wins.
+    payload.reply_markup = { inline_keyboard: opts.inlineKeyboard };
+  } else if (opts?.requestLocation) {
     payload.reply_markup = {
       keyboard: [[{ text: "📍 Share Location", request_location: true }]],
       resize_keyboard: true,

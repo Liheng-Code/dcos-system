@@ -299,12 +299,10 @@ export async function handleHelp(admin: SupabaseClient, message: TelegramMessage
       "/checkin — check in with your location and a selfie\n" +
       "/checkout — check out with your location and a selfie\n\n" +
       "Leave\n" +
-      "/apply — get a link to apply for leave\n" +
+      "/apply — open the app to apply for leave\n" +
       "/balance — your current leave balance\n" +
       "/myleave — your recent leave requests\n" +
-      "/pending — leave requests awaiting your approval\n" +
-      "/approve <id> — approve a request\n" +
-      "/reject <id> <reason> — reject a request\n\n" +
+      "/pending — leave requests awaiting your approval, with Review buttons to approve or reject each one\n\n" +
       "/help — show this message",
   );
 }
