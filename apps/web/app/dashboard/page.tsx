@@ -5,6 +5,7 @@ import { ControlRoom } from "@/components/dashboard/control-room";
 import { useProject } from "@/components/dashboard/project-context";
 import { CostDashboard } from "@/components/qs/cost-control";
 import { ProgressDashboard } from "@/components/dashboard/progress-dashboard";
+import { AdminDashboardWidget } from "@/components/administration/admin-dashboard-widget";
 import { cn } from "@/lib/utils";
 
 type DashboardTab = "executive" | "cost" | "progress";
@@ -47,12 +48,17 @@ export default function DashboardPage() {
         </div>
       </div>
       {tab === "executive" ? (
-        <ControlRoom
-          projectId={selectedProjectId || null}
-          projectName={selectedProject?.project_name}
-          projectCode={selectedProject?.project_code}
-          projectProgress={selectedProject?.progress_percentage}
-        />
+        <>
+          <ControlRoom
+            projectId={selectedProjectId || null}
+            projectName={selectedProject?.project_name}
+            projectCode={selectedProject?.project_code}
+            projectProgress={selectedProject?.progress_percentage}
+          />
+          {/* USR-11 — Admin Dashboard Widget. Self-gated: renders nothing for non-admin/HR
+              viewers, so it's safe to always mount here. */}
+          <AdminDashboardWidget />
+        </>
       ) : tab === "cost" && selectedProjectId ? (
         <CostDashboard projectId={selectedProjectId} projectName={selectedProject?.project_name} />
       ) : tab === "progress" && selectedProjectId ? (

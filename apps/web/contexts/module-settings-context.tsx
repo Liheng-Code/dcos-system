@@ -9,6 +9,7 @@ import {
   type NavItemSetting,
 } from "@/lib/nav-item-settings-service";
 import { createClient } from "@/lib/supabase/client";
+import { usePermittedModules } from "@/hooks/use-permitted-modules";
 
 interface ModuleSettingsContextValue {
   activeKeys: string[];
@@ -27,6 +28,12 @@ interface ModuleSettingsContextValue {
     isActive: boolean,
   ) => Promise<{ success: boolean; error?: string }>;
   refreshNavItems: () => Promise<void>;
+  /** Sidebar module keys the current user's role(s) are permitted to see (Phase A). */
+  permittedModuleKeys: string[];
+  permittedLoading: boolean;
+  /** Composes the global on/off toggle with the role-based permission check. */
+  isModulePermitted: (key: string) => boolean;
+  refreshPermittedModules: () => Promise<void>;
 }
 
 const ModuleSettingsContext = createContext<ModuleSettingsContextValue>({
@@ -40,6 +47,10 @@ const ModuleSettingsContext = createContext<ModuleSettingsContextValue>({
   isNavItemActive: () => true,
   toggleNavItem: async () => ({ success: false }),
   refreshNavItems: async () => {},
+  permittedModuleKeys: [],
+  permittedLoading: true,
+  isModulePermitted: () => true,
+  refreshPermittedModules: async () => {},
 });
 
 export function useModuleSettings() {
@@ -75,6 +86,17 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
   const isModuleActive = useCallback(
     (key: string) => activeKeys.includes(key),
     [activeKeys],
+  );
+
+  const {
+    permittedModuleKeys,
+    loading: permittedLoading,
+    refresh: refreshPermittedModules,
+  } = usePermittedModules();
+
+  const isModulePermitted = useCallback(
+    (key: string) => isModuleActive(key) && permittedModuleKeys.includes(key),
+    [isModuleActive, permittedModuleKeys],
   );
 
   const toggleModule = useCallback(
@@ -131,6 +153,10 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
         isNavItemActive,
         toggleNavItem,
         refreshNavItems: fetchNavItems,
+        permittedModuleKeys,
+        permittedLoading,
+        isModulePermitted,
+        refreshPermittedModules,
       }}
     >
       {children}

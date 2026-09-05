@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, Users, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { connectStakeholder, disconnectStakeholder } from "@/lib/stakeholder-assignment";
 
 interface StakeholderRow {
   id: string;
@@ -162,30 +163,18 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
     if (!newStakeholderId) return;
     setSaving(true);
     const stakeholder = allStakeholders.find((s) => s.id === newStakeholderId);
-    const { error } = await supabase.from("project_stakeholders").insert({
-      project_id: projectId,
-      stakeholder_id: newStakeholderId,
-      role_in_project: stakeholder?.stakeholder_type ?? null,
+    const { error } = await connectStakeholder(supabase, projectId, {
+      id: newStakeholderId,
+      stakeholder_type: stakeholder?.stakeholder_type ?? null,
     });
     if (error) { toast.error(error.message); }
     else { toast.success("Stakeholder added"); setNewStakeholderId(""); setAddingStakeholder(false); await load(); }
     setSaving(false);
   }
 
-  async function handleRemoveStakeholder(psId: string, stakeholderId: string) {
+  async function handleRemoveStakeholder(stakeholderId: string) {
     setSaving(true);
-    // Cascade: delete teams and members first
-    const { data: teams } = await supabase.from("project_stakeholder_teams")
-      .select("id").eq("project_id", projectId).eq("stakeholder_id", stakeholderId);
-    if (teams && teams.length > 0) {
-      await supabase.from("project_team_members")
-        .delete().in("project_stakeholder_team_id", teams.map((t: { id: string }) => t.id));
-      await supabase.from("project_stakeholder_teams")
-        .delete().eq("project_id", projectId).eq("stakeholder_id", stakeholderId);
-    }
-    await supabase.from("project_stakeholder_mappings")
-      .delete().eq("project_id", projectId).eq("stakeholder_id", stakeholderId);
-    const { error } = await supabase.from("project_stakeholders").delete().eq("id", psId);
+    const { error } = await disconnectStakeholder(supabase, projectId, stakeholderId);
     if (error) toast.error(error.message);
     else { toast.success("Stakeholder removed"); await load(); }
     setSaving(false);
@@ -316,7 +305,7 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
                 </Button>
                 <button
                   type="button"
-                  onClick={() => handleRemoveStakeholder(entry.id, entry.stakeholder_id)}
+                  onClick={() => handleRemoveStakeholder(entry.stakeholder_id)}
                   disabled={saving}
                   className="rounded-lg p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                 >

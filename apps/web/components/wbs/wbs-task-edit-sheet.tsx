@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Loader2, X, Upload, FileText, Clock, UserCheck, User, Calendar, MapPin, AlertCircle, ImageIcon, Paperclip, ArrowLeft, Flag, GitBranch } from "lucide-react";
+import { Loader2, X, Upload, FileText, Clock, UserCheck, User, Calendar, MapPin, AlertCircle, ImageIcon, Paperclip, ArrowLeft, ArrowLeftRight, Flag, GitBranch } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -162,6 +162,30 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   const [recurInterval, setRecurInterval] = useState("1");
   const [recurEndDate, setRecurEndDate] = useState("");
   const [perms, setPerms] = useState<UserPermissions | null>(null);
+  const [crossDeptEnabled, setCrossDeptEnabled] = useState(false);
+  const [crossDeptId, setCrossDeptId] = useState("");
+  const [crossDeptNote, setCrossDeptNote] = useState("");
+  const [departmentsList, setDepartmentsList] = useState<{ id: string; department_code: string; department_name: string }[]>([]);
+  const [myDepartmentId, setMyDepartmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isCreating) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: { user } }, deptsRes] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.from("departments").select("id, department_code, department_name").order("department_name"),
+      ]);
+      if (cancelled) return;
+      if (deptsRes.data) setDepartmentsList(deptsRes.data as { id: string; department_code: string; department_name: string }[]);
+      if (user?.id) {
+        setUserId(user.id);
+        const meRes = await supabase.from("profiles").select("department_id").eq("id", user.id).maybeSingle();
+        if (!cancelled && meRes.data) setMyDepartmentId((meRes.data.department_id as string | null) ?? null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isCreating, supabase]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rejectFileInputRef = useRef<HTMLInputElement>(null);
@@ -782,6 +806,17 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       return;
     }
 
+    if (crossDeptEnabled) {
+      if (!crossDeptId) {
+        toast.error("Select the executing department for the cross-department request");
+        return;
+      }
+      if (!myDepartmentId) {
+        toast.error("Your profile has no department assigned — cannot raise a cross-department request");
+        return;
+      }
+    }
+
     const taskCode = form.task_code.trim();
     const { data: existingTask, error: checkError } = await supabase
       .from("wbs_tasks")
@@ -813,6 +848,14 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       wbs_node_id: form.wbs_node_id,
       end_date: form.end_date || null,
       sort_order: Date.now(),
+      ...(crossDeptEnabled
+        ? {
+            requesting_department_id: myDepartmentId,
+            department_id: crossDeptId,
+            cross_dept_status: "requested" as const,
+            cross_dept_note: crossDeptNote.trim() || null,
+          }
+        : {}),
     };
 
     setSaving(true);
@@ -821,6 +864,26 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       toast.error(isDuplicateTaskCodeError(error.message) ? `Task code "${taskCode}" already exists in this project. Please use a different code.` : error.message);
       setSaving(false);
       return;
+    }
+    if (crossDeptEnabled && newTask?.id) {
+      const headRes = await supabase
+        .from("departments")
+        .select("department_head")
+        .eq("id", crossDeptId)
+        .maybeSingle();
+      await createTaskAlert(supabase, {
+        projectId,
+        taskId: newTask.id,
+        actorId: userId,
+        actorName: currentUserName,
+        recipientId: (headRes.data?.department_head as string | undefined) ?? null,
+        alertType: "cross_dept_requested",
+        title: "New cross-department task request",
+        body: `${taskCode} · ${form.task_name.trim()}`,
+        taskCode,
+        taskName: form.task_name.trim(),
+        metadata: { note: crossDeptNote.trim() || null, requesting_department_id: myDepartmentId },
+      });
     }
     if (recurringEnabled && newTask?.id) {
       const startDate = form.end_date || new Date().toISOString().slice(0, 10);
@@ -1377,6 +1440,11 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
               <div className="min-w-0">
                 <h2 className="text-base font-semibold truncate">{task ? form.task_name : "New Task"}</h2>
                 <p className="text-xs text-muted-foreground">{task ? form.task_code : ""}</p>
+                {task?.requesting_department_id && (
+                  <p className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-indigo-600">
+                    <ArrowLeftRight className="h-3 w-3" /> Cross-department · {task.cross_dept_status ?? "requested"}
+                  </p>
+                )}
               </div>
             </div>
             {!isCreating && task && (
@@ -1503,6 +1571,11 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold truncate">{task ? form.task_name : "New Task"}</h2>
             <p className="text-xs text-muted-foreground">{task ? form.task_code : `WBS Node: ${wbsNodeId?.slice(0, 8) ?? "-"}`}</p>
+            {task?.requesting_department_id && (
+              <p className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-indigo-600">
+                <ArrowLeftRight className="h-3 w-3" /> Cross-department · {task.cross_dept_status ?? "requested"}
+              </p>
+            )}
           </div>
           {!isCreating && task && (
             <span className={`mr-3 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${statusColor(task.status)}`}>
@@ -1576,6 +1649,50 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
                   <input id="end_date" type="date" value={form.end_date} onChange={(e) => update("end_date", e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary" />
                 </div>
               </div>
+            </fieldset>
+            <fieldset className="space-y-3 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Department Request</legend>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={crossDeptEnabled} onChange={(e) => setCrossDeptEnabled(e.target.checked)} className="h-3.5 w-3.5 rounded accent-slate-900" />
+                  <span className="text-xs text-slate-600">Enable</span>
+                </label>
+              </div>
+              {crossDeptEnabled && (
+                <div className="space-y-3 pt-1">
+                  {!myDepartmentId && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-700">
+                      Your profile has no department assigned — cross-department requests require one.
+                    </p>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cross_dept">Executing Department *</Label>
+                    <select
+                      id="cross_dept"
+                      value={crossDeptId}
+                      onChange={(e) => setCrossDeptId(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                    >
+                      <option value="">Select department</option>
+                      {departmentsList.map((d) => (
+                        <option key={d.id} value={d.id}>{d.department_code} · {d.department_name}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">The receiving department&apos;s head must accept this request before work starts.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cross_dept_note">Scope / Notes</Label>
+                    <textarea
+                      id="cross_dept_note"
+                      value={crossDeptNote}
+                      onChange={(e) => setCrossDeptNote(e.target.value)}
+                      rows={2}
+                      placeholder="Describe what you need from the receiving department…"
+                      className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                    />
+                  </div>
+                </div>
+              )}
             </fieldset>
             <fieldset className="space-y-3 rounded-lg border border-border p-3">
               <div className="flex items-center justify-between">

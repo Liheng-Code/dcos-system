@@ -42,6 +42,7 @@ export interface WizardFormState {
   description: string;
   short_name: string;
   category: string;
+  building_type: string;
   location: string;
   time_zone: string;
   dlp_period: string;
@@ -70,6 +71,7 @@ export function formStateFromProject(p: Project | null): WizardFormState {
     description: p?.description ?? "",
     short_name: p?.short_name ?? "",
     category: p?.category ?? "",
+    building_type: p?.building_type ?? "",
     location: p?.location ?? "",
     time_zone: p?.time_zone ?? "Asia/Phnom_Penh",
     dlp_period: p?.dlp_period ?? "",
@@ -99,6 +101,7 @@ export function formToPayload(form: WizardFormState) {
     description: form.description || null,
     short_name: form.short_name || null,
     category: form.category || null,
+    building_type: form.building_type || null,
     location: form.location || null,
     time_zone: form.time_zone || "Asia/Phnom_Penh",
     dlp_period: form.dlp_period || null,

@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { Link2 } from "lucide-react";
 
 interface GanttMilestoneProps {
   left: number;
   name?: string;
   date?: string;
   onClick?: () => void;
+  /** Begin dragging a dependency link from this milestone */
+  onStartLink?: (e: React.MouseEvent) => void;
 }
 
-export function GanttMilestone({ left, name, date, onClick }: GanttMilestoneProps) {
+export function GanttMilestone({ left, name, date, onClick, onStartLink }: GanttMilestoneProps) {
   const [hover, setHover] = useState(false);
 
   return (
@@ -21,6 +24,24 @@ export function GanttMilestone({ left, name, date, onClick }: GanttMilestoneProp
       onMouseLeave={() => setHover(false)}
     >
       <div className="h-4 w-4 rotate-45 rounded-sm bg-amber-400 border-2 border-amber-600 shadow-sm transition-transform duration-150 group-hover/milestone:scale-125" />
+
+      {/* Link handle */}
+      {onStartLink && (
+        <button
+          type="button"
+          aria-label="Drag to link to another task"
+          title="Drag onto another task to create a Finish-to-Start link"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onStartLink(e);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-1/2 right-0 z-30 hidden h-4 w-4 -translate-y-1/2 translate-x-2 cursor-crosshair items-center justify-center rounded-full border border-background bg-primary text-primary-foreground shadow transition-transform hover:scale-110 group-hover/milestone:flex"
+        >
+          <Link2 className="h-2.5 w-2.5" />
+        </button>
+      )}
 
       {/* Tooltip */}
       {hover && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useSupabaseAuth } from "@/hooks/use-supabase-auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +21,7 @@ interface Profile {
 }
 
 export function UserMenu() {
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const { signOut, loading } = useSupabaseAuth();
 
@@ -72,7 +74,7 @@ export function UserMenu() {
           </p>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
           <User className="h-4 w-4" />
           Profile Settings
         </DropdownMenuItem>

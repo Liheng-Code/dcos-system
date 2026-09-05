@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import * as XLSX from "xlsx";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,7 +13,7 @@ export interface PrelimLibraryItem {
   default_qty: number;
   formula: string | null;
   sort_order: number;
-  category: "temporary_works" | "staff" | "design" | "risk";
+  category: "temporary_works" | "staff" | "design" | "risk" | "early_work";
   notes: string | null;
 }
 
@@ -403,6 +404,60 @@ export function calculatePrelimTree(
   const total = rootChildren.reduce((sum, s) => sum + s.amount, 0);
 
   return { sections: rootChildren, total };
+}
+
+// ── Export to Excel ──────────────────────────────────────────────────────────
+
+export function exportPrelimTreeToExcel(
+  tree: CalculatedPrelimTree,
+  params: SiteDataParams,
+  options?: { caseName?: string }
+): void {
+  const rows: Record<string, string | number>[] = [];
+
+  function walk(items: CalculatedPrelimItem[], depth: number) {
+    for (const item of items) {
+      rows.push({
+        Code: item.code,
+        Description: `${"    ".repeat(depth)}${item.description}`,
+        Unit: item.unit,
+        Qty: Number(item.quantity.toFixed(2)),
+        "Rate ($)": Number(item.rate.toFixed(2)),
+        "Amount ($)": Number(item.amount.toFixed(2)),
+      });
+      walk(item.children, depth + 1);
+    }
+  }
+  walk(tree.sections, 0);
+  rows.push({
+    Code: "",
+    Description: "TOTAL PRELIMINARIES",
+    Unit: "",
+    Qty: "",
+    "Rate ($)": "",
+    "Amount ($)": Number(tree.total.toFixed(2)),
+  });
+
+  const wsPrelim = XLSX.utils.json_to_sheet(rows);
+  wsPrelim["!cols"] = [{ wch: 10 }, { wch: 48 }, { wch: 8 }, { wch: 10 }, { wch: 14 }, { wch: 16 }];
+
+  const paramKeys = Object.keys(SITE_DATA_META) as (keyof SiteDataParams)[];
+  const paramRows = paramKeys.map((key) => ({
+    Code: key,
+    Parameter: SITE_DATA_META[key].label,
+    Value: params[key],
+    Unit: SITE_DATA_META[key].unit,
+  }));
+  const wsParams = XLSX.utils.json_to_sheet(paramRows);
+  wsParams["!cols"] = [{ wch: 8 }, { wch: 40 }, { wch: 10 }, { wch: 10 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsParams, "Site Data");
+  XLSX.utils.book_append_sheet(wb, wsPrelim, "Preliminaries");
+
+  const caseName = (options?.caseName ?? "Default").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const date = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Prelim_Cost_Library_${caseName}_${date}.xlsx`);
 }
 
 // ── Apply to Tender ──────────────────────────────────────────────────────────

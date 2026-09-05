@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Save, RotateCcw, Loader2, ChevronDown, Plus, Copy, Trash2, Pencil } from "lucide-react";
+import { Save, RotateCcw, Loader2, ChevronDown, ChevronUp, Plus, Copy, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -22,7 +22,7 @@ interface SiteDataPanelProps {
   params: SiteDataParams;
   onParamsChange: (params: SiteDataParams) => void;
   onRecalculate: () => void;
-  onCaseChanged?: () => void;
+  onCaseChanged?: (name: string) => void;
 }
 
 const PARAM_ORDER: (keyof SiteDataParams)[] = [
@@ -48,6 +48,7 @@ const META: Record<string, { label: string; unit: string; derived?: string }> = 
 export default function SiteDataPanel({ params, onParamsChange, onRecalculate, onCaseChanged }: SiteDataPanelProps) {
   const [local, setLocal] = useState<SiteDataParams>({ ...params });
   const [recalculating, setRecalculating] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   // Case state
   const [cases, setCases] = useState<PrelimCaseSummary[]>([]);
@@ -77,10 +78,11 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
       onParamsChange(def.params);
       setLocal(def.params);
       onRecalculate();
+      onCaseChanged?.(def.name);
     } catch {
       // silent
     }
-  }, [activeCaseId, onParamsChange, onRecalculate]);
+  }, [activeCaseId, onParamsChange, onRecalculate, onCaseChanged]);
 
   useEffect(() => { loadCases(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -136,6 +138,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     setLocal(c.params);
     onParamsChange(c.params);
     onRecalculate();
+    onCaseChanged?.(c.name);
     setDropdownOpen(false);
   }
 
@@ -152,6 +155,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
       setActiveCaseId(c.id);
       setActiveCaseName(c.name);
       setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default }]);
+      onCaseChanged?.(c.name);
       setShowNewDialog(false);
       setNewName("");
       setNewSourceId("");
@@ -166,7 +170,10 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     if (!trimmed) return;
     await renameCase(id, trimmed);
     setCases((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
-    if (id === activeCaseId) setActiveCaseName(trimmed);
+    if (id === activeCaseId) {
+      setActiveCaseName(trimmed);
+      onCaseChanged?.(trimmed);
+    }
     setRenamingId(null);
   }
 
@@ -182,6 +189,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
       setLocal(c.params);
       onParamsChange(c.params);
       onRecalculate();
+      onCaseChanged?.(c.name);
     } catch { /* silent */ }
   }
 
@@ -203,6 +211,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
         setLocal(def.params);
         onParamsChange(def.params);
         onRecalculate();
+        onCaseChanged?.(def.name);
       }
     }
   }
@@ -296,18 +305,28 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" variant="ghost" onClick={handleReset}>
+            <Button size="sm" variant="ghost" onClick={handleReset} disabled={collapsed}>
               <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset
             </Button>
-            <Button size="sm" onClick={handleApply} disabled={recalculating}>
+            <Button size="sm" onClick={handleApply} disabled={recalculating || collapsed}>
               {recalculating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}
               Apply &amp; Recalculate
             </Button>
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand site data parameters" : "Collapse site data parameters"}
+              title={collapsed ? "Expand" : "Collapse"}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
+            >
+              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </button>
           </div>
         </div>
 
         {/* New case dialog */}
-        {showNewDialog && (
+        {!collapsed && showNewDialog && (
           <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
             <div className="flex items-center gap-2">
               <label className="text-xs text-muted-foreground shrink-0">Duplicate from:</label>
@@ -342,6 +361,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
         )}
 
         {/* Param grid */}
+        {!collapsed && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {PARAM_ORDER.map((key) => {
             const meta = META[key];
@@ -371,6 +391,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
             );
           })}
         </div>
+        )}
       </CardContent>
     </Card>
   );

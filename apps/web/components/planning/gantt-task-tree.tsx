@@ -91,9 +91,9 @@ function WbsNodeRowView({
         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <span className="text-xs font-semibold text-muted-foreground">{code}</span>
-        <span className="text-xs font-medium truncate">{name}</span>
-        <Badge variant="outline" className="text-[9px] h-4 px-1">
+        <span className="text-xs font-semibold text-muted-foreground shrink-0">{code}</span>
+        <span className="text-xs font-medium truncate" title={name}>{name}</span>
+        <Badge variant="outline" className="text-[9px] h-4 px-1 shrink-0">
           {taskCount}
         </Badge>
       </div>
@@ -130,11 +130,19 @@ function GanttTaskRowView({
         )}
       </div>
 
-      <span className="font-mono text-[10px] text-muted-foreground w-16 shrink-0 truncate">
+      <span
+        className="font-mono text-[10px] text-muted-foreground w-24 shrink-0 truncate"
+        title={task.task_code}
+      >
         {task.task_code}
       </span>
 
-      <span className="text-xs font-medium truncate min-w-0 flex-1">{task.task_name}</span>
+      <span
+        className="text-xs font-medium truncate min-w-0 flex-1"
+        title={task.owner_name ? `${task.task_name} — ${task.owner_name}` : task.task_name}
+      >
+        {task.task_name}
+      </span>
 
       <Badge
         variant="outline"
@@ -150,7 +158,7 @@ function GanttTaskRowView({
         {getStatusLabel(task.status)}
       </Badge>
 
-      <div className="flex items-center gap-1.5 shrink-0 w-20">
+      <div className="hidden items-center gap-1.5 shrink-0 w-20 sm:flex">
         <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
           <div
             className={cn("h-full rounded-full transition-all", task.progress >= 100 ? "bg-green-500" : "bg-primary")}
@@ -161,12 +169,6 @@ function GanttTaskRowView({
           {task.progress}%
         </span>
       </div>
-
-      {task.owner_name && (
-        <span className="text-[10px] text-muted-foreground truncate w-16 shrink-0 text-right">
-          {task.owner_name}
-        </span>
-      )}
     </button>
   );
 }

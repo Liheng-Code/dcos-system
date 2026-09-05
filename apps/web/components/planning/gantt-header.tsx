@@ -2,108 +2,118 @@
 
 import { useMemo } from "react";
 import type { GanttZoom } from "./gantt-types";
-import { getZoomDayWidth, isWeekend, getWeekNumber, getMonthLabel } from "./gantt-utils";
+import { getZoomDayWidth } from "./gantt-utils";
+import {
+  applyZoomPreset,
+  DEFAULT_TIMESCALE,
+  enumerateTierSegments,
+  formatTierLabel,
+  segDayOffset,
+  tierRowHeights,
+  type TimescaleConfig,
+} from "@/lib/planning/timescale";
 import { cn } from "@/lib/utils";
 
 interface GanttHeaderProps {
-  zoom: GanttZoom;
+  /** Full MS-Project-style timescale config. When omitted it is derived from
+   * `zoom` (keeps the older standalone charts working). */
+  config?: TimescaleConfig;
+  zoom?: GanttZoom;
   rangeMin: Date;
   rangeMax: Date;
   totalDays: number;
   dayWidth?: number;
+  /** X offset (px) of the "today" marker, or < 0 when out of range */
+  todayX?: number;
+  /** X offset (px) of the schedule data date, or < 0 when unset / out of range */
+  dataDateX?: number;
 }
 
-export function GanttHeader({ zoom, rangeMin, rangeMax, totalDays, dayWidth }: GanttHeaderProps) {
+export function GanttHeader({
+  config,
+  zoom = "week",
+  rangeMin,
+  rangeMax,
+  totalDays,
+  dayWidth,
+  todayX = -1,
+  dataDateX = -1,
+}: GanttHeaderProps) {
+  const cfg = useMemo(
+    () => config ?? applyZoomPreset(DEFAULT_TIMESCALE, zoom),
+    [config, zoom],
+  );
   const dayW = dayWidth ?? getZoomDayWidth(zoom);
-  const chartW = totalDays * dayW;
+  const chartW = Math.max(totalDays * dayW, 1);
 
-  const days = useMemo(() => {
-    const result: Date[] = [];
-    const cur = new Date(rangeMin);
-    while (cur <= rangeMax) {
-      result.push(new Date(cur));
-      cur.setDate(cur.getDate() + 1);
-    }
-    return result;
-  }, [rangeMin, rangeMax]);
+  const { keys, rows } = useMemo(() => tierRowHeights(cfg), [cfg]);
 
-  const months = useMemo(() => {
-    const seen = new Set<string>();
-    const result: { label: string; left: number; width: number }[] = [];
-    let monthStart = -1;
-
-    for (let i = 0; i < days.length; i++) {
-      const key = `${days[i].getFullYear()}-${days[i].getMonth()}`;
-      if (!seen.has(key)) {
-        if (monthStart >= 0) {
-          result[result.length - 1].width = (i - monthStart) * dayW;
-        }
-        seen.add(key);
-        monthStart = i;
-        result.push({ label: getMonthLabel(days[i]), left: i * dayW, width: 0 });
-      }
-    }
-    if (result.length > 0) {
-      result[result.length - 1].width = (days.length - monthStart) * dayW;
-    }
-    return result;
-  }, [days, dayW]);
+  const tierRowsData = useMemo(() => {
+    const fy = cfg.fiscalYearStartMonth;
+    return keys.map((key) => {
+      const tier = cfg.tiers[key];
+      const cells = enumerateTierSegments(tier, rangeMin, rangeMax, fy).map((seg) => {
+        const from = Math.max(0, segDayOffset(seg.start, rangeMin));
+        const to = Math.min(totalDays, segDayOffset(seg.end, rangeMin));
+        return {
+          left: from * dayW,
+          width: Math.max(0, (to - from) * dayW),
+          // Always render the user's chosen format; the cell clips it if narrow.
+          label: formatTierLabel(tier, seg.start, seg.index, { fiscalYearStartMonth: fy }),
+          even: seg.index % 2 === 0,
+        };
+      });
+      return { key, tier, cells };
+    });
+  }, [cfg, keys, rangeMin, rangeMax, totalDays, dayW]);
 
   return (
-    <div className="sticky top-0 z-20 bg-background border-b border-border">
-      {/* Month row */}
-      <div className="flex border-b border-border/50 bg-muted/20" style={{ height: 22 }}>
-        <div className="relative flex" style={{ width: chartW }}>
-          {months.map((m, i) => (
+    <div className="sticky top-0 z-20 border-b border-border bg-background">
+      {tierRowsData.map((row, ri) => (
+        <div
+          key={row.key}
+          className={cn(
+            "relative bg-background",
+            ri > 0 && cfg.scaleSeparator && "border-t border-border/50",
+          )}
+          style={{ width: chartW, height: rows[ri] }}
+        >
+          {row.cells.map((c, ci) => (
             <div
-              key={i}
-              className="absolute flex items-center px-2 text-[11px] font-semibold text-muted-foreground"
-              style={{ left: m.left, width: m.width, height: 22 }}
+              key={ci}
+              className={cn(
+                "absolute inset-y-0 flex items-center overflow-hidden text-[11px] font-semibold text-muted-foreground",
+                row.tier.align === "center" && "justify-center",
+                row.tier.align === "right" && "justify-end",
+                row.tier.align === "left" && "justify-start",
+                row.tier.tickLines && "border-r border-border/40",
+                c.even && "bg-muted/25",
+              )}
+              style={{ left: c.left, width: c.width }}
             >
-              {m.label}
+              {c.width >= 6 && <span className="truncate px-1">{c.label}</span>}
             </div>
           ))}
         </div>
-      </div>
+      ))}
 
-      {/* Week / Day row */}
-      <div className="flex" style={{ height: 24 }}>
-        <div className="relative flex" style={{ width: chartW }}>
-          {days.map((day, i) => {
-            const isWeekendDay = isWeekend(day);
-            let showLabel = false;
-            let label = "";
-
-            if (zoom === "day") {
-              showLabel = true;
-              label = String(day.getDate());
-            } else if (zoom === "week") {
-              showLabel = day.getDay() === 1;
-              label = `W${getWeekNumber(day)}`;
-            } else {
-              showLabel = day.getDate() === 1;
-              label = getMonthLabel(day);
-            }
-
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "absolute top-0 border-r border-border/30",
-                  isWeekendDay && "bg-muted/10",
-                )}
-                style={{ left: i * dayW, width: dayW, height: 24 }}
-              >
-                {showLabel && (
-                  <span className="px-1 text-[10px] text-muted-foreground leading-6">
-                    {label}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+      {/* Data date tag */}
+      {dataDateX >= 0 && dataDateX <= chartW && (
+        <div className="pointer-events-none absolute top-0 z-30" style={{ left: dataDateX }}>
+          <span className="inline-flex -translate-x-1/2 items-center gap-1 rounded-b-md bg-slate-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow">
+            Data
+          </span>
         </div>
-      </div>
+      )}
+
+      {/* Today tag */}
+      {todayX >= 0 && todayX <= chartW && (
+        <div className="pointer-events-none absolute top-0 z-30" style={{ left: todayX }}>
+          <span className="inline-flex -translate-x-1/2 items-center gap-1 rounded-b-md bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow">
+            <span className="h-1 w-1 rounded-full bg-white" /> Today
+          </span>
+        </div>
+      )}
     </div>
   );
 }

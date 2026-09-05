@@ -18,6 +18,7 @@ interface AddItemDialogProps {
 }
 
 const CATEGORY_OPTIONS: { value: PrelimLibraryItem["category"]; label: string }[] = [
+  { value: "early_work", label: "Early Works" },
   { value: "temporary_works", label: "Temporary Works" },
   { value: "staff", label: "Site Staff & Overheads" },
   { value: "design", label: "Design Expenses" },

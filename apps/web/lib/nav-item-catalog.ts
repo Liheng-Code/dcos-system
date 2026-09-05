@@ -55,6 +55,7 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "group:planning:schedule", label: "Schedule", nodeType: "item" },
     { navKey: "/dashboard/planning", label: "Dashboard", nodeType: "item", parentGroupKey: "group:planning:schedule" },
     { navKey: "/dashboard/planning/gantt", label: "Gantt Chart", nodeType: "item", parentGroupKey: "group:planning:schedule" },
+    { navKey: "/dashboard/planning/sheet", label: "Sheet", nodeType: "item", parentGroupKey: "group:planning:schedule" },
     { navKey: "/dashboard/wbs/lookahead", label: "Look-ahead", nodeType: "item", parentGroupKey: "group:planning:schedule" },
     { navKey: "/dashboard/planning/calendars", label: "Calendars", nodeType: "item", parentGroupKey: "group:planning:schedule" },
     { navKey: "/dashboard/planning/comparison", label: "Comparison", nodeType: "item", parentGroupKey: "group:planning:schedule" },

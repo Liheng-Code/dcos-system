@@ -3,18 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Shield, Building2, BookType, LayoutGrid } from "lucide-react";
+import { Loader2, Building2, BookType, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { RolePermissionsPage } from "@/components/settings/role-permissions-page";
 import { CompanyProfilePage } from "@/components/settings/company-profile-page";
 import { NamingConventionAdminPage } from "@/components/naming/naming-convention-admin-page";
 import { ModuleSettingsPage } from "@/components/settings/module-settings-page";
 
-type Tab = "roles" | "company" | "naming" | "modules";
+// 02-USR Phase 4: Roles & Permissions moved wholesale to
+// /dashboard/administration/roles-permissions (00-Master.md §6 / 06-UI-UX-Design.md §1) —
+// removed from here, not dual-hosted.
+type Tab = "company" | "naming" | "modules";
 
-const tabs: { id: Tab; label: string; icon: typeof Shield }[] = [
+const tabs: { id: Tab; label: string; icon: typeof Building2 }[] = [
   { id: "company", label: "Company Profile", icon: Building2 },
-  { id: "roles", label: "Roles & Permissions", icon: Shield },
   { id: "modules", label: "Modules", icon: LayoutGrid },
   { id: "naming", label: "Naming Convention", icon: BookType },
 ];
@@ -79,7 +80,6 @@ export default function SettingsPage() {
         })}
       </div>
       {tab === "company" && <CompanyProfilePage />}
-      {tab === "roles" && <RolePermissionsPage />}
       {tab === "modules" && <ModuleSettingsPage />}
       {tab === "naming" && <NamingConventionAdminPage />}
     </div>

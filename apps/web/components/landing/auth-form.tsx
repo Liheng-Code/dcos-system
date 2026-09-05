@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ interface AuthFormProps {
 }
 
 export function AuthForm({ mode }: AuthFormProps) {
+  const router = useRouter();
   const { signIn, signUp, loading } = useSupabaseAuth();
 
   const isSignIn = mode === "signin";
@@ -164,6 +166,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         <p className="text-center text-sm text-muted-foreground">
           <button
             type="button"
+            onClick={() => router.push("/forgot-password")}
             className="hover:text-foreground transition-colors"
           >
             Forgot password?

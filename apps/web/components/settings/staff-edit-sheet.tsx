@@ -2,24 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, Save } from "lucide-react";
+import { X, Loader2, Save, Lock, Unlock, PauseCircle, Ban, KeyRound } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-
-interface StaffProfile {
-  id: string;
-  employee_id: string | null;
-  full_name: string;
-  email: string;
-  job_title: string | null;
-  department: string | null;
-  level: string | null;
-  role: string;
-  status: string;
-  report_to: string | null;
-}
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import type { StaffProfile } from "@/components/settings/staff-list-page";
+import type { AccountStatus } from "@/lib/admin-users/admin-users-service";
 
 interface Role {
   code: string;
@@ -27,16 +27,17 @@ interface Role {
   type: string;
 }
 
+interface DepartmentOption {
+  id: string;
+  department_name: string;
+}
+
 interface StaffEditSheetProps {
   profile: StaffProfile;
+  departments: DepartmentOption[];
   onClose: () => void;
   onUpdate: (profile: StaffProfile) => void;
 }
-
-const DEPARTMENTS = [
-  "management", "architecture", "structural", "procurement",
-  "construction", "hr", "accounting", "mep",
-];
 
 const LEVELS = ["L1", "L2", "L3", "L4", "L5", "L6"];
 
@@ -44,11 +45,32 @@ const ROLES = ["admin", "project_manager", "department_manager", "contractor", "
 
 const STATUSES = ["active", "inactive", "resigned"];
 
-export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetProps) {
+// USR-04 — Security section badge colours, matching USR-01's account_status convention.
+const ACCOUNT_STATUS_COLORS: Record<AccountStatus, string> = {
+  INVITED: "bg-amber-500/10 text-amber-600 border-amber-200",
+  ACTIVE: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
+  LOCKED: "bg-red-500/10 text-red-600 border-red-200",
+  SUSPENDED: "bg-orange-500/10 text-orange-600 border-orange-200",
+  DISABLED: "bg-gray-500/10 text-gray-500 border-gray-200",
+};
+
+type ConfirmAction = "lock" | "unlock" | "suspend" | "disable" | "force-reset" | null;
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "Never";
+  return new Date(iso).toLocaleString();
+}
+
+export function StaffEditSheet({ profile, departments, onClose, onUpdate }: StaffEditSheetProps) {
   const [form, setForm] = useState({ ...profile });
   const [roles, setRoles] = useState<Role[]>([]);
   const [assignedRoles, setAssignedRoles] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [reason, setReason] = useState("");
+  const [actionLoading, setActionLoading] = useState<ConfirmAction>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -62,6 +84,7 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
       .then(({ data }) => {
         if (data) setAssignedRoles(data.map((r: { role_code: string }) => r.role_code));
       });
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
   }, [profile.id]);
 
   function toggleRole(code: string) {
@@ -80,7 +103,7 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
         full_name: form.full_name,
         email: form.email,
         job_title: form.job_title,
-        department: form.department,
+        department_id: form.department_id,
         level: form.level,
         role: form.role,
         status: form.status,
@@ -115,9 +138,99 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
     }
 
     toast.success("Staff updated");
-    onUpdate({ ...form } as StaffProfile);
+    onUpdate({ ...form });
     setSaving(false);
   }
+
+  async function runAccountAction(action: "lock" | "unlock" | "suspend" | "disable") {
+    setActionLoading(action);
+    try {
+      const res = await fetch(`/api/admin/users/${profile.id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reason.trim() ? { reason: reason.trim() } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : `Failed to ${action} account`);
+      }
+      const nextStatus = (data.account_status ?? form.account_status) as AccountStatus;
+      setForm((f) => ({ ...f, account_status: nextStatus }));
+      onUpdate({ ...form, account_status: nextStatus });
+      toast.success(
+        data.idempotent
+          ? `Account is already ${nextStatus.toLowerCase()}.`
+          : `Account ${action === "lock" ? "locked" : action === "unlock" ? "unlocked" : action === "suspend" ? "suspended" : "disabled"}.`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to ${action} account`);
+    } finally {
+      setActionLoading(null);
+      setConfirmAction(null);
+      setReason("");
+    }
+  }
+
+  async function runForceReset() {
+    setActionLoading("force-reset");
+    try {
+      const res = await fetch(`/api/admin/users/${profile.id}/force-reset`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "Failed to send reset link");
+      }
+      toast.success(data.message ?? `Reset link sent to ${profile.email}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send reset link");
+    } finally {
+      setActionLoading(null);
+      setConfirmAction(null);
+    }
+  }
+
+  function handleConfirm() {
+    if (confirmAction === "force-reset") {
+      runForceReset();
+    } else if (confirmAction) {
+      runAccountAction(confirmAction);
+    }
+  }
+
+  // USR-04 action visibility — only offer transitions that are actually valid from the
+  // account's current state (mirrors ACCOUNT_STATUS_ACTIONS.validFrom in
+  // apps/web/lib/admin-users/admin-users-service.ts), so the admin is never offered a button
+  // that would just 409. Self-action on any of these four is never offered, full stop
+  // (02-Functional-Specification.md UC06 Alternate Path B) — the DB/API-side self-target
+  // check is the real boundary; this is the UI-level courtesy.
+  const isSelf = currentUserId !== null && currentUserId === profile.id;
+  const status = form.account_status;
+  const canLock = status === "ACTIVE";
+  const canSuspend = status === "ACTIVE";
+  const canDisable = status === "ACTIVE" || status === "SUSPENDED" || status === "LOCKED";
+  const canUnlock = status === "LOCKED" || status === "SUSPENDED" || status === "DISABLED";
+
+  const CONFIRM_COPY: Record<Exclude<ConfirmAction, null>, { title: string; description: string }> = {
+    lock: {
+      title: "Lock this account?",
+      description: "This user will be immediately signed out and unable to log in until unlocked.",
+    },
+    unlock: {
+      title: "Unlock this account?",
+      description: "This user will be able to log in again immediately.",
+    },
+    suspend: {
+      title: "Suspend this account?",
+      description: "This user will be immediately signed out. They can be reactivated at any time.",
+    },
+    disable: {
+      title: "Disable this account?",
+      description: "This user will be immediately signed out and their account disabled. Historical records they created are preserved.",
+    },
+    "force-reset": {
+      title: "Send password reset link?",
+      description: `A password reset link will be sent to ${profile.email}. You will not see or set their new password.`,
+    },
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -162,16 +275,16 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
                 <Input id="job_title" value={form.job_title ?? ""} onChange={(e) => setForm({ ...form, job_title: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="department">Department</Label>
+                <Label htmlFor="department_id">Department</Label>
                 <select
-                  id="department"
-                  value={form.department ?? ""}
-                  onChange={(e) => setForm({ ...form, department: e.target.value || null })}
+                  id="department_id"
+                  value={form.department_id ?? ""}
+                  onChange={(e) => setForm({ ...form, department_id: e.target.value || null })}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
                 >
                   <option value="">—</option>
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>{d.department_name}</option>
                   ))}
                 </select>
               </div>
@@ -192,7 +305,7 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
                 </select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status">HR Status</Label>
                 <select
                   id="status"
                   value={form.status}
@@ -250,6 +363,71 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
               ))}
             </div>
           </fieldset>
+
+          {/* USR-04 — Security (inline, per-user) */}
+          <fieldset className="space-y-3">
+            <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Security</legend>
+            <div className="rounded-lg border border-border p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Account Status</span>
+                <span className={cn(
+                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                  ACCOUNT_STATUS_COLORS[form.account_status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
+                )}>
+                  {form.account_status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Last Login</span>
+                <span className="text-xs">{formatDateTime(form.last_login_at)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Password Changed</span>
+                <span className="text-xs">{formatDateTime(form.password_changed_at)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Activated / First Login</span>
+                <span className="text-xs">{formatDateTime(form.first_login_at)}</span>
+              </div>
+
+              {isSelf ? (
+                <p className="pt-1 text-xs text-muted-foreground italic">
+                  Account-security actions are not available on your own account here.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-1.5">
+                  {canLock && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConfirmAction("lock")} disabled={actionLoading !== null}>
+                      <Lock className="mr-1.5 h-3.5 w-3.5" />
+                      Lock
+                    </Button>
+                  )}
+                  {canUnlock && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConfirmAction("unlock")} disabled={actionLoading !== null}>
+                      <Unlock className="mr-1.5 h-3.5 w-3.5" />
+                      Unlock
+                    </Button>
+                  )}
+                  {canSuspend && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConfirmAction("suspend")} disabled={actionLoading !== null}>
+                      <PauseCircle className="mr-1.5 h-3.5 w-3.5" />
+                      Suspend
+                    </Button>
+                  )}
+                  {canDisable && (
+                    <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setConfirmAction("disable")} disabled={actionLoading !== null}>
+                      <Ban className="mr-1.5 h-3.5 w-3.5" />
+                      Disable
+                    </Button>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setConfirmAction("force-reset")} disabled={actionLoading !== null}>
+                    <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                    Force Password Reset
+                  </Button>
+                </div>
+              )}
+            </div>
+          </fieldset>
         </div>
 
         {/* Save */}
@@ -262,6 +440,46 @@ export function StaffEditSheet({ profile, onClose, onUpdate }: StaffEditSheetPro
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setReason(""); } }}>
+        <AlertDialogContent>
+          {confirmAction && (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{CONFIRM_COPY[confirmAction].title}</AlertDialogTitle>
+                <AlertDialogDescription>{CONFIRM_COPY[confirmAction].description}</AlertDialogDescription>
+              </AlertDialogHeader>
+              {(confirmAction === "suspend" || confirmAction === "disable") && (
+                <div className="space-y-1.5 px-1">
+                  <Label htmlFor="reason" className="text-xs">Reason (optional)</Label>
+                  <textarea
+                    id="reason"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="e.g. Extended leave — returning 2026-11-01"
+                    rows={2}
+                    className="min-h-[60px] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={actionLoading !== null}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className={cn(
+                    (confirmAction === "disable" || confirmAction === "suspend") &&
+                      "bg-destructive hover:bg-destructive/90 text-destructive-foreground",
+                  )}
+                  onClick={handleConfirm}
+                  disabled={actionLoading !== null}
+                >
+                  {actionLoading !== null && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                  Confirm
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

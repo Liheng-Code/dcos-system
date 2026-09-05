@@ -2350,6 +2350,70 @@ export async function upsertWbsNodeGfa(payload: {
   }
 }
 
+// ── WBS Builder grid GFA helpers ──────────────────────────────────────────
+// Lightweight read/write for the GFA column in the WBS Builder grid. These
+// reuse the same wbs_node_quantities store as the QS per-level GFA above, but
+// let it be entered on Level and Zone nodes and skip the mandatory
+// drawing-reference (source defaults to 'manual entry'). The QS Cost-per-m²
+// roll-up (getProjectGfaSummary) sums GFA on node_type = 'level', so a Level
+// GFA entered here also feeds the cost benchmarks — enter a drawing reference
+// via the QS screen where that governance matters.
+
+/** One query for every GFA value in a project — powers the grid's roll-up. */
+export async function getProjectGfaMap(projectId: string): Promise<Map<string, number>> {
+  const { data, error } = await createClient()
+    .from("wbs_node_quantities")
+    .select("value, wbs_node_id, wbs_nodes!inner(project_id)")
+    .eq("metric_code", "GFA")
+    .eq("wbs_nodes.project_id", projectId);
+  if (error) throw new Error(error.message);
+  const map = new Map<string, number>();
+  for (const row of (data ?? []) as { wbs_node_id: string; value: number | string }[]) {
+    map.set(row.wbs_node_id, Number(row.value ?? 0));
+  }
+  return map;
+}
+
+/** Upsert a GFA value from a grid cell — no revision-reason prompt. */
+export async function setWbsNodeGfaValue(wbsNodeId: string, value: number): Promise<void> {
+  if (!Number.isFinite(value) || value < 0) throw new Error("GFA must be a number ≥ 0");
+  const supabase = createClient();
+  const { data: existing } = await supabase
+    .from("wbs_node_quantities")
+    .select("id")
+    .eq("wbs_node_id", wbsNodeId)
+    .eq("metric_code", "GFA")
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("wbs_node_quantities")
+      .update({ value })
+      .eq("id", existing.id);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const { error } = await supabase.from("wbs_node_quantities").insert({
+    wbs_node_id: wbsNodeId,
+    metric_code: "GFA",
+    value,
+    unit: "m2",
+    source: "manual entry",
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Remove a node's GFA row (grid cell cleared). */
+export async function clearWbsNodeGfa(wbsNodeId: string): Promise<void> {
+  const { error } = await createClient()
+    .from("wbs_node_quantities")
+    .delete()
+    .eq("wbs_node_id", wbsNodeId)
+    .eq("metric_code", "GFA");
+  if (error) throw new Error(error.message);
+}
+
 // §4: Site Area entered once per project, independent of the WBS GFA rollup.
 export async function getProjectSiteArea(projectId: string): Promise<{ siteArea: number | null; siteAreaSource: string | null }> {
   const { data, error } = await createClient()

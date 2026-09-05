@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Maximize, Minimize, Plus, Filter, Download } from "lucide-react";
+import { Search, Maximize, Minimize, MoveHorizontal, Plus, Filter, Download } from "lucide-react";
 import type { GanttZoom } from "./gantt-types";
 import { ZOOM_LABELS } from "./gantt-types";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,15 @@ interface GanttToolbarProps {
   onSearchChange: (query: string) => void;
   showBaseline: boolean;
   onBaselineToggle: (show: boolean) => void;
+  showDependencies?: boolean;
+  onShowDependenciesChange?: (show: boolean) => void;
   isFullscreen: boolean;
   onFullscreenToggle: () => void;
   taskCount: number;
   filteredCount: number;
   highlightCritical?: boolean;
   onHighlightCriticalChange?: (show: boolean) => void;
+  onFitToScreen?: () => void;
   onAddActivity?: () => void;
 }
 
@@ -30,12 +33,15 @@ export function GanttToolbar({
   onSearchChange,
   showBaseline,
   onBaselineToggle,
+  showDependencies,
+  onShowDependenciesChange,
   isFullscreen,
   onFullscreenToggle,
   taskCount,
   filteredCount,
   highlightCritical,
   onHighlightCriticalChange,
+  onFitToScreen,
   onAddActivity,
 }: GanttToolbarProps) {
   const zooms: GanttZoom[] = ["day", "week", "month"];
@@ -62,6 +68,19 @@ export function GanttToolbar({
             </button>
           ))}
         </div>
+
+        {/* Fit to screen width */}
+        {onFitToScreen && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-[11px]"
+            onClick={onFitToScreen}
+            title="Scale the timeline so the whole programme fits the window"
+          >
+            <MoveHorizontal className="h-3.5 w-3.5" /> Fit
+          </Button>
+        )}
 
         {/* Search */}
         <div className="relative">
@@ -107,6 +126,19 @@ export function GanttToolbar({
           />
           Baseline
         </label>
+
+        {/* Show dependency links toggle */}
+        {onShowDependenciesChange && (
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!showDependencies}
+              onChange={(e) => onShowDependenciesChange(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary"
+            />
+            Links
+          </label>
+        )}
 
         {/* Highlight Critical Path toggle */}
         {onHighlightCriticalChange !== undefined && (

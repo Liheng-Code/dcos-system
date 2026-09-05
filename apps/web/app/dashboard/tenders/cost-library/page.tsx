@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Database, Send, Plus } from "lucide-react";
+import { Loader2, Database, Send, Plus, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
   type PrelimLibraryItemWithComponents,
   getLibraryItemsWithComponents,
   calculatePrelimTree,
+  exportPrelimTreeToExcel,
   DEFAULT_SITE_DATA,
 } from "@/lib/prelim-library-service";
 
@@ -35,6 +36,7 @@ export default function CostLibraryPage() {
   const [showApply, setShowApply] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [caseName, setCaseName] = useState("Default");
 
   useEffect(() => {
     const supabase = createClient();
@@ -75,6 +77,10 @@ export default function CostLibraryPage() {
     if (full) setSelectedItem(full);
   }
 
+  function handleExport() {
+    exportPrelimTreeToExcel(tree, params, { caseName });
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -98,6 +104,9 @@ export default function CostLibraryPage() {
               <Plus className="mr-1 h-4 w-4" /> Add Item
             </Button>
           )}
+          <Button size="sm" variant="outline" onClick={handleExport} disabled={tree.sections.length === 0}>
+            <FileSpreadsheet className="mr-1 h-4 w-4" /> Export to Excel
+          </Button>
           {tenderId && (
             <Button size="sm" onClick={() => setShowApply(true)} disabled={tree.sections.length === 0}>
               <Send className="mr-1 h-4 w-4" /> Apply to Tender
@@ -134,6 +143,7 @@ export default function CostLibraryPage() {
         params={params}
         onParamsChange={handleParamsChange}
         onRecalculate={handleRecalculate}
+        onCaseChanged={setCaseName}
       />
 
       <div className="flex gap-6 items-start">

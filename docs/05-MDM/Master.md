@@ -1,0 +1,8 @@
+| No.    | Document ID          | Document                                    | Purpose                                                                                                                  |
+| ------ | -------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **01** | **DCOS-MDM-STD-001** | **Enterprise Master Data Standard**         | The **main policy & standard** — defines what MDM is, principles, scope, governance, responsibilities, and overall rules |
+| **02** | **DCOS-MDM-CAT-001** | **Master Data Catalogue**                   | Defines **what master data DCOS has**: Project, WBS, Material, Supplier, Employee, Equipment, etc.                       |
+| **03** | **DCOS-MDM-COD-001** | **Master Data Coding & Naming Standard**    | Defines **how everything is coded and named**: Project codes, Material codes, Supplier codes, WBS codes, etc.            |
+| **04** | **DCOS-MDM-DIC-001** | **Master Data Dictionary**                  | Defines **what each field means**: field name, data type, mandatory/optional, description, allowed values, relationships |
+| **05** | **DCOS-MDM-GOV-001** | **Master Data Governance & Responsibility** | Defines **who creates, reviews, approves, changes and controls** master data                                             |
+| **06** | **DCOS-MDM-PRO-001** | **Master Data Management Procedures**       | Defines **how users actually operate the system**: create → review → approve → activate → change → deactivate            |

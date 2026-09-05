@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createUserClient } from "@/lib/supabase/server";
+import { getActorContext } from "@/lib/admin-users/actor-context";
+import { writeAuditLog, USR_EVENT_TYPES } from "@/lib/admin-users/audit-log";
 
 type Params = { params: Promise<{ id: string }> };
 
-const HR_ROLE_CODES = new Set(["HR_Manager", "admin"]);
+// HR_ROLE_CODES and getActorContext now live in apps/web/lib/admin-users/actor-context.ts —
+// extracted per 02-USR Phase 3 so the new /api/admin/users/* and /api/auth/* routes can reuse
+// the identical actor-check scaffolding without duplicating it.
 
 const SENSITIVE_FIELDS = new Set([
   "status",
   "email",
   "role",
   "department",
+  "department_id",
   "job_title",
   "level",
   "grade",
@@ -50,6 +55,7 @@ const PROFILE_UPDATE_FIELDS = [
   "emergency_contact_phone",
   "emergency_contact_address",
   "department",
+  "department_id",
   "job_title",
   "level",
   "employment_type",
@@ -102,7 +108,11 @@ const LIFECYCLE_ACTIONS: Record<string, { status: string; label: string; revoke?
   activate: { status: "active", label: "Activated" },
   start_probation: { status: "probation", label: "Started Probation" },
   suspend: { status: "suspended", label: "Suspended", revoke: true },
-  long_leave: { status: "long_leave", label: "Marked Long Leave" },
+  // revoke: true added per 00-Master.md §4 / 02-Functional-Specification.md BR4.01 — long_leave
+  // backfills to account_status=SUSPENDED (04-Database-Schema.md §2), so the live transition
+  // must match: a newly-placed-on-leave employee must not keep a live session while HR believes
+  // the account is suspended.
+  long_leave: { status: "long_leave", label: "Marked Long Leave", revoke: true },
   resign: { status: "resigned", label: "Resigned", revoke: true },
   terminate: { status: "terminated", label: "Terminated", revoke: true },
   retire: { status: "retired", label: "Retired", revoke: true },
@@ -110,20 +120,32 @@ const LIFECYCLE_ACTIONS: Record<string, { status: string; label: string; revoke?
   archive: { status: "archived", label: "Archived", revoke: true },
 };
 
-async function getActorContext(supabase: ReturnType<typeof createAdminClient>, userId: string) {
-  const [{ data: profile }, { data: roles }] = await Promise.all([
-    supabase.from("profiles").select("id, role").eq("id", userId).maybeSingle(),
-    supabase.from("user_roles").select("role_code").eq("user_id", userId),
-  ]);
-
-  const roleCodes = new Set<string>((roles ?? []).map((row: { role_code: string }) => row.role_code));
-  if (profile?.role) roleCodes.add(profile.role);
-
-  return {
-    profile,
-    isHr: [...roleCodes].some((role) => HR_ROLE_CODES.has(role)),
-  };
-}
+/**
+ * F4 — HR Lifecycle → `account_status` Side Effects (BR4.01–BR4.05).
+ *
+ * Applied inside the same `profiles` UPDATE as the existing `status` change (same statement,
+ * same transaction) whenever an HR `LIFECYCLE_ACTIONS` key below fires. `restoreOnly: true`
+ * (the `activate` row) means: only apply if the account's CURRENT `account_status` is
+ * `SUSPENDED` or `DISABLED` — never if `LOCKED` (BR4.03, a System Admin security hold that HR
+ * reactivation must never silently clear). Event-type strings are the canonical vocabulary from
+ * `04-Database-Schema.md` §9 — `account_suspended`/`account_disabled` are shared between the
+ * Admin-triggered (F3) and HR-triggered (F4) paths by design. The vocabulary has no distinct
+ * event type for an HR-triggered SUSPENDED/DISABLED → ACTIVE restore, so `account_unlocked` is
+ * reused for that case (closest semantic fit, avoids introducing an ad-hoc string — BR10.01).
+ */
+const ACCOUNT_STATUS_SIDE_EFFECTS: Record<
+  string,
+  { to: "SUSPENDED" | "DISABLED" | "ACTIVE"; eventType: string; restoreOnly?: boolean }
+> = {
+  suspend: { to: "SUSPENDED", eventType: USR_EVENT_TYPES.ACCOUNT_SUSPENDED },
+  long_leave: { to: "SUSPENDED", eventType: USR_EVENT_TYPES.ACCOUNT_SUSPENDED },
+  resign: { to: "DISABLED", eventType: USR_EVENT_TYPES.ACCOUNT_DISABLED },
+  terminate: { to: "DISABLED", eventType: USR_EVENT_TYPES.ACCOUNT_DISABLED },
+  retire: { to: "DISABLED", eventType: USR_EVENT_TYPES.ACCOUNT_DISABLED },
+  deceased: { to: "DISABLED", eventType: USR_EVENT_TYPES.ACCOUNT_DISABLED },
+  archive: { to: "DISABLED", eventType: USR_EVENT_TYPES.ACCOUNT_DISABLED },
+  activate: { to: "ACTIVE", eventType: USR_EVENT_TYPES.ACCOUNT_UNLOCKED, restoreOnly: true },
+};
 
 async function writeHrHistory(
   supabase: ReturnType<typeof createAdminClient>,
@@ -185,7 +207,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const { data: current, error: fetchError } = await supabase
       .from("profiles")
-      .select("id, status")
+      .select("id, status, account_status")
       .eq("id", id)
       .single();
 
@@ -206,11 +228,37 @@ export async function POST(request: NextRequest, { params }: Params) {
       updatePayload.end_date = effectiveDate;
     }
 
+    // F4 — HR Lifecycle → account_status side effects (BR4.01–BR4.05). Merged into the same
+    // update statement as the `status` change above, so this is the same transaction.
+    const sideEffect = ACCOUNT_STATUS_SIDE_EFFECTS[action];
+    const currentAccountStatus = current.account_status as string | null;
+    let accountStatusChanged = false;
+    if (sideEffect) {
+      if (sideEffect.restoreOnly) {
+        // BR4.02/BR4.03 — activate only restores from SUSPENDED/DISABLED, never from LOCKED.
+        if (currentAccountStatus === "SUSPENDED" || currentAccountStatus === "DISABLED") {
+          updatePayload.account_status = sideEffect.to;
+          accountStatusChanged = true;
+        }
+      } else if (currentAccountStatus !== sideEffect.to) {
+        updatePayload.account_status = sideEffect.to;
+        accountStatusChanged = true;
+      }
+    }
+
     const { error: updateError } = await supabase.from("profiles").update(updatePayload).eq("id", id);
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
 
     if (transition.revoke) {
-      await supabase.auth.admin.signOut(id);
+      // See migration 20260824050000_usr_revoke_user_sessions_function.sql — the previous
+      // auth.admin.signOut(id) call here was passing a user id where the SDK expects a JWT
+      // and was silently failing. This RPC deletes the user's auth.sessions rows instead.
+      const { error: revokeError } = await supabase.rpc("revoke_user_sessions", {
+        target_user_id: id,
+      });
+      if (revokeError) {
+        console.error("[hr/employees] revoke_user_sessions failed:", revokeError.message);
+      }
     }
 
     await writeHrHistory(supabase, {
@@ -234,11 +282,29 @@ export async function POST(request: NextRequest, { params }: Params) {
       note: reason ?? transition.label,
     });
 
-    return NextResponse.json({ ok: true, status: transition.status });
+    // BR4.04 — the account_status side effect writes its own, additional audit entry.
+    if (sideEffect && accountStatusChanged) {
+      await writeAuditLog(supabase, {
+        user_id: id,
+        actor_id: user.id,
+        event_type: sideEffect.eventType,
+        old_value: { account_status: currentAccountStatus },
+        new_value: { account_status: sideEffect.to },
+        note: `account_status side effect of HR action "${action}" (${transition.label}).`,
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      status: transition.status,
+      account_status: accountStatusChanged ? sideEffect!.to : currentAccountStatus,
+    });
   }
 
   if (action === "revoke_session") {
-    const { error } = await supabase.auth.admin.signOut(id);
+    // See migration 20260824050000_usr_revoke_user_sessions_function.sql for why this uses
+    // the revoke_user_sessions RPC instead of the previously-broken auth.admin.signOut(id).
+    const { error } = await supabase.rpc("revoke_user_sessions", { target_user_id: id });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
 import { cn } from "@/lib/utils";
 
-import type { GanttZoom, GanttTask, GanttGroupRow, GanttDisplayRow } from "./gantt-types";
+import type { GanttZoom, GanttTask, GanttGroupRow, GanttDisplayRow, CpmRow } from "./gantt-types";
 import { DAY_W, ROW_HEIGHT, HEADER_H, LABEL_W } from "./gantt-types";
 import {
   computeDateRange,
@@ -15,7 +15,9 @@ import {
   toX,
   getBarWidth,
   getZoomDayWidth,
+  getHeaderTickDays,
   daysBetween,
+  wouldCreateCycle,
 } from "./gantt-utils";
 
 import { GanttToolbar } from "./gantt-toolbar";
@@ -25,7 +27,9 @@ import { GanttBar } from "./gantt-bar";
 import { GanttMilestone } from "./gantt-milestone";
 import { GanttTaskTree } from "./gantt-task-tree";
 import { GanttDependencyLines } from "./gantt-dependency-lines";
+import { GanttDependencyEditor } from "./gantt-dependency-editor";
 import { GanttLegend } from "./gantt-legend";
+import { GanttSummaryBar } from "./gantt-summary-bar";
 import { GanttTaskDetailDrawer } from "./gantt-task-detail-drawer";
 
 interface GanttViewProps {
@@ -33,6 +37,10 @@ interface GanttViewProps {
   mode?: "full" | "embedded";
   tasks?: GanttTask[];
 }
+
+// Draggable WBS panel width bounds
+const LABEL_W_MIN = 260;
+const LABEL_W_MAX = 820;
 
 interface WbsNode {
   id: string;
@@ -103,7 +111,7 @@ export function GanttView({
   const [fetchedTasks, setFetchedTasks] = useState<GanttTask[]>([]);
   const [wbsNodes, setWbsNodes] = useState<WbsNode[]>([]);
   const [criticalIds, setCriticalIds] = useState<Set<string>>(new Set());
-  const [floatMap, setFloatMap] = useState<Map<string, number>>(new Map());
+  const [cpmMap, setCpmMap] = useState<Map<string, CpmRow>>(new Map());
   const [loading, setLoading] = useState(mode === "full");
 
   const [zoom, setZoom] = useState<GanttZoom>("week");
@@ -111,9 +119,18 @@ export function GanttView({
   const [levelFilter, setLevelFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showBaseline, setShowBaseline] = useState(true);
+  const [showDependencies, setShowDependencies] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [linkDrag, setLinkDrag] = useState<{ fromId: string; ox: number; oy: number; x: number; y: number } | null>(null);
+  const [editLink, setEditLink] = useState<{ successorId: string; index: number } | null>(null);
+  const [savingLink, setSavingLink] = useState(false);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(["__project__"]));
+  const [labelW, setLabelW] = useState<number>(() => {
+    if (typeof window === "undefined") return LABEL_W;
+    const saved = Number(window.localStorage.getItem("dcos.gantt.labelW"));
+    return saved >= LABEL_W_MIN && saved <= LABEL_W_MAX ? saved : LABEL_W;
+  });
   const [rowOffsets, setRowOffsets] = useState<Map<string, number>>(new Map());
   const [highlightCritical, setHighlightCritical] = useState(true);
   const [autoScheduleActive, setAutoScheduleActive] = useState(true);
@@ -123,6 +140,9 @@ export function GanttView({
   const taskTreeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const isSyncingScroll = useRef(false);
+  // "Fit to window" stays active (re-fits on resize) until the user zooms manually
+  const fitModeRef = useRef(true);
+  const didAutoFitRef = useRef(false);
 
   // Sync vertical scroll between task tree and timeline
   const handleTaskTreeScroll = useCallback(() => {
@@ -143,10 +163,36 @@ export function GanttView({
     requestAnimationFrame(() => { isSyncingScroll.current = false; });
   }, []);
 
+  // Persist the WBS panel width (no state update — safe inside an effect)
+  useEffect(() => {
+    try { window.localStorage.setItem("dcos.gantt.labelW", String(labelW)); } catch { /* ignore */ }
+  }, [labelW]);
+
+  // Drag the divider between the WBS tree and the timeline
+  const handleResizeStart = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = labelW;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(LABEL_W_MAX, Math.max(LABEL_W_MIN, startW + (ev.clientX - startX)));
+      setLabelW(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [labelW]);
+
   // -----------------------------------------------------------------------
   // Data fetching
   // -----------------------------------------------------------------------
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (mode === "embedded" && propTasks) {
       setFetchedTasks(propTasks);
       setLoading(false);
@@ -167,7 +213,8 @@ export function GanttView({
           start_date, end_date, progress, status, delay_status, priority,
           dependency_task_ids, dependency_types, dependency_lag_days,
           is_milestone, constraint_type,
-          baseline_start_date, baseline_finish_date
+          baseline_start_date, baseline_finish_date,
+          activity_type, actual_start_date, actual_finish_date, field_observation_notes
         `)
         .eq("project_id", projectId)
         .order("sort_order", { ascending: true })
@@ -184,24 +231,75 @@ export function GanttView({
       else setFetchedTasks((tRes.data || []) as unknown as GanttTask[]);
       if (wRes.data) setWbsNodes(wRes.data);
       if (Array.isArray(cpData)) {
-        setCriticalIds(new Set(cpData.map((r: any) => r.id)));
-        setFloatMap(new Map(cpData.map((r: any) => [r.id, r.total_float_days as number])));
+        const cpRows = cpData as Array<
+          Partial<CpmRow> & { id: string; total_float?: number | null }
+        >;
+        setCriticalIds(new Set(cpRows.map((r) => r.id)));
+        setCpmMap(
+          new Map(
+            cpRows.map((r) => [
+              r.id,
+              {
+                id: r.id,
+                early_start: r.early_start ?? null,
+                early_finish: r.early_finish ?? null,
+                late_start: r.late_start ?? null,
+                late_finish: r.late_finish ?? null,
+                total_float_days: r.total_float_days ?? r.total_float ?? null,
+              } satisfies CpmRow,
+            ]),
+          ),
+        );
       }
       if (projRes.data?.data_date) setDataDate(projRes.data.data_date);
-      setLoading(false);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [supabase, projectId, mode, propTasks]);
 
+  useEffect(() => {
+    // Data-loading effect: loadData drives loading/error/data state for the chart.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
+
   // Enrich tasks
   const tasks = useMemo<GanttTask[]>(() => {
-    return fetchedTasks.map((t) => ({
-      ...t,
-      dependency_lag_days: (t as any).dependency_lag_days || [],
-      is_critical: criticalIds.has(t.id),
-      total_float: floatMap.get(t.id) ?? null,
-    }));
-  }, [fetchedTasks, criticalIds, floatMap]);
+    const withCpm = fetchedTasks.map((t) => {
+      const cpm = cpmMap.get(t.id);
+      return {
+        ...t,
+        dependency_lag_days: t.dependency_lag_days || [],
+        is_critical: criticalIds.has(t.id),
+        total_float: cpm?.total_float_days ?? null,
+        early_start: cpm?.early_start ?? null,
+        early_finish: cpm?.early_finish ?? null,
+        late_start: cpm?.late_start ?? null,
+        late_finish: cpm?.late_finish ?? null,
+        free_float: null as number | null,
+      };
+    });
+
+    // Free float = min(successor early_start − this early_finish − lag), clamped at 0.
+    // With no successors it collapses to total float.
+    const dayMs = 86_400_000;
+    for (const t of withCpm) {
+      if (!t.early_finish) { t.free_float = t.total_float; continue; }
+      let ff: number | null = null;
+      for (const s of withCpm) {
+        const idx = s.dependency_task_ids?.indexOf(t.id) ?? -1;
+        if (idx < 0 || !s.early_start) continue;
+        const lag = Number(s.dependency_lag_days?.[idx] ?? 0) || 0;
+        const gap =
+          Math.round((new Date(s.early_start).getTime() - new Date(t.early_finish).getTime()) / dayMs) -
+          1 -
+          lag;
+        ff = ff === null ? gap : Math.min(ff, gap);
+      }
+      t.free_float = ff === null ? t.total_float : Math.max(0, ff);
+    }
+
+    return withCpm;
+  }, [fetchedTasks, criticalIds, cpmMap]);
 
   const projectName = selectedProject?.project_name || "";
   const projectCode = selectedProject?.project_code || "";
@@ -347,6 +445,7 @@ export function GanttView({
   const totalDays = getTotalDays(dateRange.min, dateRange.max);
   const dayW = getZoomDayWidth(zoom) * zoomScale;
   const chartW = totalDays * dayW;
+  const gridPx = Math.max(24, getHeaderTickDays(dayW) * dayW);
 
   const maxWbsLevel = useMemo(
     () => Math.max(0, ...Array.from(nodeDepthMap.values())) + 1,
@@ -455,6 +554,55 @@ export function GanttView({
     setAutoScheduleActive((prev) => !prev);
   }, []);
 
+  // Scale the timeline so the whole programme fits the visible width (no scroll)
+  const handleFitToScreen = useCallback(() => {
+    const el = timelineRef.current;
+    if (!el || totalDays <= 0) return;
+    // headroom for the scrollbar + trailing milestone / float labels
+    const available = Math.max(240, el.clientWidth - 48);
+    const targetDayW = Math.max(0.4, available / totalDays);
+    const nextZoom: GanttZoom = targetDayW < 4 ? "month" : targetDayW < 14 ? "week" : "day";
+    fitModeRef.current = true;
+    setZoom(nextZoom);
+    setZoomScale(targetDayW / getZoomDayWidth(nextZoom));
+    requestAnimationFrame(() => { el.scrollLeft = 0; });
+  }, [totalDays]);
+
+  // User picked a zoom manually → stop auto-fitting on resize
+  const handleZoomChange = useCallback((z: GanttZoom) => {
+    fitModeRef.current = false;
+    setZoom(z);
+  }, []);
+  const handleZoomScaleChange = useCallback((s: number) => {
+    fitModeRef.current = false;
+    setZoomScale(s);
+  }, []);
+
+  // Re-fit whenever the data (and therefore the timeline span) changes, unless
+  // the user has taken over the zoom manually. Also covers the first render.
+  useEffect(() => { didAutoFitRef.current = false; }, [projectId]);
+  useEffect(() => {
+    if (loading || projectLoading || totalDays <= 0 || displayRows.length === 0) return;
+    if (didAutoFitRef.current && !fitModeRef.current) return;
+    didAutoFitRef.current = true;
+    const id = requestAnimationFrame(() => handleFitToScreen());
+    return () => cancelAnimationFrame(id);
+  }, [loading, projectLoading, totalDays, displayRows.length, handleFitToScreen]);
+
+  // Keep it fitted when the window / panel resizes (until the user zooms)
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      if (!fitModeRef.current) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => handleFitToScreen());
+    });
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, [handleFitToScreen]);
+
   const handleReschedule = useCallback(async (taskId: string, newStart: string, newEnd: string) => {
     const { error } = await supabase
       .from("wbs_tasks")
@@ -468,6 +616,140 @@ export function GanttView({
       );
     }
   }, [supabase]);
+
+  // -----------------------------------------------------------------------
+  // Dependency links — drag a bar's link handle onto another task
+  // -----------------------------------------------------------------------
+  // Dependency connectors are only drawn for the *selected* task (click a bar).
+  // Hovering / moving the mouse across tasks never reveals them.
+  const highlightIds = useMemo(
+    () => (selectedTaskId ? new Set([selectedTaskId]) : new Set<string>()),
+    [selectedTaskId],
+  );
+
+  const handleStartLink = useCallback((fromId: string, e: ReactMouseEvent) => {
+    setLinkDrag({ fromId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const createLink = useCallback(async (predId: string, succId: string) => {
+    if (predId === succId) return;
+    const succ = tasks.find((t) => t.id === succId);
+    if (!succ) return;
+    if ((succ.dependency_task_ids ?? []).includes(predId)) {
+      toast.error("Those tasks are already linked");
+      return;
+    }
+    if (wouldCreateCycle(predId, succId, tasks)) {
+      toast.error("That link would create a circular dependency");
+      return;
+    }
+    const { error } = await supabase
+      .from("wbs_tasks")
+      .update({
+        dependency_task_ids: [...(succ.dependency_task_ids ?? []), predId],
+        dependency_types: [...(succ.dependency_types ?? []), "fs"],
+        dependency_lag_days: [...(succ.dependency_lag_days ?? []), 0],
+      })
+      .eq("id", succId);
+    if (error) {
+      toast.error("Failed to link: " + error.message);
+      return;
+    }
+    toast.success("Dependency added (Finish-to-Start)");
+    setShowDependencies(true); // so the new arrow is actually visible
+    loadData();
+  }, [tasks, supabase, loadData]);
+
+  useEffect(() => {
+    if (!linkDrag) return;
+    const move = (e: MouseEvent) =>
+      setLinkDrag((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+    const up = (e: MouseEvent) => {
+      // Walk every element under the cursor (an overlay SVG may sit on top) and
+      // take the first one that resolves to a task row.
+      let toId: string | null = null;
+      for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+        const row = (el as HTMLElement).closest?.("[data-gantt-task]") as HTMLElement | null;
+        if (row?.dataset.ganttTask) {
+          toId = row.dataset.ganttTask;
+          break;
+        }
+      }
+      const fromId = linkDrag.fromId;
+      setLinkDrag(null);
+      if (toId && toId !== fromId) void createLink(fromId, toId);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    document.body.style.cursor = "crosshair";
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+    };
+  }, [linkDrag, createLink]);
+
+  const editContext = useMemo(() => {
+    if (!editLink) return null;
+    const succ = tasks.find((t) => t.id === editLink.successorId);
+    const predId = succ?.dependency_task_ids?.[editLink.index];
+    const pred = predId ? tasks.find((t) => t.id === predId) : undefined;
+    if (!succ || !pred) return null;
+    return {
+      successor: succ,
+      predecessor: pred,
+      type: (succ.dependency_types?.[editLink.index] || "fs").toLowerCase(),
+      lag: Number(succ.dependency_lag_days?.[editLink.index] ?? 0) || 0,
+    };
+  }, [editLink, tasks]);
+
+  const handleSaveLink = useCallback(async (type: string, lag: number) => {
+    if (!editLink) return;
+    const succ = tasks.find((t) => t.id === editLink.successorId);
+    if (!succ) return;
+    const types = [...(succ.dependency_types ?? [])];
+    const lags = [...(succ.dependency_lag_days ?? [])];
+    types[editLink.index] = type;
+    lags[editLink.index] = lag;
+    setSavingLink(true);
+    const { error } = await supabase
+      .from("wbs_tasks")
+      .update({ dependency_types: types, dependency_lag_days: lags })
+      .eq("id", succ.id);
+    setSavingLink(false);
+    if (error) {
+      toast.error("Failed to save: " + error.message);
+      return;
+    }
+    toast.success("Relation updated");
+    setEditLink(null);
+    loadData();
+  }, [editLink, tasks, supabase, loadData]);
+
+  const handleRemoveLink = useCallback(async () => {
+    if (!editLink) return;
+    const succ = tasks.find((t) => t.id === editLink.successorId);
+    if (!succ) return;
+    const ids = [...(succ.dependency_task_ids ?? [])];
+    const types = [...(succ.dependency_types ?? [])];
+    const lags = [...(succ.dependency_lag_days ?? [])];
+    ids.splice(editLink.index, 1);
+    types.splice(editLink.index, 1);
+    lags.splice(editLink.index, 1);
+    setSavingLink(true);
+    const { error } = await supabase
+      .from("wbs_tasks")
+      .update({ dependency_task_ids: ids, dependency_types: types, dependency_lag_days: lags })
+      .eq("id", succ.id);
+    setSavingLink(false);
+    if (error) {
+      toast.error("Failed to remove: " + error.message);
+      return;
+    }
+    toast.success("Link removed");
+    setEditLink(null);
+    loadData();
+  }, [editLink, tasks, supabase, loadData]);
 
   const now = new Date();
   const todayX =
@@ -501,25 +783,28 @@ export function GanttView({
   }
 
   return (
-    <div className={cn("flex flex-col", isFullscreen ? "fixed inset-0 z-50 bg-background" : "")}>
+    <div className={cn("flex min-w-0 max-w-full flex-col", isFullscreen ? "fixed inset-0 z-50 bg-background" : "min-h-0 flex-1")}>
       {/* Toolbar */}
-      <div className="shrink-0 px-4 pt-3 pb-2">
+      <div className="shrink-0 px-2 pt-1 pb-2">
         {mode === "full" ? (
           <GanttCommandBar
             zoom={zoom}
-            onZoomChange={setZoom}
+            onZoomChange={handleZoomChange}
             zoomScale={zoomScale}
-            onZoomScaleChange={setZoomScale}
+            onZoomScaleChange={handleZoomScaleChange}
             levelFilter={levelFilter}
             maxLevel={maxWbsLevel}
             onLevelFilterChange={handleLevelFilterChange}
             onExpandAll={handleExpandAll}
             onCollapseAll={handleCollapseAll}
             onToday={handleScrollToToday}
+            onFitToScreen={handleFitToScreen}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             showBaseline={showBaseline}
             onBaselineToggle={setShowBaseline}
+            showDependencies={showDependencies}
+            onShowDependenciesChange={setShowDependencies}
             isFullscreen={isFullscreen}
             onFullscreenToggle={handleFullscreenToggle}
             visibleRows={displayRows.length}
@@ -538,30 +823,33 @@ export function GanttView({
         ) : (
           <GanttToolbar
             zoom={zoom}
-            onZoomChange={setZoom}
+            onZoomChange={handleZoomChange}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             showBaseline={showBaseline}
             onBaselineToggle={setShowBaseline}
+            showDependencies={showDependencies}
+            onShowDependenciesChange={setShowDependencies}
             isFullscreen={isFullscreen}
             onFullscreenToggle={handleFullscreenToggle}
             taskCount={tasks.length}
             filteredCount={displayRows.length}
             highlightCritical={highlightCritical}
             onHighlightCriticalChange={setHighlightCritical}
+            onFitToScreen={handleFitToScreen}
             onAddActivity={() => {}}
           />
         )}
       </div>
 
       {/* Main Gantt area */}
-      <div className="flex flex-1 overflow-hidden px-4 pb-3">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden px-2 pb-2">
         {/* Left: WBS Tree */}
         <div
           ref={taskTreeRef}
           onScroll={handleTaskTreeScroll}
           className="shrink-0 overflow-y-auto border border-border rounded-l-lg bg-card"
-          style={{ width: LABEL_W }}
+          style={{ width: labelW }}
         >
           <div
             className="sticky top-0 z-10 bg-muted/50 border-b border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
@@ -578,11 +866,24 @@ export function GanttView({
           />
         </div>
 
+        {/* Divider — drag to resize the WBS panel, double-click to reset */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize · double-click to reset"
+          onMouseDown={handleResizeStart}
+          onDoubleClick={() => setLabelW(LABEL_W)}
+          className="group relative z-10 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-border hover:bg-primary/40 transition-colors"
+        >
+          <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+          <span className="h-8 w-0.5 rounded bg-muted-foreground/30 group-hover:bg-primary/60" />
+        </div>
+
         {/* Right: Timeline */}
         <div
           ref={timelineRef}
           onScroll={handleTimelineScroll}
-          className="flex-1 overflow-auto border border-l-0 border-border rounded-r-lg bg-card"
+          className="min-w-0 flex-1 overflow-auto border border-l-0 border-border rounded-r-lg bg-card"
         >
           <div className="min-w-fit">
             <GanttHeader
@@ -591,10 +892,20 @@ export function GanttView({
               rangeMax={dateRange.max}
               totalDays={totalDays}
               dayWidth={dayW}
+              todayX={todayX}
+              dataDateX={dataDateX}
             />
 
             <div className="relative" style={{ width: chartW }}>
-              {/* Dependency lines — only for task rows */}
+              {/* Vertical gridlines aligned to the header date ticks */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  backgroundImage: `repeating-linear-gradient(to right, rgba(148,163,184,0.14) 0, rgba(148,163,184,0.14) 1px, transparent 1px, transparent ${gridPx}px)`,
+                }}
+              />
+
+              {/* Dependency lines — only shown for the hovered / selected task */}
               <GanttDependencyLines
                 tasks={displayRows.filter((r) => r.kind === "task").map((r) => (r.data as GanttTask))}
                 taskMap={taskMap}
@@ -603,6 +914,9 @@ export function GanttView({
                 rowHeight={ROW_HEIGHT}
                 rowOffsetMap={rowOffsets}
                 containerWidth={chartW}
+                highlightIds={highlightIds}
+                showAll={showDependencies}
+                onEditLink={(succId, index) => setEditLink({ successorId: succId, index })}
               />
 
               {/* Bars */}
@@ -622,7 +936,9 @@ export function GanttView({
                     >
                       {group.task_count > 0 && (
                         <GanttSummaryBar
-                          group={group}
+                          label={group.wbs_code}
+                          progress={group.progress}
+                          taskCount={group.task_count}
                           left={x}
                           width={w}
                           dayWidth={dayW}
@@ -642,26 +958,18 @@ export function GanttView({
                   <div
                     key={row.id}
                     ref={(el) => storeRowRef(row.id, el)}
+                    data-gantt-task={task.id}
                     className="relative border-b border-border/30 transition-colors hover:bg-muted/10"
                     style={{ height: ROW_HEIGHT }}
                   >
-                    {/* Today / Data Date lines */}
-                    {dataDateX >= 0 && dataDateX <= chartW && dataDateX !== todayX && (
-                      <div
-                        className="absolute top-0 bottom-0 w-px z-10 pointer-events-none"
-                        style={{ left: dataDateX, background: "repeating-linear-gradient(to bottom, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)" }}
-                      >
-                        <span className="absolute top-0 left-1 text-[8px] font-semibold text-slate-400 whitespace-nowrap">Data Date</span>
-                      </div>
-                    )}
-                    {todayX >= 0 && todayX <= chartW && (
-                      <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none" style={{ left: todayX }}>
-                        <span className="absolute top-0 left-1 text-[8px] font-semibold text-red-400 whitespace-nowrap">Today</span>
-                      </div>
-                    )}
-
                     {task.is_milestone ? (
-                      <GanttMilestone left={x} name={task.task_name} date={task.start_date || undefined} onClick={() => setSelectedTaskId(task.id)} />
+                      <GanttMilestone
+                        left={x}
+                        name={task.task_name}
+                        date={task.start_date || undefined}
+                        onClick={() => setSelectedTaskId(task.id)}
+                        onStartLink={(e) => handleStartLink(task.id, e)}
+                      />
                     ) : (
                       <GanttBar
                         task={task}
@@ -670,6 +978,7 @@ export function GanttView({
                         dayWidth={dayW}
                         onClick={() => setSelectedTaskId(task.id)}
                         onReschedule={handleReschedule}
+                        onStartLink={(e) => handleStartLink(task.id, e)}
                         zoom={zoom}
                         rangeMin={dateRange.min}
                       />
@@ -686,6 +995,22 @@ export function GanttView({
                   </div>
                 );
               })}
+
+              {/* Full-height schedule data-date line */}
+              {dataDateX >= 0 && dataDateX <= chartW && dataDateX !== todayX && (
+                <div
+                  className="pointer-events-none absolute inset-y-0 z-20 border-l border-dashed border-slate-400"
+                  style={{ left: dataDateX }}
+                />
+              )}
+
+              {/* Full-height TODAY line */}
+              {todayX >= 0 && todayX <= chartW && (
+                <div
+                  className="pointer-events-none absolute inset-y-0 z-20 border-l-2 border-dashed border-red-500"
+                  style={{ left: todayX }}
+                />
+              )}
 
               {/* Empty state */}
               {displayRows.length === 0 && (
@@ -710,7 +1035,7 @@ export function GanttView({
 
       {/* Legend — embedded mode only; full mode shows it in the command bar */}
       {mode !== "full" && (
-        <div className="shrink-0 px-4 pb-3">
+        <div className="shrink-0 px-2 pb-2">
           <GanttLegend
             items={[
               { label: "On Track", color: "bg-green-500", active: true },
@@ -729,48 +1054,45 @@ export function GanttView({
       {/* Detail drawer */}
       {selectedTask && (
         <GanttTaskDetailDrawer
+          key={selectedTask.id}
           task={selectedTask}
           allTasks={tasks}
           onClose={() => setSelectedTaskId(null)}
+          onRefresh={loadData}
+          onEditLink={(index) => setEditLink({ successorId: selectedTask.id, index })}
         />
+      )}
+
+      {/* Relation editor */}
+      {editContext && (
+        <GanttDependencyEditor
+          predecessor={editContext.predecessor}
+          successor={editContext.successor}
+          currentType={editContext.type}
+          currentLag={editContext.lag}
+          saving={savingLink}
+          onCancel={() => setEditLink(null)}
+          onSave={handleSaveLink}
+          onRemove={handleRemoveLink}
+        />
+      )}
+
+      {/* Link-drag preview line */}
+      {linkDrag && (
+        <svg className="pointer-events-none fixed inset-0 z-[60] h-full w-full">
+          <line
+            x1={linkDrag.ox}
+            y1={linkDrag.oy}
+            x2={linkDrag.x}
+            y2={linkDrag.y}
+            stroke="#6366f1"
+            strokeWidth={2}
+            strokeDasharray="5 3"
+          />
+          <circle cx={linkDrag.x} cy={linkDrag.y} r={4} fill="#6366f1" />
+        </svg>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Summary bar — a compact bar representing an aggregated WBS group
-// ---------------------------------------------------------------------------
-function GanttSummaryBar({
-  group,
-  left,
-  width,
-  dayWidth,
-}: {
-  group: GanttGroupRow;
-  left: number;
-  width: number;
-  dayWidth: number;
-}) {
-  const minWidth = Math.max(dayWidth, width);
-
-  return (
-    <div
-      className="absolute top-1/2 -translate-y-1/2 cursor-default"
-      style={{ left, width: minWidth, height: 20 }}
-    >
-      {/* Background bar */}
-      <div className="relative h-full w-full rounded-md bg-slate-700/60 shadow-sm overflow-hidden">
-        {/* Progress fill */}
-        <div
-          className="absolute inset-y-0 left-0 rounded-md bg-slate-500/40 transition-all"
-          style={{ width: `${group.progress}%`, minWidth: group.progress > 0 ? 4 : 0 }}
-        />
-        {/* Label */}
-        <span className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-white/90 leading-none truncate">
-          {group.wbs_code} · {group.progress}% · {group.task_count} tasks
-        </span>
-      </div>
-    </div>
-  );
-}

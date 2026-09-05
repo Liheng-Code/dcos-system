@@ -1,104 +1,81 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, X, Plus, Building2, Globe, Lock } from "lucide-react";
+import {
+  Loader2, Plus, Building2, UsersRound, FolderKanban, PieChart,
+  RefreshCw, Search, X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { StakeholderEditSheet, type Stakeholder } from "@/components/stakeholders/stakeholder-edit-sheet";
+import { KPICard } from "@/components/ui/kpi-card";
+import { useProject } from "@/components/dashboard/project-context";
+import { connectStakeholder, disconnectStakeholder } from "@/lib/stakeholder-assignment";
+import {
+  StakeholderEditSheet,
+  type Stakeholder,
+  type StakeholderStaff,
+} from "@/components/stakeholders/stakeholder-edit-sheet";
+import { StakeholderCompanyCard } from "@/components/stakeholders/stakeholder-company-card";
+import { BulkHrAssignDialog } from "@/components/stakeholders/bulk-hr-assign-dialog";
+import {
+  ALL_TYPE_LABELS, EXTERNAL_TYPE_OPTIONS, INTERNAL_TYPE_OPTIONS, ALL_TYPE_OPTIONS,
+} from "@/components/stakeholders/constants";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+type CategoryFilter = "all" | "internal" | "external";
 
-const EXTERNAL_TYPE_LABELS: Record<string, string> = {
-  CLI: "Client / Owner",
-  CON: "Consultant",
-  MC:  "Main Contractor",
-  SUB: "Subcontractor",
-  SUP: "Supplier",
-  AUT: "Authority",
-  TST: "Testing Agency",
-  FM:  "Facility Management",
-};
-
-const INTERNAL_TYPE_LABELS: Record<string, string> = {
-  INT: "Internal Department",
-};
-
-const ALL_TYPE_LABELS: Record<string, string> = {
-  ...EXTERNAL_TYPE_LABELS,
-  ...INTERNAL_TYPE_LABELS,
-};
-
-const TYPE_COLORS: Record<string, string> = {
-  CLI: "bg-blue-500/10 text-blue-700 border-blue-200",
-  CON: "bg-violet-500/10 text-violet-700 border-violet-200",
-  MC:  "bg-orange-500/10 text-orange-700 border-orange-200",
-  SUB: "bg-amber-500/10 text-amber-700 border-amber-200",
-  SUP: "bg-teal-500/10 text-teal-700 border-teal-200",
-  AUT: "bg-red-500/10 text-red-700 border-red-200",
-  TST: "bg-cyan-500/10 text-cyan-700 border-cyan-200",
-  FM:  "bg-emerald-500/10 text-emerald-700 border-emerald-200",
-  INT: "bg-indigo-500/10 text-indigo-700 border-indigo-200",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  active:      "bg-emerald-500/10 text-emerald-600 border-emerald-200",
-  inactive:    "bg-gray-500/10 text-gray-500 border-gray-200",
-  blacklisted: "bg-red-500/10 text-red-600 border-red-200",
-  preferred:   "bg-blue-500/10 text-blue-600 border-blue-200",
-};
-
-const APPROVAL_COLORS: Record<string, string> = {
-  draft:          "bg-gray-500/10 text-gray-500",
-  pending_review: "bg-amber-500/10 text-amber-600",
-  approved:       "",
-  rejected:       "bg-red-500/10 text-red-600",
-};
-
-interface StaffSummary {
-  primaryContact: string;
-  staffCount: number;
-  staffNames: string[];
+interface ProjectLink {
+  stakeholder_id: string;
+  project_id: string;
+  created_at: string | null;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Last 3 calendar months, oldest first.
+function lastThreeMonths() {
+  const now = new Date();
+  return [2, 1, 0].map((back) => {
+    const start = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - back + 1, 1);
+    return {
+      label: start.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+      start: start.getTime(),
+      end: end.getTime(),
+    };
+  });
+}
 
 export function StakeholderListPage() {
+  const { selectedProjectId, selectedProject } = useProject();
+
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
-  const [staffMap, setStaffMap] = useState<Record<string, StaffSummary>>({});
+  const [staff, setStaff] = useState<StakeholderStaff[]>([]);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<"external" | "internal">("external");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Stakeholder | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  function loadData(silent = false) {
-    if (!silent) setLoading(true);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [selected, setSelected] = useState<Stakeholder | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkTarget, setBulkTarget] = useState<Stakeholder | null>(null);
+
+  const loadData = useCallback(() => {
     const supabase = createClient();
     Promise.all([
       supabase.from("stakeholders").select("*").order("organization_name"),
-      supabase.from("stakeholder_staff").select("id, stakeholder_id, full_name, is_primary_contact"),
-    ]).then(([stRes, sfRes]) => {
+      supabase.from("stakeholder_staff").select("*"),
+      supabase.from("project_stakeholders").select("stakeholder_id, project_id, created_at"),
+    ]).then(([stRes, sfRes, plRes]) => {
       if (stRes.data) setStakeholders(stRes.data as Stakeholder[]);
-      if (sfRes.data) {
-        const map: Record<string, StaffSummary> = {};
-        for (const s of sfRes.data) {
-          if (!map[s.stakeholder_id]) {
-            map[s.stakeholder_id] = { primaryContact: "", staffCount: 0, staffNames: [] };
-          }
-          map[s.stakeholder_id].staffCount++;
-          map[s.stakeholder_id].staffNames.push(s.full_name);
-          if (s.is_primary_contact) map[s.stakeholder_id].primaryContact = s.full_name;
-        }
-        setStaffMap(map);
-      }
-      if (!silent) setLoading(false);
+      if (sfRes.data) setStaff(sfRes.data as StakeholderStaff[]);
+      if (plRes.data) setLinks(plRes.data as ProjectLink[]);
+      setLoading(false);
     });
-  }
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -108,34 +85,88 @@ export function StakeholderListPage() {
       supabase.from("profiles").select("role").eq("id", data.user.id).single()
         .then(({ data: p }) => { if (p) setIsAdmin(p.role === "admin"); });
     });
-  }, []);
+  }, [loadData]);
 
-  // Reset type filter when switching category
-  useEffect(() => { setTypeFilter(""); }, [category]);
+  // ── Derived maps ──────────────────────────────────────────────────────────
+  const staffByStakeholder = useMemo(() => {
+    const map: Record<string, StakeholderStaff[]> = {};
+    for (const s of staff) {
+      (map[s.stakeholder_id] ??= []).push(s);
+    }
+    return map;
+  }, [staff]);
 
+  const linksByStakeholder = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const l of links) {
+      (map[l.stakeholder_id] ??= []).push(l.project_id);
+    }
+    return map;
+  }, [links]);
+
+  const months = useMemo(() => lastThreeMonths(), []);
+
+  const trendByStakeholder = useMemo(() => {
+    const labels = months.map((m) => m.label);
+    const map: Record<string, { labels: string[]; values: number[] }> = {};
+    for (const s of stakeholders) {
+      const rows = links.filter((l) => l.stakeholder_id === s.id);
+      const values = months.map((m) =>
+        rows.filter((r) => {
+          if (!r.created_at) return false;
+          const t = new Date(r.created_at).getTime();
+          return t >= m.start && t < m.end;
+        }).length,
+      );
+      map[s.id] = { labels, values };
+    }
+    return map;
+  }, [stakeholders, links, months]);
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const total = stakeholders.length;
+  const internalCount = stakeholders.filter((s) => s.category === "internal").length;
+  const externalCount = stakeholders.filter((s) => s.category === "external").length;
+  const activeProjectsCover = new Set(links.map((l) => l.project_id)).size;
+  const externalRatio = total > 0 ? Math.round((externalCount / total) * 100) : 0;
+
+  // ── Filtering ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
     return stakeholders.filter((s) => {
-      if (s.category !== category) return false;
+      if (categoryFilter !== "all" && s.category !== categoryFilter) return false;
       if (typeFilter && s.stakeholder_type !== typeFilter) return false;
-      if (statusFilter && s.status !== statusFilter) return false;
-      if (q && !s.organization_name.toLowerCase().includes(q) &&
-          !(s.company_code ?? "").toLowerCase().includes(q)) return false;
+      if (q) {
+        const typeLabel = (ALL_TYPE_LABELS[s.stakeholder_type] ?? "").toLowerCase();
+        const staffNames = (staffByStakeholder[s.id] ?? []).map((m) => m.full_name.toLowerCase());
+        const hay = [
+          s.organization_name.toLowerCase(),
+          (s.short_name ?? "").toLowerCase(),
+          (s.company_code ?? "").toLowerCase(),
+          typeLabel,
+          ...staffNames,
+        ];
+        if (!hay.some((h) => h.includes(q))) return false;
+      }
       return true;
     });
-  }, [stakeholders, category, typeFilter, statusFilter, search]);
+  }, [stakeholders, categoryFilter, typeFilter, search, staffByStakeholder]);
 
-  const typeLabels = category === "external" ? EXTERNAL_TYPE_LABELS : INTERNAL_TYPE_LABELS;
+  const typeOptions =
+    categoryFilter === "internal" ? INTERNAL_TYPE_OPTIONS
+      : categoryFilter === "external" ? EXTERNAL_TYPE_OPTIONS
+        : ALL_TYPE_OPTIONS;
 
+  // ── Mutations ─────────────────────────────────────────────────────────────
   function handleSave(updated: Stakeholder) {
     setStakeholders((prev) => {
       const idx = prev.findIndex((s) => s.id === updated.id);
       if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
       return [updated, ...prev];
     });
-    setSelected(updated);
+    setSelected(null);
     setShowCreate(false);
-    loadData(true);
+    loadData();
   }
 
   async function handleDelete(stakeholder: Stakeholder) {
@@ -148,20 +179,30 @@ export function StakeholderListPage() {
     setShowCreate(false);
   }
 
-  const initials = (name: string) =>
-    name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  async function handleConnect(stakeholder: Stakeholder) {
+    if (!selectedProjectId) { toast.error("Select a project first"); return; }
+    setBusyId(stakeholder.id);
+    const { error } = await connectStakeholder(createClient(), selectedProjectId, stakeholder);
+    setBusyId(null);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Assigned to ${selectedProject?.project_name ?? "project"}`);
+    loadData();
+  }
 
-  const STAFF_COLORS = [
-    "bg-blue-500/10 text-blue-600",
-    "bg-emerald-500/10 text-emerald-600",
-    "bg-amber-500/10 text-amber-600",
-    "bg-violet-500/10 text-violet-600",
-    "bg-rose-500/10 text-rose-600",
-  ];
+  async function handleDisconnect(stakeholder: Stakeholder) {
+    if (!selectedProjectId) return;
+    if (!confirm(`Disconnect "${stakeholder.organization_name}" from ${selectedProject?.project_name ?? "this project"}?`)) return;
+    setBusyId(stakeholder.id);
+    const { error } = await disconnectStakeholder(createClient(), selectedProjectId, stakeholder.id);
+    setBusyId(null);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Disconnected from project");
+    loadData();
+  }
 
-  const externalCount = stakeholders.filter((s) => s.category === "external").length;
-  const internalCount = stakeholders.filter((s) => s.category === "internal").length;
+  const hasActiveFilters = !!(search || typeFilter || categoryFilter !== "all");
 
+  // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -170,225 +211,172 @@ export function StakeholderListPage() {
     );
   }
 
-  const activeStakeholder = showCreate ? null : selected;
-
   return (
-    <div className="flex h-full border border-border rounded-lg overflow-hidden">
-      {/* ── Left Panel ── */}
-      <div className="w-[420px] shrink-0 border-r border-border flex flex-col bg-background">
-
-        {/* Category toggle */}
-        <div className="p-3 border-b border-border">
-          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            <button
-              onClick={() => { setCategory("external"); setSelected(null); setShowCreate(false); }}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2 font-medium transition-colors",
-                category === "external"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              )}
-            >
-              <Globe className="h-3.5 w-3.5" />
-              External
-              <span className={cn(
-                "text-[10px] rounded-full px-1.5 py-0.5 font-medium",
-                category === "external" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground",
-              )}>{externalCount}</span>
-            </button>
-            <button
-              onClick={() => { setCategory("internal"); setSelected(null); setShowCreate(false); }}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2 font-medium transition-colors",
-                category === "internal"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-              )}
-            >
-              <Lock className="h-3.5 w-3.5" />
-              Internal
-              <span className={cn(
-                "text-[10px] rounded-full px-1.5 py-0.5 font-medium",
-                category === "internal" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground",
-              )}>{internalCount}</span>
-            </button>
+    <div className="flex h-full flex-col gap-5 overflow-y-auto pb-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Stakeholders Directory</h1>
+            <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">
+              Manage your organizational ecosystem: define stakeholder companies (internal
+              departments &amp; external partners) and register contact rosters.
+            </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setLoading(true); loadData(); }}
+            title="Reload directory"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            /stakeholder_register
+          </Button>
+          <Button size="sm" onClick={() => { setShowCreate(true); setSelected(null); }}>
+            <Plus className="h-3.5 w-3.5" />
+            Add Stakeholder Company
+          </Button>
+        </div>
+      </div>
 
-        {/* Filters */}
-        <div className="px-3 py-2.5 border-b border-border space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
-            <Button onClick={() => { setShowCreate(true); setSelected(null); }} size="sm" className="h-7 text-xs">
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Add
-            </Button>
-          </div>
+      {/* KPI row */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICard
+          label="Stakeholder Companies" value={total} icon={Building2}
+          subtitle={`${internalCount} Int / ${externalCount} Ext`}
+        />
+        <KPICard
+          label="Total Registered Personnel" value={staff.length} icon={UsersRound}
+          iconBg="bg-emerald-50" iconColor="text-emerald-600" subtitle="across all rosters"
+        />
+        <KPICard
+          label="Active Projects Cover" value={activeProjectsCover} icon={FolderKanban}
+          iconBg="bg-blue-50" iconColor="text-blue-600" subtitle="projects integrated"
+        />
+        <KPICard
+          label="External Partner Ratio" value={`${externalRatio}%`} icon={PieChart}
+          iconBg="bg-amber-50" iconColor="text-amber-600" subtitle="external synergy"
+        />
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or code…"
-            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+            placeholder="Search company, industry type, personnel…"
+            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
           />
-          <div className="flex gap-2">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="flex-1 rounded-md border border-border bg-background py-1.5 px-2 text-xs outline-none focus:border-primary"
-            >
-              <option value="">All Types</option>
-              {Object.entries(typeLabels).map(([code, label]) => (
-                <option key={code} value={code}>{label}</option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="flex-1 rounded-md border border-border bg-background py-1.5 px-2 text-xs outline-none focus:border-primary"
-            >
-              <option value="">All Status</option>
-              {["active", "inactive", "blacklisted", "preferred"].map((s) => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-              ))}
-            </select>
-            {(typeFilter || statusFilter || search) && (
-              <button
-                onClick={() => { setTypeFilter(""); setStatusFilter(""); setSearch(""); }}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
         </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto p-3">
-          {filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">No stakeholders found</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((s) => {
-                const summary = staffMap[s.id];
-                const isSelected = selected?.id === s.id && !showCreate;
-                const names = summary?.staffNames ?? [];
-                const visible = names.slice(0, 4);
-                const overflow = names.length - visible.length;
-                return (
-                  <div
-                    key={s.id}
-                    onClick={() => { setSelected(s); setShowCreate(false); }}
-                    className={cn(
-                      "rounded-lg border p-3 cursor-pointer transition-all",
-                      isSelected
-                        ? "border-primary/70 bg-primary/[0.03] ring-1 ring-primary/20"
-                        : "border-border hover:border-primary/40 hover:shadow-sm bg-card",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-foreground leading-tight truncate">
-                            {s.organization_name}
-                          </span>
-                          {s.company_code && (
-                            <span className="shrink-0 text-[10px] font-mono font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">
-                              {s.company_code}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                          <span className={cn(
-                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
-                            TYPE_COLORS[s.stakeholder_type] ?? "bg-muted/60 text-muted-foreground border-border",
-                          )}>
-                            {s.stakeholder_type} · {ALL_TYPE_LABELS[s.stakeholder_type] ?? s.stakeholder_type}
-                          </span>
-                          <span className={cn(
-                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                            STATUS_COLORS[s.status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
-                          )}>
-                            {s.status}
-                          </span>
-                          {s.approval_status && s.approval_status !== "approved" && (
-                            <span className={cn(
-                              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                              APPROVAL_COLORS[s.approval_status],
-                            )}>
-                              {s.approval_status.replace("_", " ")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {summary?.primaryContact ? (
-                        <span>Contact: <span className="font-medium text-foreground">{summary.primaryContact}</span></span>
-                      ) : (
-                        <span className="italic text-muted-foreground/40">No primary contact</span>
-                      )}
-                    </div>
-
-                    {names.length > 0 && (
-                      <div className="mt-2 flex items-center gap-1">
-                        <div className="flex -space-x-1.5">
-                          {visible.map((name, i) => (
-                            <div
-                              key={`${s.id}-${i}`}
-                              className={cn(
-                                "flex h-5 w-5 items-center justify-center rounded-full text-[8px] font-medium ring-1 ring-background",
-                                STAFF_COLORS[i % STAFF_COLORS.length],
-                              )}
-                              title={name}
-                            >
-                              {initials(name)}
-                            </div>
-                          ))}
-                          {overflow > 0 && (
-                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[8px] font-medium text-muted-foreground ring-1 ring-background">
-                              +{overflow}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground/60 ml-0.5">
-                          {names.length} member{names.length !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Right Panel ── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
-        {showCreate || selected ? (
-          <StakeholderEditSheet
-            key={showCreate ? `create-${category}` : selected?.id}
-            stakeholder={activeStakeholder}
-            defaultCategory={category}
-            onClose={() => { setSelected(null); setShowCreate(false); }}
-            onSave={handleSave}
-            onDelete={handleDelete}
-            isAdmin={isAdmin}
-            onStaffChange={() => loadData(true)}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <div className="text-center px-6">
-              <Building2 className="h-14 w-14 mx-auto mb-4 opacity-20" />
-              <p className="text-sm font-medium">Select a stakeholder</p>
-              <p className="text-xs mt-1">Choose a company from the left panel to view and edit its details</p>
-            </div>
-          </div>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">All Types (Client, Contractor, Engineer)</option>
+          {typeOptions.map(([code, label]) => (
+            <option key={code} value={code}>{label}</option>
+          ))}
+        </select>
+        {hasActiveFilters && (
+          <button
+            onClick={() => { setSearch(""); setTypeFilter(""); setCategoryFilter("all"); }}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
         )}
+        <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+          {(["all", "internal", "external"] as CategoryFilter[]).map((c) => {
+            const count = c === "all" ? total : c === "internal" ? internalCount : externalCount;
+            return (
+              <button
+                key={c}
+                onClick={() => { setCategoryFilter(c); setTypeFilter(""); }}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+                  categoryFilter === c
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {c} <span className="opacity-70">({count})</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Card grid */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+          <Building2 className="mb-3 h-10 w-10 text-muted-foreground/30" />
+          <p className="text-sm font-medium">No stakeholder companies found</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {hasActiveFilters ? "Try adjusting your filters." : "Add your first stakeholder company to get started."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((s) => (
+            <StakeholderCompanyCard
+              key={s.id}
+              stakeholder={s}
+              staff={staffByStakeholder[s.id] ?? []}
+              assignedProjectIds={linksByStakeholder[s.id] ?? []}
+              trend={trendByStakeholder[s.id] ?? { labels: months.map((m) => m.label), values: [0, 0, 0] }}
+              selectedProjectId={selectedProjectId}
+              selectedProjectName={selectedProject?.project_name ?? null}
+              busy={busyId === s.id}
+              onEdit={() => { setSelected(s); setShowCreate(false); }}
+              onDelete={() => handleDelete(s)}
+              onConnect={() => handleConnect(s)}
+              onDisconnect={() => handleDisconnect(s)}
+              onBulkAssign={() => setBulkTarget(s)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Edit / create slide-over */}
+      {(showCreate || selected) && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/40"
+            onClick={() => { setSelected(null); setShowCreate(false); }}
+          />
+          <div className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-xl flex-col bg-background shadow-2xl">
+            <StakeholderEditSheet
+              key={showCreate ? `create-${categoryFilter}` : selected?.id}
+              stakeholder={showCreate ? null : selected}
+              defaultCategory={categoryFilter === "internal" ? "internal" : "external"}
+              onClose={() => { setSelected(null); setShowCreate(false); }}
+              onSave={handleSave}
+              onDelete={handleDelete}
+              isAdmin={isAdmin}
+              onStaffChange={() => loadData()}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Bulk HR assign */}
+      {bulkTarget && (
+        <BulkHrAssignDialog
+          stakeholder={bulkTarget}
+          projectId={selectedProjectId}
+          projectName={selectedProject?.project_name ?? null}
+          onClose={() => setBulkTarget(null)}
+          onDone={() => { setBulkTarget(null); loadData(); }}
+        />
+      )}
     </div>
   );
 }

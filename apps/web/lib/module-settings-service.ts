@@ -72,7 +72,34 @@ export function isModuleActive(modules: ModuleSetting[], key: string): boolean {
   return modules.find((m) => m.module_key === key)?.is_active ?? true;
 }
 
-export function isRouteBlocked(pathname: string, activeKeys: string[]): boolean {
+/**
+ * Sidebar module keys that are gated by `isModulePermitted()` (the global toggle composed
+ * with the role-based check from `apps/web/hooks/use-permitted-modules.ts`) — mirrors exactly
+ * the 11 top-level sections in `apps/web/components/dashboard/sidebar.tsx` that were switched
+ * from `isModuleActive` to `isModulePermitted`. Deliberately excludes `"administration"`:
+ * that folder keeps its own, unrelated `(isAdmin || isHr)` gate in the sidebar, untouched by
+ * Phase A, so the direct-URL guard below stays consistent with it (global-toggle-only) rather
+ * than introducing a second, divergent role check for the same routes.
+ */
+const ROLE_GOVERNED_MODULE_KEYS = new Set([
+  "project",
+  "reporting",
+  "document_control",
+  "planning",
+  "design",
+  "procurement",
+  "inventory",
+  "qs",
+  "construction",
+  "hr",
+  "account",
+]);
+
+export function isRouteBlocked(
+  pathname: string,
+  activeKeys: string[],
+  permittedModuleKeys?: string[],
+): boolean {
   const routeModuleMap: Record<string, string> = {
     "/dashboard/projects": "project",
     "/dashboard/wbs": "project",
@@ -101,7 +128,15 @@ export function isRouteBlocked(pathname: string, activeKeys: string[]): boolean 
 
   for (const [prefix, moduleKey] of Object.entries(routeModuleMap)) {
     if (pathname === prefix || pathname.startsWith(prefix + "/")) {
-      return !activeKeys.includes(moduleKey);
+      if (!activeKeys.includes(moduleKey)) return true;
+      if (
+        permittedModuleKeys &&
+        ROLE_GOVERNED_MODULE_KEYS.has(moduleKey) &&
+        !permittedModuleKeys.includes(moduleKey)
+      ) {
+        return true;
+      }
+      return false;
     }
   }
 

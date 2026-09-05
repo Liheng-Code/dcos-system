@@ -1,29 +1,111 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { X, Upload, Download, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ChevronRight } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import * as XLSX from "xlsx";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+import { nextWbsCode, resolveCodeCollision } from "@/lib/wbs-code";
+import {
+  NODE_TYPE_OPTIONS,
+  STATUS_OPTIONS,
+  nodeTypeLabel,
+  statusLabel,
+} from "@/components/wbs/builder/wbs-builder-types";
 
-const ALLOWED_NODE_TYPES = new Set([
-  "phase", "building", "level", "zone", "room", "element", "discipline", "task_group",
-]);
+// ---------------------------------------------------------------------------
+// Column model — matches the WBS Builder grid. Only Node Type + Name are
+// required; WBS Code auto-generates and hierarchy comes from Parent Code or the
+// Indent (outline level) column.
+// ---------------------------------------------------------------------------
+type ColKey = "node_type" | "wbs_name" | "wbs_code" | "parent_code" | "indent" | "status";
 
-const ALLOWED_STATUSES = new Set(["active", "on_hold"]);
+const TEMPLATE_COLUMNS: { key: ColKey; label: string; hint: string; required?: boolean }[] = [
+  { key: "node_type", label: "Node Type", hint: "phase · building · level · zone · room · element · discipline · task_group", required: true },
+  { key: "wbs_name", label: "Name", hint: "Display name of the node", required: true },
+  { key: "wbs_code", label: "WBS Code", hint: "Leave blank to auto-generate (B01, L02…)" },
+  { key: "parent_code", label: "Parent Code", hint: "WBS Code of the parent — blank for top level" },
+  { key: "indent", label: "Indent", hint: "Outline level 0,1,2… — used when Parent Code is blank" },
+  { key: "status", label: "Status", hint: "active · on_hold · closed (default active)" },
+];
 
-const EXPECTED_COLUMNS = ["wbs_code", "wbs_name", "node_type", "parent_code", "sort_order", "status"];
+const HEADER_ALIASES: Record<ColKey, string[]> = {
+  node_type: ["nodetype", "type"],
+  wbs_name: ["name", "wbsname", "title", "activity", "activityname"],
+  wbs_code: ["wbscode", "code", "id"],
+  parent_code: ["parentcode", "parent", "parentid", "parentwbs"],
+  indent: ["indent", "level", "outlinelevel", "depth", "tier"],
+  status: ["status", "state"],
+};
 
-interface Row {
-  _row: number;
-  wbs_code: string;
-  wbs_name: string;
+const normHeader = (h: string) => h.toLowerCase().replace(/[\s_\-/.]/g, "");
+
+const NODE_TYPE_LOOKUP = (() => {
+  const m = new Map<string, string>();
+  for (const o of NODE_TYPE_OPTIONS) {
+    m.set(o.value, o.value);
+    m.set(o.label.toLowerCase().replace(/[^a-z]/g, ""), o.value);
+  }
+  m.set("area", "building");
+  m.set("space", "room");
+  m.set("group", "task_group");
+  return m;
+})();
+
+function normalizeNodeType(raw: string): string | null {
+  const s = raw.toLowerCase().trim();
+  if (!s) return null;
+  const slug = s.replace(/[\s/-]+/g, "_");
+  if (NODE_TYPE_OPTIONS.some((o) => o.value === slug)) return slug;
+  return NODE_TYPE_LOOKUP.get(s.replace(/[^a-z]/g, "")) ?? null;
+}
+
+function normalizeStatus(raw: string): string {
+  const s = raw.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return STATUS_OPTIONS.includes(s) ? s : "active";
+}
+
+// ---------------------------------------------------------------------------
+
+interface ImportRow {
+  _row: number; // spreadsheet row number (for messages)
+  _uid: string; // pre-assigned id
   node_type: string;
+  wbs_name: string;
+  wbs_code: string; // resolved (auto-filled if blank)
+  rawCode: string; // as typed
   parent_code: string;
-  sort_order: number;
+  indent: number;
   status: string;
+  autoCode: boolean;
+  parentUid: string | null;
+  existingParentId: string | null;
+  sortOrder: number;
   errors: string[];
+}
+
+interface ExistingNode {
+  id: string;
+  wbs_code: string;
+  parent_id: string | null;
+  sort_order: number;
 }
 
 interface WbsImportDialogProps {
@@ -34,254 +116,330 @@ interface WbsImportDialogProps {
 
 type Step = "upload" | "preview" | "importing" | "done";
 
+const ROOT_KEY = "__root__";
+
 export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
-  const [rows, setRows] = useState<Row[]>([]);
-  const [existing, setExisting] = useState<Set<string>>(new Set());
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [importedCount, setImportedCount] = useState(0);
 
-  const handleFile = useCallback(async (file: File | null) => {
-    if (!file) return;
-    setFileName(file.name);
+  const validRows = useMemo(() => rows.filter((r) => r.errors.length === 0), [rows]);
+  const invalidRows = useMemo(() => rows.filter((r) => r.errors.length > 0), [rows]);
 
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw: Record<string, string>[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+  const parseFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      setFileName(file.name);
 
-      if (raw.length === 0) {
-        toast.error("Spreadsheet is empty");
-        return;
-      }
-
-      const headers = Object.keys(raw[0]);
-      const colMap = new Map<string, string>();
-      for (const h of EXPECTED_COLUMNS) {
-        const found = headers.find((k) => k.toLowerCase().replace(/[\s_-]/g, "") === h.toLowerCase());
-        if (found) colMap.set(h, found);
-      }
-
-      const supabase = createClient();
-      const { data: existingNodes } = await supabase
-        .from("wbs_nodes")
-        .select("wbs_code")
-        .eq("project_id", projectId);
-      const existingCodes = new Set((existingNodes ?? []).map((n: { wbs_code: string }) => n.wbs_code));
-
-      const parsed: Row[] = [];
-      for (let i = 0; i < raw.length; i++) {
-        const r = raw[i];
-        const errs: string[] = [];
-
-        const getCol = (key: string): string => {
-          const mapped = colMap.get(key);
-          return mapped ? String(r[mapped] ?? "").trim() : "";
-        };
-
-        const wbs_code = getCol("wbs_code").toUpperCase();
-        const wbs_name = getCol("wbs_name");
-        const node_type = getCol("node_type").toLowerCase();
-        const parent_code = getCol("parent_code").toUpperCase();
-        const rawOrder = getCol("sort_order");
-        const rawStatus = getCol("status").toLowerCase();
-
-        if (!wbs_code) errs.push("wbs_code is required");
-        if (!wbs_name) errs.push("wbs_name is required");
-        if (!node_type) errs.push("node_type is required");
-        else if (!ALLOWED_NODE_TYPES.has(node_type)) errs.push(`Invalid node_type "${node_type}"`);
-
-        if (existingCodes.has(wbs_code)) errs.push(`wbs_code "${wbs_code}" already exists in project`);
-
-        const sort_order = rawOrder ? parseInt(rawOrder, 10) : 0;
-        if (rawOrder && isNaN(sort_order)) errs.push(`sort_order "${rawOrder}" is not a number`);
-
-        const status = ALLOWED_STATUSES.has(rawStatus) ? rawStatus : "active";
-
-        parsed.push({ _row: i + 2, wbs_code, wbs_name, node_type, parent_code, sort_order, status, errors: errs });
-      }
-
-      const seen = new Set<string>();
-      for (const row of parsed) {
-        if (row.wbs_code && seen.has(row.wbs_code)) row.errors.push(`Duplicate wbs_code "${row.wbs_code}" within file`);
-        seen.add(row.wbs_code);
-      }
-
-      const allCodes = new Set(parsed.map((r) => r.wbs_code).filter(Boolean));
-      for (const row of parsed) {
-        if (row.parent_code && !allCodes.has(row.parent_code) && !existingCodes.has(row.parent_code)) {
-          row.errors.push(`Parent "${row.parent_code}" not found in file or project`);
+      try {
+        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+        if (raw.length === 0) {
+          toast.error("That sheet is empty");
+          return;
         }
+
+        const headers = Object.keys(raw[0]);
+        const col: Partial<Record<ColKey, string>> = {};
+        for (const key of Object.keys(HEADER_ALIASES) as ColKey[]) {
+          col[key] = headers.find(
+            (h) => normHeader(h) === normHeader(key) || HEADER_ALIASES[key].includes(normHeader(h)),
+          );
+        }
+        if (!col.node_type || !col.wbs_name) {
+          toast.error('Missing required columns — need at least "Node Type" and "Name"');
+          return;
+        }
+
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("wbs_nodes")
+          .select("id, wbs_code, parent_id, sort_order")
+          .eq("project_id", projectId);
+        const existing = (data ?? []) as ExistingNode[];
+        const existingByCode = new Map(existing.map((n) => [n.wbs_code.toUpperCase(), n]));
+
+        const cell = (r: Record<string, unknown>, key: ColKey) =>
+          col[key] ? String(r[col[key]!] ?? "").trim() : "";
+
+        // -- Pass 1: raw parse --------------------------------------------------
+        const parsed: ImportRow[] = raw.map((r, i) => {
+          const errors: string[] = [];
+          const nodeTypeRaw = cell(r, "node_type");
+          const node_type = normalizeNodeType(nodeTypeRaw) ?? "";
+          const wbs_name = cell(r, "wbs_name");
+          const rawCode = cell(r, "wbs_code").toUpperCase();
+          const parent_code = cell(r, "parent_code").toUpperCase();
+          const indentRaw = cell(r, "indent");
+          const indent = indentRaw ? Math.max(0, Math.floor(Number(indentRaw))) : 0;
+
+          if (!wbs_name) errors.push("Name is required");
+          if (!nodeTypeRaw) errors.push("Node Type is required");
+          else if (!node_type) errors.push(`Unknown Node Type "${nodeTypeRaw}"`);
+          if (indentRaw && !Number.isFinite(Number(indentRaw)))
+            errors.push(`Indent "${indentRaw}" is not a number`);
+
+          return {
+            _row: i + 2,
+            _uid: crypto.randomUUID(),
+            node_type,
+            wbs_name,
+            wbs_code: rawCode,
+            rawCode,
+            parent_code,
+            indent,
+            status: normalizeStatus(cell(r, "status")),
+            autoCode: !rawCode,
+            parentUid: null,
+            existingParentId: null,
+            sortOrder: 0,
+            errors,
+          };
+        });
+
+        // -- Pass 2: resolve parents (Parent Code, else Indent) ---------------
+        const fileByCode = new Map<string, ImportRow>();
+        for (const row of parsed) if (row.rawCode) fileByCode.set(row.rawCode, row);
+
+        parsed.forEach((row, idx) => {
+          if (row.parent_code) {
+            const inFile = fileByCode.get(row.parent_code);
+            const inProject = existingByCode.get(row.parent_code);
+            if (inFile && inFile !== row) row.parentUid = inFile._uid;
+            else if (inProject) row.existingParentId = inProject.id;
+            else row.errors.push(`Parent "${row.parent_code}" not found in the file or project`);
+          } else if (row.indent > 0) {
+            let p: ImportRow | null = null;
+            for (let j = idx - 1; j >= 0; j--) {
+              if (parsed[j].indent === row.indent - 1) {
+                p = parsed[j];
+                break;
+              }
+              if (parsed[j].indent < row.indent - 1) break;
+            }
+            if (p) row.parentUid = p._uid;
+            else row.errors.push(`Indent ${row.indent} has no parent row above it`);
+          }
+        });
+
+        // A child of a broken row can't be created either.
+        const uidToRow = new Map(parsed.map((r) => [r._uid, r]));
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const row of parsed) {
+            if (row.errors.length) continue;
+            const p = row.parentUid ? uidToRow.get(row.parentUid) : null;
+            if (p && p.errors.length) {
+              row.errors.push(`Parent row ${p._row} has errors`);
+              changed = true;
+            }
+          }
+        }
+
+        // -- Pass 3: sort_order + auto WBS codes, grouped by parent -----------
+        const groupKey = (r: ImportRow) => r.parentUid ?? r.existingParentId ?? ROOT_KEY;
+        const existingSiblingCodes = new Map<string, Set<string>>();
+        const existingSiblingMaxSort = new Map<string, number>();
+        for (const n of existing) {
+          const k = n.parent_id ?? ROOT_KEY;
+          (existingSiblingCodes.get(k) ?? existingSiblingCodes.set(k, new Set()).get(k)!).add(
+            n.wbs_code.toUpperCase(),
+          );
+          existingSiblingMaxSort.set(k, Math.max(existingSiblingMaxSort.get(k) ?? -10, n.sort_order));
+        }
+
+        const groupTaken = new Map<string, Set<string>>();
+        const groupCount = new Map<string, number>();
+        for (const row of parsed) {
+          const k = groupKey(row);
+          const taken =
+            groupTaken.get(k) ??
+            groupTaken.set(k, new Set(existingSiblingCodes.get(k) ?? [])).get(k)!;
+
+          if (!row.wbs_code && row.node_type) {
+            const base = nextWbsCode(
+              row.node_type,
+              [...taken].map((c) => ({ wbs_code: c })),
+            );
+            row.wbs_code = resolveCodeCollision(base, taken);
+          }
+          if (row.wbs_code) {
+            if (taken.has(row.wbs_code)) {
+              row.errors.push(`Code "${row.wbs_code}" is used twice under the same parent`);
+            }
+            taken.add(row.wbs_code);
+          }
+
+          const n = (groupCount.get(k) ?? 0) + 1;
+          groupCount.set(k, n);
+          row.sortOrder = (existingSiblingMaxSort.get(k) ?? -10) + 10 * n;
+        }
+
+        setRows(parsed);
+        setStep("preview");
+      } catch (e) {
+        toast.error("Couldn't read that file: " + (e instanceof Error ? e.message : "unknown error"));
       }
+    },
+    [projectId],
+  );
 
-      setRows(parsed);
-      setExisting(existingCodes);
-      setStep("preview");
-    } catch (e) {
-      toast.error("Failed to parse file: " + (e instanceof Error ? e.message : "Unknown error"));
-    }
-  }, [projectId]);
-
-  const validRows = rows.filter((r) => r.errors.length === 0);
-  const invalidRows = rows.filter((r) => r.errors.length > 0);
-
-  async function handleImport() {
+  async function runImport() {
     if (validRows.length === 0) return;
     setStep("importing");
-    setProgress({ current: 0, total: validRows.length });
+
+    // Order parents before children so the self-referencing FK is satisfied in
+    // one bulk insert.
+    const byUid = new Map(validRows.map((r) => [r._uid, r]));
+    const seen = new Set<string>();
+    const ordered: ImportRow[] = [];
+    const visit = (r: ImportRow) => {
+      if (seen.has(r._uid)) return;
+      seen.add(r._uid);
+      const p = r.parentUid ? byUid.get(r.parentUid) : null;
+      if (p) visit(p);
+      ordered.push(r);
+    };
+    for (const r of validRows) visit(r);
 
     const supabase = createClient();
+    const { error } = await supabase.from("wbs_nodes").insert(
+      ordered.map((r) => ({
+        id: r._uid,
+        project_id: projectId,
+        parent_id: r.parentUid ?? r.existingParentId ?? null,
+        node_type: r.node_type,
+        wbs_code: r.wbs_code,
+        wbs_name: r.wbs_name,
+        status: r.status,
+        sort_order: r.sortOrder,
+      })),
+    );
 
-    const inserted = await supabase
-      .from("wbs_nodes")
-      .insert(
-        validRows.map((r) => ({
-          project_id: projectId,
-          wbs_code: r.wbs_code,
-          wbs_name: r.wbs_name,
-          node_type: r.node_type,
-          status: r.status,
-          sort_order: r.sort_order,
-          parent_id: null,
-        }))
-      )
-      .select("id, wbs_code");
-
-    if (inserted.error) {
-      toast.error("Import failed: " + inserted.error.message);
+    if (error) {
+      toast.error("Import failed: " + error.message);
       setStep("preview");
       return;
     }
 
-    setProgress({ current: validRows.length, total: validRows.length });
-
-    const codeToId = new Map<string, string>();
-    for (const n of inserted.data ?? []) {
-      codeToId.set(n.wbs_code, n.id);
-    }
-
-    for (const row of validRows) {
-      if (row.parent_code) {
-        const parentId = codeToId.get(row.parent_code) ?? null;
-        if (parentId) {
-          await supabase
-            .from("wbs_nodes")
-            .update({ parent_id: parentId })
-            .eq("wbs_code", row.wbs_code)
-            .eq("project_id", projectId);
-        }
-      }
-    }
-
-    toast.success(`Imported ${validRows.length} WBS node(s)`);
+    setImportedCount(ordered.length);
+    toast.success(`Imported ${ordered.length} WBS node${ordered.length === 1 ? "" : "s"}`);
     setStep("done");
   }
 
-  function downloadTemplate() {
-    const wb = XLSX.utils.book_new();
-    const data = [
-      ["wbs_code", "wbs_name", "node_type", "parent_code", "sort_order", "status"],
-      ["A-01", "Foundation Works", "element", "", "10", "active"],
+  function buildTemplateSheet() {
+    const rowsAoa = [
+      ["Node Type", "Name", "WBS Code", "Parent Code", "Indent", "Status"],
+      ["building", "Bank Tower", "", "", 0, "active"],
+      ["level", "Ground Floor", "", "", 1, "active"],
+      ["zone", "Lobby", "", "", 2, "active"],
+      ["element", "Reception Desk", "", "", 3, "active"],
+      ["level", "Level 1", "", "", 1, "active"],
+      ["building", "Parking Structure", "", "", 0, "active"],
     ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-
-    const colWidths = [12, 28, 16, 12, 10, 12];
-    ws["!cols"] = colWidths.map((w) => ({ wch: w }));
-
-    XLSX.utils.book_append_sheet(wb, ws, "WBS Nodes");
-    XLSX.writeFile(wb, "wbs-import-template.xlsx");
+    const ws = XLSX.utils.aoa_to_sheet(rowsAoa);
+    ws["!cols"] = [16, 26, 12, 14, 8, 10].map((wch) => ({ wch }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "WBS");
+    return wb;
   }
 
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }
+  const downloadTemplate = (ext: "xlsx" | "csv") =>
+    XLSX.writeFile(buildTemplateSheet(), `wbs-import-template.${ext}`, { bookType: ext });
 
-  function handleDragOver(e: React.DragEvent) {
+  function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    setDragging(false);
+    if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]);
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 p-6 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Import WBS</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Upload a spreadsheet to bulk-create WBS nodes</p>
-          </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4" /> Import WBS
+          </DialogTitle>
+          <DialogDescription>
+            Bulk-create nodes from an Excel or CSV file. Only <strong>Node Type</strong> and{" "}
+            <strong>Name</strong> are required — codes auto-generate and hierarchy comes from{" "}
+            <strong>Parent Code</strong> or the <strong>Indent</strong> column.
+          </DialogDescription>
+        </DialogHeader>
 
-        {/* Step indicators */}
-        <div className="flex items-center gap-1 mb-5 text-xs text-slate-400">
-          <span className={step === "upload" ? "text-slate-900 font-semibold" : ""}>Upload</span>
-          <ChevronRight className="h-3 w-3" />
-          <span className={step === "preview" ? "text-slate-900 font-semibold" : ""}>Preview</span>
-          <ChevronRight className="h-3 w-3" />
-          <span className={step === "importing" ? "text-slate-900 font-semibold" : ""}>Import</span>
+        {/* Step rail */}
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          {(["upload", "preview", "importing"] as const).map((s, i) => (
+            <span key={s} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3" />}
+              <span
+                className={cn(
+                  "capitalize",
+                  (step === s || (s === "importing" && step === "done")) &&
+                    "font-semibold text-foreground",
+                )}
+              >
+                {s === "importing" ? "Import" : s}
+              </span>
+            </span>
+          ))}
         </div>
 
         {step === "upload" && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold text-slate-700 mb-2">Required columns</p>
-              <div className="grid grid-cols-6 gap-2 text-xs">
-                {[
-                  ["wbs_code", "Unique code per node (e.g. A-01)"],
-                  ["wbs_name", "Display name"],
-                  ["node_type", "Type — see allowed list below"],
-                  ["parent_code", "Parent wbs_code (blank if root)"],
-                  ["sort_order", "Sort order number"],
-                  ["status", "active / closed / on_hold"],
-                ].map(([col, hint]) => (
-                  <div key={col} className="rounded-lg bg-white border border-slate-100 px-2.5 py-1.5">
-                    <code className="font-semibold text-slate-800">{col}</code>
-                    <p className="text-slate-400 mt-0.5 leading-tight">{hint}</p>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border bg-muted/40 p-3">
+              <p className="mb-2 text-[11px] font-semibold text-muted-foreground">Columns</p>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {TEMPLATE_COLUMNS.map((c) => (
+                  <div key={c.key} className="rounded-md border border-border bg-background px-2 py-1.5">
+                    <div className="flex items-center gap-1 text-xs font-medium">
+                      {c.label}
+                      {c.required && <span className="text-destructive">*</span>}
+                    </div>
+                    <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">{c.hint}</p>
                   </div>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
-                <span><span className="font-medium text-slate-500">node_type</span>: building, level, zone, room, element, discipline, task_group, section, segment, structure, component, area, system, subsystem, equipment</span>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("xlsx")}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Excel template
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("csv")}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> CSV template
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-xl text-xs mt-3"
-                onClick={downloadTemplate}
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" /> Download Template
-              </Button>
             </div>
 
             <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-white p-8 cursor-pointer hover:border-slate-400 transition-colors"
+              onDrop={onDrop}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
               onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors",
+                dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50",
+              )}
             >
-              <FileSpreadsheet className="h-8 w-8 text-slate-400" />
-              <div className="text-center">
-                <p className="text-sm font-medium text-slate-700">Drop your completed spreadsheet here</p>
-                <p className="text-xs text-slate-500 mt-1">or click to browse — .xlsx, .xls, .csv</p>
-              </div>
+              <FileSpreadsheet className="h-7 w-7 text-muted-foreground" />
+              <p className="text-sm font-medium">Drop your file here</p>
+              <p className="text-[11px] text-muted-foreground">or click to browse — .xlsx, .xls, .csv</p>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".xlsx,.xls,.csv"
                 className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => parseFile(e.target.files?.[0] ?? null)}
               />
-              <Button variant="outline" size="sm" className="rounded-xl text-xs">
-                <Upload className="mr-1.5 h-3.5 w-3.5" /> Select File
+              <Button size="sm" variant="outline" className="mt-1 h-7 text-[11px]">
+                <Upload className="mr-1.5 h-3.5 w-3.5" /> Select file
               </Button>
             </div>
           </div>
@@ -289,58 +447,72 @@ export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDia
 
         {step === "preview" && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500">
-                <span className="font-semibold text-slate-700">{rows.length}</span> row(s) found in <span className="font-semibold text-slate-700">{fileName}</span>
-              </p>
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <span className="text-muted-foreground">
+                <strong className="text-foreground">{rows.length}</strong> row{rows.length === 1 ? "" : "s"} in{" "}
+                <strong className="text-foreground">{fileName}</strong>
+                {" · "}
+                <span className="text-emerald-600">{validRows.length} ready</span>
                 {invalidRows.length > 0 && (
-                  <span className="text-xs text-amber-600 flex items-center gap-1">
-                    <AlertTriangle className="h-3.5 w-3.5" /> {invalidRows.length} with errors
-                  </span>
+                  <>
+                    {" · "}
+                    <span className="text-amber-600">{invalidRows.length} with errors</span>
+                  </>
                 )}
-                <Button variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => fileInputRef.current?.click()}>
-                  Change File
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
+              </span>
+              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => fileInputRef.current?.click()}>
+                Change file
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => parseFile(e.target.files?.[0] ?? null)}
+              />
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200">
+            <div className="max-h-72 overflow-auto rounded-lg border border-border">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-left text-slate-500">
-                    <th className="px-3 py-2 font-medium">#</th>
-                    <th className="px-3 py-2 font-medium">Code</th>
-                    <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">Type</th>
-                    <th className="px-3 py-2 font-medium">Parent</th>
-                    <th className="px-3 py-2 font-medium">Order</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Errors</th>
+                <thead className="sticky top-0 bg-muted text-left text-[11px] font-semibold text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-1.5">#</th>
+                    <th className="px-2 py-1.5">WBS Code</th>
+                    <th className="px-2 py-1.5">Node Type</th>
+                    <th className="px-2 py-1.5">Name</th>
+                    <th className="px-2 py-1.5">Status</th>
+                    <th className="px-2 py-1.5" />
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r._row} className={cn("border-t border-slate-100", r.errors.length > 0 ? "bg-amber-50/50" : "")}>
-                      <td className="px-3 py-1.5 text-slate-400">{r._row}</td>
-                      <td className="px-3 py-1.5 font-mono font-medium">{r.wbs_code || "—"}</td>
-                      <td className="px-3 py-1.5">{r.wbs_name || "—"}</td>
-                      <td className="px-3 py-1.5">{r.node_type || "—"}</td>
-                      <td className="px-3 py-1.5 text-slate-400">{r.parent_code || "—"}</td>
-                      <td className="px-3 py-1.5 text-slate-400">{r.sort_order || "—"}</td>
-                      <td className="px-3 py-1.5">{r.status}</td>
-                      <td className="px-3 py-1.5">
+                  {rows.slice(0, 300).map((r) => (
+                    <tr
+                      key={r._row}
+                      className={cn(
+                        "border-t border-border/60",
+                        r.errors.length > 0 && "bg-amber-50/60",
+                      )}
+                    >
+                      <td className="px-2 py-1 text-muted-foreground tabular-nums">{r._row}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {r.wbs_code || "—"}
+                        {r.autoCode && r.wbs_code && (
+                          <span className="ml-1 text-[9px] uppercase text-muted-foreground">auto</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1">{r.node_type ? nodeTypeLabel(r.node_type) : "—"}</td>
+                      <td className="px-2 py-1" style={{ paddingLeft: 8 + r.indent * 14 }}>
+                        {r.wbs_name || "—"}
+                      </td>
+                      <td className="px-2 py-1">{statusLabel(r.status)}</td>
+                      <td className="px-2 py-1">
                         {r.errors.length > 0 ? (
-                          <span className="inline-flex items-center gap-0.5 text-amber-600" title={r.errors.join("; ")}>
-                            <AlertCircle className="h-3 w-3 shrink-0" />
-                            <span>{r.errors.length}</span>
+                          <span
+                            className="inline-flex items-center gap-0.5 text-amber-600"
+                            title={r.errors.join("; ")}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {r.errors.length}
                           </span>
                         ) : (
                           <CheckCircle2 className="h-3 w-3 text-emerald-500" />
@@ -353,60 +525,59 @@ export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDia
             </div>
 
             {invalidRows.length > 0 && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
-                <p className="text-xs font-semibold text-amber-800 mb-1">Validation errors</p>
-                <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
-                  {invalidRows.slice(0, 10).map((r) => (
-                    <li key={r._row}>Row {r._row} ({r.wbs_code || "?"}): {r.errors.join("; ")}</li>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <p className="mb-1 text-[11px] font-semibold text-amber-800">Rows that will be skipped</p>
+                <ul className="list-inside list-disc space-y-0.5 text-[11px] text-amber-700">
+                  {invalidRows.slice(0, 8).map((r) => (
+                    <li key={r._row}>
+                      Row {r._row} ({r.wbs_code || r.wbs_name || "?"}): {r.errors.join("; ")}
+                    </li>
                   ))}
-                  {invalidRows.length > 10 && <li className="text-amber-500">...and {invalidRows.length - 10} more</li>}
+                  {invalidRows.length > 8 && (
+                    <li className="text-amber-500">…and {invalidRows.length - 8} more</li>
+                  )}
                 </ul>
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" className="rounded-xl text-xs" onClick={onClose}>Cancel</Button>
-              <Button
-                size="sm"
-                className="rounded-xl text-xs"
-                disabled={validRows.length === 0}
-                onClick={handleImport}
-              >
-                Import {validRows.length} row(s)
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={validRows.length === 0} onClick={runImport}>
+                Import {validRows.length} row{validRows.length === 1 ? "" : "s"}
               </Button>
             </div>
           </div>
         )}
 
         {step === "importing" && (
-          <div className="flex flex-col items-center justify-center gap-3 py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            <p className="text-sm text-slate-600">Importing WBS nodes...</p>
-            <div className="w-48 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-slate-900 transition-all"
-                style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-400">{progress.current} / {progress.total}</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Creating {validRows.length} nodes…</p>
           </div>
         )}
 
         {step === "done" && (
-          <div className="flex flex-col items-center justify-center gap-3 py-8">
-            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-            <p className="text-sm font-semibold text-slate-700">Import complete</p>
-            <p className="text-xs text-slate-500">{validRows.length} WBS node(s) created successfully</p>
-            <Button size="sm" className="rounded-xl mt-2" onClick={() => { onImported(); onClose(); }}>
+          <div className="flex flex-col items-center justify-center gap-2 py-10">
+            <CheckCircle2 className="h-9 w-9 text-emerald-500" />
+            <p className="text-sm font-semibold">Import complete</p>
+            <p className="text-xs text-muted-foreground">
+              {importedCount} WBS node{importedCount === 1 ? "" : "s"} created
+            </p>
+            <Button
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                onImported();
+                onClose();
+              }}
+            >
               Done
             </Button>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-}
-
-function cn(...inputs: (string | boolean | undefined | null)[]): string {
-  return inputs.filter(Boolean).join(" ");
 }

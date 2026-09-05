@@ -7,7 +7,13 @@ import { GanttChartSquare, Loader2 } from "lucide-react";
 
 function GanttPageContent() {
   return (
-    <PlanPageShell title="Gantt Chart" description="Schedule view with WBS hierarchy, milestones, CPM, and baseline overlay" icon={GanttChartSquare}>
+    <PlanPageShell
+      title="Gantt Chart"
+      description="Schedule view with WBS hierarchy, milestones, CPM, and baseline overlay"
+      icon={GanttChartSquare}
+      hideHeader
+      contentClassName="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-0"
+    >
       <PlanGanttChart />
     </PlanPageShell>
   );

@@ -6,6 +6,7 @@ import { X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
 
 export interface Project {
   id: string;
@@ -27,6 +28,7 @@ export interface Project {
   description: string | null;
   short_name: string | null;
   category: string | null;
+  building_type: string | null;
   location: string | null;
   time_zone: string | null;
   dlp_period: string | null;
@@ -160,6 +162,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
     description: project?.description ?? "",
     short_name: project?.short_name ?? "",
     category: project?.category ?? "",
+    building_type: project?.building_type ?? "",
     location: project?.location ?? "",
     time_zone: project?.time_zone ?? "Asia/Phnom_Penh",
     dlp_period: project?.dlp_period ?? "",
@@ -295,6 +298,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
       description: form.description || null,
       short_name: form.short_name || null,
       category: form.category || null,
+      building_type: form.building_type || null,
       location: form.location || null,
       time_zone: form.time_zone || "Asia/Phnom_Penh",
       dlp_period: form.dlp_period || null,
@@ -443,22 +447,35 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="category">Category</Label>
+                <Label htmlFor="category">Sector</Label>
                 <select
                   id="category"
                   value={form.category}
-                  onChange={(e) => update("category", e.target.value)}
+                  onChange={(e) => { update("category", e.target.value); update("building_type", ""); }}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
                 >
-                  <option value="">—</option>
-                  <option value="building">Building</option>
-                  <option value="high_rise">High Rise</option>
-                  <option value="infrastructure">Infrastructure</option>
-                  <option value="industrial">Industrial</option>
-                  <option value="residential">Residential</option>
-                  <option value="commercial">Commercial</option>
-                  <option value="mixed_use">Mixed Use</option>
-                  <option value="other">Other</option>
+                  <option value="">Select sector</option>
+                  {PROJECT_SECTORS.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                  {form.category && !PROJECT_SECTORS.some((s) => s.value === form.category) && (
+                    <option value={form.category}>{sectorLabel(form.category)}</option>
+                  )}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="building_type">Building Type</Label>
+                <select
+                  id="building_type"
+                  value={form.building_type}
+                  disabled={!form.category}
+                  onChange={(e) => update("building_type", e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary disabled:opacity-50"
+                >
+                  <option value="">{form.category ? "Select building type" : "Select a sector first"}</option>
+                  {buildingTypesForSector(form.category).map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
                 </select>
               </div>
             </div>

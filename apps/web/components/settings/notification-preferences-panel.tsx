@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Bell, Mail, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
@@ -57,20 +58,23 @@ export function NotificationPreferencesPanel() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <Card>
+        <CardContent className="flex items-center justify-center py-10">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="max-w-md space-y-6">
-      <div className="flex items-center gap-2.5">
-        <Bell className="h-5 w-5 text-slate-600" />
-        <h2 className="text-base font-semibold">Notification Preferences</h2>
-      </div>
-
-      <div className="rounded-xl border border-border bg-white p-5 space-y-5 shadow-sm">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Bell className="h-4 w-4 text-muted-foreground" />
+          Notification Preferences
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
         {/* Email */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -129,12 +133,12 @@ export function NotificationPreferencesPanel() {
             </div>
           )}
         </div>
-      </div>
 
-      <Button onClick={handleSave} disabled={saving} className="rounded-lg">
-        {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-        Save Preferences
-      </Button>
-    </div>
+        <Button onClick={handleSave} disabled={saving} className="rounded-lg">
+          {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+          Save Preferences
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

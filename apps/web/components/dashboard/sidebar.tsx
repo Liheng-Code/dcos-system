@@ -24,11 +24,15 @@ import {
   Wind,
   GanttChartSquare,
   ShieldCheck,
+  ShieldAlert,
+  FileClock,
   Handshake,
   FileSignature,
   Layers,
   Truck,
   Ruler,
+  UserCheck,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -53,7 +57,9 @@ const PROJECT_ITEMS = [
   { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
   { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
   { href: "/dashboard/wbs",                      label: "WBS",          icon: FolderTree },
+  { href: "/dashboard/my-tasks",                 label: "My Tasks",     icon: UserCheck },
   { href: "/dashboard/tasks",                    label: "Tasks",        icon: ListChecks },
+  { href: "/dashboard/department",               label: "Department",   icon: Network },
   { href: "/dashboard/stakeholders",             label: "Stakeholders", icon: Users },
 
 ] as const;
@@ -132,8 +138,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
   const { selectedProject } = useProject();
   const isPrecontract = selectedProject?.project_type === "tender";
-  const { isModuleActive, isNavItemActive } = useModuleSettings();
+  const { isModuleActive, isModulePermitted, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isHr, setIsHr] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [reportingOpen, setReportingOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
@@ -153,6 +160,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const [myPendingCount, setMyPendingCount] = useState(0);
   const [otApprovalCount, setOtApprovalCount] = useState(0);
   const [otNotifCount, setOtNotifCount] = useState(0);
+  const [crossRequestCount, setCrossRequestCount] = useState(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -160,6 +168,17 @@ export function Sidebar({ collapsed }: SidebarProps) {
       if (!data.user) return;
       supabase.from("profiles").select("role").eq("id", data.user.id).single().then(({ data: profile }) => {
         if (profile) setIsAdmin(profile.role === "admin");
+      });
+      // 02-USR Phase 4 — Administration folder gate broadened from isAdmin-only to
+      // (isAdmin || isHr), per 00-Master.md §6 / 06-UI-UX-Design.md §4: module ownership is
+      // "HR / System Admin", and HR_Manager is treated as admin-equivalent authority
+      // server-side (apps/web/lib/admin-users/actor-context.ts's HR_ROLE_CODES). Unions
+      // profiles.role with user_roles.role_code, matching that same precedent, so a user who
+      // only holds the RBAC role_code (no legacy profiles.role="admin") isn't hidden from it.
+      const HR_ROLE_CODES = new Set(["HR_Manager", "admin"]);
+      supabase.from("user_roles").select("role_code").eq("user_id", data.user.id).then(({ data: roleRows }) => {
+        const codes = (roleRows ?? []).map((r: { role_code: string }) => r.role_code);
+        if (codes.some((c) => HR_ROLE_CODES.has(c))) setIsHr(true);
       });
       const uid = data.user.id;
       supabase
@@ -169,7 +188,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         .in("status", ["submitted", "pending_cancellation"])
         .then(({ data: rows }) => {
           if (!rows) return;
-          const count = rows.filter((req: any) => {
+          const count = rows.filter((req: { status: string; approver_1_id: string; approver_1_status: string; approver_2_id: string; approver_2_status: string }) => {
             if (req.status === "pending_cancellation") return true;
             if (req.approver_1_id === uid) return req.approver_1_status === "pending";
             if (req.approver_2_id === uid) return req.approver_1_status === "approved" && req.approver_2_status === "pending";
@@ -200,6 +219,22 @@ export function Sidebar({ collapsed }: SidebarProps) {
         .eq("is_read", false)
         .then(({ count }) => {
           if (count !== null) setOtNotifCount(count);
+        });
+      supabase
+        .from("departments")
+        .select("id")
+        .eq("department_head", uid)
+        .then(({ data: depts }) => {
+          const ids = (depts ?? []).map((d: { id: string }) => d.id);
+          if (ids.length === 0) return;
+          supabase
+            .from("wbs_tasks")
+            .select("id", { count: "exact", head: true })
+            .in("department_id", ids)
+            .eq("cross_dept_status", "requested")
+            .then(({ count }) => {
+              if (count !== null) setCrossRequestCount(count);
+            });
         });
     });
   }, []);
@@ -409,17 +444,21 @@ export function Sidebar({ collapsed }: SidebarProps) {
       <nav className="flex flex-col gap-1 overflow-y-auto p-3 flex-1">
 
         {/* ── PROJECT ── */}
-        {isModuleActive("project") && (
+        {isModulePermitted("project") && (
         <>
         <FolderHeader label="Project" open={projectOpen} onToggle={() => setProjectOpen(!projectOpen)} level={1} />
         {(collapsed || projectOpen) && (isPrecontract ? PRECONTRACT_ITEMS : PROJECT_ITEMS).map((item) => (
-          <NavItem key={item.href} {...item} />
+          <NavItem
+            key={item.href}
+            {...item}
+            badge={item.href === "/dashboard/department" ? crossRequestCount : undefined}
+          />
         ))}
         </>
         )}
 
         {/* ── REPORTING ── */}
-        {isModuleActive("reporting") && (
+        {isModulePermitted("reporting") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Reporting" open={reportingOpen} onToggle={() => setReportingOpen(!reportingOpen)} level={1} />
           {(collapsed || reportingOpen) && (
@@ -444,7 +483,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── DOCUMENT CONTROL ── */}
-        {isModuleActive("document_control") && (
+        {isModulePermitted("document_control") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Document Control" open={docOpen} onToggle={() => setDocOpen(!docOpen)} level={1} />
           {(collapsed || docOpen) && (
@@ -469,7 +508,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── PLANNING ── */}
-        {isModuleActive("planning") && !isPrecontract && (
+        {isModulePermitted("planning") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Planning" open={planningOpen} onToggle={() => setPlanningOpen(!planningOpen)} level={1} />
           {(collapsed || planningOpen) && (
@@ -494,7 +533,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── DESIGN ── */}
-        {isModuleActive("design") && !isPrecontract && (
+        {isModulePermitted("design") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Design" open={designOpen} onToggle={() => setDesignOpen(!designOpen)} level={1} />
           {(collapsed || designOpen) && (
@@ -519,7 +558,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── PROCUREMENT ── */}
-        {isModuleActive("procurement") && (
+        {isModulePermitted("procurement") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Procurement" open={procurementOpen} onToggle={() => setProcurementOpen(!procurementOpen)} level={1} />
           {(collapsed || procurementOpen) && (
@@ -544,7 +583,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── INVENTORY ── */}
-        {isModuleActive("inventory") && (
+        {isModulePermitted("inventory") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Inventory" open={invModuleOpen} onToggle={() => setInvModuleOpen(!invModuleOpen)} level={1} />
           {(collapsed || invModuleOpen) && (
@@ -569,7 +608,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── QUANTITY SURVEYING ── */}
-        {isModuleActive("qs") && (
+        {isModulePermitted("qs") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Quantity Surveying" open={qsGroupOpen} onToggle={() => setQsGroupOpen(!qsGroupOpen)} level={1} />
           {(collapsed || qsGroupOpen) && (
@@ -597,7 +636,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── CONSTRUCTION ── */}
-        {isModuleActive("construction") && !isPrecontract && (
+        {isModulePermitted("construction") && !isPrecontract && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Construction" open={siteOpen} onToggle={() => setSiteOpen(!siteOpen)} level={1} />
           {(collapsed || siteOpen) && (
@@ -622,7 +661,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── HR MANAGEMENT ── */}
-        {isModuleActive("hr") && (
+        {isModulePermitted("hr") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="HR Management" open={hrOpen} onToggle={() => setHrOpen(!hrOpen)} level={1} />
           {(collapsed || hrOpen) && (
@@ -648,7 +687,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── ACCOUNT / FINANCE ── */}
-        {isModuleActive("account") && (
+        {isModulePermitted("account") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Account" open={accountOpen} onToggle={() => setAccountOpen(!accountOpen)} level={1} />
           {(collapsed || accountOpen) && (
@@ -673,12 +712,17 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── ADMINISTRATION ── */}
-        {isAdmin && isModuleActive("administration") && (
+        {(isAdmin || isHr) && isModuleActive("administration") && (
           <div className={cn(!collapsed && "mt-3")}>
             <FolderHeader label="Administration" open={adminOpen} onToggle={() => setAdminOpen(!adminOpen)} level={1} />
             {(collapsed || adminOpen) && (
               <>
                 <NavItem href="/dashboard/settings"                                  label="Settings"               icon={Cog} />
+                <NavItem href="/dashboard/administration/users"                      label="User Management"        icon={Users} />
+                <NavItem href="/dashboard/administration/roles-permissions"          label="Roles & Permissions"    icon={ShieldCheck} />
+                <NavItem href="/dashboard/administration/departments"                label="Departments"            icon={Building2} />
+                <NavItem href="/dashboard/administration/security"                   label="Security"               icon={ShieldAlert} />
+                <NavItem href="/dashboard/administration/audit-logs"                 label="Audit Logs"             icon={FileClock} />
                 <NavItem href="/dashboard/administration/stakeholder-templates"      label="Stakeholder Templates"   icon={FileText} />
               </>
             )}

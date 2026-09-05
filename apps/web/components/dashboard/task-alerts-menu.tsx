@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, CalendarClock, CheckCheck, CircleCheck, ClipboardCheck, RotateCcw, Send, XCircle } from "lucide-react";
+import { Bell, ArrowLeftRight, CalendarClock, CheckCheck, CircleCheck, ClipboardCheck, RotateCcw, Send, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -36,6 +36,9 @@ function alertIcon(type: WbsTaskAlertType) {
     task_rejected: XCircle,
     task_progress_updated: ClipboardCheck,
     task_overdue: Bell,
+    cross_dept_requested: ArrowLeftRight,
+    cross_dept_accepted: CircleCheck,
+    cross_dept_rejected: XCircle,
     leave_pending_approval: CalendarClock,
     leave_request_approved: CircleCheck,
     leave_request_rejected: XCircle,

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import type { Project } from "@/components/projects/project-edit-sheet";
+import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
 
 interface PrecontractWizardProps {
   project: Project | null;
@@ -37,6 +38,15 @@ const PROCUREMENT_METHODS = [
   { value: "framework", label: "Framework" },
 ];
 
+const CONTRACT_TYPES = [
+  { value: "lump_sum", label: "Lump Sum" },
+  { value: "unit_rate", label: "Unit Rate" },
+  { value: "cost_plus", label: "Cost Plus" },
+  { value: "design_build", label: "Design & Build" },
+  { value: "turnkey", label: "Turnkey" },
+  { value: "reimbursable", label: "Reimbursable" },
+];
+
 const CURRENCIES = ["USD", "KHR", "THB", "VND", "SGD", "MYR", "JPY", "EUR"];
 
 const RISK_CATEGORIES = [
@@ -49,6 +59,12 @@ const IMPACT_OPTIONS = ["very_low", "low", "medium", "high", "very_high"];
 interface StaffProfile {
   id: string;
   full_name: string;
+}
+
+interface Stakeholder {
+  id: string;
+  organization_name: string;
+  stakeholder_type: string;
 }
 
 interface RiskItem {
@@ -67,9 +83,11 @@ interface PrecontractForm {
   description: string;
   location: string;
   category: string;
+  building_type: string;
   client_id: string;
   tender_type: string;
   procurement_method: string;
+  contract_type: string;
   budget_range: string;
   currency: string;
   estimated_value: string;
@@ -91,6 +109,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
+  const [clients, setClients] = useState<Stakeholder[]>([]);
   const isEditing = !!project;
 
   const [form, setForm] = useState<PrecontractForm>(() => ({
@@ -99,9 +118,11 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     description: project?.description ?? "",
     location: project?.location ?? "",
     category: project?.category ?? "",
+    building_type: project?.building_type ?? "",
     client_id: project?.client_id ?? "",
     tender_type: "selective",
     procurement_method: "limited_bid",
+    contract_type: project?.contract_type ?? "",
     budget_range: "",
     currency: project?.currency ?? "USD",
     estimated_value: "",
@@ -124,6 +145,14 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     supabase.from("profiles").select("id, full_name").then(({ data }) => {
       if (data) setStaff(data as StaffProfile[]);
     });
+    supabase
+      .from("stakeholders")
+      .select("id, organization_name, stakeholder_type")
+      .eq("status", "active")
+      .order("organization_name", { ascending: true })
+      .then(({ data }) => {
+        if (data) setClients(data as Stakeholder[]);
+      });
   }, [supabase]);
 
   // Load existing precontract details when editing
@@ -151,6 +180,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   const validationItems = useMemo(() => [
     { label: "Project code", ok: !!form.project_code },
     { label: "Project name", ok: !!form.project_name },
+    { label: "Sector selected", ok: !!form.category },
     { label: "Client assigned", ok: !!form.client_id },
     { label: "Submission deadline set", ok: !!form.submission_deadline },
     { label: "Project manager assigned", ok: !!form.project_manager_id },
@@ -170,6 +200,8 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       description: form.description || null,
       location: form.location || null,
       category: form.category || null,
+      building_type: form.building_type || null,
+      contract_type: form.contract_type || null,
       currency: form.currency,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
@@ -313,18 +345,24 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-medium">Category</Label>
-          <select value={form.category} onChange={(e) => update("category", e.target.value)}
+          <Label className="text-xs font-medium">Sector *</Label>
+          <select value={form.category}
+            onChange={(e) => { update("category", e.target.value); update("building_type", ""); }}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-            <option value="">Select category</option>
-            <option value="building">Building</option>
-            <option value="high_rise">High Rise</option>
-            <option value="infrastructure">Infrastructure</option>
-            <option value="industrial">Industrial</option>
-            <option value="residential">Residential</option>
-            <option value="commercial">Commercial</option>
-            <option value="mixed_use">Mixed Use</option>
-            <option value="other">Other</option>
+            <option value="">Select sector</option>
+            {PROJECT_SECTORS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
+            {form.category && !PROJECT_SECTORS.some((s) => s.value === form.category) && (
+              <option value={form.category}>{sectorLabel(form.category)}</option>
+            )}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Building Type</Label>
+          <select value={form.building_type} disabled={!form.category}
+            onChange={(e) => update("building_type", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-50">
+            <option value="">{form.category ? "Select building type" : "Select a sector first"}</option>
+            {buildingTypesForSector(form.category).map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}
           </select>
         </div>
         <div className="col-span-2 space-y-1">
@@ -344,8 +382,13 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-medium">Client *</Label>
-          <input value={form.client_id} onChange={(e) => update("client_id", e.target.value)} placeholder="Client ID or name"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          <select value={form.client_id} onChange={(e) => update("client_id", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+            <option value="">— Select client —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.organization_name}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-medium">Tender Type</Label>
@@ -359,6 +402,14 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
           <select value={form.procurement_method} onChange={(e) => update("procurement_method", e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
             {PROCUREMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Contract Type</Label>
+          <select value={form.contract_type} onChange={(e) => update("contract_type", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+            <option value="">— Select contract type —</option>
+            {CONTRACT_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
         <div className="space-y-1">

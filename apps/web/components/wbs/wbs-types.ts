@@ -19,6 +19,9 @@ export interface WbsNodeRecord {
   actual_cost?: number | null;
   planned_hours?: number | null;
   actual_hours?: number | null;
+  is_locked?: boolean;
+  locked_at?: string | null;
+  locked_by?: string | null;
 }
 
 export interface WbsNodeData {
@@ -37,6 +40,9 @@ export interface WbsNodeData {
   gfa_value?: number | null;
   gfa_source?: string | null;
   gfa_updated_at?: string | null;
+  is_locked?: boolean;
+  locked_at?: string | null;
+  locked_by?: string | null;
   children: WbsNodeData[];
 }
 
@@ -54,6 +60,12 @@ export interface WbsTaskRecord {
   owner_id: string | null;
   owner_name: string | null;
   assignee_id: string | null;
+  department_id?: string | null;
+  requesting_department_id?: string | null;
+  cross_dept_status?: "requested" | "accepted" | "rejected" | null;
+  cross_dept_note?: string | null;
+  cross_dept_decided_by?: string | null;
+  cross_dept_decided_at?: string | null;
   start_date: string | null;
   end_date: string | null;
   delay_status: string;
@@ -62,10 +74,25 @@ export interface WbsTaskRecord {
   baseline_finish_date: string | null;
   baseline_set_at: string | null;
   baseline_set_by: string | null;
+  // Gen-1 single-predecessor columns (legacy — kept for older screens)
   dependency_text: string | null;
   dependency_type: string | null;
   dependency_task_id: string | null;
   lag_days: number;
+  // Gen-2 multi-predecessor arrays — the format the scheduler and Gantt use.
+  // Always written together (see lib/planning/schedule-engine.ts depsToArrays).
+  dependency_task_ids?: string[] | null;
+  dependency_types?: string[] | null;
+  dependency_lag_days?: number[] | null;
+  is_milestone?: boolean | null;
+  constraint_type?: string | null;
+  constraint_date?: string | null;
+  manually_scheduled?: boolean;
+  schedule_level?: number | null;
+  activity_type?: string | null;
+  actual_start_date?: string | null;
+  actual_finish_date?: string | null;
+  field_observation_notes?: string | null;
   docs_count: number;
   photos_count: number;
   qa_status: string;
@@ -116,6 +143,9 @@ export type WbsTaskAlertType =
   | "task_rejected"
   | "task_progress_updated"
   | "task_overdue"
+  | "cross_dept_requested"
+  | "cross_dept_accepted"
+  | "cross_dept_rejected"
   | "leave_pending_approval"
   | "leave_request_approved"
   | "leave_request_rejected";

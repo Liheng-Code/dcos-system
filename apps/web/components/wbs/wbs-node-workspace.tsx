@@ -15,6 +15,8 @@ interface WbsNodeWorkspaceProps {
   nodeRecord: WbsNodeRecord | null;
   tasks: WbsTaskRecord[];
   onSave: () => void;
+  /** This node, or an ancestor, is locked as the Planning backbone. */
+  locked?: boolean;
 }
 
 const NODE_TYPES = ["building", "level", "zone", "room", "element", "discipline", "task_group"];
@@ -27,7 +29,7 @@ function dateRange(tasks: WbsTaskRecord[], field: "start_date" | "end_date") {
   return field === "start_date" ? dates[0] : dates[dates.length - 1];
 }
 
-export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave }: WbsNodeWorkspaceProps) {
+export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = false }: WbsNodeWorkspaceProps) {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<(typeof TABS)[number]>("details");
   const [saving, setSaving] = useState(false);
@@ -59,6 +61,10 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave }: WbsNodeWor
 
   async function handleSave() {
     if (!nodeRecord) return;
+    if (locked) {
+      toast.error("This WBS node is locked (Planning backbone) — unlock it first");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from("wbs_nodes")
@@ -82,6 +88,12 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave }: WbsNodeWor
 
   return (
     <div className="space-y-4">
+      {locked && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+          <span>Locked — Planning backbone. Structure and GFA can&apos;t be edited until it is unlocked.</span>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs text-slate-500">{nodeRecord?.full_path ?? node.full_path ?? node.wbs_code}</div>
@@ -233,7 +245,10 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave }: WbsNodeWor
             </div>
           </div>
           <div className="mt-4 flex justify-end">
-            <Button onClick={handleSave} disabled={saving || !form.wbs_code.trim() || !form.wbs_name.trim()}>
+            <Button
+              onClick={handleSave}
+              disabled={saving || locked || !form.wbs_code.trim() || !form.wbs_name.trim()}
+            >
               <Save className="mr-1.5 h-4 w-4" />
               Save Changes
             </Button>

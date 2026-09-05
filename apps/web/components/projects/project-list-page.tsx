@@ -13,6 +13,7 @@ import { ProjectStakeholdersTab } from "@/components/projects/project-stakeholde
 import { PrecontractDetail } from "@/components/projects/precontract-detail";
 import { PostcontractDetail } from "@/components/projects/postcontract-detail";
 import { useProject } from "@/components/dashboard/project-context";
+import { PROJECT_SECTORS, sectorLabel, buildingTypeLabel } from "@/lib/project-categories";
 
 const TYPE_LABELS: Record<string, string> = {
   tender: "Tender",
@@ -58,6 +59,7 @@ export function ProjectListPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sectorFilter, setSectorFilter] = useState("");
   const [selected, setSelected] = useState<Project | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showPrecontractCreate, setShowPrecontractCreate] = useState(false);
@@ -119,9 +121,10 @@ export function ProjectListPage() {
       }
       if (typeFilter && p.project_type !== typeFilter) return false;
       if (statusFilter && p.project_status !== statusFilter) return false;
+      if (sectorFilter && p.category !== sectorFilter) return false;
       return true;
     });
-  }, [precontractProjects, postcontractProjects, phaseTab, search, typeFilter, statusFilter]);
+  }, [precontractProjects, postcontractProjects, phaseTab, search, typeFilter, statusFilter, sectorFilter]);
 
   function handleSave(updated: Project) {
     setProjects((prev) => {
@@ -308,10 +311,20 @@ export function ProjectListPage() {
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
-            {(search || typeFilter || statusFilter) && (
+            <select
+              value={sectorFilter}
+              onChange={(e) => setSectorFilter(e.target.value)}
+              className="rounded-lg border border-border bg-background py-2 px-3 text-sm appearance-none outline-hidden focus:border-primary"
+            >
+              <option value="">All Sectors</option>
+              {PROJECT_SECTORS.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            {(search || typeFilter || statusFilter || sectorFilter) && (
               <button
                 type="button"
-                onClick={() => { setSearch(""); setTypeFilter(""); setStatusFilter(""); }}
+                onClick={() => { setSearch(""); setTypeFilter(""); setStatusFilter(""); setSectorFilter(""); }}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="h-3 w-3" />
@@ -419,7 +432,8 @@ export function ProjectListPage() {
                         </span>
                         {p.category && (
                           <span className="text-[10px] text-muted-foreground truncate">
-                            {p.category}
+                            {sectorLabel(p.category)}
+                            {p.building_type ? ` › ${buildingTypeLabel(p.building_type)}` : ""}
                           </span>
                         )}
                       </div>

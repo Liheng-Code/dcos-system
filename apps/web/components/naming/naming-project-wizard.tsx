@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { STEPS, formStateFromProject, formToPayload, type WizardFormState } from "@/components/projects/steps/step-panel";
+import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
 import { useStakeholderSteps } from "@/components/projects/steps/use-stakeholder-steps";
 import { NamingProjectCodeGen } from "./naming-project-code-gen";
 import { WbsBuildingConfig } from "./naming-wbs-building-config";
@@ -451,18 +452,24 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
           </select>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="nwz_category">Category</Label>
-          <select id="nwz_category" value={fv(form.category)} onChange={(e) => update("category", e.target.value)}
+          <Label htmlFor="nwz_category">Sector *</Label>
+          <select id="nwz_category" value={fv(form.category)}
+            onChange={(e) => { update("category", e.target.value); update("building_type", ""); }}
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
-            <option value="">—</option>
-            <option value="building">Building</option>
-            <option value="high_rise">High Rise</option>
-            <option value="infrastructure">Infrastructure</option>
-            <option value="industrial">Industrial</option>
-            <option value="residential">Residential</option>
-            <option value="commercial">Commercial</option>
-            <option value="mixed_use">Mixed Use</option>
-            <option value="other">Other</option>
+            <option value="">Select sector</option>
+            {PROJECT_SECTORS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
+            {form.category && !PROJECT_SECTORS.some((s) => s.value === form.category) && (
+              <option value={form.category}>{sectorLabel(form.category)}</option>
+            )}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="nwz_building_type">Building Type</Label>
+          <select id="nwz_building_type" value={fv(form.building_type)} disabled={!form.category}
+            onChange={(e) => update("building_type", e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary disabled:opacity-50">
+            <option value="">{form.category ? "Select building type" : "Select a sector first"}</option>
+            {buildingTypesForSector(form.category).map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}
           </select>
         </div>
         <div className="md:col-span-2 space-y-1.5">

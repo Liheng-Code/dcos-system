@@ -17,15 +17,16 @@ import { Loader2 } from "lucide-react";
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { activeKeys, loading } = useModuleSettings();
+  const { activeKeys, loading, permittedModuleKeys, permittedLoading } = useModuleSettings();
+  const isLoading = loading || permittedLoading;
 
   useEffect(() => {
-    if (!loading && isRouteBlocked(pathname, activeKeys)) {
+    if (!isLoading && isRouteBlocked(pathname, activeKeys, permittedModuleKeys)) {
       router.replace("/dashboard");
     }
-  }, [pathname, activeKeys, loading, router]);
+  }, [pathname, activeKeys, permittedModuleKeys, isLoading, router]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -33,7 +34,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isRouteBlocked(pathname, activeKeys)) {
+  if (isRouteBlocked(pathname, activeKeys, permittedModuleKeys)) {
     return null;
   }
 
@@ -64,10 +65,10 @@ export default function DashboardLayout({
     <ModuleSettingsProvider>
       <ProjectProvider>
         <TaskAlertsProvider>
-          <div className="flex min-h-screen">
+          <div className="flex h-screen overflow-hidden">
             <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
-            <div className="flex flex-1 flex-col">
-              <header className="flex h-16 items-center gap-3 border-b border-border bg-card px-4 pr-6">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 pr-6">
                 <button
                   onClick={() => setCollapsed(!collapsed)}
                   className="flex items-center justify-center rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
@@ -83,7 +84,7 @@ export default function DashboardLayout({
                 <TaskAlertsMenu />
                 <UserMenu />
               </header>
-              <main className="flex-1 bg-muted p-3">
+              <main className="min-h-0 flex-1 overflow-auto bg-muted p-2">
                 <RouteGuard>{children}</RouteGuard>
               </main>
             </div>

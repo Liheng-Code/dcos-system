@@ -18,6 +18,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard/planning" },
       { label: "Gantt Chart", href: "/dashboard/planning/gantt" },
+      { label: "Sheet", href: "/dashboard/planning/sheet" },
       {
         label: "Look-ahead",
         href: "/dashboard/wbs/lookahead",

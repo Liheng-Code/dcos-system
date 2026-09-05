@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Users, CircleDot, Clock3, ShieldCheck, UserCheck, ThumbsUp, Ban, Bell } from "lucide-react";
+import { Users, CircleDot, Clock3, ShieldCheck, UserCheck, ThumbsUp, Ban, Bell, ArrowLeftRight } from "lucide-react";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 
@@ -45,7 +45,15 @@ function KanbanCard({ task, hasAlert, onEdit }: { task: WbsTaskRecord; hasAlert:
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className={cn("text-xs font-medium truncate", (task.status === "completed" || task.status === "closed" || task.status === "cancelled") && "line-through")}>{task.task_name}</div>
-          <div className="text-[10px] text-slate-500">{task.task_code}</div>
+          <div className="flex items-center gap-1 text-[10px] text-slate-500">
+            {task.requesting_department_id && (
+              <ArrowLeftRight
+                className={cn("h-2.5 w-2.5 shrink-0", task.cross_dept_status === "requested" ? "text-indigo-500" : "text-slate-400")}
+                aria-label={task.cross_dept_status === "requested" ? "Cross-department request pending" : "Cross-department task"}
+              />
+            )}
+            {task.task_code}
+          </div>
         </div>
         <span className={cn("rounded-full border px-1.5 py-0.5 text-[10px] whitespace-nowrap shrink-0", statusClass(task.priority))}>
           {task.priority}

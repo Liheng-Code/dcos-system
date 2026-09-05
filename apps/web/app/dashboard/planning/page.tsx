@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import {
   GanttChartSquare, CalendarRange, GitCompare, Users, BarChart2, Loader2, CalendarDays,
-  TrendingUp, Camera, Layers, Briefcase, Target, ClipboardList, Activity,
+  TrendingUp, Camera, Layers, Briefcase, Target, ClipboardList, Activity, Table2,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +25,7 @@ const SCHEDULE_LEVELS = [
 
 const MODULES = [
   { href: "/dashboard/planning/gantt",             label: "Gantt Chart",        icon: GanttChartSquare, desc: "Schedule bars, milestones, CPM",    color: "bg-teal-50 text-teal-600" },
+  { href: "/dashboard/planning/sheet",             label: "Task Sheet",         icon: Table2,           desc: "Editable MS-Project-style grid",    color: "bg-cyan-50 text-cyan-600" },
   { href: "/dashboard/planning/lookahead",         label: "Look-ahead",         icon: CalendarRange,    desc: "Weekly plans & rolling window",     color: "bg-blue-50 text-blue-600" },
   { href: "/dashboard/planning/scurve",            label: "S-Curve & EVM",      icon: TrendingUp,       desc: "Progress snapshots, planned vs actual", color: "bg-indigo-50 text-indigo-600" },
   { href: "/dashboard/planning/calendars",         label: "Calendars",          icon: CalendarDays,     desc: "Work calendars & holidays",         color: "bg-green-50 text-green-600" },

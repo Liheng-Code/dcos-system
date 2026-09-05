@@ -42,7 +42,12 @@ export interface LookaheadRow {
 
 export async function setProjectBaseline(projectId: string): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase.rpc("set_project_baseline", { p_project_id: projectId });
+  // Numbered-baseline RPC (20260904000003); slot 0 = "Baseline", whole project.
+  const { error } = await supabase.rpc("set_baseline", {
+    p_project_id: projectId,
+    p_number: 0,
+    p_task_ids: null,
+  });
   if (error) throw error;
 }
 

@@ -10,6 +10,7 @@ import {
   ChevronsUp,
   Maximize,
   Minimize,
+  MoveHorizontal,
   Zap,
 } from "lucide-react";
 import type { GanttZoom } from "./gantt-types";
@@ -103,10 +104,13 @@ interface GanttCommandBarProps {
   onExpandAll: () => void;
   onCollapseAll: () => void;
   onToday: () => void;
+  onFitToScreen: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   showBaseline: boolean;
   onBaselineToggle: (show: boolean) => void;
+  showDependencies: boolean;
+  onShowDependenciesChange: (show: boolean) => void;
   isFullscreen: boolean;
   onFullscreenToggle: () => void;
   visibleRows: number;
@@ -134,10 +138,13 @@ export function GanttCommandBar({
   onExpandAll,
   onCollapseAll,
   onToday,
+  onFitToScreen,
   searchQuery,
   onSearchChange,
   showBaseline,
   onBaselineToggle,
+  showDependencies,
+  onShowDependenciesChange,
   isFullscreen,
   onFullscreenToggle,
   visibleRows,
@@ -246,6 +253,17 @@ export function GanttCommandBar({
             ))}
           </div>
 
+          {/* Fit to screen width */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-[11px]"
+            onClick={onFitToScreen}
+            title="Scale the timeline so the whole programme fits the window (no horizontal scroll)"
+          >
+            <MoveHorizontal className="h-3.5 w-3.5" /> Fit
+          </Button>
+
           {/* Today */}
           <Button size="sm" className="h-7 gap-1 bg-red-500 text-[11px] text-white hover:bg-red-600" onClick={onToday}>
             <CalendarClock className="h-3.5 w-3.5" /> Today
@@ -268,6 +286,17 @@ export function GanttCommandBar({
               className="h-3.5 w-3.5 rounded border-input accent-primary"
             />
             Baseline
+          </label>
+
+          {/* Dependency links */}
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showDependencies}
+              onChange={(e) => onShowDependenciesChange(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary"
+            />
+            Links
           </label>
 
           {/* Fullscreen */}

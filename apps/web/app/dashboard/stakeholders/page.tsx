@@ -30,13 +30,8 @@ export default function StakeholdersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 h-full min-h-0">
-      <div className="flex items-center justify-between shrink-0">
-        <h1 className="text-2xl font-semibold tracking-tight">Stakeholders</h1>
-      </div>
-      <div className="flex-1 min-h-0">
-        <StakeholderListPage />
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <StakeholderListPage />
     </div>
   );
 }

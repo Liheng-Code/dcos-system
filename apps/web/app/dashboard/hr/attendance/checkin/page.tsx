@@ -67,6 +67,7 @@ export default function CheckInPage() {
   // GPS + Selfie state
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export default function CheckInPage() {
   const qrVideoRef = useRef<HTMLVideoElement>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const qrScanFrameRef = useRef<number | null>(null);
+  const qrStreamRef = useRef<MediaStream | null>(null);
   const jsQRRef = useRef<typeof jsQRType | null>(null);
   const [qrScannerActive, setQrScannerActive] = useState(false);
   const [qrScannerReady, setQrScannerReady] = useState(false);
@@ -172,11 +174,7 @@ export default function CheckInPage() {
     try {
       setVideoReady(false);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadeddata = () => setVideoReady(true);
-        videoRef.current.play();
-      }
+      cameraStreamRef.current = stream;
       setCameraActive(true);
       setCapturedPhoto(null);
     } catch {
@@ -184,11 +182,25 @@ export default function CheckInPage() {
     }
   }
 
+  // Bind the selfie stream once the <video> element is mounted.
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = cameraStreamRef.current;
+    if (!cameraActive || !video || !stream) return;
+    video.srcObject = stream;
+    const markReady = () => setVideoReady(true);
+    video.onloadeddata = markReady;
+    if (video.readyState >= 2) markReady();
+    video.play().catch(() => {});
+    return () => { video.onloadeddata = null; };
+  }, [cameraActive]);
+
   function stopCamera() {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
-      videoRef.current.srcObject = null;
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
     }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setCameraActive(false);
     setVideoReady(false);
   }
@@ -273,14 +285,7 @@ export default function CheckInPage() {
         jsQRRef.current = mod.default;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      if (qrVideoRef.current) {
-        qrVideoRef.current.srcObject = stream;
-        qrVideoRef.current.onloadeddata = () => {
-          setQrScannerReady(true);
-          scanQrFrame();
-        };
-        qrVideoRef.current.play();
-      }
+      qrStreamRef.current = stream;
       setQrScannerActive(true);
     } catch {
       setQrScannerError("Camera access denied — enter the token manually below");
@@ -288,15 +293,36 @@ export default function CheckInPage() {
     }
   }
 
+  // Bind the QR stream once the <video> element is mounted, then start scanning.
+  useEffect(() => {
+    const video = qrVideoRef.current;
+    const stream = qrStreamRef.current;
+    if (!qrScannerActive || !video || !stream) return;
+    video.srcObject = stream;
+    let started = false;
+    const startScanning = () => {
+      if (started) return;
+      started = true;
+      setQrScannerReady(true);
+      scanQrFrame();
+    };
+    video.onloadeddata = startScanning;
+    if (video.readyState >= 2) startScanning();
+    video.play().catch(() => {});
+    return () => { video.onloadeddata = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrScannerActive]);
+
   function stopQrScanner() {
     if (qrScanFrameRef.current) {
       cancelAnimationFrame(qrScanFrameRef.current);
       qrScanFrameRef.current = null;
     }
-    if (qrVideoRef.current?.srcObject) {
-      (qrVideoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
-      qrVideoRef.current.srcObject = null;
+    if (qrStreamRef.current) {
+      qrStreamRef.current.getTracks().forEach((t) => t.stop());
+      qrStreamRef.current = null;
     }
+    if (qrVideoRef.current) qrVideoRef.current.srcObject = null;
     setQrScannerActive(false);
     setQrScannerReady(false);
   }

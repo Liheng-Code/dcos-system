@@ -48,6 +48,21 @@ export function getDependencyLabel(type: string): string {
   return (type || "FS").toUpperCase();
 }
 
+/** True if linking `predId` as a predecessor of `taskId` would form a cycle. */
+export function wouldCreateCycle(predId: string, taskId: string, tasks: GanttTask[]): boolean {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const seen = new Set<string>();
+  const stack = [predId];
+  while (stack.length) {
+    const cur = stack.pop() as string;
+    if (cur === taskId) return true;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const p of byId.get(cur)?.dependency_task_ids ?? []) stack.push(p);
+  }
+  return false;
+}
+
 export function computeDateRange(tasks: GanttTask[]): { min: Date; max: Date } {
   const allDates = tasks.flatMap((t) =>
     [t.start_date, t.end_date, t.baseline_start_date, t.baseline_finish_date].filter(Boolean) as string[]
@@ -73,6 +88,14 @@ export function getBarWidth(startIso: string, endIso: string, dayW: number): num
 
 export function getZoomDayWidth(zoom: GanttZoom): number {
   return DAY_W[zoom];
+}
+
+// Adaptive spacing (in days) between header date ticks / body gridlines,
+// aiming for ~90px between marks and snapping to a "nice" day count.
+const NICE_TICK_DAYS = [1, 2, 3, 7, 14, 28, 42, 56, 84, 112, 168];
+export function getHeaderTickDays(dayW: number): number {
+  const target = 90 / Math.max(dayW, 0.01);
+  return NICE_TICK_DAYS.find((n) => n >= target) ?? 224;
 }
 
 export function getStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {

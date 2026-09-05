@@ -27,6 +27,40 @@ export interface GanttTask {
   baseline_finish_date: string | null;
   is_critical: boolean;
   total_float: number | null;
+  // --- Activity detail panel (Planning ▸ Gantt Chart) ---
+  activity_type?: string | null;
+  actual_start_date?: string | null;
+  actual_finish_date?: string | null;
+  field_observation_notes?: string | null;
+  // CPM analysis, derived from get_critical_path_tasks()
+  early_start?: string | null;
+  early_finish?: string | null;
+  late_start?: string | null;
+  late_finish?: string | null;
+  free_float?: number | null;
+}
+
+// One row of get_critical_path_tasks() output
+export interface CpmRow {
+  id: string;
+  early_start: string | null;
+  early_finish: string | null;
+  late_start: string | null;
+  late_finish: string | null;
+  total_float_days: number | null;
+}
+
+export const ACTIVITY_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "normal", label: "Normal" },
+  { value: "loe", label: "Level of Effort" },
+  { value: "hammock", label: "Hammock / Summary" },
+  { value: "start_milestone", label: "Start Milestone" },
+  { value: "finish_milestone", label: "Finish Milestone" },
+];
+
+export function getActivityTypeLabel(value: string | null | undefined): string {
+  if (!value) return "Normal";
+  return ACTIVITY_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 export interface GanttGroupRow {
