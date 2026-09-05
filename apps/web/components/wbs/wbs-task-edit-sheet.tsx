@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { type WbsTaskRecord, type WbsAuditLogRecord, type WbsNodeRecord, type WbsTaskAlertType } from "@/components/wbs/wbs-types";
 import { getUserPermissions, hasPermission, type UserPermissions } from "@/lib/permissions";
 import { createTaskAlert } from "@/lib/task-alerts";
+import { assignTaskToProfile } from "@/lib/tasks/assign-task";
+import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } from "@/lib/planning/resource-service";
+import { useProject } from "@/components/dashboard/project-context";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 
 interface WbsTaskEditSheetProps {
@@ -100,6 +103,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   const defaultCreateWbsNodeId = wbsNodeId ?? propWbsNodes[0]?.id ?? "";
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const { setSelectedProjectId } = useProject();
 
   const [wbsNodes, setWbsNodes] = useState<WbsNodeRecord[]>(propWbsNodes);
 
@@ -630,61 +634,31 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     }
 
     const selectedProfile = profiles.find((p) => p.id === selectedStaffId);
-    const newOwnerName = selectedProfile?.full_name ?? null;
-    const newOwnerId = selectedStaffId || null;
+    const assignProfile = { id: selectedStaffId, full_name: selectedProfile?.full_name ?? null };
     const newStart = planStart || null;
     const newFinish = planFinish || null;
 
     setSaving(true);
 
-    const isNewAssignment = (task.owner_id ?? null) !== newOwnerId && !!newOwnerId;
-    const updatePayload: Record<string, unknown> = {
-      owner_name: newOwnerName,
-      owner_id: newOwnerId,
-      start_date: newStart,
-      end_date: newFinish,
-      ...(isNewAssignment && { status: "assigned" }),
-    };
-
-    // Try to include assignee_id — falls back gracefully if the column doesn't exist yet
-    if (isNewAssignment && userId) {
-      const { error: assigneeErr } = await supabase.from("wbs_tasks")
-        .update({ ...updatePayload, assignee_id: userId }).eq("id", task.id);
-      if (assigneeErr?.message?.includes("assignee_id")) {
-        // Column not yet migrated — apply update without it
-        const { error } = await supabase.from("wbs_tasks").update(updatePayload).eq("id", task.id);
-        if (error) { toast.error(error.message); setSaving(false); return; }
-      } else if (assigneeErr) {
-        toast.error(assigneeErr.message); setSaving(false); return;
-      }
-    } else {
-      const { error } = await supabase.from("wbs_tasks").update(updatePayload).eq("id", task.id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+    try {
+      await assignTaskToProfile(
+        supabase,
+        task,
+        assignProfile,
+        { id: userId, name: currentUserName },
+        { start: newStart, end: newFinish },
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save assignment");
+      setSaving(false);
+      return;
     }
 
-    const auditEntries: { action: string; field_name: string; old_value: string; new_value: string }[] = [];
-    if ((task.owner_name ?? null) !== newOwnerName) {
-      auditEntries.push({ action: "Assignee Changed", field_name: "owner_name", old_value: task.owner_name ?? "", new_value: newOwnerName ?? "" });
-    }
-    if ((task.start_date ?? null) !== newStart) {
-      auditEntries.push({ action: "Plan Start Changed", field_name: "start_date", old_value: task.start_date ?? "", new_value: newStart ?? "" });
-    }
-    if ((task.end_date ?? null) !== newFinish) {
-      auditEntries.push({ action: "Plan Finish Changed", field_name: "end_date", old_value: task.end_date ?? "", new_value: newFinish ?? "" });
-    }
-
-    for (const entry of auditEntries) {
-      const auditId = await insertAuditLog(entry);
-      if (entry.action === "Assignee Changed" && (task.owner_id ?? null) !== newOwnerId) {
-        await createAlertFromAudit(
-          auditId,
-          newOwnerId,
-          task.owner_id ? "task_reassigned" : "task_assigned",
-          task.owner_id ? "Task reassigned to you" : "Task assigned to you",
-          "You have received this task assignment.",
-          { previous_owner_id: task.owner_id, previous_owner_name: task.owner_name },
-        );
-      }
+    try {
+      const resource = await findOrCreateResourceForProfile(task.project_id, assignProfile.id, assignProfile.full_name ?? "");
+      await addPlanAssignment(task.id, resource.id, 100);
+    } catch (error) {
+      console.warn("Failed to mirror assignment to Planning resources:", error);
     }
 
     setSaving(false);
@@ -1577,6 +1551,18 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
               </p>
             )}
           </div>
+          {!isCreating && task && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProjectId(task.project_id);
+                router.push("/dashboard/planning/gantt");
+              }}
+              className="mr-3 whitespace-nowrap text-[11px] font-medium text-primary hover:underline"
+            >
+              View in Gantt Chart →
+            </button>
+          )}
           {!isCreating && task && (
             <span className={`mr-3 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${statusColor(task.status)}`}>
               {task.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}

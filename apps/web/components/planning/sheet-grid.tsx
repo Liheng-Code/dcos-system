@@ -16,6 +16,7 @@ import {
 } from "react-arborist";
 import {
   CalendarClock,
+  EyeOff,
   FolderPlus,
   IndentDecrease,
   IndentIncrease,
@@ -32,17 +33,18 @@ import { SheetRowView } from "./sheet-row";
 import { SheetRowContext, type RowCtx } from "./sheet-grid-context";
 import { SheetRowContextMenu, type ContextMenuItem } from "./sheet-row-context-menu";
 import {
+  canHideColumn,
   DEFAULT_COL_WIDTHS,
   ID_COL_WIDTH,
   MIN_COL_WIDTH,
-  NAV_COLUMNS,
+  PINNED_COLUMNS,
   ROW_HEIGHT,
   SCHEDULE_HEADER_H,
-  SHEET_COLUMNS,
-  COL_WIDTHS_KEY,
-  loadColWidths,
   rowWidthFrom,
+  visibleOrderedColumns,
   type ColWidths,
+  type ColumnOrder,
+  type ColumnVisibility,
   type SheetField,
   type SheetRow,
 } from "./sheet-types";
@@ -103,6 +105,17 @@ interface SheetGridProps {
   onScrollToRow?: (rowId: string) => void;
   /** ≥2 task rows are selected → "Link selected" is meaningful. */
   canLinkSelected?: boolean;
+  /** Show the critical-path red highlight on Duration/Finish text. */
+  showCritical: boolean;
+  /** Overrides the "No activities yet" copy — e.g. when a filter hid every row. */
+  emptyState?: { title: string; hint: string };
+  // --- Column preferences — owned by plan-schedule-view.tsx (see use-column-preferences.ts) ---
+  columnOrder: ColumnOrder;
+  columnVisibility: ColumnVisibility;
+  colWidths: ColWidths;
+  onColumnOrderChange: (order: ColumnOrder) => void;
+  onColumnVisibilityChange: (visibility: ColumnVisibility) => void;
+  onColWidthsChange: (widths: ColWidths | ((prev: ColWidths) => ColWidths)) => void;
 }
 
 export function SheetGrid({
@@ -118,6 +131,14 @@ export function SheetGrid({
   onUnlinkRow,
   onScrollToRow,
   canLinkSelected = false,
+  showCritical,
+  emptyState,
+  columnOrder,
+  columnVisibility,
+  colWidths,
+  onColumnOrderChange,
+  onColumnVisibilityChange,
+  onColWidthsChange,
 }: SheetGridProps) {
   const {
     tree,
@@ -140,26 +161,25 @@ export function SheetGrid({
   const [editSeed, setEditSeed] = useState<string | undefined>(undefined);
   const [editNonce, setEditNonce] = useState(0);
   const [blankName, setBlankName] = useState("");
-  const [colWidths, setColWidths] = useState<ColWidths>(DEFAULT_COL_WIDTHS);
 
-  // Hydrate the persisted widths after mount (localStorage is client-only).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setColWidths(loadColWidths());
-  }, []);
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths));
-    } catch {
-      /* ignore */
-    }
-  }, [colWidths]);
+  // "mode" first, then the user's visible/ordered columns — drives every
+  // `.map()` over the grid's columns (header, blank row, and each data row
+  // via RowCtx) so hide/reorder preferences apply everywhere consistently.
+  const columns = useMemo(
+    () => visibleOrderedColumns(columnOrder, columnVisibility),
+    [columnOrder, columnVisibility],
+  );
+  /** Columns navigable by keyboard, in on-screen order (row-number "#" and pinned columns excluded). */
+  const navColumns = useMemo(
+    () => columnOrder.filter((f) => columnVisibility[f] !== false),
+    [columnOrder, columnVisibility],
+  );
 
   const colWidthsRef = useRef(colWidths);
   useEffect(() => {
     colWidthsRef.current = colWidths;
   });
-  const rowWidth = rowWidthFrom(colWidths);
+  const rowWidth = rowWidthFrom(colWidths, columns);
 
   // Row number per TASK id — the Predecessors cell renders "3FS+2d" from this.
   // Derived from the hook's unified numbering so it matches `parsePredecessors`.
@@ -192,30 +212,39 @@ export function SheetGrid({
     [registerTree],
   );
 
-  const startResize = useCallback((e: React.MouseEvent, field: SheetField) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = colWidthsRef.current[field] ?? DEFAULT_COL_WIDTHS[field];
-    const onMove = (ev: MouseEvent) => {
-      const next = Math.max(MIN_COL_WIDTH, Math.round(startW + (ev.clientX - startX)));
-      setColWidths((prev) => ({ ...prev, [field]: next }));
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, []);
+  const startResize = useCallback(
+    (e: React.MouseEvent, field: SheetField) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startW = colWidthsRef.current[field] ?? DEFAULT_COL_WIDTHS[field];
+      const onMove = (ev: MouseEvent) => {
+        const next = Math.max(MIN_COL_WIDTH, Math.round(startW + (ev.clientX - startX)));
+        // Local state updates every tick for smooth visual feedback; the
+        // Supabase write inside onColWidthsChange is debounced separately —
+        // see use-column-preferences.ts.
+        onColWidthsChange((prev) => ({ ...prev, [field]: next }));
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+      };
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [onColWidthsChange],
+  );
 
-  const resetColWidth = useCallback((field: SheetField) => {
-    setColWidths((prev) => ({ ...prev, [field]: DEFAULT_COL_WIDTHS[field] }));
-  }, []);
+  const resetColWidth = useCallback(
+    (field: SheetField) => {
+      onColWidthsChange((prev) => ({ ...prev, [field]: DEFAULT_COL_WIDTHS[field] }));
+    },
+    [onColWidthsChange],
+  );
 
   const visibleIds = useCallback((): string[] => {
     const ids = treeRef.current?.visibleNodes?.map((n) => n.data.id) ?? flatRows.map((r) => r.id);
@@ -255,17 +284,17 @@ export function SheetGrid({
           return { rowId: nextRowId, field: firstEditableField(nextRowId, cur.field) };
         }
         const step = nav === "right" ? 1 : -1;
-        let i = NAV_COLUMNS.indexOf(cur.field);
-        for (let k = i + step; k >= 0 && k < NAV_COLUMNS.length; k += step) {
-          if (isEditableCell(cur.rowId, NAV_COLUMNS[k])) {
+        let i = navColumns.indexOf(cur.field);
+        for (let k = i + step; k >= 0 && k < navColumns.length; k += step) {
+          if (isEditableCell(cur.rowId, navColumns[k])) {
             i = k;
             break;
           }
         }
-        return { rowId: cur.rowId, field: NAV_COLUMNS[i] };
+        return { rowId: cur.rowId, field: navColumns[i] };
       });
     },
-    [visibleIds, firstEditableField, isEditableCell],
+    [visibleIds, firstEditableField, isEditableCell, navColumns],
   );
 
   const activateCell = useCallback(
@@ -336,14 +365,6 @@ export function SheetGrid({
     [activeCell, actions, flatRows, moveActive, openEditor, selectedRowId],
   );
 
-  const handleDeleteRow = useCallback(
-    (row: SheetRow) => {
-      if (row.kind === "task") actions.deleteTask(row.task.id);
-      else actions.deleteNode(row.node.id);
-    },
-    [actions],
-  );
-
   // --- Multi-select + right-click context menu -----------------------------
   const selectedIdSet = useMemo(
     () => selectedRowIds ?? new Set(selectedRowId ? [selectedRowId] : []),
@@ -362,6 +383,80 @@ export function SheetGrid({
     },
     [selectedIdSet, onSelectedRowChange],
   );
+
+  // --- Column header: right-click to hide, drag to reorder -----------------
+  const [headerContextMenu, setHeaderContextMenu] = useState<
+    { x: number; y: number; field: SheetField } | null
+  >(null);
+  const [dragOverField, setDragOverField] = useState<SheetField | null>(null);
+  const draggedFieldRef = useRef<SheetField | null>(null);
+
+  const handleHeaderContextMenu = useCallback(
+    (e: ReactMouseEvent, field: SheetField) => {
+      if (PINNED_COLUMNS.includes(field)) return;
+      e.preventDefault();
+      setHeaderContextMenu({ x: e.clientX, y: e.clientY, field });
+    },
+    [],
+  );
+
+  const headerContextItems = useMemo<ContextMenuItem[]>(() => {
+    if (!headerContextMenu) return [];
+    const { field } = headerContextMenu;
+    return [
+      {
+        label: "Hide Column",
+        icon: <EyeOff />,
+        disabled: !canHideColumn(field, columnVisibility),
+        onClick: () => onColumnVisibilityChange({ ...columnVisibility, [field]: false }),
+      },
+    ];
+  }, [headerContextMenu, columnVisibility, onColumnVisibilityChange]);
+
+  const handleHeaderDragStart = useCallback((e: React.DragEvent, field: SheetField) => {
+    if (PINNED_COLUMNS.includes(field)) return;
+    draggedFieldRef.current = field;
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox requires data to be set for the drag to start.
+    e.dataTransfer.setData("text/plain", field);
+  }, []);
+
+  const handleHeaderDragOver = useCallback((e: React.DragEvent, field: SheetField) => {
+    if (PINNED_COLUMNS.includes(field)) return;
+    if (!draggedFieldRef.current || draggedFieldRef.current === field) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverField(field);
+  }, []);
+
+  const handleHeaderDragLeave = useCallback((field: SheetField) => {
+    setDragOverField((cur) => (cur === field ? null : cur));
+  }, []);
+
+  const handleHeaderDrop = useCallback(
+    (e: React.DragEvent, field: SheetField) => {
+      e.preventDefault();
+      setDragOverField(null);
+      const dragged = draggedFieldRef.current;
+      draggedFieldRef.current = null;
+      if (PINNED_COLUMNS.includes(field) || !dragged || dragged === field) return;
+      const withoutDragged = columnOrder.filter((f) => f !== dragged);
+      const targetIdx = withoutDragged.indexOf(field);
+      if (targetIdx < 0) return;
+      const next = [
+        ...withoutDragged.slice(0, targetIdx),
+        dragged,
+        ...withoutDragged.slice(targetIdx),
+      ];
+      onColumnOrderChange(next);
+    },
+    [columnOrder, onColumnOrderChange],
+  );
+
+  const handleHeaderDragEnd = useCallback(() => {
+    draggedFieldRef.current = null;
+    setDragOverField(null);
+  }, []);
 
   const deleteSelected = useCallback(
     (clicked: SheetRow) => {
@@ -582,6 +677,8 @@ export function SheetGrid({
       calendar,
       colWidths,
       rowWidth,
+      columns,
+      showCritical,
       rowNumberById,
       rowNumberByTaskId,
       float,
@@ -598,7 +695,6 @@ export function SheetGrid({
       onPickCell: commitCell,
       onCancelEdit: cancelEdit,
       onSelectRow: onSelectedRowChange,
-      onDeleteRow: handleDeleteRow,
       onRowContextMenu: handleRowContextMenu,
       onToggleManual: actions.toggleManualSchedule,
     }),
@@ -608,6 +704,8 @@ export function SheetGrid({
       calendar,
       colWidths,
       rowWidth,
+      columns,
+      showCritical,
       rowNumberById,
       rowNumberByTaskId,
       float,
@@ -624,7 +722,6 @@ export function SheetGrid({
       commitCell,
       cancelEdit,
       onSelectedRowChange,
-      handleDeleteRow,
       handleRowContextMenu,
       actions.toggleManualSchedule,
     ],
@@ -649,27 +746,40 @@ export function SheetGrid({
         >
           #
         </div>
-        {SHEET_COLUMNS.map((c) => (
-          <div
-            key={c.field}
-            className={cn(
-              "relative flex shrink-0 items-center border-r border-border/60 px-1.5",
-              c.align === "right" && "justify-end",
-            )}
-            style={{ width: colWidths[c.field] ?? c.width }}
-          >
-            {c.label}
+        {columns.map((c) => {
+          const pinned = PINNED_COLUMNS.includes(c.field);
+          return (
             <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={`Resize ${c.label || c.field} column`}
-              onMouseDown={(e) => startResize(e, c.field)}
-              onDoubleClick={() => resetColWidth(c.field)}
-              className="absolute -right-[3px] top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
-              title="Drag to resize · double-click to reset"
-            />
-          </div>
-        ))}
+              key={c.field}
+              draggable={!pinned}
+              onDragStart={(e) => handleHeaderDragStart(e, c.field)}
+              onDragOver={(e) => handleHeaderDragOver(e, c.field)}
+              onDragLeave={() => handleHeaderDragLeave(c.field)}
+              onDrop={(e) => handleHeaderDrop(e, c.field)}
+              onDragEnd={handleHeaderDragEnd}
+              onContextMenu={(e) => handleHeaderContextMenu(e, c.field)}
+              className={cn(
+                "relative flex shrink-0 items-center border-r border-border/60 px-1.5",
+                c.align === "right" && "justify-end",
+                !pinned && "cursor-grab",
+                dragOverField === c.field && "bg-primary/10 ring-1 ring-inset ring-primary/50",
+              )}
+              style={{ width: colWidths[c.field] ?? c.width }}
+            >
+              {c.label}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={`Resize ${c.label || c.field} column`}
+                draggable={false}
+                onMouseDown={(e) => startResize(e, c.field)}
+                onDoubleClick={() => resetColWidth(c.field)}
+                className="absolute -right-[3px] top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                title="Drag to resize · double-click to reset"
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Tree */}
@@ -678,8 +788,8 @@ export function SheetGrid({
           className="flex flex-col items-center justify-center gap-1 py-12 text-center text-xs text-muted-foreground"
           style={{ minHeight: listHeight }}
         >
-          <p>No activities yet.</p>
-          <p>Type a task name in the row below and press Enter.</p>
+          <p>{emptyState?.title ?? "No activities yet."}</p>
+          <p>{emptyState?.hint ?? "Type a task name in the row below and press Enter."}</p>
         </div>
       ) : (
         <SheetRowContext.Provider value={rowCtx}>
@@ -721,7 +831,7 @@ export function SheetGrid({
         >
           +
         </div>
-        {SHEET_COLUMNS.map((c) => {
+        {columns.map((c) => {
           const width = colWidths[c.field] ?? c.width;
           if (c.field === "name") {
             return (
@@ -773,6 +883,15 @@ export function SheetGrid({
           y={contextMenu.y}
           items={buildContextItems(contextMenu.row)}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {headerContextMenu && (
+        <SheetRowContextMenu
+          x={headerContextMenu.x}
+          y={headerContextMenu.y}
+          items={headerContextItems}
+          onClose={() => setHeaderContextMenu(null)}
         />
       )}
     </div>

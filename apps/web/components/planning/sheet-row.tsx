@@ -4,12 +4,12 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Diamond,
   Folder,
   GripVertical,
   Lock,
   Pin,
-  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import type { NodeApi } from "react-arborist";
@@ -22,11 +22,11 @@ import { useRowCtx } from "./sheet-grid-context";
 import {
   ID_COL_WIDTH,
   PROJECT_NODE_TYPE,
-  SHEET_COLUMNS,
   type SheetField,
   type SheetRow as SheetRowT,
 } from "./sheet-types";
 import { diffDaysInclusive, durationOf } from "./sheet-utils";
+import { getDeadlineFlag } from "./task-status";
 
 interface SheetRowProps {
   node: NodeApi<SheetRowT>;
@@ -71,6 +71,10 @@ function cellFor(
         return { value: String(t.progress ?? 0), display: `${t.progress ?? 0}%`, editable: true };
       case "status":
         return { value: t.status, editable: true };
+      case "priority":
+        return { value: t.priority, editable: false };
+      case "owner":
+        return { value: t.owner_name ?? "", editable: false };
     }
   }
   // node (summary) row — client-computed rollup, read-only except name.
@@ -106,6 +110,10 @@ function cellFor(
       };
     case "status":
       return { value: "", editable: false };
+    case "priority":
+      return { value: "", editable: false };
+    case "owner":
+      return { value: "", editable: false };
   }
 }
 
@@ -115,6 +123,8 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
     calendar,
     colWidths,
     rowWidth,
+    columns,
+    showCritical,
     rowNumberById,
     rowNumberByTaskId,
     float,
@@ -131,7 +141,6 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
     onPickCell,
     onCancelEdit,
     onSelectRow,
-    onDeleteRow,
     onRowContextMenu,
     onToggleManual,
   } = useRowCtx();
@@ -146,6 +155,7 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
   const taskFloat = task ? float.get(task.id) : undefined;
   const violation = task ? violations.get(task.id) : undefined;
   const critical = !isNode && taskFloat?.critical === true;
+  const deadlineFlag = task ? getDeadlineFlag(task) : null;
 
   // Double-clicking anywhere that a specific cell didn't already claim (the
   // row-number, the indent gutter, the icons) drops you into the Task Name
@@ -183,7 +193,7 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
         {isProjectRow ? <Building2 className="h-3.5 w-3.5 text-slate-500" /> : rowNumber}
       </div>
 
-      {SHEET_COLUMNS.map((col) => {
+      {columns.map((col) => {
         const width = colWidths[col.field] ?? col.width;
         const cf = cellFor(
           row,
@@ -288,6 +298,21 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
                 {task?.is_milestone && (
                   <Diamond className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500" />
                 )}
+                {deadlineFlag && (
+                  <span
+                    className="shrink-0"
+                    title={
+                      deadlineFlag === "overdue"
+                        ? `Overdue — was due ${task?.end_date}`
+                        : `Due soon — due ${task?.end_date}`
+                    }
+                  >
+                    <Clock
+                      className={cn("h-3 w-3", deadlineFlag === "overdue" ? "text-red-600" : "text-amber-500")}
+                      aria-label={deadlineFlag === "overdue" ? "Overdue" : "Due soon"}
+                    />
+                  </span>
+                )}
                 {locked && (
                   <Lock
                     className="h-3 w-3 shrink-0 text-amber-600"
@@ -345,7 +370,7 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
               seed={active ? editSeed : undefined}
               editKey={editKey}
               className={cn(
-                critical && (col.field === "duration" || col.field === "finish") && "text-red-600",
+                critical && showCritical && (col.field === "duration" || col.field === "finish") && "text-red-600",
               )}
               onPickValue={
                 col.variant === "date"
@@ -360,22 +385,6 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
           </div>
         );
       })}
-
-      {/* Row actions (hover) — never on the project row or a locked backbone */}
-      {!isProjectRow && !locked && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteRow(row);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="absolute right-1 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:block"
-          aria-label={isNode ? "Delete summary row" : "Delete task"}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      )}
     </div>
   );
 }

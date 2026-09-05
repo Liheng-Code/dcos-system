@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ReportExport } from "@/components/reports/layout/report-export";
+import { getTaskStatus } from "@/components/planning/task-status";
 
 const SUB_TAB_IDS = ["delay", "summary", "milestone"] as const;
 type ReportType = (typeof SUB_TAB_IDS)[number];
@@ -226,14 +227,7 @@ export function PlanScheduleReports() {
               </thead>
               <tbody>
                 {milestoneTasks.map(t => {
-                  const today = new Date().toISOString().slice(0, 10);
-                  const isComplete = t.status === "completed" || t.status === "closed" || t.status === "approved";
-                  const msStatus = isComplete ? "Complete"
-                    : !t.end_date ? "No Date"
-                    : t.end_date < today ? "Overdue"
-                    : t.delay_status === "risk" ? "At Risk"
-                    : "On Track";
-                  const statusColor = { Complete: "bg-green-100 text-green-700", Overdue: "bg-red-100 text-red-700", "At Risk": "bg-yellow-100 text-yellow-700", "On Track": "bg-blue-100 text-blue-700", "No Date": "bg-gray-100 text-gray-600" }[msStatus] || "";
+                  const { label: msStatus, badgeClass: statusColor } = getTaskStatus(t);
                   const varianceDays = t.baseline_finish_date && t.end_date
                     ? Math.round((new Date(t.end_date).getTime() - new Date(t.baseline_finish_date).getTime()) / 86400000)
                     : null;

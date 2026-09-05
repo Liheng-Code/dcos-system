@@ -19,6 +19,10 @@ interface GanttBarProps {
   onSetProgress?: (taskId: string, pct: number) => void;
   zoom?: "day" | "week" | "month";
   rangeMin?: Date;
+  /** Show the critical-path red highlight (bar color + float badge). Defaults to on. */
+  highlightCritical?: boolean;
+  /** Tooltip label for the ghost reference bar — defaults to "Baseline". */
+  referenceLabel?: string;
 }
 
 export function GanttBar({
@@ -32,6 +36,8 @@ export function GanttBar({
   onSetProgress,
   zoom,
   rangeMin,
+  highlightCritical = true,
+  referenceLabel = "Baseline",
 }: GanttBarProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -138,7 +144,7 @@ export function GanttBar({
             <div className="text-muted-foreground mt-0.5 space-y-0.5">
               {task.start_date && <div>Planned: {formatDate(task.start_date)}</div>}
               {task.end_date && <div>Finish: {formatDate(task.end_date)}</div>}
-              {task.baseline_start_date && <div>Baseline: {formatDate(task.baseline_start_date)}</div>}
+              {task.baseline_start_date && <div>{referenceLabel}: {formatDate(task.baseline_start_date)}</div>}
               <div>Progress: {task.progress}%</div>
               {task.total_float !== null && <div>Float: {task.total_float}d</div>}
             </div>
@@ -161,7 +167,7 @@ export function GanttBar({
           className={cn(
             "absolute top-2 left-0 h-3 rounded-full shadow-sm transition-all duration-150",
             "group-hover/bar:shadow-md group-hover/bar:brightness-110",
-            task.is_critical ? "bg-red-500" : "bg-blue-500",
+            task.is_critical && highlightCritical ? "bg-red-500" : "bg-blue-500",
             isDragging && "opacity-70 shadow-lg scale-105",
             wheelActive && "ring-2 ring-green-500 ring-offset-1",
           )}
@@ -192,7 +198,7 @@ export function GanttBar({
         <span
           className={cn(
             "absolute top-0 -translate-y-full px-1 text-[9px] font-semibold leading-none pt-0.5",
-            task.total_float <= 0 ? "text-red-600" : "text-slate-400",
+            task.total_float <= 0 && highlightCritical ? "text-red-600" : "text-slate-400",
           )}
         >
           F:{task.total_float}d

@@ -82,12 +82,11 @@ const HARD_CONSTRAINTS = new Set([
   "must_finish_on",
 ]);
 
-/** Constraints that would pull a task earlier — recorded but not enforced in v1. */
-const SOFT_CONSTRAINTS = new Set([
-  "start_no_later_than",
-  "finish_no_later_than",
-  "as_late_as_possible",
-]);
+// "start_no_later_than" / "finish_no_later_than" and "as_late_as_possible"
+// would need negative-float levelling to fully enforce (see file header) — they
+// are handled separately below: the "no later than" pair is checked against the
+// dates the engine actually produced (only flagged when genuinely missed), and
+// ALAP is approximated post-backward-pass, clamped against real successor dates.
 
 // ---------------------------------------------------------------------------
 // Topological order (Kahn) — returns null when the graph contains a cycle.
@@ -198,8 +197,8 @@ export function scheduleProject(
       }
     }
 
-    // Constraints. A "must" date wins over the links, but we flag the clash so
-    // the planner can see that a predecessor is being ignored.
+    // Constraints. A "must"/"no earlier than" date wins over the links, but we
+    // flag the clash so the planner can see that a predecessor is being ignored.
     const ct = t.constraintType;
     const cd = t.constraintDate;
     if (ct && cd) {
@@ -212,8 +211,6 @@ export function scheduleProject(
         start = maxISO(start, startFromFinish(cal, cd, dur));
       } else if (ct === "must_finish_on") {
         start = startFromFinish(cal, cd, dur);
-      } else if (SOFT_CONSTRAINTS.has(ct)) {
-        violations.set(t.id, `${labelForConstraint(ct)} (${cd}) is not enforced`);
       }
       if (
         HARD_CONSTRAINTS.has(ct) &&
@@ -229,10 +226,28 @@ export function scheduleProject(
     start = nextWorkingDay(cal, start, 1);
     const computedFinish = finishFromStart(cal, start, dur);
     // An FF/SF link can demand a later finish than the duration implies.
-    dates.set(t.id, {
-      start,
-      finish: finish ? maxISO(computedFinish, finish) : computedFinish,
-    });
+    const finalFinish = finish ? maxISO(computedFinish, finish) : computedFinish;
+
+    // "No later than" can't be pulled earlier than the links allow (that needs
+    // negative-float levelling), so only flag it when the deadline is actually
+    // missed rather than reflexively warning on every task that has one set.
+    if (ct === "start_no_later_than" && cd && parseISO(start).getTime() > parseISO(cd).getTime()) {
+      violations.set(
+        t.id,
+        `${labelForConstraint(ct)} ${cd} missed — predecessors push start to ${start}`,
+      );
+    } else if (
+      ct === "finish_no_later_than" &&
+      cd &&
+      parseISO(finalFinish).getTime() > parseISO(cd).getTime()
+    ) {
+      violations.set(
+        t.id,
+        `${labelForConstraint(ct)} ${cd} missed — predecessors push finish to ${finalFinish}`,
+      );
+    }
+
+    dates.set(t.id, { start, finish: finalFinish });
   }
 
   // ---- Backward pass ------------------------------------------------------
@@ -250,6 +265,10 @@ export function scheduleProject(
 
   const lateBy = new Map<string, { ls: string; lf: string }>();
   const float = new Map<string, TaskFloat>();
+  // ALAP candidates, applied to `dates` only after this whole pass finishes —
+  // mutating `dates` mid-loop would corrupt the float/late-date math other
+  // tasks in this same pass still need to read.
+  const alapOverrides = new Map<string, TaskDates>();
 
   for (let i = topo.order.length - 1; i >= 0; i--) {
     const t = topo.order[i];
@@ -322,6 +341,71 @@ export function scheduleProject(
       lateStart: ls,
       lateFinish: lf,
     });
+
+    // ALAP approximation: a task with slack should sit at the end of its float
+    // window rather than the start. `ls`/`lf` are the standard CPM late dates,
+    // already bounded network-wide by every successor's own late-date budget,
+    // so moving here can never push another task's float negative. Critical
+    // tasks (totalFloat <= 0) have no room to move.
+    if (t.constraintType === "as_late_as_possible" && totalFloat > 0) {
+      alapOverrides.set(t.id, { start: ls, finish: lf });
+    }
+  }
+
+  for (const [id, d] of alapOverrides) dates.set(id, d);
+
+  // Cascade: a linked task can't start before its predecessor finishes, so an
+  // ALAP task that moved later must carry along any successor whose position
+  // was purely driven by it. Capped at each successor's own late-date budget
+  // (`lateBy`, already computed above and unaffected by this cascade — late
+  // dates come from the successor side of the network, not the predecessor's
+  // actual position), so no task is ever pushed past what its own float
+  // allows. A single forward sweep suffices: `topo.order` is topologically
+  // sorted, so every task sees its predecessors' final (possibly cascaded)
+  // dates before it is evaluated itself.
+  for (const t of topo.order) {
+    if (t.manuallyScheduled) continue;
+    const self = dates.get(t.id);
+    if (!self) continue;
+    const dur = Math.max(0, Math.trunc(t.durationWd));
+    let start = self.start;
+    let finish: string | null = null;
+    for (const d of t.deps) {
+      const pred = dates.get(d.predId);
+      if (!pred) continue;
+      const lag = Number.isFinite(d.lag) ? d.lag : 0;
+      let candStart = start;
+      switch (d.type) {
+        case "fs":
+          candStart = addWorkingDays(cal, pred.finish, 1 + lag);
+          break;
+        case "ss":
+          candStart = addWorkingDays(cal, pred.start, lag);
+          break;
+        case "ff": {
+          const cf = addWorkingDays(cal, pred.finish, lag);
+          finish = finish ? maxISO(finish, cf) : cf;
+          candStart = startFromFinish(cal, cf, dur);
+          break;
+        }
+        case "sf": {
+          const cf = addWorkingDays(cal, pred.start, -1 + lag);
+          finish = finish ? maxISO(finish, cf) : cf;
+          candStart = startFromFinish(cal, cf, dur);
+          break;
+        }
+      }
+      if (parseISO(candStart).getTime() > parseISO(start).getTime()) start = candStart;
+    }
+    if (start === self.start) continue;
+    const late = lateBy.get(t.id);
+    if (late && parseISO(start).getTime() > parseISO(late.ls).getTime()) start = late.ls;
+    start = nextWorkingDay(cal, start, 1);
+    const computedFinish = finishFromStart(cal, start, dur);
+    const finalFinish = finish ? maxISO(computedFinish, finish) : computedFinish;
+    if (parseISO(start).getTime() > parseISO(self.start).getTime()) {
+      dates.set(t.id, { start, finish: finalFinish });
+    }
   }
 
   return { ok: true, dates, float, violations };

@@ -15,6 +15,12 @@ import { useIsWbsManager } from "@/hooks/use-is-wbs-manager";
 import { depsFromArrays, type DepType } from "@/lib/planning/schedule-engine";
 import { activateBaseline, listBaselines, type BaselineRow } from "@/lib/planning/baseline-service";
 import {
+  listComparisonSources,
+  resolveSource,
+  type ComparisonSource,
+  type ComparisonSourceOption,
+} from "@/lib/planning/schedule-comparison-service";
+import {
   applyZoomPreset,
   DEFAULT_TIMESCALE,
   parseTimescaleConfig,
@@ -24,17 +30,20 @@ import {
 } from "@/lib/planning/timescale";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { GanttDependencyEditor } from "./gantt-dependency-editor";
 import { PlanMoveProjectDialog } from "./plan-move-project-dialog";
 import { PlanSetBaselineDialog } from "./plan-set-baseline-dialog";
 import { PlanTimescaleDialog } from "./plan-timescale-dialog";
 import { PlanWbsCodeDialog } from "./plan-wbs-code-dialog";
 import { PlanWorkingTimeDialog } from "./plan-working-time-dialog";
+import { PlanSheetDetailPanel } from "./plan-sheet-detail-panel";
 import { ScheduleTimeline, toGanttTask } from "./schedule-timeline";
 import { ScheduleToolbar } from "./schedule-toolbar";
 import { SheetGrid } from "./sheet-grid";
 import { ROW_HEIGHT, type SheetRow } from "./sheet-types";
-import { visibleRowsFrom } from "./sheet-utils";
+import { filterIncomplete, visibleRowsFrom } from "./sheet-utils";
+import { useColumnPreferences } from "./use-column-preferences";
 import { useSheetData } from "./use-sheet-data";
 import { computeDateRange, getTotalDays, toX } from "./gantt-utils";
 import type { GanttZoom } from "./gantt-types";
@@ -47,28 +56,49 @@ const GRID_W_DEFAULT = 720;
 interface PlanScheduleViewProps {
   /** Start with the Gantt pane collapsed (Planning ▸ Sheet renders it this way). */
   showTimeline?: boolean;
+  /**
+   * "sheet" replaces the right-hand pane with a task detail/assignment panel
+   * bound to the selected row instead of the Gantt bars — Planning ▸ Gantt
+   * Chart already owns the timeline, so Sheet's pane is dedicated to detail.
+   */
+  variant?: "gantt" | "sheet";
 }
 
-export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: PlanScheduleViewProps) {
+export function PlanScheduleView({
+  showTimeline: initialShowTimeline = true,
+  variant = "gantt",
+}: PlanScheduleViewProps) {
   const { selectedProjectId, loading: projectLoading } = useProject();
   const isManager = useIsWbsManager();
   const data = useSheetData(selectedProjectId, isManager);
+  const columnPrefs = useColumnPreferences();
+  const isSheet = variant === "sheet";
 
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const selectedRowId = selectedRowIds.at(-1) ?? null; // primary = last clicked
   const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds]);
   const [linkSourceId, setLinkSourceId] = useState<string | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [showTimeline, setShowTimeline] = useState(initialShowTimeline);
+  const [showTimeline, setShowTimeline] = useState(isSheet ? false : initialShowTimeline);
   const [zoom, setZoom] = useState<GanttZoom>("week");
   const [zoomScale, setZoomScale] = useState(1);
   const [timescaleConfig, setTimescaleConfig] = useState<TimescaleConfig>(() =>
     applyZoomPreset(DEFAULT_TIMESCALE, "week"),
   );
   const [timescaleOpen, setTimescaleOpen] = useState(false);
-  const [showBaseline, setShowBaseline] = useState(true);
+  // Reference ghost-bar: which schedule (Baseline / Internal rev / External
+  // rev) draws behind the live bars. "" = none. Defaults to the active
+  // Baseline once loaded, matching the old always-on Baseline toggle.
+  const [referenceOptions, setReferenceOptions] = useState<ComparisonSourceOption[]>([]);
+  const [referenceKey, setReferenceKey] = useState<string>("");
+  const [referenceDates, setReferenceDates] = useState<Map<
+    string,
+    { start: string | null; end: string | null }
+  > | null>(null);
   const [showDependencies, setShowDependencies] = useState(true);
   const [showToday, setShowToday] = useState(true);
+  const [showCritical, setShowCritical] = useState(true);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const [editLink, setEditLink] = useState<{ successorId: string; index: number } | null>(null);
   const [savingLink, setSavingLink] = useState(false);
   const [linkDrag, setLinkDrag] = useState<{
@@ -119,10 +149,17 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
   // -------------------------------------------------------------------------
   // Rows — one list drives BOTH panes, so they can never fall out of alignment.
   // -------------------------------------------------------------------------
-  const visibleRows = useMemo(
-    () => visibleRowsFrom(data.tree, collapsedIds),
-    [data.tree, collapsedIds],
+  const filteredTree = useMemo(
+    () => (hideCompleted ? filterIncomplete(data.tree) : data.tree),
+    [data.tree, hideCompleted],
   );
+  const visibleRows = useMemo(
+    () => visibleRowsFrom(filteredTree, collapsedIds),
+    [filteredTree, collapsedIds],
+  );
+  /** The grid renders this filtered tree; every other field stays the full, unfiltered data
+   *  (row numbers / WBS codes must stay stable regardless of what the filter hides). */
+  const gridData = useMemo(() => ({ ...data, tree: filteredTree }), [data, filteredTree]);
 
   const handleToggleRow = useCallback((rowId: string, open: boolean) => {
     setCollapsedIds((prev) => {
@@ -156,6 +193,9 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
     () => (selectedRowId?.startsWith("task:") ? selectedRowId.slice(5) : null),
     [selectedRowId],
   );
+  const selectedTask = selectedTaskId ? data.taskById.get(selectedTaskId) ?? null : null;
+  /** Whether the grid has a resizable companion pane to its right at all. */
+  const hasRightPane = isSheet || showTimeline;
 
   /** All selected task ids (multi-select) — for the timeline highlight + chain link. */
   const selectedTaskIdSet = useMemo(
@@ -234,6 +274,52 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
     refreshBaselines();
   }, [refreshBaselines]);
 
+  // Reference ghost-bar options: Live is excluded (it IS the main bars already).
+  const refreshReferenceOptions = useCallback(() => {
+    if (!selectedProjectId) return;
+    listComparisonSources(selectedProjectId)
+      .then((opts) => {
+        const nonLive = opts.filter((o) => o.source.kind !== "live");
+        setReferenceOptions(nonLive);
+        setReferenceKey((prev) => {
+          if (prev && nonLive.some((o) => o.key === prev)) return prev;
+          const active = nonLive.find((o) => o.source.kind === "baseline" && o.label.endsWith("(active)"));
+          return active?.key ?? "";
+        });
+      })
+      .catch(() => {});
+  }, [selectedProjectId]);
+  useEffect(() => {
+    refreshReferenceOptions();
+  }, [refreshReferenceOptions]);
+
+  const referenceSource: ComparisonSource | null =
+    referenceOptions.find((o) => o.key === referenceKey)?.source ?? null;
+  const referenceLabel = referenceOptions.find((o) => o.key === referenceKey)?.label ?? "Baseline";
+
+  useEffect(() => {
+    if (!selectedProjectId || !referenceSource) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setReferenceDates(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
+    }
+    let cancelled = false;
+    resolveSource(selectedProjectId, referenceSource)
+      .then((map) => {
+        if (!cancelled) setReferenceDates(map);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(e instanceof Error ? e.message : String(e));
+        setReferenceDates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, referenceKey]);
+
   // Load the saved timescale config for this project.
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -306,14 +392,15 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
       if (!selectedProjectId) return;
       try {
         await activateBaseline(selectedProjectId, n);
-        setShowBaseline(true);
+        setReferenceKey(`baseline:${n}`);
         await data.reload();
         refreshBaselines();
+        refreshReferenceOptions();
       } catch {
         /* toast handled in the service caller path */
       }
     },
-    [selectedProjectId, data, refreshBaselines],
+    [selectedProjectId, data, refreshBaselines, refreshReferenceOptions],
   );
 
   // F9 = Calculate Project
@@ -634,10 +721,14 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
         scheduleError={data.scheduleError}
         autoSchedule={data.autoSchedule}
         showTimeline={showTimeline}
+        showTimelineToggle={!isSheet}
         zoom={zoom}
-        showBaseline={showBaseline}
+        referenceOptions={referenceOptions}
+        referenceKey={referenceKey}
         showDependencies={showDependencies}
         showToday={showToday}
+        showCritical={showCritical}
+        hideCompleted={hideCompleted}
         onAddTask={() => data.actions.createTask("New task", selectedRowId)}
         onAddSummary={() => data.actions.createNode("New group", parentForSummary())}
         onIndent={() => selectedRowId && data.actions.indentRow(selectedRowId)}
@@ -652,8 +743,10 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
         onZoomOut={handleZoomOut}
         onFitToScreen={handleFitToScreen}
         onToday={handleToday}
-        onBaselineToggle={setShowBaseline}
+        onReferenceChange={setReferenceKey}
         onDependenciesToggle={setShowDependencies}
+        onCriticalToggle={setShowCritical}
+        onHideCompletedToggle={setHideCompleted}
         onAutoScheduleToggle={data.setAutoSchedule}
         onRunAutoSchedule={() => data.actions.runAutoSchedule()}
         onToggleTimeline={() => setShowTimeline((v) => !v)}
@@ -668,6 +761,10 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
         onOpenSetBaseline={() => setProjDialog("baseline")}
         onOpenMoveProject={() => setProjDialog("move")}
         onActivateBaseline={handleActivateBaseline}
+        columnOrder={columnPrefs.order}
+        columnVisibility={columnPrefs.visibility}
+        onColumnVisibilityChange={columnPrefs.setVisibility}
+        onResetColumns={columnPrefs.resetToDefault}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
@@ -675,11 +772,11 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
         <div
           ref={gridPaneRef}
           onScroll={() => syncFrom("grid")}
-          className={cn("shrink-0 overflow-auto", !showTimeline && "flex-1")}
-          style={showTimeline ? { width: gridW } : undefined}
+          className={cn("shrink-0 overflow-auto", !hasRightPane && "flex-1")}
+          style={hasRightPane ? { width: gridW } : undefined}
         >
           <SheetGrid
-            data={data}
+            data={gridData}
             selectedRowId={selectedRowId}
             selectedRowIds={selectedRowIdSet}
             onSelectedRowChange={handleSelectRow}
@@ -691,10 +788,22 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
             onUnlinkRow={(id) => void unlinkTask(id.slice(5))}
             onScrollToRow={handleScrollToRow}
             canLinkSelected={selectedTaskIdSet.size >= 2}
+            showCritical={showCritical}
+            emptyState={
+              hideCompleted && data.taskCount > 0
+                ? { title: "All caught up.", hint: 'Every task is at 100% complete — turn off "Hide Completed" to see them.' }
+                : undefined
+            }
+            columnOrder={columnPrefs.order}
+            columnVisibility={columnPrefs.visibility}
+            colWidths={columnPrefs.widths}
+            onColumnOrderChange={columnPrefs.setOrder}
+            onColumnVisibilityChange={columnPrefs.setVisibility}
+            onColWidthsChange={columnPrefs.setWidths}
           />
         </div>
 
-        {showTimeline && (
+        {hasRightPane && (
           <>
             {/* Splitter */}
             <div
@@ -709,40 +818,57 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
               <span className="h-8 w-0.5 rounded bg-muted-foreground/30 group-hover:bg-primary/60" />
             </div>
 
-            {/* Right: timeline */}
-            <div
-              ref={timelineRef}
-              onScroll={() => syncFrom("timeline")}
-              className="min-w-0 flex-1 overflow-auto"
-            >
-              <ScheduleTimeline
-                visibleRows={visibleRows}
-                rowHeight={ROW_HEIGHT}
-                headerHeight={headerH}
-                zoom={zoom}
-                timescale={timescaleConfig}
-                calendar={data.calendar}
-                dayWidth={dayW}
-                rangeMin={dateRange.min}
-                rangeMax={dateRange.max}
-                totalDays={totalDays}
-                float={data.float}
-                lockedTaskIds={data.lockedTaskIds}
-                showBaseline={showBaseline}
-                showDependencies={showDependencies}
-                selectedTaskIds={selectedTaskIdSet}
-                todayX={todayX}
-                dataDateX={dataDateX}
-                onSelectRow={handleSelectRow}
-                onReschedule={rescheduleTask}
-                onStartLink={handleStartLink}
-                onEditLink={(succId, index) => setEditLink({ successorId: succId, index })}
-                onSetProgress={data.actions.setProgress}
-                onOpenTimescale={() => setTimescaleOpen(true)}
-              />
-              {/* Keep the blank add-row strip's height so both panes end level. */}
-              <div style={{ height: ROW_HEIGHT, width: Math.max(chartW, 1) }} />
-            </div>
+            {/* Right: task detail (Sheet) */}
+            {isSheet && (
+              <div className="min-w-0 flex-1 overflow-auto">
+                <PlanSheetDetailPanel
+                  key={selectedTaskId ?? "none"}
+                  task={selectedTask}
+                  wbsPath={selectedTaskId ? data.wbsCodeByRowId.get(`task:${selectedTaskId}`) ?? null : null}
+                  onUpdateField={data.actions.updateTaskField}
+                  onAssign={data.actions.assignOwner}
+                />
+              </div>
+            )}
+
+            {/* Right: timeline (Gantt Chart) */}
+            {!isSheet && showTimeline && (
+              <div
+                ref={timelineRef}
+                onScroll={() => syncFrom("timeline")}
+                className="min-w-0 flex-1 overflow-auto"
+              >
+                <ScheduleTimeline
+                  visibleRows={visibleRows}
+                  rowHeight={ROW_HEIGHT}
+                  headerHeight={headerH}
+                  zoom={zoom}
+                  timescale={timescaleConfig}
+                  calendar={data.calendar}
+                  dayWidth={dayW}
+                  rangeMin={dateRange.min}
+                  rangeMax={dateRange.max}
+                  totalDays={totalDays}
+                  float={data.float}
+                  lockedTaskIds={data.lockedTaskIds}
+                  referenceDates={referenceDates}
+                  referenceLabel={referenceLabel}
+                  showDependencies={showDependencies}
+                  showCritical={showCritical}
+                  selectedTaskIds={selectedTaskIdSet}
+                  todayX={todayX}
+                  dataDateX={dataDateX}
+                  onSelectRow={handleSelectRow}
+                  onReschedule={rescheduleTask}
+                  onStartLink={handleStartLink}
+                  onEditLink={(succId, index) => setEditLink({ successorId: succId, index })}
+                  onSetProgress={data.actions.setProgress}
+                  onOpenTimescale={() => setTimescaleOpen(true)}
+                />
+                {/* Keep the blank add-row strip's height so both panes end level. */}
+                <div style={{ height: ROW_HEIGHT, width: Math.max(chartW, 1) }} />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -786,6 +912,7 @@ export function PlanScheduleView({ showTimeline: initialShowTimeline = true }: P
           onSaved={async () => {
             await data.reload();
             refreshBaselines();
+            refreshReferenceOptions();
           }}
         />
       )}

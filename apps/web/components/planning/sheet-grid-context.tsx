@@ -4,7 +4,7 @@ import { createContext, useContext, type MouseEvent as ReactMouseEvent } from "r
 import type { WorkCalendar } from "@/lib/planning/work-calendar";
 import type { TaskFloat } from "@/lib/planning/schedule-engine";
 import type { CellNav } from "./sheet-cell";
-import type { ColWidths, SheetField, SheetRow } from "./sheet-types";
+import type { ColWidths, SheetColumn, SheetField, SheetRow } from "./sheet-types";
 
 /**
  * Per-render state the grid rows need. Passed via context rather than through
@@ -21,6 +21,10 @@ export interface RowCtx {
   calendar: WorkCalendar;
   colWidths: ColWidths;
   rowWidth: number;
+  /** "mode" first, then the user's visible/ordered columns — see `visibleOrderedColumns()`. */
+  columns: SheetColumn[];
+  /** Show the critical-path red highlight on Duration/Finish text. */
+  showCritical: boolean;
   rowNumberById: Map<string, number>;
   rowNumberByTaskId: Map<string, number>;
   float: Map<string, TaskFloat>;
@@ -46,7 +50,6 @@ export interface RowCtx {
     rowId: string,
     mods?: { additive?: boolean; range?: boolean },
   ) => void;
-  onDeleteRow: (row: SheetRow) => void;
   onRowContextMenu: (e: ReactMouseEvent, row: SheetRow) => void;
   onToggleManual: (taskId: string) => void;
 }

@@ -6,7 +6,9 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
+  Columns3,
   Eye,
+  EyeOff,
   FolderCog,
   FolderPlus,
   Flag,
@@ -20,6 +22,7 @@ import {
   PanelRightOpen,
   Plus,
   RefreshCw,
+  RotateCcw,
   TriangleAlert,
   ZoomIn,
   ZoomOut,
@@ -27,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -41,8 +45,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import type { ComparisonSourceOption } from "@/lib/planning/schedule-comparison-service";
 import type { GanttZoom } from "./gantt-types";
 import { ZOOM_LABELS } from "./gantt-types";
+import {
+  canHideColumn,
+  NAV_COLUMNS,
+  SHEET_COLUMNS,
+  type ColumnOrder,
+  type ColumnVisibility,
+} from "./sheet-types";
 
 export interface ToolbarBaseline {
   number: number;
@@ -63,10 +75,17 @@ interface ScheduleToolbarProps {
   scheduleError: string | null;
   autoSchedule: boolean;
   showTimeline: boolean;
+  /** Hide the Timeline show/hide button entirely (Sheet has its own dedicated right pane). */
+  showTimelineToggle?: boolean;
   zoom: GanttZoom;
-  showBaseline: boolean;
+  /** Schedules selectable as the ghost reference bar (Baseline / Internal rev / External rev) — Live excluded. */
+  referenceOptions: ComparisonSourceOption[];
+  /** "" = no reference bar drawn. */
+  referenceKey: string;
   showDependencies: boolean;
   showToday: boolean;
+  showCritical: boolean;
+  hideCompleted: boolean;
   onAddTask: () => void;
   onAddSummary: () => void;
   onIndent: () => void;
@@ -81,8 +100,10 @@ interface ScheduleToolbarProps {
   onZoomOut: () => void;
   onFitToScreen: () => void;
   onToday: () => void;
-  onBaselineToggle: (v: boolean) => void;
+  onReferenceChange: (key: string) => void;
   onDependenciesToggle: (v: boolean) => void;
+  onCriticalToggle: (v: boolean) => void;
+  onHideCompletedToggle: (v: boolean) => void;
   onAutoScheduleToggle: (v: boolean) => void;
   onRunAutoSchedule: () => void;
   onToggleTimeline: () => void;
@@ -94,6 +115,11 @@ interface ScheduleToolbarProps {
   onOpenSetBaseline: () => void;
   onOpenMoveProject: () => void;
   onActivateBaseline: (n: number) => void;
+  // --- Columns ▾ menu (hide/unhide) ---
+  columnOrder: ColumnOrder;
+  columnVisibility: ColumnVisibility;
+  onColumnVisibilityChange: (visibility: ColumnVisibility) => void;
+  onResetColumns: () => void;
 }
 
 function Toggle({
@@ -136,10 +162,14 @@ export function ScheduleToolbar({
   scheduleError,
   autoSchedule,
   showTimeline,
+  showTimelineToggle = true,
   zoom,
-  showBaseline,
+  referenceOptions,
+  referenceKey,
   showDependencies,
   showToday,
+  showCritical,
+  hideCompleted,
   onAddTask,
   onAddSummary,
   onIndent,
@@ -154,8 +184,10 @@ export function ScheduleToolbar({
   onZoomOut,
   onFitToScreen,
   onToday,
-  onBaselineToggle,
+  onReferenceChange,
   onDependenciesToggle,
+  onCriticalToggle,
+  onHideCompletedToggle,
   onAutoScheduleToggle,
   onRunAutoSchedule,
   onToggleTimeline,
@@ -166,12 +198,22 @@ export function ScheduleToolbar({
   onOpenSetBaseline,
   onOpenMoveProject,
   onActivateBaseline,
+  columnOrder,
+  columnVisibility,
+  onColumnVisibilityChange,
+  onResetColumns,
 }: ScheduleToolbarProps) {
   const noSelection = !selectedRowId;
   const canLink =
     linkCount >= 2 ||
     Boolean(linkSourceId && linkTargetId && linkSourceId !== linkTargetId);
   const activeBaseline = baselines.find((b) => b.active)?.number ?? -1;
+  const columnByField = new Map(SHEET_COLUMNS.map((c) => [c.field, c]));
+
+  const toggleColumn = (field: (typeof NAV_COLUMNS)[number], checked: boolean) => {
+    if (!checked && !canHideColumn(field, columnVisibility)) return;
+    onColumnVisibilityChange({ ...columnVisibility, [field]: checked });
+  };
 
   return (
     <div className="flex shrink-0 flex-col gap-1.5">
@@ -300,6 +342,50 @@ export function ScheduleToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <DropdownMenu>
+          <DropdownMenuTrigger className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted data-[popup-open]:bg-muted">
+            <Columns3 className="h-3.5 w-3.5" /> Columns
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Show / hide columns</DropdownMenuLabel>
+              {columnOrder.map((field) => {
+                const col = columnByField.get(field);
+                if (!col) return null;
+                const checked = columnVisibility[field] !== false;
+                const disabled = checked && !canHideColumn(field, columnVisibility);
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={field}
+                    checked={checked}
+                    disabled={disabled}
+                    onCheckedChange={(v) => toggleColumn(field, v)}
+                  >
+                    {col.label || field}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onResetColumns}>
+              <RotateCcw className="size-3.5 text-muted-foreground" />
+              <span className="whitespace-nowrap">Reset to default</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <span className="mx-1 h-4 w-px bg-border" />
+
+        <Toggle
+          active={hideCompleted}
+          onClick={() => onHideCompletedToggle(!hideCompleted)}
+          title="Hide tasks at 100% complete"
+        >
+          <EyeOff className="mr-1 inline h-3 w-3" />
+          Hide Completed
+        </Toggle>
+
         <span className="mx-1 h-4 w-px bg-border" />
 
         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onExpandAll} title="Expand all">
@@ -349,9 +435,19 @@ export function ScheduleToolbar({
 
         <span className="mx-1 h-4 w-px bg-border" />
 
-        <Toggle active={showBaseline} onClick={() => onBaselineToggle(!showBaseline)} title="Show the baseline bars">
-          Baseline
-        </Toggle>
+        <select
+          value={referenceKey}
+          onChange={(e) => onReferenceChange(e.target.value)}
+          title="Reference schedule drawn as a ghost bar behind the live bars"
+          className="h-7 rounded-md border border-border bg-background px-2 text-[11px] font-medium text-foreground outline-none"
+        >
+          <option value="">No reference bar</option>
+          {referenceOptions.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         <Toggle
           active={showDependencies}
           onClick={() => onDependenciesToggle(!showDependencies)}
@@ -359,6 +455,19 @@ export function ScheduleToolbar({
         >
           Links
         </Toggle>
+        <Toggle
+          active={showCritical}
+          onClick={() => onCriticalToggle(!showCritical)}
+          title="Highlight critical-path tasks (zero or negative float) in red"
+        >
+          Critical
+        </Toggle>
+        {showCritical && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            Critical path
+          </span>
+        )}
 
         <span className="mx-1 h-4 w-px bg-border" />
 
@@ -394,20 +503,22 @@ export function ScheduleToolbar({
           Today
         </Toggle>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto h-7 gap-1 text-[11px]"
-          onClick={onToggleTimeline}
-          title={showTimeline ? "Hide the Gantt pane" : "Show the Gantt pane"}
-        >
-          {showTimeline ? (
-            <PanelRightClose className="h-3.5 w-3.5" />
-          ) : (
-            <PanelRightOpen className="h-3.5 w-3.5" />
-          )}
-          Timeline
-        </Button>
+        {showTimelineToggle && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 gap-1 text-[11px]"
+            onClick={onToggleTimeline}
+            title={showTimeline ? "Hide the Gantt pane" : "Show the Gantt pane"}
+          >
+            {showTimeline ? (
+              <PanelRightClose className="h-3.5 w-3.5" />
+            ) : (
+              <PanelRightOpen className="h-3.5 w-3.5" />
+            )}
+            Timeline
+          </Button>
+        )}
       </div>
 
       {scheduleError && (

@@ -146,12 +146,18 @@ function sortTasks(list: SheetTask[]): SheetTask[] {
   });
 }
 
-function rollup(tasks: SheetTask[]): { progress: number; start: string | null; end: string | null; taskCount: number } {
-  if (tasks.length === 0) return { progress: 0, start: null, end: null, taskCount: 0 };
+/**
+ * Date range + count only — progress is NOT derived here. It comes straight
+ * from the server (`wbs_nodes.progress_percent` / `projects.progress_percentage`,
+ * maintained by `recalculate_wbs_progress()`), which is the app-wide,
+ * budget-cost-weighted source of truth also used by WBS Builder and the
+ * dashboard. Callers attach `progress` themselves — see `toNodeRow` below.
+ */
+function rollup(tasks: SheetTask[]): { start: string | null; end: string | null; taskCount: number } {
+  if (tasks.length === 0) return { start: null, end: null, taskCount: 0 };
   const starts = tasks.map((t) => t.start_date).filter(Boolean).sort() as string[];
   const ends = tasks.map((t) => t.end_date).filter(Boolean).sort() as string[];
   return {
-    progress: Math.round(tasks.reduce((s, t) => s + (t.progress ?? 0), 0) / tasks.length),
     start: starts[0] ?? null,
     end: ends[ends.length - 1] ?? null,
     taskCount: tasks.length,
@@ -223,7 +229,7 @@ export function buildSheetTree(
       id: `node:${n.id}` as const,
       kind: "node" as const,
       node: n,
-      rollup: rollup(descendantTasks(n.id)),
+      rollup: { ...rollup(descendantTasks(n.id)), progress: n.progress_percent ?? 0 },
       children: [...childNodeRows, ...taskRows],
     };
   };
@@ -252,13 +258,14 @@ export function buildSheetTree(
     wbs_code: project.project_code || "PROJ",
     wbs_name: project.project_name || "Project",
     sort_order: -1,
+    progress_percent: project.progress_percentage ?? 0,
   };
   return [
     {
       id: `node:project:${project.id}` as const,
       kind: "node" as const,
       node: projectNode,
-      rollup: rollup(tasks),
+      rollup: { ...rollup(tasks), progress: project.progress_percentage ?? 0 },
       children: roots,
     },
   ];
@@ -296,6 +303,27 @@ export function visibleRowsFrom(rows: SheetRow[], collapsedIds: Set<string>): Vi
   };
   walk(rows, 0);
   return out;
+}
+
+/**
+ * Drops task rows at 100% complete, plus any summary row left with no
+ * children as a result (the project's own row always stays, even empty, so
+ * the grid isn't left blank). Powers the Sheet toolbar's "Hide Completed" filter.
+ */
+export function filterIncomplete(rows: SheetRow[]): SheetRow[] {
+  const walk = (list: SheetRow[]): SheetRow[] =>
+    list.reduce<SheetRow[]>((acc, r) => {
+      if (r.kind === "task") {
+        if (r.task.progress < 100) acc.push(r);
+        return acc;
+      }
+      const children = walk(r.children);
+      if (children.length > 0 || r.node.node_type === PROJECT_NODE_TYPE) {
+        acc.push({ ...r, children });
+      }
+      return acc;
+    }, []);
+  return walk(rows);
 }
 
 // ---------------------------------------------------------------------------

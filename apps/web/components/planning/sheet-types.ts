@@ -26,6 +26,11 @@ export interface SheetTask {
   delay_status: string | null;
   /** Persisted / hand-edited MS-Project WBS code; null = use the computed one. */
   wbs_outline_code: string | null;
+  // --- Look-ahead timeline (Planning ▸ Look-ahead) ---
+  discipline: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  priority: string;
 }
 
 /** A row from `wbs_nodes` (explicit subset). */
@@ -39,6 +44,8 @@ export interface SheetNode {
   sort_order: number | null;
   is_locked?: boolean;
   wbs_outline_code?: string | null;
+  /** Server-computed, budget-cost-weighted roll-up from `recalculate_wbs_progress()`. */
+  progress_percent: number;
 }
 
 /** The globally-selected project — shown as the always-present top row. */
@@ -82,7 +89,9 @@ export type SheetField =
   | "finish"
   | "predecessors"
   | "progress"
-  | "status";
+  | "status"
+  | "priority"
+  | "owner";
 
 /** Columns navigable by keyboard, in visual order (row-number "#" column excluded). */
 export const NAV_COLUMNS: SheetField[] = [
@@ -95,6 +104,7 @@ export const NAV_COLUMNS: SheetField[] = [
   "predecessors",
   "progress",
   "status",
+  "owner",
 ];
 
 export interface SheetColumn {
@@ -133,6 +143,13 @@ export const STATUS_OPTIONS = EDITABLE_STATUSES.map((s) => ({
   label: STATUS_LABELS[s] ?? s,
 }));
 
+export const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
+];
+
 export const SHEET_COLUMNS: SheetColumn[] = [
   { field: "mode", label: "", width: 28, variant: "icon" },
   { field: "wbs", label: "WBS", width: 96, variant: "text", mono: true },
@@ -144,7 +161,48 @@ export const SHEET_COLUMNS: SheetColumn[] = [
   { field: "predecessors", label: "Predecessors", width: 140, variant: "text", mono: true },
   { field: "progress", label: "%", width: 52, variant: "number", align: "right" },
   { field: "status", label: "Status", width: 120, variant: "select", options: STATUS_OPTIONS },
+  { field: "owner", label: "Owner", width: 140, variant: "text" },
 ];
+
+/** Columns that are always visible, never reordered, and always render first. */
+export const PINNED_COLUMNS: SheetField[] = ["mode"];
+
+/** User-configurable order of the non-pinned columns. */
+export type ColumnOrder = SheetField[];
+export const DEFAULT_COLUMN_ORDER: ColumnOrder = NAV_COLUMNS;
+
+/** Per-field show/hide state (missing entry === visible). */
+export type ColumnVisibility = Record<SheetField, boolean>;
+export const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = SHEET_COLUMNS.reduce((acc, c) => {
+  acc[c.field] = true;
+  return acc;
+}, {} as ColumnVisibility);
+
+const SHEET_COLUMN_BY_FIELD = new Map(SHEET_COLUMNS.map((c) => [c.field, c]));
+
+/** "mode" first (always), then `order` filtered by `visibility`, resolved to their `SheetColumn`. */
+export function visibleOrderedColumns(
+  order: ColumnOrder,
+  visibility: ColumnVisibility,
+): SheetColumn[] {
+  const pinned = PINNED_COLUMNS.map((f) => SHEET_COLUMN_BY_FIELD.get(f)).filter(
+    (c): c is SheetColumn => !!c,
+  );
+  const rest = order
+    .filter((f) => visibility[f] !== false)
+    .map((f) => SHEET_COLUMN_BY_FIELD.get(f))
+    .filter((c): c is SheetColumn => !!c);
+  return [...pinned, ...rest];
+}
+
+/** A pinned column can never be hidden; otherwise refuse to hide the last visible non-pinned column. */
+export function canHideColumn(field: SheetField, visibility: ColumnVisibility): boolean {
+  if (PINNED_COLUMNS.includes(field)) return false;
+  const isVisible = visibility[field] !== false;
+  if (!isVisible) return true;
+  const visibleNonPinnedCount = NAV_COLUMNS.filter((f) => visibility[f] !== false).length;
+  return visibleNonPinnedCount > 1;
+}
 
 export const ID_COL_WIDTH = 44;
 export const ROW_HEIGHT = 32;
@@ -174,10 +232,10 @@ export const DEFAULT_COL_WIDTHS: ColWidths = SHEET_COLUMNS.reduce((acc, c) => {
   return acc;
 }, {} as ColWidths);
 
-export function rowWidthFrom(widths: ColWidths): number {
+export function rowWidthFrom(widths: ColWidths, columns: SheetColumn[] = SHEET_COLUMNS): number {
   return (
     ID_COL_WIDTH +
-    SHEET_COLUMNS.reduce((sum, c) => sum + (widths[c.field] ?? c.width), 0)
+    columns.reduce((sum, c) => sum + (widths[c.field] ?? c.width), 0)
   );
 }
 

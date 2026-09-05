@@ -1057,6 +1057,7 @@ export function GanttView({
           key={selectedTask.id}
           task={selectedTask}
           allTasks={tasks}
+          projectId={projectId ?? ""}
           onClose={() => setSelectedTaskId(null)}
           onRefresh={loadData}
           onEditLink={(index) => setEditLink({ successorId: selectedTask.id, index })}

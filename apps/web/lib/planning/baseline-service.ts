@@ -65,3 +65,26 @@ export async function activateBaseline(projectId: string, number: number): Promi
   });
   if (error) throw new Error(error.message);
 }
+
+export interface BaselineTaskSnapshot {
+  id: string;
+  start_date: string | null;
+  end_date: string | null;
+  budget_cost: number | null;
+}
+
+/** The per-task dates/cost captured into baseline `number` — for multi-schedule comparison. */
+export async function getBaselineSnapshot(
+  projectId: string,
+  number: number,
+): Promise<BaselineTaskSnapshot[]> {
+  const { data, error } = await createClient()
+    .from("wbs_baselines")
+    .select("snapshot_data")
+    .eq("project_id", projectId)
+    .eq("baseline_number", number)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const snap = (data?.snapshot_data as { tasks?: unknown[] } | null) ?? null;
+  return (snap?.tasks ?? []) as BaselineTaskSnapshot[];
+}

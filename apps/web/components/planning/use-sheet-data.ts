@@ -23,6 +23,7 @@ import {
   type TaskFloat,
 } from "@/lib/planning/schedule-engine";
 import { parsePredecessors } from "@/lib/planning/predecessor-syntax";
+import { addAssignment, findOrCreateResourceForProfile } from "@/lib/planning/resource-service";
 import {
   computeWbsCode,
   DEFAULT_MASK,
@@ -57,9 +58,10 @@ const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
   "sort_order, is_milestone, dependency_task_ids, dependency_types, dependency_lag_days, " +
   "constraint_type, constraint_date, manually_scheduled, baseline_start_date, " +
-  "baseline_finish_date, delay_status, wbs_outline_code";
+  "baseline_finish_date, delay_status, wbs_outline_code, discipline, owner_id, owner_name, priority";
 const NODE_COLS =
-  "id, project_id, parent_id, node_type, wbs_code, wbs_name, sort_order, is_locked, wbs_outline_code";
+  "id, project_id, parent_id, node_type, wbs_code, wbs_name, sort_order, is_locked, wbs_outline_code, " +
+  "progress_percent";
 
 const LOCK_TOAST =
   "Locked — this WBS branch is a Planning backbone. Unlock it in the WBS module to edit.";
@@ -125,6 +127,8 @@ export interface SheetActions {
   toggleMilestone: (taskId: string) => Promise<void>;
   toggleManualSchedule: (taskId: string) => Promise<void>;
   setConstraint: (taskId: string, type: string | null, date: string | null) => Promise<void>;
+  /** Assign a real team member to a task — mirrors into Planning's resource system too. */
+  assignOwner: (taskId: string, profile: { id: string; full_name: string | null }) => Promise<void>;
   runAutoSchedule: () => Promise<void>;
   /** Persist the computed WBS code onto every row (Renumber). Pass a mask to
    *  use instead of the currently-loaded one (e.g. right after saving it). */
@@ -801,6 +805,11 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
           patch = { status: raw };
           break;
         }
+        case "priority": {
+          if (raw === task.priority) return;
+          patch = { priority: raw };
+          break;
+        }
         default:
           return;
       }
@@ -1054,6 +1063,27 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
     [applySchedule, guardLocked, taskLocked],
   );
 
+  const assignOwner = useCallback(
+    async (taskId: string, profile: { id: string; full_name: string | null }) => {
+      const task = tasksRef.current.find((t) => t.id === taskId);
+      if (!task) return;
+      if (guardLocked(taskLocked(taskId))) return;
+      try {
+        const resource = await findOrCreateResourceForProfile(
+          projectId,
+          profile.id,
+          profile.full_name ?? "Unnamed",
+        );
+        await addAssignment(taskId, resource.id, 100);
+        toast.success(`${profile.full_name ?? "Team member"} assigned`);
+        await reload();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [guardLocked, projectId, reload, taskLocked],
+  );
+
   const runAutoSchedule = useCallback(async () => {
     if (tasksRef.current.length === 0) return;
     await applySchedule([], { force: true, note: "Schedule is up to date" });
@@ -1246,9 +1276,14 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       if (error) {
         setTasks((p) => p.map((t) => (t.id === taskId ? task : t)));
         toast.error("Failed to move task: " + error.message);
+        return;
       }
+      // Reparenting changes which WBS node each task's progress rolls up
+      // into — reload so both the old and new parent's progress_percent
+      // (recalculated server-side by the wbs_node_id trigger) show up.
+      await reload();
     },
-    [guardLocked, nextSort, nodeLocked, supabase, taskLocked],
+    [guardLocked, nextSort, nodeLocked, reload, supabase, taskLocked],
   );
 
   const applyNodeMove = useCallback(
@@ -1381,6 +1416,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       toggleMilestone,
       toggleManualSchedule,
       setConstraint,
+      assignOwner,
       runAutoSchedule,
       renumberWbsCodes,
       setWbsCode,
@@ -1404,6 +1440,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       toggleMilestone,
       toggleManualSchedule,
       setConstraint,
+      assignOwner,
       runAutoSchedule,
       renumberWbsCodes,
       setWbsCode,

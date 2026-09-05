@@ -1,24 +1,51 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { X, Flag, GitBranch, AlertTriangle, Trash2, Loader2, Plus, Pencil } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { X, Flag, GitBranch, AlertTriangle, Trash2, Loader2, Plus, Pencil, Users } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import type { GanttTask } from "./gantt-types";
 import { ACTIVITY_TYPE_OPTIONS } from "./gantt-types";
 import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-utils";
 import { cn } from "@/lib/utils";
+import {
+  addAssignment,
+  findOrCreateResourceForProfile,
+  listAssignmentsForTask,
+  listResources,
+  removeAssignment,
+  type Assignment,
+  type PlanResource,
+} from "@/lib/planning/resource-service";
+
+interface StaffProfile {
+  id: string;
+  full_name: string;
+  role: string;
+  avatar_url: string | null;
+  department: string | null;
+}
 
 interface GanttTaskDetailDrawerProps {
   task: GanttTask | null;
   allTasks: GanttTask[];
+  /** Project the task belongs to — needed to scope the resource picker on the Resources tab. */
+  projectId: string;
   onClose: () => void;
   onRefresh: () => void;
   /** Open the full relation editor for this task's predecessor at `index` */
   onEditLink?: (index: number) => void;
 }
 
-type TabKey = "properties" | "links" | "progress";
+type TabKey = "properties" | "links" | "progress" | "resources";
+
+const RESOURCE_TYPE_LABEL: Record<string, string> = {
+  labor: "Labor",
+  equipment: "Equipment",
+  material: "Material",
+  subcontractor: "Subcontractor",
+};
 
 const LINK_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "fs", label: "Finish-to-Start (FS)" },
@@ -33,6 +60,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 export function GanttTaskDetailDrawer({
   task,
   allTasks,
+  projectId,
   onClose,
   onRefresh,
   onEditLink,
@@ -63,6 +91,54 @@ export function GanttTaskDetailDrawer({
   const [actualFinish, setActualFinish] = useState(() => task?.actual_finish_date ?? "");
   const [notes, setNotes] = useState(() => task?.field_observation_notes ?? "");
   const [savingProgress, setSavingProgress] = useState(false);
+
+  // ---- Resources tab ----
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [activeResources, setActiveResources] = useState<PlanResource[]>([]);
+  const [loadingResources, setLoadingResources] = useState(true);
+  const [newResourceId, setNewResourceId] = useState("");
+  const [newAllocation, setNewAllocation] = useState("100");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
+  const [teamProfiles, setTeamProfiles] = useState<StaffProfile[]>([]);
+  const [teamProfilesLoaded, setTeamProfilesLoaded] = useState(false);
+  const [assigningProfileId, setAssigningProfileId] = useState<string | null>(null);
+  const loadingTeamProfiles = showTeamPicker && !teamProfilesLoaded;
+
+  useEffect(() => {
+    if (!task) return;
+    let cancelled = false;
+    // loadingResources starts true (see useState above); the parent remounts this
+    // drawer with key={task.id} per task, so the initial value covers the spinner
+    // without a synchronous setState call inside the effect body.
+    Promise.all([listAssignmentsForTask(task.id), listResources(projectId)])
+      .then(([a, r]) => {
+        if (cancelled) return;
+        setAssignments(a);
+        setActiveResources(r.filter((res) => res.is_active));
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
+      .finally(() => {
+        if (!cancelled) setLoadingResources(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [task, projectId]);
+
+  useEffect(() => {
+    if (!showTeamPicker || teamProfilesLoaded) return;
+    Promise.resolve(
+      supabase.from("profiles").select("id, full_name, role, avatar_url, department").order("full_name"),
+    ).then(({ data, error }) => {
+      if (error) {
+        toast.error(error.message);
+      } else {
+        setTeamProfiles((data ?? []) as StaffProfile[]);
+      }
+      setTeamProfilesLoaded(true);
+    });
+  }, [showTeamPicker, teamProfilesLoaded, supabase]);
 
   const predecessors = useMemo(() => {
     if (!task) return [];
@@ -224,6 +300,73 @@ export function GanttTaskDetailDrawer({
     onRefresh();
   }
 
+  async function refreshAssignments() {
+    if (!task) return;
+    try {
+      setAssignments(await listAssignmentsForTask(task.id));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleAddAssignment() {
+    if (!task) return;
+    if (!newResourceId) {
+      toast.error("Select a resource.");
+      return;
+    }
+    if (assignments.some((a) => a.resource_id === newResourceId)) {
+      toast.error("That resource is already assigned to this task.");
+      return;
+    }
+    const pct = Number(newAllocation);
+    if (Number.isNaN(pct) || pct <= 0) {
+      toast.error("Allocation % must be a positive number.");
+      return;
+    }
+    setSavingAssignment(true);
+    try {
+      await addAssignment(task.id, newResourceId, pct);
+      toast.success("Resource assigned");
+      setNewResourceId("");
+      setNewAllocation("100");
+      await refreshAssignments();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingAssignment(false);
+    }
+  }
+
+  async function handleRemoveAssignment(resourceId: string) {
+    if (!task) return;
+    try {
+      await removeAssignment(task.id, resourceId);
+      toast.success("Assignment removed");
+      await refreshAssignments();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleAssignTeamMember(profile: StaffProfile) {
+    if (!task) return;
+    setAssigningProfileId(profile.id);
+    try {
+      const resource = await findOrCreateResourceForProfile(projectId, profile.id, profile.full_name);
+      await addAssignment(task.id, resource.id, 100);
+      toast.success(`${profile.full_name} assigned`);
+      setShowTeamPicker(false);
+      const refreshed = await listResources(projectId);
+      setActiveResources(refreshed.filter((res) => res.is_active));
+      await refreshAssignments();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAssigningProfileId(null);
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
@@ -231,6 +374,7 @@ export function GanttTaskDetailDrawer({
     { key: "properties", label: "Properties" },
     { key: "links", label: `Links (${linkCount})` },
     { key: "progress", label: "Progress" },
+    { key: "resources", label: `Resources (${assignments.length})` },
   ];
 
   return (
@@ -250,6 +394,12 @@ export function GanttTaskDetailDrawer({
                 {task.is_critical && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
               </div>
               <h2 className="mt-1 truncate text-base font-semibold leading-snug">{task.task_name}</h2>
+              <Link
+                href={`/dashboard/tasks/${task.id}`}
+                className="mt-0.5 inline-flex items-center text-[10px] font-medium text-primary hover:underline"
+              >
+                Open full task detail →
+              </Link>
             </div>
             <button
               type="button"
@@ -577,6 +727,159 @@ export function GanttTaskDetailDrawer({
                 {savingProgress && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Submit Progress Update
               </button>
+            </div>
+          )}
+
+          {tab === "resources" && (
+            <div className="space-y-5">
+              {/* Add assignment */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Add Assignment
+                </div>
+                <div className="space-y-3">
+                  <Field label="Resource">
+                    <select
+                      className={inputCls}
+                      value={newResourceId}
+                      onChange={(e) => setNewResourceId(e.target.value)}
+                    >
+                      <option value="">-- Select Resource --</option>
+                      {activeResources
+                        .filter((r) => !assignments.some((a) => a.resource_id === r.id))
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.profile_id ? "(Team) " : ""}{r.name} ({RESOURCE_TYPE_LABEL[r.resource_type] ?? r.resource_type})
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+                  <Field label="Allocation %">
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputCls}
+                      value={newAllocation}
+                      onChange={(e) => setNewAllocation(e.target.value)}
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={handleAddAssignment}
+                    disabled={savingAssignment}
+                    className={primaryBtnCls}
+                  >
+                    {savingAssignment ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    Add Assignment
+                  </button>
+                </div>
+
+                <div className="mt-3 border-t border-border pt-3">
+                  {!showTeamPicker ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowTeamPicker(true)}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      + Assign a team member…
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-border bg-background p-2">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Assign Team Member
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowTeamPicker(false)}
+                          className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {loadingTeamProfiles ? (
+                        <div className="flex justify-center py-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        </div>
+                      ) : (
+                        <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                          {teamProfiles.length === 0 && (
+                            <p className="px-1 py-2 text-center text-[10px] text-muted-foreground">No staff found</p>
+                          )}
+                          {teamProfiles.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handleAssignTeamMember(p)}
+                              disabled={assigningProfileId !== null}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted disabled:opacity-50"
+                            >
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[9px] font-medium text-slate-600">
+                                {p.full_name.charAt(0).toUpperCase()}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                <span className="block truncate font-medium">{p.full_name}</span>
+                                <span className="block text-[9px] text-muted-foreground">
+                                  {p.role}{p.department ? ` · ${p.department}` : ""}
+                                </span>
+                              </span>
+                              {assigningProfileId === p.id && (
+                                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Current assignments */}
+              <div>
+                <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Assigned Resources
+                </h4>
+                {loadingResources ? (
+                  <div className="flex justify-center py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  </div>
+                ) : assignments.length === 0 ? (
+                  <p className="rounded-md bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    No resources assigned to this activity.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {assignments.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-md bg-muted/20 px-2.5 py-1.5 text-xs"
+                      >
+                        <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="truncate font-medium">{a.resource_name}</span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {RESOURCE_TYPE_LABEL[a.resource_type] ?? a.resource_type}
+                        </span>
+                        <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground">
+                          {a.allocation_percent}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAssignment(a.resource_id)}
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          aria-label="Remove assignment"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

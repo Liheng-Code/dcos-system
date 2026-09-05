@@ -69,8 +69,17 @@ interface ScheduleTimelineProps {
   float: Map<string, TaskFloat>;
   /** Tasks under a locked WBS backbone — bar can't be dragged / linked. */
   lockedTaskIds: Set<string>;
-  showBaseline: boolean;
+  /**
+   * Per-task dates for the reference ghost bar — the active Baseline by
+   * default, or any Internal/External schedule revision the user picks in
+   * the toolbar. `null` = no reference bar drawn.
+   */
+  referenceDates: Map<string, { start: string | null; end: string | null }> | null;
+  /** Tooltip label for the reference ghost bar (e.g. "Baseline", "Internal Schedule — Rev 2"). */
+  referenceLabel: string;
   showDependencies: boolean;
+  /** Show the critical-path red highlight (bar color + float badge). */
+  showCritical: boolean;
   /** Every selected task id (multi-select). */
   selectedTaskIds: Set<string>;
   todayX: number;
@@ -101,8 +110,10 @@ export function ScheduleTimeline({
   totalDays,
   float,
   lockedTaskIds,
-  showBaseline,
+  referenceDates,
+  referenceLabel,
   showDependencies,
+  showCritical,
   selectedTaskIds,
   todayX,
   dataDateX,
@@ -156,16 +167,15 @@ export function ScheduleTimeline({
     visibleRows.forEach((vr, i) => {
       if (vr.row.kind !== "task") return;
       const g = toGanttTask(vr.row.task, float.get(vr.row.task.id));
-      if (!showBaseline) {
-        g.baseline_start_date = null;
-        g.baseline_finish_date = null;
-      }
+      const ref = referenceDates?.get(g.id);
+      g.baseline_start_date = ref?.start ?? null;
+      g.baseline_finish_date = ref?.end ?? null;
       list.push(g);
       map.set(g.id, g);
       offsets.set(g.id, i * rowHeight);
     });
     return { ganttTasks: list, taskMap: map, rowOffsets: offsets };
-  }, [visibleRows, float, rowHeight, showBaseline]);
+  }, [visibleRows, float, rowHeight, referenceDates]);
 
   const highlightIds = useMemo(
     () => (selectedTaskIds.size ? selectedTaskIds : new Set<string>()),
@@ -324,6 +334,8 @@ export function ScheduleTimeline({
                   onSetProgress={locked ? undefined : onSetProgress}
                   zoom={zoom}
                   rangeMin={rangeMin}
+                  highlightCritical={showCritical}
+                  referenceLabel={referenceLabel}
                 />
               )}
               {locked && (

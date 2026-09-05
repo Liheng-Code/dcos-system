@@ -28,7 +28,14 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
           { label: "S-Curve & EVM", href: "/dashboard/wbs/lookahead?sub=scurve" },
         ],
       },
-      { label: "Calendars", href: "/dashboard/planning/calendars" },
+      {
+        label: "Calendars",
+        href: "/dashboard/planning/calendars",
+        children: [
+          { label: "Task View", href: "/dashboard/planning/calendars?sub=tasks" },
+          { label: "Work Calendar Settings", href: "/dashboard/planning/calendars?sub=settings" },
+        ],
+      },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
     ],
@@ -40,6 +47,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/planning/resource-loading",
     items: [
       { label: "Resources", href: "/dashboard/planning/resource-loading" },
+      { label: "Delay Register", href: "/dashboard/planning/delays" },
       {
         label: "Reports",
         href: "/dashboard/planning/reports",
