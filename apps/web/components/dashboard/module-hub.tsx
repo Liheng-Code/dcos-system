@@ -98,10 +98,10 @@ export function ModuleHub() {
           <Link
             key={module.moduleKey}
             href={href}
-            className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+            className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-slate-300"
           >
             <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${module.gradient}`} />
-            <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${module.gradient} shadow-md transition-transform duration-300 group-hover:scale-105`}>
+            <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${module.gradient} transition-transform duration-300 group-hover:scale-105`}>
               <Icon className="h-6 w-6 text-white" />
             </div>
             <h3 className="text-base font-semibold text-slate-900">{module.title}</h3>
@@ -109,7 +109,7 @@ export function ModuleHub() {
               {module.description}
             </p>
             <span
-              className={`mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r ${module.gradient} px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-300 group-hover:gap-2.5 group-hover:shadow-md`}
+              className={`mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r ${module.gradient} px-4 py-2.5 text-sm font-semibold text-white transition-all duration-300 group-hover:gap-2.5`}
             >
               Open Module
               <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />

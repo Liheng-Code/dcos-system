@@ -26,6 +26,7 @@ export interface GanttTask {
   baseline_start_date: string | null;
   baseline_finish_date: string | null;
   is_critical: boolean;
+  is_near_critical: boolean;
   total_float: number | null;
   // --- Activity detail panel (Planning ▸ Gantt Chart) ---
   activity_type?: string | null;

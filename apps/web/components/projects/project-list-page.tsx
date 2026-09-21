@@ -9,6 +9,7 @@ import { type Project } from "@/components/projects/project-edit-sheet";
 import { ProjectSetupWizard } from "@/components/projects/project-setup-wizard";
 import { PrecontractWizard } from "@/components/projects/precontract-wizard";
 import { NamingProjectWizard } from "@/components/naming/naming-project-wizard";
+import { ProjectMapThumb } from "@/components/projects/project-map-thumb";
 import { ProjectStakeholdersTab } from "@/components/projects/project-stakeholders-tab";
 import { PrecontractDetail } from "@/components/projects/precontract-detail";
 import { PostcontractDetail } from "@/components/projects/postcontract-detail";
@@ -423,6 +424,14 @@ export function ProjectListPage() {
                       <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
                         {p.description}
                       </p>
+                    )}
+
+                    {p.latitude != null && p.longitude != null && (
+                      <ProjectMapThumb
+                        lat={p.latitude}
+                        lng={p.longitude}
+                        className="mb-3 h-28 w-full"
+                      />
                     )}
 
                     <div className="mt-auto flex flex-col gap-1.5 text-xs text-muted-foreground">

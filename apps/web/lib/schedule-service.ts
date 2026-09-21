@@ -93,6 +93,41 @@ export async function getProgressSnapshots(projectId: string): Promise<ProgressS
   return (data ?? []) as ProgressSnapshotRow[];
 }
 
+export interface ScurvePoint {
+  date: string;
+  pct: number | null;
+  value: number | null;
+}
+
+export interface ScurveActualPoint extends ScurvePoint {
+  planned_pct: number | null;
+}
+
+export interface ScurveSeries {
+  /** Dense analytic planned (BCWS) curve, project baseline start → finish. */
+  planned: ScurvePoint[];
+  /** Persisted progress_snapshots rows (project-level). */
+  actual: ScurveActualPoint[];
+  /** Earned value computed live from current task state, dated today. */
+  live: ScurvePoint | null;
+  meta: {
+    baselined: number;
+    total_tasks: number;
+    weight_basis: "cost" | "duration" | "equal";
+    has_cost: boolean;
+    bac_cost: number | null;
+    window_start: string | null;
+    window_end: string | null;
+  };
+}
+
+export async function getScurveSeries(projectId: string): Promise<ScurveSeries> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("get_scurve_series", { p_project_id: projectId });
+  if (error) throw error;
+  return data as ScurveSeries;
+}
+
 export async function getLookaheadTasks(projectId: string, weeks: number = 4): Promise<LookaheadRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("get_lookahead_tasks", {

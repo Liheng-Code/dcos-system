@@ -10,14 +10,20 @@
 -- 0. ENSURE SUPPLIERS EXIST (idempotent — safe to re-run)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
+-- supplier_code has no unique constraint in the migrations, so ON CONFLICT
+-- cannot be used; skip codes that already exist instead.
 INSERT INTO procurement_suppliers (supplier_code, supplier_name, supplier_type, contact_person, email, status)
-VALUES
+SELECT v.supplier_code, v.supplier_name, v.supplier_type, v.contact_person, v.email, v.status
+FROM (VALUES
   ('SUP-001', 'ABC Construction Corp', 'contractor', 'John Tan', 'john@abcconstruction.com', 'active'),
   ('SUP-002', 'MEP Solutions Ltd', 'subcontractor', 'Sarah Lim', 'sarah@mePsolutions.com', 'active'),
   ('SUP-003', 'SteelMaster Pte Ltd', 'subcontractor', 'David Chen', 'david@steelmaster.com', 'active'),
   ('SUP-006', 'Premium Finishes Co', 'subcontractor', 'Emily Wong', 'emily@premiumfinishes.com', 'active'),
   ('SUP-007', 'TechLift Elevators', 'subcontractor', 'Michael Ng', 'michael@techlift.com', 'active')
-ON CONFLICT (supplier_code) DO NOTHING;
+) AS v(supplier_code, supplier_name, supplier_type, contact_person, email, status)
+WHERE NOT EXISTS (
+  SELECT 1 FROM procurement_suppliers s WHERE s.supplier_code = v.supplier_code
+);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 1. PURCHASE ORDERS

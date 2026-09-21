@@ -9,6 +9,7 @@ import type { GanttTask } from "./gantt-types";
 import { ACTIVITY_TYPE_OPTIONS } from "./gantt-types";
 import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-utils";
 import { cn } from "@/lib/utils";
+import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
 import {
   addAssignment,
   findOrCreateResourceForProfile,
@@ -91,6 +92,7 @@ export function GanttTaskDetailDrawer({
   const [actualFinish, setActualFinish] = useState(() => task?.actual_finish_date ?? "");
   const [notes, setNotes] = useState(() => task?.field_observation_notes ?? "");
   const [savingProgress, setSavingProgress] = useState(false);
+  const [hasActivitySteps, setHasActivitySteps] = useState(false);
 
   // ---- Resources tab ----
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -683,11 +685,28 @@ export function GanttTaskDetailDrawer({
                   type="number"
                   min={0}
                   max={100}
-                  className={inputCls}
+                  disabled={hasActivitySteps}
+                  className={cn(inputCls, hasActivitySteps && "opacity-50 cursor-not-allowed")}
                   value={newProgress}
                   onChange={(e) => setNewProgress(e.target.value)}
                 />
               </Field>
+              {hasActivitySteps && (
+                <p className="-mt-2 text-[10px] text-muted-foreground">
+                  Calculated automatically from this activity&apos;s steps below — edit step % complete to change it.
+                </p>
+              )}
+
+              <WbsActivityStepsPanel
+                taskId={task.id}
+                taskStart={task.start_date}
+                taskEnd={task.end_date}
+                canEdit={true}
+                onStepsChange={(hasSteps, computed) => {
+                  setHasActivitySteps(hasSteps);
+                  if (hasSteps && computed != null) setNewProgress(String(computed));
+                }}
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Actual Start Date">

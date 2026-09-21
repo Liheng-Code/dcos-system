@@ -27,20 +27,42 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     ],
   },
   {
+    key: "cost_rate_library",
+    navKey: "group:qs:cost_rate_library",
+    label: "Cost & Rate Library",
+    href: "/dashboard/qs/dwl-materials",
+    // Level 1 (dwl_resources + prices): the resource, supplier and price side.
+    items: [
+      { label: "Material Master", href: "/dashboard/qs/dwl-materials" },
+      { label: "Resource Master", href: "/dashboard/qs/dwl-resources" },
+      { label: "Supplier Master", href: "/dashboard/qs/dwl-suppliers" },
+      { label: "Subcontractor Rates", href: "/dashboard/qs/dwl-subcontractor-rates" },
+      { label: "Labor Rates", href: "/dashboard/qs/dwl-labor-rates" },
+      { label: "Price Approvals", href: "/dashboard/qs/dwl-price-approvals" },
+      { label: "Price Analytics", href: "/dashboard/qs/dwl-price-dashboard" },
+      { label: "Import Template", href: "/dashboard/qs/dwl-material-import" },
+    ],
+  },
+  {
+    // navKey keeps its historical "libraries" slug so nav_item_settings rows survive the relabel.
     key: "libraries",
     navKey: "group:qs:libraries",
-    label: "Libraries",
-    href: "/dashboard/qs/dwl-resources",
+    label: "Cost & Estimation",
+    href: "/dashboard/qs/dwl-cost-items",
+    // Levels 2-4 (work items, assemblies, estimates) plus the classification libraries.
+    // Unit Rate Library is intentionally not linked: it is a legacy standalone list that no
+    // tender consumes (pullFromUnitRateLibrary has no callers). Its route still exists.
     items: [
-      { label: "Direct Works Resources", href: "/dashboard/qs/dwl-resources" },
-      { label: "Direct Works Rate Build-Up", href: "/dashboard/qs/dwl-work-items" },
-      { label: "Direct Works Assemblies", href: "/dashboard/qs/dwl-assemblies" },
+      { label: "Cost Item Library", href: "/dashboard/qs/dwl-cost-items" },
+      // Advanced editors: Cost Item Library is the primary UI (one work item per item). These two
+      // are for multi-work-item assemblies and recipe editing, and are reached from a Cost Item's
+      // detail header, so they claim their routes but are not shown as tabs.
+      { label: "Direct Works Rate Build-Up", href: "/dashboard/qs/dwl-work-items", hidden: true },
+      { label: "Direct Works Assemblies", href: "/dashboard/qs/dwl-assemblies", hidden: true },
       { label: "Direct Works Quick Estimate", href: "/dashboard/qs/dwl-estimate" },
-      { label: "Direct Works Price Dashboard", href: "/dashboard/qs/dwl-price-dashboard" },
       { label: "Budget Codes", href: "/dashboard/tenders/budget-codes" },
       { label: "Element Library", href: "/dashboard/qs/element-library" },
       { label: "Prelim Cost Library", href: "/dashboard/tenders/cost-library" },
-      { label: "Unit Rate Library", href: "/dashboard/tenders/unit-rates" },
     ],
   },
   {
@@ -110,9 +132,10 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     key: "subcontractor",
     navKey: "group:qs:subcontractor",
     label: "Subcon Mgmt",
-    href: "/dashboard/subcontractors/back-charges",
+    href: "/dashboard/subcontractors",
     visible: ({ isPrecontract }) => !isPrecontract,
     items: [
+      { label: "Subcontracts", href: "/dashboard/subcontractors" },
       { label: "Back Charges", href: "/dashboard/subcontractors/back-charges" },
       { label: "Performance Notices", href: "/dashboard/subcontractors/performance-notices" },
     ],

@@ -45,9 +45,11 @@ BEGIN
                    OR baseline_finish_date IS NULL             THEN 0
                  WHEN CURRENT_DATE >= baseline_finish_date     THEN 1
                  WHEN CURRENT_DATE <= baseline_start_date      THEN 0
-                 ELSE EXTRACT(EPOCH FROM (CURRENT_DATE - baseline_start_date))
+                 ELSE EXTRACT(EPOCH FROM ((CURRENT_DATE - baseline_start_date)
+                                        * INTERVAL '1 day'))
                       / NULLIF(EXTRACT(EPOCH FROM
-                          (baseline_finish_date - baseline_start_date)), 0)
+                          ((baseline_finish_date - baseline_start_date)
+                           * INTERVAL '1 day')), 0)
                END
              ) / SUM(COALESCE(budget_cost, 0)) * 100
       ELSE 0
@@ -58,9 +60,11 @@ BEGIN
           OR baseline_finish_date IS NULL             THEN 0
         WHEN CURRENT_DATE >= baseline_finish_date     THEN 1
         WHEN CURRENT_DATE <= baseline_start_date      THEN 0
-        ELSE EXTRACT(EPOCH FROM (CURRENT_DATE - baseline_start_date))
+        ELSE EXTRACT(EPOCH FROM ((CURRENT_DATE - baseline_start_date)
+                                * INTERVAL '1 day'))
              / NULLIF(EXTRACT(EPOCH FROM
-                 (baseline_finish_date - baseline_start_date)), 0)
+                 ((baseline_finish_date - baseline_start_date)
+                  * INTERVAL '1 day')), 0)
       END
     ), 0)
   INTO v_planned_prog, v_planned_cost

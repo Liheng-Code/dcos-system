@@ -18,8 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import type { DwlResource, DwlWorkItem, DwlWorkItemResource } from "@/components/qs/dwl-types";
+import { dwlDisplayResourceDescription as displayResourceDescription, type DwlResource, type DwlWorkItem, type DwlWorkItemResource } from "@/components/qs/dwl-types";
 
 // waste_pct is entered here as a percentage (0–99.99) and converted to the
 // stored fraction (0–<1) on submit — SOP §8: "waste_pct is stored as a
@@ -59,6 +58,8 @@ interface DwlRecipeLineFormDialogProps {
   /** When set, the dialog edits this existing line instead of creating a new one. */
   editingLine: DwlWorkItemResource | null;
   nextSortOrder: number;
+  /** When set, the resource picker only lists resources of this category. */
+  resourceCategory?: DwlResource["category"];
   onSaved: () => void;
 }
 
@@ -69,10 +70,13 @@ export function DwlRecipeLineFormDialog({
   workItem,
   editingLine,
   nextSortOrder,
+  resourceCategory,
   onSaved,
 }: DwlRecipeLineFormDialogProps) {
   const supabase = createClient();
   const isEditing = editingLine !== null;
+  const isMaterial = resourceCategory === "material";
+  const itemNoun = isMaterial ? "Material" : "Recipe Line";
 
   const [resources, setResources] = useState<DwlResource[]>([]);
   const [loadingResources, setLoadingResources] = useState(false);
@@ -120,16 +124,16 @@ export function DwlRecipeLineFormDialog({
       });
     }
     setLoadingResources(true);
-    supabase
+    let query = supabase
       .from("dwl_resources")
       .select("id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at")
-      .eq("is_active", true)
-      .order("code")
-      .then(({ data, error }) => {
-        if (!error && data) setResources(data as DwlResource[]);
-        setLoadingResources(false);
-      });
-  }, [open, editingLine, nextSortOrder, reset, supabase]);
+      .eq("is_active", true);
+    if (resourceCategory) query = query.eq("category", resourceCategory);
+    query.order("code").then(({ data, error }) => {
+      if (!error && data) setResources(data as DwlResource[]);
+      setLoadingResources(false);
+    });
+  }, [open, editingLine, nextSortOrder, resourceCategory, reset, supabase]);
 
   const filteredResources = useMemo(() => {
     if (!resourceSearch.trim()) return resources.slice(0, 50);
@@ -190,39 +194,42 @@ export function DwlRecipeLineFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {isEditing ? "Edit Recipe Line" : "Add Recipe Line"}
+            {isEditing ? `Edit ${itemNoun}` : `Add ${itemNoun}`}
             {workItem ? ` — ${workItem.code}` : ""}
           </DialogTitle>
           <DialogDescription>
-            No money here — consumption and waste only. The live price is looked up from Level 1
-            when this recipe is priced.
+            {isMaterial
+              ? "Pick a material and how much of it this item uses. Its unit price is looked up automatically from Material Master — you don't enter a price here."
+              : "No money here — consumption and waste only. The live price is looked up from Level 1 when this recipe is priced."}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div className="space-y-1">
-            <Label>Resource *</Label>
+            <Label>{isMaterial ? "Material *" : "Resource *"}</Label>
             {isEditing ? (
               <div className="rounded-lg border border-input bg-muted/30 px-2.5 py-1.5 text-sm">
                 <span className="font-mono text-xs font-medium">{selectedResource?.code}</span>{" "}
-                {selectedResource?.description ?? "—"}
+                {selectedResource ? displayResourceDescription(selectedResource.description) : "—"}
               </div>
             ) : selectedResource ? (
-              <div className="flex items-center justify-between rounded-lg border border-input px-2.5 py-1.5 text-sm">
-                <span>
-                  <span className="font-mono text-xs font-medium">{selectedResource.code}</span>{" "}
-                  {selectedResource.description} <span className="text-muted-foreground">({selectedResource.unit})</span>
-                </span>
-                <button
-                  type="button"
-                  className="text-xs text-blue-600 hover:underline"
-                  onClick={() => setValue("resource_id", "", { shouldValidate: true })}
-                >
-                  Change
-                </button>
+              <div className="flex flex-col gap-1 rounded-lg border border-input px-2.5 py-2 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-mono text-xs font-medium">{selectedResource.code}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-blue-600 hover:underline"
+                    onClick={() => setValue("resource_id", "", { shouldValidate: true })}
+                  >
+                    Change
+                  </button>
+                </div>
+                <p className="whitespace-normal break-words">
+                  {displayResourceDescription(selectedResource.description)} <span className="text-muted-foreground">({selectedResource.unit})</span>
+                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -231,26 +238,30 @@ export function DwlRecipeLineFormDialog({
                   <Input
                     value={resourceSearch}
                     onChange={(e) => setResourceSearch(e.target.value)}
-                    placeholder={loadingResources ? "Loading resources…" : `Search ${resources.length} resources by code or description…`}
+                    placeholder={
+                      loadingResources
+                        ? `Loading ${isMaterial ? "materials" : "resources"}…`
+                        : `Search ${resources.length} ${isMaterial ? "materials" : "resources"} by code or description…`
+                    }
                     className="pl-8"
                   />
                 </div>
-                <div className="max-h-48 overflow-y-auto rounded-lg border border-input">
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-input">
                   {filteredResources.length === 0 ? (
-                    <p className="p-3 text-center text-xs text-muted-foreground">No matching resources</p>
+                    <p className="p-3 text-center text-xs text-muted-foreground">No matching {isMaterial ? "materials" : "resources"}</p>
                   ) : (
                     filteredResources.map((r) => (
                       <button
                         type="button"
                         key={r.id}
                         onClick={() => setValue("resource_id", r.id, { shouldValidate: true })}
-                        className={cn(
-                          "flex w-full items-center gap-2 border-b border-border/50 px-2.5 py-1.5 text-left text-xs last:border-0 hover:bg-accent"
-                        )}
+                        className="flex w-full flex-col gap-0.5 border-b border-border/50 px-2.5 py-2 text-left text-xs last:border-0 hover:bg-accent"
                       >
-                        <span className="font-mono font-medium">{r.code}</span>
-                        <span className="truncate text-muted-foreground">{r.description}</span>
-                        <span className="ml-auto shrink-0 text-muted-foreground">{r.unit}</span>
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="font-mono font-medium">{r.code}</span>
+                          <span className="shrink-0 text-muted-foreground">{r.unit}</span>
+                        </span>
+                        <span className="whitespace-normal break-words text-muted-foreground">{displayResourceDescription(r.description)}</span>
                       </button>
                     ))
                   )}

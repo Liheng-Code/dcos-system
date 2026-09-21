@@ -26,7 +26,9 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "/dashboard", label: "Dashboard", nodeType: "item" },
     { navKey: "/dashboard/projects", label: "Projects", nodeType: "item" },
     { navKey: "/dashboard/wbs", label: "WBS", nodeType: "item" },
+    { navKey: "/dashboard/my-tasks", label: "My Tasks", nodeType: "item" },
     { navKey: "/dashboard/tasks", label: "Tasks", nodeType: "item" },
+    { navKey: "/dashboard/department", label: "Department", nodeType: "item" },
     { navKey: "/dashboard/stakeholders", label: "Stakeholders", nodeType: "item" },
   ],
 
@@ -149,16 +151,23 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "/dashboard/tenders/submissions", label: "Submissions", nodeType: "item", parentGroupKey: "group:qs:tendering" },
     { navKey: "/dashboard/tenders/bid-evaluation", label: "Bid Evaluation", nodeType: "item", parentGroupKey: "group:qs:tendering" },
 
-    { navKey: "group:qs:libraries", label: "Libraries", nodeType: "item" },
-    { navKey: "/dashboard/qs/dwl-resources", label: "Direct Works Resources", nodeType: "item", parentGroupKey: "group:qs:libraries" },
-    { navKey: "/dashboard/qs/dwl-work-items", label: "Direct Works Rate Build-Up", nodeType: "item", parentGroupKey: "group:qs:libraries" },
-    { navKey: "/dashboard/qs/dwl-assemblies", label: "Direct Works Assemblies", nodeType: "item", parentGroupKey: "group:qs:libraries" },
+    { navKey: "group:qs:cost_rate_library", label: "Cost & Rate Library", nodeType: "item" },
+    { navKey: "/dashboard/qs/dwl-materials", label: "Material Master", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-resources", label: "Resource Master", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-suppliers", label: "Supplier Master", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-subcontractor-rates", label: "Subcontractor Rates", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-labor-rates", label: "Labor Rates", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-price-approvals", label: "Price Approvals", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-price-dashboard", label: "Price Analytics", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+    { navKey: "/dashboard/qs/dwl-material-import", label: "Import Template", nodeType: "item", parentGroupKey: "group:qs:cost_rate_library" },
+
+    // navKey keeps the historical "libraries" slug so existing nav_item_settings rows still apply.
+    { navKey: "group:qs:libraries", label: "Cost & Estimation", nodeType: "item" },
+    { navKey: "/dashboard/qs/dwl-cost-items", label: "Cost Item Library", nodeType: "item", parentGroupKey: "group:qs:libraries" },
     { navKey: "/dashboard/qs/dwl-estimate", label: "Direct Works Quick Estimate", nodeType: "item", parentGroupKey: "group:qs:libraries" },
-    { navKey: "/dashboard/qs/dwl-price-dashboard", label: "Direct Works Price Dashboard", nodeType: "item", parentGroupKey: "group:qs:libraries" },
     { navKey: "/dashboard/tenders/budget-codes", label: "Budget Codes", nodeType: "item", parentGroupKey: "group:qs:libraries" },
     { navKey: "/dashboard/qs/element-library", label: "Element Library", nodeType: "item", parentGroupKey: "group:qs:libraries" },
     { navKey: "/dashboard/tenders/cost-library", label: "Prelim Cost Library", nodeType: "item", parentGroupKey: "group:qs:libraries" },
-    { navKey: "/dashboard/tenders/unit-rates", label: "Unit Rate Library", nodeType: "item", parentGroupKey: "group:qs:libraries" },
 
     { navKey: "group:qs:cost_control", label: "Cost Control", nodeType: "item" },
     { navKey: "/dashboard/qs/boq", label: "BOQ", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
@@ -172,8 +181,14 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "/dashboard/qs/variations", label: "Variations", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
 
     { navKey: "group:qs:subcontractor", label: "Subcon Mgmt", nodeType: "item" },
+    { navKey: "/dashboard/subcontractors", label: "Subcontracts", nodeType: "item", parentGroupKey: "group:qs:subcontractor" },
     { navKey: "/dashboard/subcontractors/back-charges", label: "Back Charges", nodeType: "item", parentGroupKey: "group:qs:subcontractor" },
     { navKey: "/dashboard/subcontractors/performance-notices", label: "Performance Notices", nodeType: "item", parentGroupKey: "group:qs:subcontractor" },
+
+    { navKey: "group:qs:qto", label: "Quantity Take-off", nodeType: "item" },
+    { navKey: "/dashboard/qto", label: "Take-off", nodeType: "item", parentGroupKey: "group:qs:qto" },
+    { navKey: "/dashboard/qto?tab=drawings", label: "Drawings", nodeType: "item", parentGroupKey: "group:qs:qto" },
+    { navKey: "/dashboard/qto?tab=documents", label: "Documents", nodeType: "item", parentGroupKey: "group:qs:qto" },
 
     { navKey: "group:qs:contract_admin", label: "Contract Admin", nodeType: "item" },
     { navKey: "/dashboard/contracts/register", label: "Contract Register", nodeType: "item", parentGroupKey: "group:qs:contract_admin" },
@@ -231,6 +246,12 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
 
   administration: [
     { navKey: "/dashboard/settings", label: "Settings", nodeType: "item" },
+    { navKey: "/dashboard/administration/users", label: "User Management", nodeType: "item" },
+    { navKey: "/dashboard/administration/roles-permissions", label: "Roles & Permissions", nodeType: "item" },
+    { navKey: "/dashboard/administration/departments", label: "Departments", nodeType: "item" },
+    { navKey: "/dashboard/administration/security", label: "Security", nodeType: "item" },
+    { navKey: "/dashboard/administration/audit-logs", label: "Audit Logs", nodeType: "item" },
     { navKey: "/dashboard/administration/stakeholder-templates", label: "Stakeholder Templates", nodeType: "item" },
+    { navKey: "/dashboard/administration/master-libraries", label: "Master Libraries", nodeType: "item" },
   ],
 };

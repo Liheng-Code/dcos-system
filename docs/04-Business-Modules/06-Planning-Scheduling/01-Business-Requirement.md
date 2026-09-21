@@ -95,10 +95,18 @@ The following items are explicitly out of scope for Module PLN:
 - Native Primavera P6 or MS Project file import/export (XER or MPP binary formats). DCOS
   supports structured CSV/Excel import only. Binary P6/MSP integration is a future Phase 6
   integration layer item (Module INT).
-- Resource levelling algorithms (automatic re-scheduling of activities to smooth resource peaks).
-  PLN supports resource assignment and utilisation visibility, not automatic levelling.
-- Cost loading of the schedule beyond linking to existing WBS budget_cost fields. Full cost
-  control is owned by Module BGT (Budget Control) and Module COST (Cost Control).
+- ~~Resource levelling algorithms (automatic re-scheduling of activities to smooth resource peaks).
+  PLN supports resource assignment and utilisation visibility, not automatic levelling.~~
+  **Superseded:** float-bounded resource levelling (preview/apply) was built under the Completion
+  Plan (item 3.2); see `14-Completion-Plan.md` and `15-Completion-Plan-Continuation.md`.
+- ~~Cost loading of the schedule beyond linking to existing WBS budget_cost fields.~~
+  **Superseded 2026-09-21** (decision recorded in `16-Productivity-and-Resource-Costing-Plan.md`):
+  PLN now includes **resource cost loading** — man-hours and equipment-days derived from task
+  quantity and productivity norms, priced from resource rates, phased by week and rolled up to
+  WBS nodes. Still out of scope for PLN: commercial cost control (budgets, commitments, actuals,
+  cost-to-complete), which remains owned by Module BGT (Budget Control) and Module COST (Cost
+  Control) and by QS. `wbs_tasks.budget_cost` stays the progress weight; planned resource cost is
+  held separately.
 - Earned Value Management (EVM) financial calculations (BCWS, BCWP, ACWP, CPI, SPI). These
   metrics are designed in Module RPT (Reporting & KPI) using data from PLN and COST. PLN
   provides the physical progress % input only.

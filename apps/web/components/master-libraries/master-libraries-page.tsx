@@ -74,6 +74,7 @@ export function MasterLibrariesPage() {
   const [editing, setEditing] = useState<Partial<TaskTemplateMasterRecord> | null>(null);
 
   const definition = getMasterLibraryDefinition(activeType);
+  const singularLabel = definition.label.slice(0, -1);
 
   async function load() {
     setLoading(true);
@@ -242,8 +243,8 @@ export function MasterLibrariesPage() {
           <Button variant="outline" size="sm" className="rounded-lg" onClick={exportCsv}>
             <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
           </Button>
-          <Button size="sm" className="rounded-lg bg-slate-900" onClick={() => setEditing(emptyRecord(activeType))}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> New Item
+          <Button variant="outline" size="sm" className="rounded-lg" onClick={() => setEditing(emptyRecord(activeType))}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> New {singularLabel}
           </Button>
         </div>
       </header>
@@ -433,7 +434,7 @@ export function MasterLibrariesPage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditing(null)} />
           <div className={cn("relative z-10 max-h-[90vh] w-full overflow-hidden rounded-xl bg-white shadow-xl", activeType === "task_template" ? "max-w-4xl" : "max-w-lg")}>
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h2 className="text-sm font-semibold text-slate-900">{editing.id ? "Edit" : "New"} {activeType === "task_template" ? "Task Template" : `${definition.label.slice(0, -1)} Item`}</h2>
+              <h2 className="text-sm font-semibold text-slate-900">{editing.id ? "Edit" : "New"} {singularLabel}</h2>
               <button type="button" onClick={() => setEditing(null)}><X className="h-4 w-4 text-slate-400" /></button>
             </div>
             <div className="max-h-[calc(90vh-130px)] overflow-y-auto p-5">

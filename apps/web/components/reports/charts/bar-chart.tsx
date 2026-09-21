@@ -64,15 +64,15 @@ export function BarChart({
           data={data as Record<string, number | string>[]}
           margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey={xKey}
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
-            axisLine={{ stroke: "#e2e8f0" }}
+            axisLine={{ stroke: "var(--border)" }}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={formatY}
@@ -82,9 +82,12 @@ export function BarChart({
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+              border: "1px solid var(--border)",
+              backgroundColor: "var(--popover)",
+              color: "var(--popover-foreground)",
             }}
+            labelStyle={{ color: "var(--popover-foreground)" }}
+            cursor={{ fill: "var(--muted)", opacity: 0.4 }}
           />
           {series.length > 1 && (
             <Legend

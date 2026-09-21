@@ -16,6 +16,9 @@ export interface WbsBuilderNode extends HierNode {
   sort_order: number;
   status: string;
   progress_percent: number;
+  discipline: string | null;
+  area_label: string | null;
+  cost_code: string | null;
   is_below_ground: boolean | null;
   is_external_works: boolean | null;
   is_locked: boolean;
@@ -24,7 +27,7 @@ export interface WbsBuilderNode extends HierNode {
 }
 
 export const NODE_COLS =
-  "id, project_id, parent_id, node_type, wbs_code, wbs_name, full_path, sort_order, status, progress_percent, is_below_ground, is_external_works, is_locked, locked_at, locked_by";
+  "id, project_id, parent_id, node_type, wbs_code, wbs_name, full_path, sort_order, status, progress_percent, discipline, area_label, cost_code, is_below_ground, is_external_works, is_locked, locked_at, locked_by";
 
 /** One row of the outline handed to react-arborist. */
 export interface WbsBuilderRow {
@@ -34,13 +37,28 @@ export interface WbsBuilderRow {
 }
 
 /** Editable, keyboard-navigable cell fields (drive `updateNodeField`). */
-export type WbsBuilderField = "wbs_code" | "node_type" | "wbs_name" | "status";
+export type WbsBuilderField =
+  | "wbs_code"
+  | "node_type"
+  | "wbs_name"
+  | "discipline"
+  | "area_label"
+  | "cost_code"
+  | "status";
 
-/** Every column key, including the non-editable GFA + Action columns. */
-export type WbsColumnKey = WbsBuilderField | "gfa" | "action";
+/** Every column key, including the non-editable Level / GFA / Action columns. */
+export type WbsColumnKey = WbsBuilderField | "level_breakdown" | "gfa" | "action";
 
 /** Columns navigable left/right by keyboard, in visual order. */
-export const NAV_COLUMNS: WbsBuilderField[] = ["wbs_code", "node_type", "wbs_name", "status"];
+export const NAV_COLUMNS: WbsBuilderField[] = [
+  "wbs_code",
+  "wbs_name",
+  "node_type",
+  "discipline",
+  "area_label",
+  "cost_code",
+  "status",
+];
 
 /** Node types whose GFA is entered by hand; every other type rolls up. */
 export const GFA_EDITABLE_TYPES = new Set(["level", "zone"]);
@@ -81,16 +99,20 @@ export function nodeTypeLabel(value: string): string {
 
 export const WBS_BUILDER_COLUMNS: WbsBuilderColumn[] = [
   { field: "wbs_code", label: "WBS Code", width: 130, variant: "text", mono: true },
-  { field: "node_type", label: "Node Type", width: 160, variant: "select", options: NODE_TYPE_OPTIONS },
-  { field: "wbs_name", label: "Name", width: 380, variant: "text" },
+  { field: "level_breakdown", label: "Level Breakdown", width: 120, variant: "text", align: "right" },
+  { field: "wbs_name", label: "Activity / Work Package", width: 340, variant: "text" },
+  { field: "node_type", label: "Type", width: 150, variant: "select", options: NODE_TYPE_OPTIONS },
+  { field: "discipline", label: "Discipline", width: 130, variant: "text" },
+  { field: "area_label", label: "Floor / Area", width: 120, variant: "text" },
+  { field: "cost_code", label: "Cost Code", width: 110, variant: "text", mono: true },
   {
     field: "status",
     label: "Status",
-    width: 120,
+    width: 110,
     variant: "select",
     options: STATUS_OPTIONS.map((s) => ({ value: s, label: statusLabel(s) })),
   },
-  { field: "gfa", label: "GFA (m²)", width: 120, variant: "number", align: "right" },
+  { field: "gfa", label: "GFA (m²)", width: 110, variant: "number", align: "right" },
   { field: "action", label: "", width: 96, variant: "action" },
 ];
 
@@ -153,6 +175,9 @@ export function makeProjectNode(p: BuilderProject): WbsBuilderNode {
     sort_order: -1,
     status: p.project_status,
     progress_percent: p.progress_percentage ?? 0,
+    discipline: null,
+    area_label: null,
+    cost_code: null,
     is_below_ground: null,
     is_external_works: null,
     is_locked: false,

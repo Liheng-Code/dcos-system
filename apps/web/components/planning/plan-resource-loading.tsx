@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   addAssignment,
+  aggregateByType,
   getResourceAllocation,
   listProjectAssignments,
   listResources,
@@ -20,6 +21,7 @@ import {
   type ProjectAssignmentRow,
 } from "@/lib/planning/resource-service";
 import { PlanResourceDialog } from "./plan-resource-dialog";
+import { PlanLevellingPanel } from "./plan-levelling-panel";
 
 interface ResourceTask {
   id: string; task_code: string; task_name: string; owner_name: string | null;
@@ -123,6 +125,19 @@ export function PlanResourceLoading() {
     }
     return map;
   }, [allocation]);
+
+  // Resource histogram by type (Completion Plan 1.7) — demand vs capacity
+  // aggregated across every resource of a type, independent of the
+  // per-resource allocation strips above.
+  const histogramByType = useMemo(() => {
+    const map = new Map<string, Map<string, { demand: number; capacity: number }>>();
+    for (const p of aggregateByType(allocation, resources)) {
+      if (!map.has(p.resource_type)) map.set(p.resource_type, new Map());
+      map.get(p.resource_type)!.set(p.work_date, { demand: p.demand, capacity: p.capacity });
+    }
+    return map;
+  }, [allocation, resources]);
+  const histogramTypes = useMemo(() => [...histogramByType.keys()].sort(), [histogramByType]);
 
   const relevantTasks = useMemo(
     () => tasks.filter((t) => assignedTaskIds.has(t.id) || t.owner_name),
@@ -267,6 +282,42 @@ export function PlanResourceLoading() {
     );
   }
 
+  function renderHistogramStrip(type: string) {
+    const byDate = histogramByType.get(type);
+    const capacity = [...(byDate?.values() ?? [])][0]?.capacity ?? 0;
+    return (
+      <div className="flex border-b last:border-0">
+        <div className="flex shrink-0 items-center gap-1.5 border-r px-2 py-1.5 text-xs" style={{ width: LABEL_W }}>
+          <span className="font-medium">{RESOURCE_TYPE_LABEL[type] ?? type}</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">cap {capacity}%</span>
+        </div>
+        <div className="relative flex" style={{ width: chartW }}>
+          {Array.from({ length: totalDays }).map((_, i) => {
+            const d = new Date(dateRange.min.getTime() + i * 86400000);
+            const key = d.toISOString().slice(0, 10);
+            const point = byDate?.get(key);
+            const ratio = point && point.capacity > 0 ? point.demand / point.capacity : point && point.demand > 0 ? 2 : 0;
+            const color = !point || point.demand <= 0
+              ? "bg-transparent"
+              : ratio > 1
+                ? "bg-red-500"
+                : ratio > 0.85
+                  ? "bg-amber-400"
+                  : "bg-emerald-300";
+            return (
+              <div
+                key={i}
+                className={cn("h-5 shrink-0 border-r border-background", color)}
+                style={{ width: BAR_W }}
+                title={point ? `${key}: ${point.demand}% demand of ${point.capacity}% capacity${ratio > 1 ? " — OVER CAPACITY" : ""}` : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -299,6 +350,29 @@ export function PlanResourceLoading() {
           Team Planner
         </Link>.
       </p>
+
+      {histogramTypes.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold">Resource Histogram (by type)</span>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-300" /> ≤85%</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" /> 85–100%</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" /> Over capacity</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <div className="min-w-fit">
+                {renderDayHeader()}
+                {histogramTypes.map((type) => <div key={type}>{renderHistogramStrip(type)}</div>)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <PlanLevellingPanel />
 
       {resources.map((resource) => {
         const resourceTasks = resourceGroups.get(resource.id) ?? [];

@@ -20,14 +20,26 @@ export interface WorkCalendar {
   workdays: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
   /** ISO date → is_working. Overrides `workdays` for that day. */
   exceptions: Map<string, boolean>;
+  /** Productive hours in one working day (plan_calendars.hours_per_day). Absent = DEFAULT_HOURS_PER_DAY. */
+  hoursPerDay?: number;
 }
+
+/** Hours in a working day when a calendar does not say (matches the column default). */
+export const DEFAULT_HOURS_PER_DAY = 8;
 
 export const DEFAULT_CALENDAR: WorkCalendar = {
   id: null,
   name: "Mon–Fri (default)",
   workdays: [false, true, true, true, true, true, false],
   exceptions: new Map(),
+  hoursPerDay: DEFAULT_HOURS_PER_DAY,
 };
+
+/** Productive hours per working day for `cal`, never zero or negative. */
+export function hoursPerDayOf(cal: WorkCalendar): number {
+  const h = cal.hoursPerDay;
+  return typeof h === "number" && Number.isFinite(h) && h > 0 ? h : DEFAULT_HOURS_PER_DAY;
+}
 
 // ---------------------------------------------------------------------------
 // Date primitives (UTC-pinned)
@@ -173,6 +185,8 @@ export interface PlanCalendarRow {
   friday: boolean | null;
   saturday: boolean | null;
   sunday: boolean | null;
+  /** Optional: callers that don't select the column get the 8 h default. */
+  hours_per_day?: number | null;
 }
 
 export interface PlanCalendarExceptionRow {
@@ -194,6 +208,7 @@ export function buildWorkCalendar(
   return {
     id: row.id,
     name: row.name ?? "Project calendar",
+    hoursPerDay: row.hours_per_day != null && Number(row.hours_per_day) > 0 ? Number(row.hours_per_day) : DEFAULT_HOURS_PER_DAY,
     // Index by getUTCDay(): 0 = Sunday.
     workdays: [
       row.sunday ?? false,

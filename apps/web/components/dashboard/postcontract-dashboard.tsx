@@ -234,7 +234,7 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
             { label: "QS BOQ", href: "/dashboard/qs/boq", color: "hover:border-emerald-300 hover:bg-emerald-50/50" },
             { label: "Variations", href: "/dashboard/qs/variations", color: "hover:border-amber-300 hover:bg-amber-50/50" },
             { label: "Claims", href: "/dashboard/qs/claims", color: "hover:border-purple-300 hover:bg-purple-50/50" },
-            { label: "Payments", href: "/dashboard/qs/payments", color: "hover:border-blue-300 hover:bg-blue-50/50" },
+            { label: "Payments", href: "/dashboard/qs/claims?sub=payments", color: "hover:border-blue-300 hover:bg-blue-50/50" },
           ].map((link) => (
             <a
               key={link.href}

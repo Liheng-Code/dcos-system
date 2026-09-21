@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "DCOS: web dev server",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dcos"
+      },
+      "runOptions": { "runOn": "folderOpen" }
+    },
+    {
+      "label": "DCOS: supabase start (local)",
+      "type": "shell",
+      "command": ".\\node_modules\\.bin\\supabase.cmd start",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dcos"
+      }
+    },
+    {
+      "label": "DCOS: supabase stop (local)",
+      "type": "shell",
+      "command": ".\\node_modules\\.bin\\supabase.cmd stop",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ]
+}

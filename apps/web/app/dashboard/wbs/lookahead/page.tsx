@@ -7,8 +7,9 @@ import { Loader2 } from "lucide-react";
 import { WbsLookaheadView } from "@/components/wbs/wbs-lookahead-view";
 import { WbsWeeklyPlan } from "@/components/wbs/wbs-weekly-plan";
 import { WbsScurveChart } from "@/components/wbs/wbs-scurve-chart";
+import { PlanProgressReviewQueue } from "@/components/planning/plan-progress-review-queue";
 
-const SUB_TAB_IDS = ["lookahead", "weekly", "scurve"] as const;
+const SUB_TAB_IDS = ["lookahead", "weekly", "scurve", "progress-reviews"] as const;
 type SubTab = (typeof SUB_TAB_IDS)[number];
 
 function LookaheadPageContent() {
@@ -44,6 +45,10 @@ function LookaheadPageContent() {
       )}
 
       {tab === "scurve" && <WbsScurveChart />}
+
+      {tab === "progress-reviews" && (
+        <div className="p-6"><PlanProgressReviewQueue /></div>
+      )}
     </div>
   );
 }

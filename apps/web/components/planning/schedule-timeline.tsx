@@ -4,7 +4,9 @@ import { useMemo } from "react";
 import { Lock } from "lucide-react";
 import type { TaskFloat } from "@/lib/planning/schedule-engine";
 import { cn } from "@/lib/utils";
-import { GanttBar } from "./gantt-bar";
+import { GanttBar, type GanttGhostRef } from "./gantt-bar";
+import { GanttProgressLine, type ProgressLineStyle } from "./gantt-progress-line";
+import type { GanttBarStyleSettings } from "@/lib/planning/gantt-bar-style";
 import { GanttDependencyLines } from "./gantt-dependency-lines";
 import { GanttHeader } from "./gantt-header";
 import { GanttMilestone } from "./gantt-milestone";
@@ -48,6 +50,7 @@ export function toGanttTask(t: SheetTask, f?: TaskFloat): GanttTask {
     baseline_start_date: t.baseline_start_date,
     baseline_finish_date: t.baseline_finish_date,
     is_critical: f?.critical ?? false,
+    is_near_critical: f?.nearCritical ?? false,
     total_float: f?.totalFloat ?? null,
     free_float: f?.freeFloat ?? null,
   };
@@ -77,7 +80,14 @@ interface ScheduleTimelineProps {
   referenceDates: Map<string, { start: string | null; end: string | null }> | null;
   /** Tooltip label for the reference ghost bar (e.g. "Baseline", "Internal Schedule — Rev 2"). */
   referenceLabel: string;
+  /** Second comparison overlay ("Compare B") — same shape as `referenceDates`. `null` = none. */
+  compareDates: Map<string, { start: string | null; end: string | null }> | null;
+  compareLabel: string;
+  /** Viewing a saved revision — disable every bar interaction (drag / link / wheel). */
+  readOnly?: boolean;
   showDependencies: boolean;
+  /** Show the FS/SS/FF/SF text badge on each dependency link. */
+  showLinkLabels?: boolean;
   /** Show the critical-path red highlight (bar color + float badge). */
   showCritical: boolean;
   /** Every selected task id (multi-select). */
@@ -95,6 +105,17 @@ interface ScheduleTimelineProps {
   onSetProgress: (taskId: string, pct: number) => void;
   /** Double-clicking the timescale header opens the Timescale dialog (MS Project). */
   onOpenTimescale: () => void;
+  /** Formats a date for the bar tooltip per the user's date-format preference. Defaults to gantt-utils' formatDate. */
+  formatDate?: (iso: string | null | undefined) => string;
+  showProgressLine?: boolean;
+  progressLineDate?: string;
+  progressLineStyle?: ProgressLineStyle;
+  onEditProgressLine?: () => void;
+  barStyle?: GanttBarStyleSettings;
+  /** Double-clicking a task bar opens the "Format Bar" dialog (MS-Project style). */
+  onFormatBar?: () => void;
+  /** Show the total-float label above each bar. Defaults to on. */
+  showFloat?: boolean;
 }
 
 export function ScheduleTimeline({
@@ -112,7 +133,11 @@ export function ScheduleTimeline({
   lockedTaskIds,
   referenceDates,
   referenceLabel,
+  compareDates,
+  compareLabel,
+  readOnly = false,
   showDependencies,
+  showLinkLabels = true,
   showCritical,
   selectedTaskIds,
   todayX,
@@ -123,6 +148,14 @@ export function ScheduleTimeline({
   onEditLink,
   onSetProgress,
   onOpenTimescale,
+  formatDate,
+  showProgressLine = false,
+  progressLineDate,
+  progressLineStyle,
+  onEditProgressLine,
+  barStyle,
+  onFormatBar,
+  showFloat = true,
 }: ScheduleTimelineProps) {
   const chartW = Math.max(totalDays * dayWidth, 1);
   const gridPx = Math.max(
@@ -251,6 +284,8 @@ export function ScheduleTimeline({
           containerWidth={chartW}
           highlightIds={highlightIds}
           showAll={showDependencies}
+          visible={showDependencies}
+          showLabels={showLinkLabels}
           onEditLink={onEditLink}
         />
 
@@ -282,6 +317,7 @@ export function ScheduleTimeline({
                     width={getBarWidth(es, ef, dayWidth)}
                     dayWidth={dayWidth}
                     height={Math.min(18, rowHeight - 12)}
+                    depth={vr.depth}
                   />
                 )}
               </div>
@@ -295,6 +331,26 @@ export function ScheduleTimeline({
           const ef = task.end_date ?? task.baseline_finish_date ?? es;
           const x = toX(es, rangeMin, dayWidth);
           const w = getBarWidth(es, ef, dayWidth);
+          // Comparison overlays — each drawn at its own schedule's start/length
+          // (not stretched over the live bar). Compare A = referenceDates,
+          // Compare B = compareDates.
+          const ghostRefs: GanttGhostRef[] = [];
+          for (const [src, label, tone] of [
+            [referenceDates, referenceLabel, "a"],
+            [compareDates, compareLabel, "b"],
+          ] as const) {
+            const d = src?.get(task.id);
+            if (d?.start && d.end) {
+              ghostRefs.push({
+                label,
+                startISO: d.start,
+                endISO: d.end,
+                left: toX(d.start, rangeMin, dayWidth),
+                width: getBarWidth(d.start, d.end, dayWidth),
+                tone,
+              });
+            }
+          }
           const locked = lockedTaskIds.has(task.id);
 
           return (
@@ -320,7 +376,7 @@ export function ScheduleTimeline({
                   name={task.task_name}
                   date={task.start_date ?? undefined}
                   onClick={() => onSelectRow(vr.row.id)}
-                  onStartLink={locked ? undefined : (e) => onStartLink(task.id, e)}
+                  onStartLink={locked || readOnly ? undefined : (e) => onStartLink(task.id, e)}
                 />
               ) : (
                 <GanttBar
@@ -329,13 +385,17 @@ export function ScheduleTimeline({
                   width={w}
                   dayWidth={dayWidth}
                   onClick={() => onSelectRow(vr.row.id)}
-                  onReschedule={locked ? undefined : (id, s, f) => onReschedule(id, s, f)}
-                  onStartLink={locked ? undefined : (e) => onStartLink(task.id, e)}
-                  onSetProgress={locked ? undefined : onSetProgress}
+                  onReschedule={locked || readOnly ? undefined : (id, s, f) => onReschedule(id, s, f)}
+                  onStartLink={locked || readOnly ? undefined : (e) => onStartLink(task.id, e)}
+                  onSetProgress={locked || readOnly ? undefined : onSetProgress}
                   zoom={zoom}
                   rangeMin={rangeMin}
                   highlightCritical={showCritical}
-                  referenceLabel={referenceLabel}
+                  references={ghostRefs.length ? ghostRefs : undefined}
+                  formatDate={formatDate}
+                  barStyle={barStyle}
+                  onFormatBar={onFormatBar}
+                  showFloat={showFloat}
                 />
               )}
               {locked && (
@@ -361,6 +421,21 @@ export function ScheduleTimeline({
           <div
             className="pointer-events-none absolute inset-y-0 z-20 border-l-2 border-dashed border-red-500"
             style={{ left: todayX }}
+          />
+        )}
+
+        {/* MS-Project-style progress line — a zigzag through each row's actual % complete */}
+        {showProgressLine && progressLineDate && progressLineStyle && onEditProgressLine && (
+          <GanttProgressLine
+            visibleRows={visibleRows}
+            lineDate={progressLineDate}
+            rangeMin={rangeMin}
+            dayWidth={dayWidth}
+            rowHeight={rowHeight}
+            containerWidth={chartW}
+            containerHeight={bodyHeight}
+            style={progressLineStyle}
+            onEdit={onEditProgressLine}
           />
         )}
       </div>

@@ -266,7 +266,7 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
           <div className="rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold">Payments</h3>
-              <Link href="/dashboard/qs/payments">
+              <Link href="/dashboard/qs/claims?sub=payments">
                 <Button variant="outline" size="sm">
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open Payments Module
                 </Button>

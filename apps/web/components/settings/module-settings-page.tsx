@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
   LayoutDashboard,
@@ -39,7 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ModuleSetting } from "@/lib/module-settings-service";
-import { getModuleSettings, toggleModule } from "@/lib/module-settings-service";
+import { getModuleSettings } from "@/lib/module-settings-service";
 import { NAV_ITEM_CATALOG, type NavCatalogEntry } from "@/lib/nav-item-catalog";
 import { useModuleSettings } from "@/contexts/module-settings-context";
 
@@ -62,6 +61,11 @@ export function ModuleSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
 
+  // Live toggle state comes from the shared context, which is kept in sync by the
+  // realtime postgres_changes subscription — toggling updates the sidebar + module
+  // hub everywhere without a page refresh.
+  const { isModuleActive, toggleModule, loading: contextLoading } = useModuleSettings();
+
   useEffect(() => {
     getModuleSettings(true).then((data) => {
       setModules(data);
@@ -78,23 +82,10 @@ export function ModuleSettingsPage() {
     const newActive = !currentActive;
     setToggling(moduleKey);
 
-    const supabase = createClient();
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) {
-      toast.error("Not authenticated.");
-      setToggling(null);
-      return;
-    }
-
-    const result = await toggleModule(moduleKey, newActive, data.user.id);
+    const result = await toggleModule(moduleKey, newActive);
     setToggling(null);
 
     if (result.success) {
-      setModules((prev) =>
-        prev.map((m) =>
-          m.module_key === moduleKey ? { ...m, is_active: newActive } : m
-        )
-      );
       toast.success(
         `${newActive ? "Enabled" : "Disabled"} ${modules.find((m) => m.module_key === moduleKey)?.display_name}`
       );
@@ -103,7 +94,7 @@ export function ModuleSettingsPage() {
     }
   }
 
-  if (loading) {
+  if (loading || contextLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -111,7 +102,7 @@ export function ModuleSettingsPage() {
     );
   }
 
-  const activeCount = modules.filter((m) => m.is_active).length;
+  const activeCount = modules.filter((m) => isModuleActive(m.module_key)).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -119,7 +110,8 @@ export function ModuleSettingsPage() {
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Module Visibility</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Toggle modules on or off for production. Disabled modules are hidden from the sidebar and their routes are blocked.
+            Toggle modules on or off globally. Disabled modules are hidden from the sidebar
+            and the module hub for all users; their routes remain reachable by direct URL.
           </p>
         </div>
         <Badge variant="outline" className="text-xs">
@@ -132,13 +124,14 @@ export function ModuleSettingsPage() {
           const Icon = MODULE_ICONS[mod.module_key] ?? Settings;
           const isToggling = toggling === mod.module_key;
           const isProtected = mod.module_key === "administration";
+          const isActive = isModuleActive(mod.module_key);
 
           return (
             <Card
               key={mod.module_key}
               className={cn(
                 "relative transition-all duration-200",
-                !mod.is_active && "opacity-60"
+                !isActive && "opacity-60"
               )}
             >
               <CardHeader className="pb-2">
@@ -147,7 +140,7 @@ export function ModuleSettingsPage() {
                     <div
                       className={cn(
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                        mod.is_active
+                        isActive
                           ? "bg-primary/10 text-primary"
                           : "bg-muted text-muted-foreground"
                       )}
@@ -175,23 +168,23 @@ export function ModuleSettingsPage() {
                     {!isProtected && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Info className="h-3 w-3" />
-                        {mod.is_active ? "Visible in sidebar" : "Hidden from sidebar"}
+                        {isActive ? "Visible in sidebar & hub" : "Hidden from sidebar & hub"}
                       </span>
                     )}
                   </div>
                   <button
                     type="button"
                     disabled={isProtected || isToggling}
-                    onClick={() => handleToggle(mod.module_key, mod.is_active)}
+                    onClick={() => handleToggle(mod.module_key, isActive)}
                     className={cn(
                       "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                      mod.is_active ? "bg-primary" : "bg-input"
+                      isActive ? "bg-orange-500" : "bg-input"
                     )}
                   >
                     <span
                       className={cn(
                         "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200",
-                        mod.is_active ? "translate-x-6" : "translate-x-1"
+                        isActive ? "translate-x-6" : "translate-x-1"
                       )}
                     />
                   </button>
@@ -219,7 +212,7 @@ export function ModuleSettingsPage() {
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-        <strong>Note:</strong> Disabling a module will hide it from the navigation sidebar and block direct URL access. Admins will still see disabled modules in this settings page. The Administration module is always active and cannot be turned off.
+        <strong>Note:</strong> Disabling a module hides it from the navigation sidebar and the module hub. Direct URL access to a disabled module still works — this control affects visibility, not access. Admins will still see disabled modules in this settings page. The Administration module is always active and cannot be turned off.
       </div>
     </div>
   );
@@ -303,7 +296,7 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
                 onClick={() => handleNavToggle(entry)}
                 className={cn(
                   "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                  active ? "bg-primary" : "bg-input",
+                  active ? "bg-orange-500" : "bg-input",
                 )}
               >
                 <span

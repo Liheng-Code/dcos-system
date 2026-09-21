@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
 
@@ -31,7 +32,14 @@ interface ProgressChartProps {
   description?: string;
   height?: number;
   formatY?: (val: number) => string;
+  formatX?: (val: string) => string;
   formatTooltip?: (val: number, name: string) => string;
+  /** Y-axis domain — defaults to a fixed 0–100 (percent). Use `[0, "auto"]` for cost. */
+  yDomain?: [number | "auto", number | "auto"];
+  /** Draws a vertical "as of today" reference line at this x-value (must match one of `data`'s `xKey` values exactly). */
+  todayX?: string;
+  /** Pre-formatted value shown as a label at the top of the today line, e.g. "72.4%". */
+  todayLabel?: string;
 }
 
 export function ProgressChart({
@@ -46,7 +54,11 @@ export function ProgressChart({
   description,
   height = 280,
   formatY,
+  formatX,
   formatTooltip,
+  yDomain = [0, 100],
+  todayX,
+  todayLabel,
 }: ProgressChartProps) {
   return (
     <ChartWrapper
@@ -61,30 +73,34 @@ export function ProgressChart({
       <ResponsiveContainer width="100%" height={height}>
         <LineChart
           data={data as Record<string, number | string>[]}
-          margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
+          margin={{ top: 22, right: 8, left: -8, bottom: 0 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey={xKey}
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
-            axisLine={{ stroke: "#e2e8f0" }}
+            axisLine={{ stroke: "var(--border)" }}
+            tickFormatter={formatX}
+            minTickGap={24}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={formatY}
-            domain={[0, 100]}
+            domain={yDomain}
           />
           <Tooltip
             formatter={formatTooltip ? (val, name) => [formatTooltip(Number(val), String(name)), String(name)] : undefined}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+              border: "1px solid var(--border)",
+              backgroundColor: "var(--popover)",
+              color: "var(--popover-foreground)",
             }}
+            labelStyle={{ color: "var(--popover-foreground)" }}
           />
           {series.length > 1 && (
             <Legend
@@ -107,6 +123,26 @@ export function ProgressChart({
               connectNulls
             />
           ))}
+          {todayX && (
+            <ReferenceLine
+              x={todayX}
+              stroke="#dc2626"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              label={
+                todayLabel
+                  ? {
+                      value: todayLabel,
+                      position: "insideTopRight",
+                      fill: "#dc2626",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      offset: 8,
+                    }
+                  : undefined
+              }
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </ChartWrapper>

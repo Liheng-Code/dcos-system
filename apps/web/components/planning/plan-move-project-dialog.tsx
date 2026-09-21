@@ -14,7 +14,7 @@ interface Props {
   /** Block the move when a locked backbone exists and the user isn't a manager. */
   blocked: boolean;
   onClose: () => void;
-  onMoved: () => void;
+  onMoved: () => void | Promise<void>;
 }
 
 export function PlanMoveProjectDialog({
@@ -56,7 +56,9 @@ export function PlanMoveProjectDialog({
     setBusy(true);
     try {
       const res = await moveProject(projectId, opts);
-      onMoved();
+      // Wait for the caller to reload + reschedule before closing, so the grid
+      // and Gantt repaint with the new dates instead of the pre-move ones.
+      await onMoved();
       onClose();
       if (res.moved > 0) toast.message(`Project moved · ${res.moved} tasks shifted`);
     } catch (e) {

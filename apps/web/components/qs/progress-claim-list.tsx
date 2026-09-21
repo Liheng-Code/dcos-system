@@ -85,7 +85,7 @@ export function ProgressClaimList({ projectId, projectName = projectId }: Props)
   const [expandedId, setExpanded] = useState<string | null>(null);
   const [itemsMap, setItemsMap] = useState<Record<string, QsClaimItem[]>>({});
   const [approvalsMap, setApprovalsMap] = useState<Record<string, QsClaimApproval[]>>({});
-  const [inputs, setInputs]     = useState<Record<string, { this_period: string; materials_stored: string; client_adjustment: string; adjustment_reason: string }>>({});
+  const [inputs, setInputs]     = useState<Record<string, { this_period: string; materials_stored: string; client_adjustment: string; adjustment_reason: string; override_reason: string }>>({});
   const [saving, setSaving]     = useState(false);
   const [rejectId, setRejectId]     = useState<string | null>(null);
   const [rejectStep, setRejectStep] = useState<number | null>(null);
@@ -105,13 +105,14 @@ export function ProgressClaimList({ projectId, projectName = projectId }: Props)
     try {
       const items = await getClaimItems(claimId);
       setItemsMap((p) => ({ ...p, [claimId]: items }));
-      const init: Record<string, { this_period: string; materials_stored: string; client_adjustment: string; adjustment_reason: string }> = {};
+      const init: Record<string, { this_period: string; materials_stored: string; client_adjustment: string; adjustment_reason: string; override_reason: string }> = {};
       for (const i of items) {
         init[i.id] = {
           this_period: String(i.this_period),
           materials_stored: String(i.materials_stored),
           client_adjustment: String(i.client_adjustment ?? 0),
           adjustment_reason: i.adjustment_reason ?? "",
+          override_reason: i.override_reason ?? "",
         };
       }
       setInputs((p) => ({ ...p, ...init }));
@@ -227,6 +228,7 @@ export function ProgressClaimList({ projectId, projectName = projectId }: Props)
           parseFloat(inp.materials_stored) || 0,
           parseFloat(inp.client_adjustment) || 0,
           inp.adjustment_reason || null,
+          inp.override_reason || null,
         );
       }));
       const updated = await recalculateClaim(claimId);
@@ -543,6 +545,7 @@ export function ProgressClaimList({ projectId, projectName = projectId }: Props)
                               <th className="px-3 py-2 text-left">Description</th>
                               <th className="px-3 py-2 text-right w-28">Scheduled</th>
                               <th className="px-3 py-2 text-right w-24">Prev</th>
+                              <th className="px-3 py-2 text-center w-16">Plan %</th>
                               <th className="px-3 py-2 text-right w-28">This Period</th>
                               <th className="px-3 py-2 text-right w-24">Stored</th>
                               <th className="px-3 py-2 text-right w-28">Adjustment</th>
@@ -554,27 +557,48 @@ export function ProgressClaimList({ projectId, projectName = projectId }: Props)
                             {groups.map((group) => (
                               <Fragment key={group.sectionTitle}>
                                 <tr key={group.sectionTitle} className="bg-slate-50">
-                                  <td colSpan={8} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                  <td colSpan={9} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                     {group.sectionTitle}
                                   </td>
                                 </tr>
                                 {group.rows.map((item) => {
-                                  const inp = inputs[item.id] ?? { this_period: "0", materials_stored: "0", client_adjustment: "0", adjustment_reason: "" };
+                                  const inp = inputs[item.id] ?? { this_period: "0", materials_stored: "0", client_adjustment: "0", adjustment_reason: "", override_reason: "" };
+                                  const hasPlanningPct = item.planning_pct !== null && item.planning_pct !== undefined;
+                                  const planningImplied = hasPlanningPct
+                                    ? Math.max(0, (Number(item.planning_pct) / 100) * Number(item.scheduled_value) - Number(item.prev_completed))
+                                    : null;
+                                  const deviates = planningImplied !== null && Math.abs((parseFloat(inp.this_period) || 0) - planningImplied) > 0.01;
                                   return (
                                     <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50/40">
                                       <td className="px-3 py-2 text-slate-700 max-w-[200px] truncate">{item.description}</td>
                                       <td className="px-3 py-2 text-right text-slate-600">${fmt(Number(item.scheduled_value))}</td>
                                       <td className="px-3 py-2 text-right text-slate-500">${fmt(Number(item.prev_completed))}</td>
+                                      <td className="px-3 py-2 text-center text-slate-500" title={hasPlanningPct ? `Planning-confirmed as of ${item.planning_snapshot_date ?? "—"}` : "No linked WBS node / planning progress"}>
+                                        {hasPlanningPct ? `${Number(item.planning_pct).toFixed(1)}%` : "—"}
+                                      </td>
                                       <td className="px-3 py-2 text-right">
                                         {isDraft ? (
-                                          <input
-                                            type="number" min="0" step="any"
-                                            value={inp.this_period}
-                                            onChange={(e) => setInputs((p) => ({ ...p, [item.id]: { ...inp, this_period: e.target.value } }))}
-                                            className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-right text-xs outline-none focus:border-primary"
-                                          />
+                                          <div className="space-y-1">
+                                            <input
+                                              type="number" min="0" step="any"
+                                              value={inp.this_period}
+                                              onChange={(e) => setInputs((p) => ({ ...p, [item.id]: { ...inp, this_period: e.target.value } }))}
+                                              className={cn(
+                                                "w-full rounded border bg-white px-2 py-1 text-right text-xs outline-none focus:border-primary",
+                                                deviates ? "border-amber-400 bg-amber-50" : "border-slate-200",
+                                              )}
+                                            />
+                                            {deviates && (
+                                              <input
+                                                value={inp.override_reason}
+                                                onChange={(e) => setInputs((p) => ({ ...p, [item.id]: { ...inp, override_reason: e.target.value } }))}
+                                                placeholder="Override reason (required)"
+                                                className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs outline-none focus:border-primary"
+                                              />
+                                            )}
+                                          </div>
                                         ) : (
-                                          <span className="text-slate-600">${fmt(Number(item.this_period))}</span>
+                                          <span className={cn("text-slate-600", deviates && "text-amber-600 font-medium")}>${fmt(Number(item.this_period))}</span>
                                         )}
                                       </td>
                                       <td className="px-3 py-2 text-right">

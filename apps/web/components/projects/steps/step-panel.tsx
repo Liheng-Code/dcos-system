@@ -44,6 +44,8 @@ export interface WizardFormState {
   category: string;
   building_type: string;
   location: string;
+  latitude: string;
+  longitude: string;
   time_zone: string;
   dlp_period: string;
   retention: string;
@@ -73,6 +75,8 @@ export function formStateFromProject(p: Project | null): WizardFormState {
     category: p?.category ?? "",
     building_type: p?.building_type ?? "",
     location: p?.location ?? "",
+    latitude: p?.latitude?.toString() ?? "",
+    longitude: p?.longitude?.toString() ?? "",
     time_zone: p?.time_zone ?? "Asia/Phnom_Penh",
     dlp_period: p?.dlp_period ?? "",
     retention: p?.retention?.toString() ?? "",
@@ -103,6 +107,8 @@ export function formToPayload(form: WizardFormState) {
     category: form.category || null,
     building_type: form.building_type || null,
     location: form.location || null,
+    latitude: form.latitude ? parseFloat(form.latitude) : null,
+    longitude: form.longitude ? parseFloat(form.longitude) : null,
     time_zone: form.time_zone || "Asia/Phnom_Penh",
     dlp_period: form.dlp_period || null,
     retention: form.retention ? parseFloat(form.retention) : null,

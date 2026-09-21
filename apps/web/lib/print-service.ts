@@ -32,10 +32,17 @@ function fmt(n: number | null | undefined): string {
   return Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function openPrint(html: string, title: string): void {
+/**
+ * Opens a popup window, writes a self-contained printable document, and
+ * triggers the browser's print dialog (the user saves as PDF from there).
+ * `extraCss` is appended after `BASE_STYLE` so a caller can override page
+ * setup (e.g. `@page` size/margin) or add its own classes without touching
+ * the shared base styles every other document here relies on.
+ */
+export function openPrint(html: string, title: string, extraCss?: string): void {
   const win = window.open("", "_blank");
   if (!win) { alert("Allow pop-ups to generate the PDF."); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>${BASE_STYLE}</head><body>${html}</body></html>`);
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>${BASE_STYLE}${extraCss ?? ""}</head><body>${html}</body></html>`);
   win.document.close();
   win.focus();
   setTimeout(() => { win.print(); }, 400);

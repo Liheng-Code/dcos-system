@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, UploadCloud, FolderTree, X } from "lucide-react";
+import { Loader2, FileSpreadsheet, FolderTree, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
-import { WbsImportDialog } from "@/components/wbs/wbs-import-dialog";
+import { MasterWbsImportDialog } from "@/components/wbs/master-wbs-import-dialog";
 import { WbsNodeWorkspace } from "@/components/wbs/wbs-node-workspace";
 import { WbsBuilder, type WbsBuilderApi } from "@/components/wbs/builder/wbs-builder";
 import type { WbsBuilderNode } from "@/components/wbs/builder/wbs-builder-types";
@@ -37,7 +37,7 @@ export function WbsManagementPage() {
   const [nodes, setNodes] = useState<WbsNodeRecord[]>([]);
   const [tasks, setTasks] = useState<WbsTaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showImport, setShowImport] = useState(false);
+  const [showMasterImport, setShowMasterImport] = useState(false);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   // The builder's own copy of the clicked node — lets the panel render instantly
@@ -203,9 +203,9 @@ export function WbsManagementPage() {
             variant="outline"
             size="sm"
             className="rounded-xl"
-            onClick={() => setShowImport(true)}
+            onClick={() => setShowMasterImport(true)}
           >
-            <UploadCloud className="mr-1.5 h-3.5 w-3.5" /> Import WBS
+            <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" /> Import Master WBS
           </Button>
         </div>
       </header>
@@ -264,10 +264,10 @@ export function WbsManagementPage() {
         )}
       </main>
 
-      {showImport && (
-        <WbsImportDialog
+      {showMasterImport && (
+        <MasterWbsImportDialog
           projectId={selectedProjectId}
-          onClose={() => setShowImport(false)}
+          onClose={() => setShowMasterImport(false)}
           onImported={() => {
             refreshAll();
             builderApiRef.current?.reload();

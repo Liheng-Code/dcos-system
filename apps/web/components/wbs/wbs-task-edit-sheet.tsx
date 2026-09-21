@@ -15,6 +15,7 @@ import { assignTaskToProfile } from "@/lib/tasks/assign-task";
 import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } from "@/lib/planning/resource-service";
 import { useProject } from "@/components/dashboard/project-context";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
+import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
 
 interface WbsTaskEditSheetProps {
   task: WbsTaskRecord | null;
@@ -129,6 +130,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   const [saving, setSaving] = useState(false);
 
   const [progressVal, setProgressVal] = useState(task?.progress?.toString() ?? "0");
+  const [hasActivitySteps, setHasActivitySteps] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [delayStatus, setDelayStatus] = useState(task?.delay_status ?? "on_track");
   const [delayReason, setDelayReason] = useState(task?.delay_reason ?? "");
@@ -1209,14 +1211,30 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
           <div>
             <Label className="text-[11px] mb-1.5 block">Progress</Label>
             <div className="flex items-center gap-3">
-              <input type="number" min="0" max="100" value={progressVal} onChange={(e) => setProgressVal(e.target.value)} disabled={!canEditReceiver} className="w-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-center outline-hidden focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed" />
+              <input type="number" min="0" max="100" value={progressVal} onChange={(e) => setProgressVal(e.target.value)} disabled={!canEditReceiver || hasActivitySteps} className="w-20 rounded-lg border border-border bg-background px-3 py-2 text-sm text-center outline-hidden focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed" />
               <span className="text-sm text-muted-foreground">%</span>
               <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${Math.min(100, Math.max(0, progressNum))}%` }} />
               </div>
               <span className="text-sm font-semibold tabular-nums text-muted-foreground">{progressNum}%<span className="text-slate-300">/100%</span></span>
             </div>
+            {hasActivitySteps && (
+              <p className="mt-1 text-[10px] text-muted-foreground">Calculated automatically from this activity&apos;s steps below — edit step % complete to change it.</p>
+            )}
           </div>
+
+          {task && (
+            <WbsActivityStepsPanel
+              taskId={task.id}
+              taskStart={task.start_date}
+              taskEnd={task.end_date}
+              canEdit={canEditReceiver}
+              onStepsChange={(hasSteps, computed) => {
+                setHasActivitySteps(hasSteps);
+                if (hasSteps && computed != null) setProgressVal(String(computed));
+              }}
+            />
+          )}
 
           <div>
             <Label className="text-[11px] mb-1.5 block">Status <span className="text-red-400 cursor-help" title="Required">*</span></Label>

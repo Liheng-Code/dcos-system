@@ -3,10 +3,12 @@
 import { useState } from "react";
 import {
   Globe, Mail, Phone, MapPin, Pencil, Trash2, ChevronDown,
-  Users2, UserPlus, Loader2, Crown,
+  Users2, UserPlus, Loader2, Crown, XCircle, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import { Sparkline } from "@/components/stakeholders/sparkline";
 import {
   ALL_TYPE_LABELS, TYPE_COLORS, TYPE_ACCENTS, AVATAR_COLORS, STATUS_COLORS, initials,
@@ -31,14 +33,28 @@ interface StakeholderCompanyCardProps {
   onConnect: () => void;
   onDisconnect: () => void;
   onBulkAssign: () => void;
+  onStaffChange: () => void;
+}
+
+interface MemberFormState {
+  full_name: string;
+  job_title: string;
+  email: string;
+  phone: string;
+  is_primary_contact: boolean;
 }
 
 export function StakeholderCompanyCard({
   stakeholder, staff, assignedProjectIds, trend,
   selectedProjectId, selectedProjectName, busy,
-  onEdit, onDelete, onConnect, onDisconnect, onBulkAssign,
+  onEdit, onDelete, onConnect, onDisconnect, onBulkAssign, onStaffChange,
 }: StakeholderCompanyCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [memberSaving, setMemberSaving] = useState(false);
+  const [memberForm, setMemberForm] = useState<MemberFormState>({
+    full_name: "", job_title: "", email: "", phone: "", is_primary_contact: false,
+  });
 
   const hasProject = !!selectedProjectId;
   const isConnected = hasProject && assignedProjectIds.includes(selectedProjectId);
@@ -56,6 +72,47 @@ export function StakeholderCompanyCard({
   function handleToggleConnection(action: string) {
     if (action === "connect") onConnect();
     else if (action === "disconnect") onDisconnect();
+  }
+
+  function openAddMember() {
+    setMemberForm({ full_name: "", job_title: "", email: "", phone: "", is_primary_contact: false });
+    setShowAddMember(true);
+  }
+
+  async function handleAddMember() {
+    if (!memberForm.full_name.trim()) {
+      toast.error("Full name is required");
+      return;
+    }
+    setMemberSaving(true);
+    const supabase = createClient();
+
+    if (memberForm.is_primary_contact) {
+      await supabase.from("stakeholder_staff")
+        .update({ is_primary_contact: false })
+        .eq("stakeholder_id", stakeholder.id)
+        .neq("id", "");
+    }
+
+    const payload = {
+      stakeholder_id: stakeholder.id,
+      full_name: memberForm.full_name.trim(),
+      job_title: memberForm.job_title.trim() || null,
+      email: memberForm.email.trim() || null,
+      phone: memberForm.phone.trim() || null,
+      is_primary_contact: memberForm.is_primary_contact,
+    };
+
+    const { error } = await supabase.from("stakeholder_staff").insert(payload);
+    setMemberSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Member added");
+    setShowAddMember(false);
+    setMemberForm({ full_name: "", job_title: "", email: "", phone: "", is_primary_contact: false });
+    onStaffChange();
   }
 
   return (
@@ -139,24 +196,23 @@ export function StakeholderCompanyCard({
         <div className="flex flex-col gap-2">
           <Button
             size="sm"
-            className="w-full"
+            className="w-full bg-orange-500 text-white hover:enabled:bg-orange-600 active:enabled:bg-orange-700 disabled:bg-orange-500 disabled:text-white disabled:opacity-100"
             disabled={!hasProject || isConnected || busy}
             onClick={onConnect}
             title={!hasProject ? "Select a project to assign" : undefined}
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-            {isConnected ? "Assigned" : "Single Assign"}
+            {isConnected ? "Assigned to Project" : "Single Assign"}
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            className="w-full"
+            className="w-full bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 disabled:bg-orange-500/40 disabled:text-white/60"
             disabled={!hasProject || busy}
             onClick={onBulkAssign}
             title={!hasProject ? "Select a project to assign" : undefined}
           >
             <Users2 className="h-3.5 w-3.5" />
-            Bulk HR Assign
+            Member Assign
           </Button>
         </div>
 
@@ -189,7 +245,7 @@ export function StakeholderCompanyCard({
           </select>
         </div>
 
-        {/* Roster deep-dive */}
+        {/* Members */}
         <div className="mt-auto">
           <button
             type="button"
@@ -198,34 +254,117 @@ export function StakeholderCompanyCard({
           >
             <span className="flex items-center gap-1.5">
               <Users2 className="h-3.5 w-3.5" />
-              Roster Deep-Dive ({staff.length})
+              Members ({staff.length})
             </span>
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
           </button>
           {expanded && (
-            <div className="mt-2 space-y-1">
+            <div className="mt-2 space-y-1.5">
               {staff.length === 0 ? (
                 <p className="py-2 text-xs text-muted-foreground">No personnel registered.</p>
               ) : (
-                staff.map((member, i) => (
-                  <div key={member.id} className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
-                    <div className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-medium",
-                      AVATAR_COLORS[i % AVATAR_COLORS.length],
-                    )}>
-                      {initials(member.full_name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">{member.full_name}</p>
-                      {member.job_title && (
-                        <p className="truncate text-[10px] text-muted-foreground">{member.job_title}</p>
+                <div className="space-y-1">
+                  {staff.map((member, i) => (
+                    <div key={member.id} className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                      <div className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-medium",
+                        AVATAR_COLORS[i % AVATAR_COLORS.length],
+                      )}>
+                        {initials(member.full_name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{member.full_name}</p>
+                        {member.job_title && (
+                          <p className="truncate text-[10px] text-muted-foreground">{member.job_title}</p>
+                        )}
+                      </div>
+                      {member.is_primary_contact && (
+                        <Crown className="h-3 w-3 shrink-0 text-amber-500" aria-label="Primary contact" />
                       )}
                     </div>
-                    {member.is_primary_contact && (
-                      <Crown className="h-3 w-3 shrink-0 text-amber-500" aria-label="Primary contact" />
-                    )}
+                  ))}
+                </div>
+              )}
+
+              {showAddMember ? (
+                <div className="space-y-2 rounded-md border border-border bg-muted/40 p-2.5">
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground">Full Name *</label>
+                    <input
+                      value={memberForm.full_name}
+                      onChange={(e) => setMemberForm((f) => ({ ...f, full_name: e.target.value }))}
+                      placeholder="e.g. John Doe"
+                      className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+                    />
                   </div>
-                ))
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground">Job Title</label>
+                    <input
+                      value={memberForm.job_title}
+                      onChange={(e) => setMemberForm((f) => ({ ...f, job_title: e.target.value }))}
+                      placeholder="e.g. Site Engineer"
+                      className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-muted-foreground">Email</label>
+                      <input
+                        type="email"
+                        value={memberForm.email}
+                        onChange={(e) => setMemberForm((f) => ({ ...f, email: e.target.value }))}
+                        placeholder="email@company.com"
+                        className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-muted-foreground">Phone</label>
+                      <input
+                        value={memberForm.phone}
+                        onChange={(e) => setMemberForm((f) => ({ ...f, phone: e.target.value }))}
+                        placeholder="+855 12 000 000"
+                        className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={memberForm.is_primary_contact}
+                      onChange={(e) => setMemberForm((f) => ({ ...f, is_primary_contact: e.target.checked }))}
+                      className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-xs text-muted-foreground">Primary contact</span>
+                  </label>
+                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMember(false)}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddMember}
+                      disabled={!memberForm.full_name.trim() || memberSaving}
+                      className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {memberSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Add
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAddMember}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 active:bg-orange-700"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Add Member
+                </button>
               )}
             </div>
           )}

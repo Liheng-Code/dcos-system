@@ -95,7 +95,7 @@ function ModuleHeaderTabsInner({ activeGroup }: { activeGroup: ModuleNavGroup })
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 shadow-sm shrink-0">
       {activeGroup.items.map(item => {
-        if (!isNavItemActive(item.href)) return null;
+        if (item.hidden || !isNavItemActive(item.href)) return null;
         return (
           <ModuleHeaderTab
             key={item.href}

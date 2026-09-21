@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ReportExport } from "@/components/reports/layout/report-export";
 import { getTaskStatus } from "@/components/planning/task-status";
+import { PlanDelayAnalysis } from "@/components/planning/plan-delay-analysis";
 
 const SUB_TAB_IDS = ["delay", "summary", "milestone"] as const;
 type ReportType = (typeof SUB_TAB_IDS)[number];
@@ -33,8 +33,11 @@ export function PlanScheduleReports() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!selectedProjectId) { setTasks([]); setLoading(false); return; }
+    /* eslint-disable react-hooks/set-state-in-effect */
+    // The "delay" sub-tab renders <PlanDelayAnalysis/>, which loads its own data.
+    if (!selectedProjectId || reportType === "delay") { setTasks([]); setLoading(false); return; }
     setLoading(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
     supabase.from("wbs_tasks").select(
       "id, task_code, task_name, status, discipline, delay_status, delay_reason, priority, start_date, end_date, progress, is_milestone, owner_name, baseline_finish_date"
     ).eq("project_id", selectedProjectId).limit(500).then(({ data, error }) => {
@@ -42,12 +45,7 @@ export function PlanScheduleReports() {
       else setTasks((data || []) as TaskSummary[]);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
-
-  const delayedTasks = useMemo(() =>
-    tasks.filter(t => t.delay_status === "delayed" || t.delay_status === "blocked"),
-    [tasks]
-  );
+  }, [supabase, selectedProjectId, reportType]);
 
   const milestoneTasks = useMemo(() =>
     tasks.filter(t => t.is_milestone),
@@ -68,64 +66,7 @@ export function PlanScheduleReports() {
   return (
     <div className="space-y-4">
       {/* Report content */}
-      {reportType === "delay" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{delayedTasks.length} delayed / blocked tasks</p>
-            <ReportExport
-              data={delayedTasks.map((t) => ({
-                task_code: t.task_code,
-                task_name: t.task_name,
-                discipline: t.discipline,
-                status: t.status,
-                delay_status: t.delay_status,
-                delay_reason: t.delay_reason,
-                progress: t.progress,
-              }))}
-              columns={[
-                { key: "task_code", label: "Task Code" },
-                { key: "task_name", label: "Task Name" },
-                { key: "discipline", label: "Discipline" },
-                { key: "status", label: "Status" },
-                { key: "delay_status", label: "Delay" },
-                { key: "delay_reason", label: "Reason" },
-                { key: "progress", label: "Progress (%)" },
-              ]}
-              filename="schedule-delay-analysis"
-            />
-          </div>
-          <div className="rounded-md border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-2 text-left font-medium">Task</th>
-                  <th className="px-3 py-2 text-left font-medium">Discipline</th>
-                  <th className="px-3 py-2 text-left font-medium">Status</th>
-                  <th className="px-3 py-2 text-left font-medium">Delay Reason</th>
-                  <th className="px-3 py-2 text-center font-medium">Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {delayedTasks.map(t => (
-                  <tr key={t.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">
-                      <span className="font-medium">{t.task_code}</span>
-                      <span className="text-muted-foreground ml-1">{t.task_name}</span>
-                    </td>
-                    <td className="px-3 py-2">{t.discipline || "—"}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">{t.delay_status}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-xs truncate">{t.delay_reason || "—"}</td>
-                    <td className="px-3 py-2 text-center">{t.progress}%</td>
-                  </tr>
-                ))}
-                {!delayedTasks.length && <tr><td colSpan={5} className="text-center py-4 text-sm">No delayed tasks.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {reportType === "delay" && <PlanDelayAnalysis />}
 
       {reportType === "summary" && (
         <div className="space-y-4">

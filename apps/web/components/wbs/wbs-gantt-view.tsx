@@ -33,6 +33,7 @@ function mapWbsTaskToGanttTask(t: WbsTaskRecord): import("@/components/planning/
     baseline_start_date: t.baseline_start_date,
     baseline_finish_date: t.baseline_finish_date,
     is_critical: false,
+    is_near_critical: false,
     total_float: null,
   };
 }

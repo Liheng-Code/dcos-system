@@ -94,11 +94,11 @@ export default function ProfilePage() {
           View your account details and manage your personal information, notifications, and security
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ProfileAccountInfoCard profile={profile} departments={departments} />
         <PersonalInfoCard userId={userId} initial={profile} onSaved={handlePersonalInfoSaved} />
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <NotificationPreferencesPanel />
         <ChangePasswordCard />
       </div>

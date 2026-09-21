@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Plus, Building2, UsersRound, FolderKanban, PieChart,
-  RefreshCw, Search, X,
+  Search, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -228,15 +228,6 @@ export function StakeholderListPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setLoading(true); loadData(); }}
-            title="Reload directory"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            /stakeholder_register
-          </Button>
           <Button size="sm" onClick={() => { setShowCreate(true); setSelected(null); }}>
             <Plus className="h-3.5 w-3.5" />
             Add Stakeholder Company
@@ -340,6 +331,7 @@ export function StakeholderListPage() {
               onConnect={() => handleConnect(s)}
               onDisconnect={() => handleDisconnect(s)}
               onBulkAssign={() => setBulkTarget(s)}
+              onStaffChange={() => loadData()}
             />
           ))}
         </div>

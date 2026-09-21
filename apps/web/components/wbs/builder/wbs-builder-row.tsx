@@ -66,6 +66,12 @@ function cellValue(node: WbsBuilderNode, field: WbsBuilderField): string {
       return node.node_type;
     case "wbs_name":
       return node.wbs_name;
+    case "discipline":
+      return node.discipline ?? "";
+    case "area_label":
+      return node.area_label ?? "";
+    case "cost_code":
+      return node.cost_code ?? "";
     case "status":
       return node.status;
   }
@@ -335,6 +341,20 @@ export function WbsBuilderRowView({
                   </button>
                 </>
               )}
+            </div>
+          );
+        }
+
+        if (col.field === "level_breakdown") {
+          return (
+            <div
+              key={col.field}
+              className="h-full border-r border-border/60"
+              style={{ width: colWidths[col.field] }}
+            >
+              <div className="flex h-full items-center justify-end px-1.5 text-xs tabular-nums text-muted-foreground">
+                {node.level}
+              </div>
             </div>
           );
         }

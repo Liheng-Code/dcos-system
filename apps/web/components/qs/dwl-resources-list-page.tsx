@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, DollarSign, Package, Plus, RefreshCw, Search, Pencil, Trash2, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import * as XLSX from "xlsx";
+import { AlertTriangle, DollarSign, Download, FileSpreadsheet, Package, Plus, Search, Pencil, Trash2, Loader2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,11 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlResourceFormDialog } from "@/components/qs/dwl-resource-form-dialog";
 import { DwlPriceFormDialog } from "@/components/qs/dwl-price-form-dialog";
+import { DwlResourceImportDialog } from "@/components/qs/dwl-resource-import-dialog";
 import {
   DWL_CATEGORIES,
+  dwlDisplayResourceDescription,
   type DwlCategory,
   type DwlCurrentPrice,
   type DwlResource,
@@ -49,16 +54,12 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-function cleanDescription(desc: string): string {
-  return desc
-    .replace(/\s*\(migrated\)/gi, "")
-    .replace(/\s*\(source:[^)]*\)/gi, "")
-    .trim();
-}
+const cleanDescription = dwlDisplayResourceDescription;
 
 export default function DwlResourcesListPage() {
   const supabase = useMemo(() => createClient(), []);
   const { can, loaded: permsLoaded } = useQsPermissions();
+  const searchParams = useSearchParams();
 
   const [tenantId, setTenantId] = useState<string>("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -68,11 +69,14 @@ export default function DwlResourcesListPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
+  // Pre-filled when arriving via a "Price History" link from another module
+  // (e.g. Material Master), so the linked-from item is already isolated.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
 
   const [showResourceForm, setShowResourceForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editResource, setEditResource] = useState<DwlResource | null>(null);
   const [priceFormResource, setPriceFormResource] = useState<DwlResource | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -167,6 +171,40 @@ export default function DwlResourcesListPage() {
   const canEdit = can("qs_libraries", "edit");
   const canDelete = can("qs_libraries", "delete");
 
+  function exportRows() {
+    return filtered.map(({ resource, price }) => ({
+      Code: resource.code,
+      Category: resource.category,
+      Description: cleanDescription(resource.description),
+      Unit: resource.unit,
+      Price: price?.unit_price ?? "",
+      Currency: price?.currency ?? "",
+      Source: price?.source_type ?? "",
+      Supplier: price?.supplier_name ?? "",
+      "Valid From": price?.valid_from ?? "",
+      Status: resource.is_active ? "Active" : "Inactive",
+    }));
+  }
+
+  function handleExcelExport() {
+    const data = exportRows();
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = Object.keys(data[0] ?? {}).map((k) => ({ wch: Math.max(k.length, 12) }));
+    XLSX.utils.book_append_sheet(wb, ws, "Price History");
+    XLSX.writeFile(wb, `Price_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function handleCsvExport() {
+    const data = exportRows();
+    const header = Object.keys(data[0] ?? {});
+    const dataRows = data.map((r) => header.map((h) => {
+      const v = (r as Record<string, string | number>)[h];
+      return typeof v === "number" ? fmtCsvNum(v) : String(v ?? "");
+    }));
+    downloadCsv(`Price_History_${new Date().toISOString().slice(0, 10)}.csv`, [header, ...dataRows]);
+  }
+
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
@@ -199,19 +237,32 @@ export default function DwlResourcesListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Direct Works Cost Library — Resources</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Resource Master</h1>
           <p className="text-sm text-muted-foreground">
-            Level 1: market prices for materials, labor, equipment &amp; subcontract rates, with full price history.
+            Level 1: materials, labor, equipment &amp; subcontract resources with their current price. Full price history is in Price Analytics.
           </p>
         </div>
-        <Button
-          onClick={() => setShowResourceForm(true)}
-          size="sm"
-          disabled={!tenantLoaded || !tenantId || !canCreate}
-          title={!canCreate ? "You do not have permission to add resources" : undefined}
-        >
-          <Plus className="h-4 w-4" /> Add Resource
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={filtered.length === 0}>
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel Export
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCsvExport} disabled={filtered.length === 0}>
+            <Download className="h-3.5 w-3.5" /> CSV Export
+          </Button>
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={() => setShowImport(true)} disabled={!tenantLoaded || !tenantId}>
+              <Upload className="h-3.5 w-3.5" /> Import (Excel/CSV)
+            </Button>
+          )}
+          <Button
+            onClick={() => setShowResourceForm(true)}
+            size="sm"
+            disabled={!tenantLoaded || !tenantId || !canCreate}
+            title={!canCreate ? "You do not have permission to add resources" : undefined}
+          >
+            <Plus className="h-4 w-4" /> Add Resource
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -246,10 +297,6 @@ export default function DwlResourcesListPage() {
           <option value="inactive">Inactive</option>
           <option value="all">All Status</option>
         </select>
-        <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          Refresh
-        </Button>
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length} resources</span>
       </div>
 
@@ -407,6 +454,14 @@ export default function DwlResourcesListPage() {
         tenantId={tenantId}
         userId={userId}
         onCreated={() => void loadData()}
+      />
+
+      <DwlResourceImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        tenantId={tenantId}
+        userId={userId}
+        onImported={() => void loadData()}
       />
 
       {/* Delete Confirmation Dialog */}

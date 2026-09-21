@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ClipboardList, Plus, Loader2, ChevronDown, ChevronRight, Check, X, Trash2 } from "lucide-react";
+import { ClipboardList, Plus, Loader2, ChevronDown, ChevronRight, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -17,6 +17,9 @@ interface WeeklyPlan {
   status: string;
   notes: string | null;
   created_at: string;
+  /** Completion Plan 1.8 — set by close_weekly_plan(). */
+  closed_at: string | null;
+  pcr: number | null;
 }
 
 interface WeeklyPlanTask {
@@ -29,6 +32,9 @@ interface WeeklyPlanTask {
   task_code?: string;
   task_name?: string;
   current_progress?: number;
+  /** Frozen at close time (Completion Plan 1.8) — preferred over current_progress once the plan is closed. */
+  actual_progress?: number | null;
+  met?: boolean | null;
 }
 
 interface AvailableTask {
@@ -90,6 +96,7 @@ export function WbsWeeklyPlan() {
   }, [projectId, supabase]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadPlans() flips its own loading flag
     void loadPlans();
     // Load available tasks for this project
     supabase
@@ -109,12 +116,15 @@ export function WbsWeeklyPlan() {
     const { data } = await supabase
       .from("weekly_plan_tasks")
       .select(`
-        id, weekly_plan_id, wbs_task_id, target_progress, responsible_name, notes,
+        id, weekly_plan_id, wbs_task_id, target_progress, responsible_name, notes, actual_progress, met,
         wbs_tasks (task_code, task_name, progress)
       `)
       .eq("weekly_plan_id", planId);
     if (data) {
-      const rows = (data as any[]).map((r) => ({
+      type RawRow = Omit<WeeklyPlanTask, "task_code" | "task_name" | "current_progress"> & {
+        wbs_tasks: { task_code: string; task_name: string; progress: number } | null;
+      };
+      const rows = (data as unknown as RawRow[]).map((r) => ({
         ...r,
         task_code: r.wbs_tasks?.task_code,
         task_name: r.wbs_tasks?.task_name,
@@ -175,8 +185,8 @@ export function WbsWeeklyPlan() {
       setResponsibleName({});
       setNewPlan({ week_start_date: mondayOfWeek(1), title: "", notes: "" });
       await loadPlans();
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to create plan");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create plan");
     } finally {
       setCreating(false);
     }
@@ -203,6 +213,43 @@ export function WbsWeeklyPlan() {
     }
   }
 
+  /** Completion Plan 1.8 — freezes actual progress against target and computes PCR at close time. */
+  async function handleCloseWeek(planId: string) {
+    setSaving(true);
+    const { data: pcr, error } = await supabase.rpc("close_weekly_plan", { p_plan_id: planId });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success(`Week closed — PCR ${pcr}%`);
+      setPlans((prev) =>
+        prev.map((p) => (p.id === planId ? { ...p, status: "approved", pcr: pcr as number, closed_at: new Date().toISOString() } : p)),
+      );
+      setPlanTasks((prev) => {
+        const rows = prev[planId];
+        if (!rows) return prev;
+        return {
+          ...prev,
+          [planId]: rows.map((r) => ({
+            ...r,
+            actual_progress: Math.round(r.current_progress ?? 0),
+            met: Math.round(r.current_progress ?? 0) >= r.target_progress,
+          })),
+        };
+      });
+    }
+    setSaving(false);
+  }
+
+  const pcrTrend = useMemo(
+    () =>
+      plans
+        .filter((p) => p.pcr !== null)
+        .slice() // plans is already sorted week_start_date desc
+        .reverse()
+        .slice(-8),
+    [plans],
+  );
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -221,6 +268,28 @@ export function WbsWeeklyPlan() {
           New Plan
         </Button>
       </div>
+
+      {pcrTrend.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">PCR Trend</span>
+          <div className="flex flex-1 items-end gap-1.5">
+            {pcrTrend.map((p) => (
+              <div key={p.id} className="flex flex-col items-center gap-1" title={`${new Date(p.week_start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}: ${p.pcr}%`}>
+                <div
+                  className={cn(
+                    "w-4 rounded-sm",
+                    (p.pcr ?? 0) >= 80 ? "bg-emerald-400" : (p.pcr ?? 0) >= 60 ? "bg-amber-400" : "bg-red-400",
+                  )}
+                  style={{ height: `${Math.max(4, ((p.pcr ?? 0) / 100) * 32)}px` }}
+                />
+              </div>
+            ))}
+          </div>
+          <span className="shrink-0 text-xs font-semibold text-slate-600">
+            {pcrTrend[pcrTrend.length - 1]?.pcr}% latest
+          </span>
+        </div>
+      )}
 
       {/* Create form */}
       {showCreateForm && (
@@ -372,6 +441,17 @@ export function WbsWeeklyPlan() {
                         {plan.title ?? `Week of ${new Date(plan.week_start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                       </span>
                       <span className={statusBadge(plan.status)}>{plan.status}</span>
+                      {plan.pcr !== null && (
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            plan.pcr >= 80 ? "bg-emerald-50 text-emerald-700" : plan.pcr >= 60 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700",
+                          )}
+                          title="Plan Completion Rate — % of planned tasks that met their target progress"
+                        >
+                          PCR {plan.pcr}%
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 text-[10px] text-slate-500">
                       {new Date(plan.week_start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -389,6 +469,18 @@ export function WbsWeeklyPlan() {
                         onClick={(e) => { e.stopPropagation(); void handleSubmitPlan(plan.id); }}
                       >
                         Submit
+                      </Button>
+                    )}
+                    {plan.status === "submitted" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 rounded-lg border-emerald-200 px-2 text-[10px] text-emerald-700 hover:bg-emerald-50"
+                        disabled={saving}
+                        title="Freeze actual progress against target and compute this week's Plan Completion Rate"
+                        onClick={(e) => { e.stopPropagation(); void handleCloseWeek(plan.id); }}
+                      >
+                        Close Week
                       </Button>
                     )}
                     <Button
@@ -420,13 +512,14 @@ export function WbsWeeklyPlan() {
                           <tr className="border-b text-[9px] uppercase text-slate-400">
                             <th className="py-1.5 text-left">Task</th>
                             <th className="py-1.5 text-center">Target %</th>
-                            <th className="py-1.5 text-center">Current %</th>
+                            <th className="py-1.5 text-center">{plan.status === "approved" ? "Actual % (frozen)" : "Current %"}</th>
                             <th className="py-1.5 text-center">Variance</th>
                           </tr>
                         </thead>
                         <tbody>
                           {planTasks[plan.id].map((pt) => {
-                            const variance = (pt.current_progress ?? 0) - pt.target_progress;
+                            const displayed = pt.actual_progress ?? pt.current_progress ?? 0;
+                            const variance = displayed - pt.target_progress;
                             return (
                               <tr key={pt.id} className="border-b border-slate-50 last:border-0">
                                 <td className="py-1.5 pr-2">
@@ -434,7 +527,7 @@ export function WbsWeeklyPlan() {
                                   <span className="ml-1 text-slate-500 truncate max-w-[140px] inline-block align-bottom">{pt.task_name}</span>
                                 </td>
                                 <td className="py-1.5 text-center font-medium">{pt.target_progress}%</td>
-                                <td className="py-1.5 text-center">{pt.current_progress ?? 0}%</td>
+                                <td className="py-1.5 text-center">{displayed}%</td>
                                 <td className={cn("py-1.5 text-center font-semibold",
                                   variance >= 0 ? "text-emerald-600" : "text-red-600"
                                 )}>

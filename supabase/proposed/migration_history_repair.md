@@ -1,0 +1,170 @@
+# Migration history repair - generated 2026-09-21
+
+Remote `supabase_migrations.schema_migrations` has 293 versions; `supabase/migrations` has 436 files.
+**143 local files are not registered remotely** (their tables exist live, so they were applied via SQL editor / MCP, bypassing history).
+A plain `supabase db push` would try to re-apply all of them.
+
+Renamed 2026-09-21 to remove duplicate versions (old -> new). Kept-name file of each pair is the one already registered remotely:
+- 20260718000001_prelim_cost_library -> 20260717000007
+- 20260718000002_prelim_library_seed -> 20260718000008
+- 20260719000001_wbs_node_quantities_project_id -> 20260718000011
+- 20260719000002_wbs_node_quantities_source_ref -> 20260718000012
+- 20260722000004_tender_boq_dwl_assembly_link -> 20260722000002
+- 20260728000001_seed_inv_items_material_list -> 20260727000010
+New slots were chosen so each file still runs before its dependents (e.g. `prelim_library_cases`, `restore_tender_boq_items_rate_source_drift`).
+Left as is on purpose: `20260526_0001_create_profiles.sql` - remote version is literally `20260526` / name `0001_create_profiles`; renaming would desync history.
+
+## Before running anything
+1. Confirm each listed migration's effect really exists live (tables/functions). Do NOT mark a never-applied migration as applied.
+2. Then register them (does not execute SQL, only writes history): `npx supabase migration repair --status applied <versions...>`
+3. `npx supabase migration list` must then show Local == Remote for every row.
+
+## Local files missing from remote history (143)
+- 20260717000007_prelim_cost_library.sql
+- 20260718000008_prelim_library_seed.sql
+- 20260718000011_wbs_node_quantities_project_id.sql
+- 20260718000012_wbs_node_quantities_source_ref.sql
+- 20260722000002_tender_boq_dwl_assembly_link.sql
+- 20260725000004_reload_schema_cache.sql
+- 20260725000005_add_boq_pr_link.sql
+- 20260725000006_enhance_boq_view_with_boq_number.sql
+- 20260725000007_seed_nav_suppliers_group.sql
+- 20260725000008_seed_nav_procurement_groups.sql
+- 20260725000009_seed_nav_procurement_groups_2.sql
+- 20260725000010_seed_nav_overview_group.sql
+- 20260725000011_reorder_nav_procurement_groups.sql
+- 20260725000012_seed_supplier_performance_data.sql
+- 20260727000001_extend_inv_items_stores.sql
+- 20260727000002_create_inv_locations.sql
+- 20260727000003_create_inv_returns.sql
+- 20260727000004_create_inv_tools.sql
+- 20260727000005_create_inv_notifications.sql
+- 20260727000006_add_severity_to_inv_audit_log.sql
+- 20260727000007_register_inventory_module.sql
+- 20260727000008_seed_inv_tools_permissions.sql
+- 20260727000009_drop_procurement_inventory.sql
+- 20260727000010_seed_inv_items_material_list.sql
+- 20260728000001_qs_progress_claims_ar_invoice_link.sql
+- 20260728000002_ipc_contract_terms_and_advance_recovery.sql
+- 20260728000003_qs_claim_approval_chain.sql
+- 20260728000004_qs_claim_submission_document.sql
+- 20260728000005_qs_claim_certification_variance.sql
+- 20260728000006_qs_claim_notifications.sql
+- 20260728000007_landing_public_stats.sql
+- 20260729000001_add_pr_field_enhancements.sql
+- 20260729000002_add_ordered_delivered_to_boq_view.sql
+- 20260729000003_add_over_requisition_guard.sql
+- 20260729000004_add_po_boq_reference.sql
+- 20260729000005_create_budget_confirmations.sql
+- 20260729000006_add_budget_code_to_boq_requisition_view.sql
+- 20260729000007_simplify_budget_confirmation_items.sql
+- 20260729000008_backfill_pr_total_estimated_cost.sql
+- 20260729000009_po_form_enhancements.sql
+- 20260729000010_create_po_revisions.sql
+- 20260730000001_fix_module_settings_rls.sql
+- 20260805000001_create_qto_tables.sql
+- 20260805000002_seed_qto_rbac.sql
+- 20260805000003_seed_qto_data.sql
+- 20260805000004_create_qto_storage.sql
+- 20260806000001_fix_stale_wbs_full_path.sql
+- 20260806000002_create_msp_sync_tables.sql
+- 20260815000001_relocate_stakeholders_nav_to_project.sql
+- 20260817000001_add_leave_type_rounding_expiry.sql
+- 20260817000002_add_payroll_notifications_update_policy.sql
+- 20260817000003_allow_payroll_entries_status_sync.sql
+- 20260817000004_fix_payroll_settings_rls.sql
+- 20260817000005_add_payroll_periods_read_policy.sql
+- 20260817000006_telegram_attendance_checkin.sql
+- 20260817000007_telegram_leave_commands.sql
+- 20260824000001_normalize_profile_department.sql
+- 20260824000002_task_department_scoping.sql
+- 20260824000003_cross_department_task_fields.sql
+- 20260824000004_team_weekly_planning.sql
+- 20260824000005_seed_task_dept_permissions.sql
+- 20260824050000_usr_revoke_user_sessions_function.sql
+- 20260825000001_seed_department_organization.sql
+- 20260902000001_project_sector_building_type.sql
+- 20260902000002_prelim_library_early_works.sql
+- 20260902000003_wbs_tasks_activity_detail_fields.sql
+- 20260902000004_fix_wbs_progress_flush_missing_temp_table.sql
+- 20260902000005_project_data_date.sql
+- 20260903000001_schedule_engine_support.sql
+- 20260904000001_wbs_lock_backbone.sql
+- 20260904000002_wbs_tasks_lock_guard.sql
+- 20260904000003_planning_project_tools.sql
+- 20260904000004_plan_timescale.sql
+- 20260905000001_create_user_ui_preferences.sql
+- 20260905000002_fix_wbs_progress_status_exclusion_and_reparent_trigger.sql
+- 20260905000003_add_baseline_cost_variance.sql
+- 20260905000004_create_plan_resources.sql
+- 20260905000005_plan_resources_profile_link.sql
+- 20260907000001_master_wbs_import.sql
+- 20260908000001_scurve_series.sql
+- 20260910000001_dwl_material_attributes.sql
+- 20260910000002_dwl_material_specs.sql
+- 20260910000003_dwl_supplier_profiles_and_materials.sql
+- 20260910000004_dwl_resource_prices_effective_cost.sql
+- 20260910000005_dwl_price_submissions.sql
+- 20260910000006_dwl_quotations.sql
+- 20260910000010_dwl_seed_ceiling_materials.sql
+- 20260910000011_dwl_seed_ceiling_specs_suppliers.sql
+- 20260910000012_dwl_seed_ceiling_quotations_prices.sql
+- 20260910000020_dwl_recipe_views_effective_cost.sql
+- 20260910000021_dwl_material_categories.sql
+- 20260910000022_dwl_material_attributes_category_fields.sql
+- 20260910000023_dwl_material_photos.sql
+- 20260910000024_dwl_material_photos_storage.sql
+- 20260910000025_dwl_v_materials_category_budget_photos.sql
+- 20260910000026_dwl_material_categories_expand.sql
+- 20260910000027_dwl_material_categories_seed_more.sql
+- 20260910000028_dwl_backfill_migrated_material_attributes.sql
+- 20260910000029_dwl_bulk_materials_csv_import.sql
+- 20260910000030_dwl_material_code_standardize.sql
+- 20260910000031_dwl_material_category_costcode_backfill.sql
+- 20260910000032_dwl_supplier_master_view.sql
+- 20260910000033_dwl_bulk_suppliers_xlsx_import.sql
+- 20260910000034_dwl_subcon_rates_schema.sql
+- 20260910000035_dwl_bulk_subcon_rates_xlsx_import.sql
+- 20260910000036_dwl_cost_item_library_schema.sql
+- 20260910000037_dwl_seed_cost_item_ceiling_example.sql
+- 20260910000038_dwl_v_suppliers_add_vendor_kind.sql
+- 20260910000039_dwl_assembly_general_info_fields.sql
+- 20260910000040_dwl_assembly_crew_equipment_descriptions.sql
+- 20260910000041_dwl_assembly_layer_materials_specs.sql
+- 20260910000042_dwl_assembly_layer_materials_screws_clips.sql
+- 20260910000043_dwl_cost_item_create_form_fields.sql
+- 20260910000044_dwl_assembly_costing_tuned_overrides.sql
+- 20260910000045_dwl_labor_rates_schema.sql
+- 20260917000001_companies_date_format.sql
+- 20260917000002_plan_schedule_settings.sql
+- 20260917000003_plan_schedule_settings_progress_line.sql
+- 20260917000004_plan_schedule_settings_bar_style.sql
+- 20260918000001_activity_step_templates.sql
+- 20260918000002_activity_step_template_fields.sql
+- 20260918000003_activity_step_template_seed_data.sql
+- 20260919000001_project_members_and_permission_helpers.sql
+- 20260919000002_planning_audit_index.sql
+- 20260919000003_advance_data_date.sql
+- 20260919000004_baseline_governance.sql
+- 20260919000005_schedule_alert_types_and_state.sql
+- 20260919000006_weekly_plan_close_and_constraint_source.sql
+- 20260919000007_planning_role_permissions_seed.sql
+- 20260919000008_planning_rls_v2.sql
+- 20260919000009_progress_review.sql
+- 20260919000010_revision_approval_workflow.sql
+- 20260919000011_delay_governance.sql
+- 20260919000012_eot_notice_from_delay.sql
+- 20260919000013_ipc_planning_progress.sql
+- 20260919000014_monthly_report_jobs.sql
+- 20260919000015_project_members_rls.sql
+- 20260919000016_programme_transmittal.sql
+- 20260919000017_client_programme_view.sql
+- 20260919000018_tia_scenarios.sql
+- 20260919000019_procurement_constraint_feed.sql
+- 20260919000020_document_rfi_inspection_feed.sql
+- 20260919000021_levelling_runs.sql
+
+## Repair command (review first)
+```
+npx supabase migration repair --status applied 20260717000007 20260718000008 20260718000011 20260718000012 20260722000002 20260725000004 20260725000005 20260725000006 20260725000007 20260725000008 20260725000009 20260725000010 20260725000011 20260725000012 20260727000001 20260727000002 20260727000003 20260727000004 20260727000005 20260727000006 20260727000007 20260727000008 20260727000009 20260727000010 20260728000001 20260728000002 20260728000003 20260728000004 20260728000005 20260728000006 20260728000007 20260729000001 20260729000002 20260729000003 20260729000004 20260729000005 20260729000006 20260729000007 20260729000008 20260729000009 20260729000010 20260730000001 20260805000001 20260805000002 20260805000003 20260805000004 20260806000001 20260806000002 20260815000001 20260817000001 20260817000002 20260817000003 20260817000004 20260817000005 20260817000006 20260817000007 20260824000001 20260824000002 20260824000003 20260824000004 20260824000005 20260824050000 20260825000001 20260902000001 20260902000002 20260902000003 20260902000004 20260902000005 20260903000001 20260904000001 20260904000002 20260904000003 20260904000004 20260905000001 20260905000002 20260905000003 20260905000004 20260905000005 20260907000001 20260908000001 20260910000001 20260910000002 20260910000003 20260910000004 20260910000005 20260910000006 20260910000010 20260910000011 20260910000012 20260910000020 20260910000021 20260910000022 20260910000023 20260910000024 20260910000025 20260910000026 20260910000027 20260910000028 20260910000029 20260910000030 20260910000031 20260910000032 20260910000033 20260910000034 20260910000035 20260910000036 20260910000037 20260910000038 20260910000039 20260910000040 20260910000041 20260910000042 20260910000043 20260910000044 20260910000045 20260917000001 20260917000002 20260917000003 20260917000004 20260918000001 20260918000002 20260918000003 20260919000001 20260919000002 20260919000003 20260919000004 20260919000005 20260919000006 20260919000007 20260919000008 20260919000009 20260919000010 20260919000011 20260919000012 20260919000013 20260919000014 20260919000015 20260919000016 20260919000017 20260919000018 20260919000019 20260919000020 20260919000021
+```

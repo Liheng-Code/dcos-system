@@ -62,13 +62,21 @@ export default function QtoListPage() {
   const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
   const tenderParam = searchParams.get("tender");
+  const tabParam = searchParams.get("tab");
+  const urlTab: Tab = tabParam === "drawings" || tabParam === "documents" ? tabParam : "takeoff";
   const { selectedProjectId } = useProject();
   const { can, loaded: permsLoaded } = useQtoPermissions();
 
   const [tenders, setTenders] = useState<{ id: string; tender_no: string; title: string }[]>([]);
   const [selectedTenderId, setSelectedTenderId] = useState<string>(tenderParam ?? "");
   const [tendersLoading, setTendersLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("takeoff");
+  const [tab, setTab] = useState<Tab>(urlTab);
+
+  // Header-tab links (?tab=drawings / ?tab=documents) change the URL without remounting.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTab(urlTab);
+  }, [urlTab]);
 
   useEffect(() => {
     let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });

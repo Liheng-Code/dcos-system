@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Turbopack's on-disk dev cache grew to ~16 GB (old .sst files never pruned).
+    // Disabled to stop unbounded growth; it is a build cache only and does not
+    // affect app behaviour. Re-enable if dev restarts feel too slow.
+    turbopackFileSystemCacheForDev: false,
+  },
   async headers() {
     return [
       {
@@ -22,12 +28,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/dashboard/qs/retention",
-        destination: "/dashboard/qs/claims",
+        destination: "/dashboard/qs/claims?sub=retention",
         permanent: true,
       },
       {
         source: "/dashboard/qs/payments",
-        destination: "/dashboard/qs/claims",
+        destination: "/dashboard/qs/claims?sub=payments",
         permanent: true,
       },
     ];

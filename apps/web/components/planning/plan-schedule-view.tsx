@@ -8,7 +8,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Loader2, Table2 } from "lucide-react";
+import { Eye, Loader2, Table2 } from "lucide-react";
 import type { TreeApi } from "react-arborist";
 import { useProject } from "@/components/dashboard/project-context";
 import { useIsWbsManager } from "@/hooks/use-is-wbs-manager";
@@ -21,6 +21,7 @@ import {
   type ComparisonSourceOption,
 } from "@/lib/planning/schedule-comparison-service";
 import {
+  applyDisplayRange,
   applyZoomPreset,
   DEFAULT_TIMESCALE,
   parseTimescaleConfig,
@@ -32,8 +33,15 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { GanttDependencyEditor } from "./gantt-dependency-editor";
+import { resolveProgressLineDate } from "./gantt-progress-line";
+import { PlanBarStyleDialog } from "./plan-bar-style-dialog";
+import { PlanTaskDetailDrawer } from "./plan-task-detail-drawer";
+import { PlanFloatSettingsDialog } from "./plan-float-settings-dialog";
 import { PlanMoveProjectDialog } from "./plan-move-project-dialog";
+import { PlanPrintDialog } from "./plan-print-dialog";
+import { PlanProgressLineDialog } from "./plan-progress-line-dialog";
 import { PlanSetBaselineDialog } from "./plan-set-baseline-dialog";
+import { PlanDataDateDialog } from "./plan-data-date-dialog";
 import { PlanTimescaleDialog } from "./plan-timescale-dialog";
 import { PlanWbsCodeDialog } from "./plan-wbs-code-dialog";
 import { PlanWorkingTimeDialog } from "./plan-working-time-dialog";
@@ -42,8 +50,10 @@ import { ScheduleTimeline, toGanttTask } from "./schedule-timeline";
 import { ScheduleToolbar } from "./schedule-toolbar";
 import { SheetGrid } from "./sheet-grid";
 import { ROW_HEIGHT, type SheetRow } from "./sheet-types";
-import { filterIncomplete, visibleRowsFrom } from "./sheet-utils";
+import { autoCollapsedIds, filterIncomplete, visibleRowsFrom } from "./sheet-utils";
 import { useColumnPreferences } from "./use-column-preferences";
+import { useDateFormatPreference } from "./use-date-format-preference";
+import { DATE_FORMAT_PRESETS } from "@/lib/date-format";
 import { useSheetData } from "./use-sheet-data";
 import { computeDateRange, getTotalDays, toX } from "./gantt-utils";
 import type { GanttZoom } from "./gantt-types";
@@ -70,8 +80,18 @@ export function PlanScheduleView({
 }: PlanScheduleViewProps) {
   const { selectedProjectId, loading: projectLoading } = useProject();
   const isManager = useIsWbsManager();
-  const data = useSheetData(selectedProjectId, isManager);
+  // "View" selector — "" = Live/editable, otherwise a saved revision/baseline
+  // whose dates the grid + Gantt render read-only.
+  const [viewKey, setViewKey] = useState<string>("");
+  const [viewDates, setViewDates] = useState<Map<
+    string,
+    { start: string | null; end: string | null }
+  > | null>(null);
+  const readOnlyView = !!viewDates;
+  const data = useSheetData(selectedProjectId, isManager, viewDates);
   const columnPrefs = useColumnPreferences();
+  const dateFormat = useDateFormatPreference();
+  const progressLineDate = resolveProgressLineDate(data.progressLineStyle, data.dataDate);
   const isSheet = variant === "sheet";
 
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
@@ -95,9 +115,22 @@ export function PlanScheduleView({
     string,
     { start: string | null; end: string | null }
   > | null>(null);
+  // Compare B — a second overlay so two saved revisions can be eyeballed against
+  // the live bars at once. "" = none.
+  const [compareKey, setCompareKey] = useState<string>("");
+  const [compareDates, setCompareDates] = useState<Map<
+    string,
+    { start: string | null; end: string | null }
+  > | null>(null);
   const [showDependencies, setShowDependencies] = useState(true);
+  const [showLinkLabels, setShowLinkLabels] = useState(true);
   const [showToday, setShowToday] = useState(true);
+  const [showProgressLine, setShowProgressLine] = useState(false);
+  const [progressLineDialogOpen, setProgressLineDialogOpen] = useState(false);
+  const [barStyleDialogOpen, setBarStyleDialogOpen] = useState(false);
+  const [taskDetailTaskId, setTaskDetailTaskId] = useState<string | null>(null);
   const [showCritical, setShowCritical] = useState(true);
+  const [showFloat, setShowFloat] = useState(true);
   const [hideCompleted, setHideCompleted] = useState(false);
   const [editLink, setEditLink] = useState<{ successorId: string; index: number } | null>(null);
   const [savingLink, setSavingLink] = useState(false);
@@ -112,9 +145,32 @@ export function PlanScheduleView({
 
   // MS-Project "Project" tools
   const [projDialog, setProjDialog] = useState<
-    null | "wbs" | "workingTime" | "baseline" | "move"
+    null | "wbs" | "workingTime" | "baseline" | "move" | "print" | "floatSettings" | "dataDate"
   >(null);
   const [baselines, setBaselines] = useState<BaselineRow[]>([]);
+  const exportingMspRef = useRef(false);
+
+  async function handleExportMsp() {
+    if (!selectedProjectId || exportingMspRef.current) return;
+    exportingMspRef.current = true;
+    try {
+      const res = await fetch(`/api/planning/sync/${selectedProjectId}/export`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Export failed");
+      const blob = new Blob([json.xml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = json.fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${json.summary.tasks} tasks to MS Project XML`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      exportingMspRef.current = false;
+    }
+  }
 
   const treeApiRef = useRef<TreeApi<SheetRow> | null>(null);
   const gridPaneRef = useRef<HTMLDivElement>(null);
@@ -169,6 +225,20 @@ export function PlanScheduleView({
       return next;
     });
   }, []);
+
+  // On first load, collapse deep branches (packages and below) so a large
+  // imported programme doesn't mount thousands of rows. The grid seeds its
+  // arborist open-state from the same helper so both panes agree.
+  const didInitCollapse = useRef(false);
+  useEffect(() => {
+    if (didInitCollapse.current || data.tree.length === 0) return;
+    didInitCollapse.current = true;
+    const ids = autoCollapsedIds(data.tree);
+    if (ids.size > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCollapsedIds(ids);
+    }
+  }, [data.tree]);
 
   const handleExpandAll = useCallback(() => {
     treeApiRef.current?.openAll();
@@ -281,11 +351,12 @@ export function PlanScheduleView({
       .then((opts) => {
         const nonLive = opts.filter((o) => o.source.kind !== "live");
         setReferenceOptions(nonLive);
-        setReferenceKey((prev) => {
-          if (prev && nonLive.some((o) => o.key === prev)) return prev;
-          const active = nonLive.find((o) => o.source.kind === "baseline" && o.label.endsWith("(active)"));
-          return active?.key ?? "";
-        });
+        // Default Compare A to "none" — only show a ghost-bar comparison once the user
+        // explicitly picks one (or activates a baseline, which sets this directly).
+        setReferenceKey((prev) => (prev && nonLive.some((o) => o.key === prev) ? prev : ""));
+        // Drop Compare B's / View's pick if that schedule/revision no longer exists.
+        setCompareKey((prev) => (prev && nonLive.some((o) => o.key === prev) ? prev : ""));
+        setViewKey((prev) => (prev && nonLive.some((o) => o.key === prev) ? prev : ""));
       })
       .catch(() => {});
   }, [selectedProjectId]);
@@ -295,7 +366,13 @@ export function PlanScheduleView({
 
   const referenceSource: ComparisonSource | null =
     referenceOptions.find((o) => o.key === referenceKey)?.source ?? null;
-  const referenceLabel = referenceOptions.find((o) => o.key === referenceKey)?.label ?? "Baseline";
+  const referenceLabel = referenceOptions.find((o) => o.key === referenceKey)?.label ?? "Compare A";
+  const compareSource: ComparisonSource | null =
+    referenceOptions.find((o) => o.key === compareKey)?.source ?? null;
+  const compareLabel = referenceOptions.find((o) => o.key === compareKey)?.label ?? "Compare B";
+  const viewSource: ComparisonSource | null =
+    referenceOptions.find((o) => o.key === viewKey)?.source ?? null;
+  const viewLabel = referenceOptions.find((o) => o.key === viewKey)?.label ?? "";
 
   useEffect(() => {
     if (!selectedProjectId || !referenceSource) {
@@ -319,6 +396,53 @@ export function PlanScheduleView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, referenceKey]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !compareSource) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setCompareDates(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
+    }
+    let cancelled = false;
+    resolveSource(selectedProjectId, compareSource)
+      .then((map) => {
+        if (!cancelled) setCompareDates(map);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(e instanceof Error ? e.message : String(e));
+        setCompareDates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, compareKey]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !viewSource) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setViewDates(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
+    }
+    let cancelled = false;
+    resolveSource(selectedProjectId, viewSource)
+      .then((map) => {
+        if (!cancelled) setViewDates(map);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(e instanceof Error ? e.message : String(e));
+        setViewDates(null);
+        setViewKey("");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, viewKey]);
 
   // Load the saved timescale config for this project.
   useEffect(() => {
@@ -425,15 +549,40 @@ export function PlanScheduleView({
   // When "Today" is on, widen the range so the marker is always on-canvas even
   // when every task sits in the past / future.
   const todayIso = new Date().toISOString().slice(0, 10);
+  const displayRange = timescaleConfig.displayRange;
   const dateRange = useMemo(() => {
     const base = computeDateRange(ganttTasks);
-    if (!showToday) return base;
-    const today = new Date(todayIso);
-    return {
-      min: today < base.min ? today : base.min,
-      max: today > base.max ? today : base.max,
+    // Stretch the range so the comparison-overlay ghost bars never clip
+    // off-canvas when a compared schedule starts earlier / finishes later than
+    // the live one.
+    let lo: number | null = null;
+    let hi: number | null = null;
+    for (const map of [referenceDates, compareDates]) {
+      if (!map) continue;
+      for (const v of map.values()) {
+        for (const iso of [v.start, v.end]) {
+          if (!iso) continue;
+          const t = new Date(iso).getTime();
+          lo = lo === null ? t : Math.min(lo, t);
+          hi = hi === null ? t : Math.max(hi, t);
+        }
+      }
+    }
+    const withRef = {
+      min: lo !== null && lo < base.min.getTime() ? new Date(lo) : base.min,
+      max: hi !== null && hi > base.max.getTime() ? new Date(hi) : base.max,
     };
-  }, [ganttTasks, showToday, todayIso]);
+    const widened = !showToday
+      ? withRef
+      : (() => {
+          const today = new Date(todayIso);
+          return {
+            min: today < withRef.min ? today : withRef.min,
+            max: today > withRef.max ? today : withRef.max,
+          };
+        })();
+    return applyDisplayRange(widened, displayRange);
+  }, [ganttTasks, referenceDates, compareDates, showToday, todayIso, displayRange]);
   const totalDays = getTotalDays(dateRange.min, dateRange.max);
   const dayW = resolveDayWidth(timescaleConfig, zoomScale);
   const chartW = totalDays * dayW;
@@ -481,7 +630,7 @@ export function PlanScheduleView({
 
   useEffect(() => {
     didAutoFitRef.current = false;
-  }, [selectedProjectId]);
+  }, [selectedProjectId, displayRange.from, displayRange.to]);
 
   useEffect(() => {
     if (!showTimeline || data.loading || totalDays <= 0 || visibleRows.length === 0) return;
@@ -710,6 +859,21 @@ export function PlanScheduleView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+      {readOnlyView && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-800">
+          <Eye className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            Read-only — viewing <b>{viewLabel || "a saved schedule"}</b>. Editing is disabled.
+          </span>
+          <button
+            type="button"
+            onClick={() => setViewKey("")}
+            className="shrink-0 rounded-md border border-amber-400 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-white"
+          >
+            Back to Live
+          </button>
+        </div>
+      )}
       <ScheduleToolbar
         taskCount={data.taskCount}
         capped={data.capped}
@@ -725,9 +889,15 @@ export function PlanScheduleView({
         zoom={zoom}
         referenceOptions={referenceOptions}
         referenceKey={referenceKey}
+        compareKey={compareKey}
+        viewKey={viewKey}
+        readOnlyView={readOnlyView}
         showDependencies={showDependencies}
+        showLinkLabels={showLinkLabels}
         showToday={showToday}
+        showProgressLine={showProgressLine}
         showCritical={showCritical}
+        showFloat={showFloat}
         hideCompleted={hideCompleted}
         onAddTask={() => data.actions.createTask("New task", selectedRowId)}
         onAddSummary={() => data.actions.createNode("New group", parentForSummary())}
@@ -735,7 +905,6 @@ export function PlanScheduleView({
         onOutdent={() => selectedRowId && data.actions.outdentRow(selectedRowId)}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
-        onRefresh={() => data.reload()}
         onLink={() => void linkSelectedChain()}
         onUnlink={handleUnlinkSelected}
         onZoomChange={handleZoomChange}
@@ -744,8 +913,13 @@ export function PlanScheduleView({
         onFitToScreen={handleFitToScreen}
         onToday={handleToday}
         onReferenceChange={setReferenceKey}
+        onCompareChange={setCompareKey}
+        onViewChange={setViewKey}
         onDependenciesToggle={setShowDependencies}
+        onLinkLabelsToggle={setShowLinkLabels}
+        onProgressLineToggle={() => setShowProgressLine((v) => !v)}
         onCriticalToggle={setShowCritical}
+        onFloatToggle={setShowFloat}
         onHideCompletedToggle={setHideCompleted}
         onAutoScheduleToggle={data.setAutoSchedule}
         onRunAutoSchedule={() => data.actions.runAutoSchedule()}
@@ -756,15 +930,22 @@ export function PlanScheduleView({
           name: b.baseline_name,
           active: b.is_active,
         }))}
-        onOpenWbsCode={() => setProjDialog("wbs")}
-        onOpenWorkingTime={() => setProjDialog("workingTime")}
-        onOpenSetBaseline={() => setProjDialog("baseline")}
-        onOpenMoveProject={() => setProjDialog("move")}
+        onOpenWbsCode={() => !readOnlyView && setProjDialog("wbs")}
+        onOpenWorkingTime={() => !readOnlyView && setProjDialog("workingTime")}
+        onOpenSetBaseline={() => !readOnlyView && setProjDialog("baseline")}
+        onOpenMoveProject={() => !readOnlyView && setProjDialog("move")}
         onActivateBaseline={handleActivateBaseline}
+        onOpenFloatSettings={() => setProjDialog("floatSettings")}
+        onOpenDataDate={() => setProjDialog("dataDate")}
+        onOpenPrint={() => setProjDialog("print")}
+        onExportMsp={() => void handleExportMsp()}
         columnOrder={columnPrefs.order}
         columnVisibility={columnPrefs.visibility}
         onColumnVisibilityChange={columnPrefs.setVisibility}
         onResetColumns={columnPrefs.resetToDefault}
+        dateFormatOptions={DATE_FORMAT_PRESETS}
+        dateFormatId={dateFormat.formatId ?? ""}
+        onDateFormatChange={(id) => (id === "" ? dateFormat.resetToCompanyDefault() : dateFormat.setFormatId(id))}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
@@ -789,6 +970,8 @@ export function PlanScheduleView({
             onScrollToRow={handleScrollToRow}
             canLinkSelected={selectedTaskIdSet.size >= 2}
             showCritical={showCritical}
+            formatDate={dateFormat.formatDate}
+            onOpenTaskDetail={isSheet ? undefined : (taskId) => setTaskDetailTaskId(taskId)}
             emptyState={
               hideCompleted && data.taskCount > 0
                 ? { title: "All caught up.", hint: 'Every task is at 100% complete — turn off "Hide Completed" to see them.' }
@@ -853,7 +1036,11 @@ export function PlanScheduleView({
                   lockedTaskIds={data.lockedTaskIds}
                   referenceDates={referenceDates}
                   referenceLabel={referenceLabel}
+                  compareDates={compareDates}
+                  compareLabel={compareLabel}
+                  readOnly={readOnlyView}
                   showDependencies={showDependencies}
+                  showLinkLabels={showLinkLabels}
                   showCritical={showCritical}
                   selectedTaskIds={selectedTaskIdSet}
                   todayX={todayX}
@@ -864,6 +1051,14 @@ export function PlanScheduleView({
                   onEditLink={(succId, index) => setEditLink({ successorId: succId, index })}
                   onSetProgress={data.actions.setProgress}
                   onOpenTimescale={() => setTimescaleOpen(true)}
+                  formatDate={dateFormat.formatDate}
+                  showProgressLine={showProgressLine}
+                  progressLineDate={progressLineDate}
+                  progressLineStyle={data.progressLineStyle}
+                  onEditProgressLine={() => setProgressLineDialogOpen(true)}
+                  barStyle={data.barStyle}
+                  onFormatBar={() => setBarStyleDialogOpen(true)}
+                  showFloat={showFloat}
                 />
                 {/* Keep the blank add-row strip's height so both panes end level. */}
                 <div style={{ height: ROW_HEIGHT, width: Math.max(chartW, 1) }} />
@@ -927,6 +1122,55 @@ export function PlanScheduleView({
             await data.reload();
             await data.actions.runAutoSchedule();
           }}
+        />
+      )}
+      {projDialog === "print" && (
+        <PlanPrintDialog
+          projectName={data.project?.project_name ?? "Untitled Project"}
+          defaultScheduleName={viewLabel || "Live Schedule"}
+          dataDate={data.dataDate}
+          tree={data.tree}
+          float={data.float}
+          wbsCodeByRowId={data.wbsCodeByRowId}
+          formatDate={dateFormat.formatDate}
+          onClose={() => setProjDialog(null)}
+        />
+      )}
+      {projDialog === "floatSettings" && (
+        <PlanFloatSettingsDialog
+          thresholds={data.floatThresholds}
+          onClose={() => setProjDialog(null)}
+          onSave={data.updateFloatThresholds}
+        />
+      )}
+      {projDialog === "dataDate" && (
+        <PlanDataDateDialog
+          currentDataDate={data.dataDate}
+          tasks={data.tasks}
+          onClose={() => setProjDialog(null)}
+          onAdvance={data.advanceDataDate}
+        />
+      )}
+      {progressLineDialogOpen && (
+        <PlanProgressLineDialog
+          style={data.progressLineStyle}
+          onClose={() => setProgressLineDialogOpen(false)}
+          onSave={data.updateProgressLineSettings}
+        />
+      )}
+      {barStyleDialogOpen && (
+        <PlanBarStyleDialog
+          style={data.barStyle}
+          onClose={() => setBarStyleDialogOpen(false)}
+          onSave={data.updateBarStyle}
+        />
+      )}
+      {taskDetailTaskId && data.taskById.get(taskDetailTaskId) && (
+        <PlanTaskDetailDrawer
+          task={data.taskById.get(taskDetailTaskId)!}
+          formatDate={dateFormat.formatDate}
+          onClose={() => setTaskDetailTaskId(null)}
+          onSyncProgress={data.actions.setProgress}
         />
       )}
       {timescaleOpen && (

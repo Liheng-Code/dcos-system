@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
-  BookOpen, DollarSign, ExternalLink, Loader2, BarChart2, Shield,
+  BookOpen, DollarSign, Loader2, BarChart2, Shield,
   Briefcase, History, AlertTriangle, Activity, ArrowRight, Ruler,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,6 @@ import {
   getProgressClaims,
   getBudgetSummary,
   getQsAuditLog,
-  type QsBoqSummary,
   type QsVariationOrder,
   type QsProgressClaim,
   type BudgetSummary,
@@ -34,7 +33,6 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "boq",         label: "Bill of Quantities" },
   { id: "cost-control", label: "Cost Control"       },
   { id: "contingency",  label: "Contingency"         },
   { id: "portfolio",    label: "Portfolio"           },
@@ -45,7 +43,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 const QUICK_ACCESS = [
-  { id: "boq",         label: "Bill of Quantities", icon: BookOpen,       desc: "Manage project BOQs, items, and pricing",   color: "bg-emerald-50 text-emerald-600" },
+  { id: "boq",         label: "Bill of Quantities", icon: BookOpen,       desc: "Manage project BOQs, items, and pricing",   color: "bg-emerald-50 text-emerald-600", href: "/dashboard/qs/boq" },
   { id: "cost-control", label: "Cost Control",       icon: BarChart2,      desc: "Budget vs actual, revisions, transactions", color: "bg-blue-50 text-blue-600" },
   { id: "contingency",  label: "Contingency",         icon: Shield,         desc: "Contingency reserve and drawdowns",         color: "bg-amber-50 text-amber-600" },
   { id: "portfolio",    label: "Portfolio",           icon: Briefcase,      desc: "Cross-project cost analytics and EVM",      color: "bg-purple-50 text-purple-600" },
@@ -136,9 +134,6 @@ function QsContent() {
   const [dashboardData, setDashboardData] = useState<QsDashboardData | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
-  const [boqs, setBoqs] = useState<QsBoqSummary[]>([]);
-  const [boqsLoading, setBoqsLoading] = useState(false);
-
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data }) => {
@@ -190,20 +185,6 @@ function QsContent() {
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId) return;
-    void Promise.resolve().then(async () => {
-      setBoqsLoading(true);
-      try {
-        setBoqs(await getBoqList(projectId));
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load BOQ summary");
-      } finally {
-        setBoqsLoading(false);
-      }
-    });
-  }, [projectId]);
-
-  useEffect(() => {
     setTab(activeTab);
   }, [activeTab]);
 
@@ -239,71 +220,6 @@ function QsContent() {
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <>
-            {tab === "boq"       && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold">Bill of Quantities</h2>
-                    <p className="text-sm text-muted-foreground">Manage multiple BOQs per project</p>
-                  </div>
-                  <Button asChild className="gap-1.5">
-                    <Link href="/dashboard/qs/boq">
-                      <ExternalLink className="h-4 w-4" /> Open BOQ Manager
-                    </Link>
-                  </Button>
-                </div>
-
-                {boqsLoading ? (
-                  <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-                ) : boqs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-16 text-center">
-                    <BookOpen className="mb-2 h-8 w-8 text-slate-300" />
-                    <p className="text-sm text-slate-400">No BOQs yet for this project.</p>
-                    <Button asChild className="mt-4">
-                      <Link href="/dashboard/qs/boq">Create a BOQ</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid gap-3">
-                    {boqs.slice(0, 5).map((b) => (
-                      <Link
-                        key={b.id}
-                        href={`/dashboard/qs/boq/${b.id}`}
-                        className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-800">{b.boq_number}</span>
-                            <span className={cn(
-                              "rounded-full px-2 py-0.5 text-[10px] font-medium capitalize",
-                              b.status === "active" ? "bg-emerald-100 text-emerald-700" :
-                              b.status === "locked" ? "bg-slate-900 text-white" :
-                              "bg-slate-100 text-slate-600",
-                            )}>
-                              {b.status}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 truncate text-sm text-slate-700">{b.title}</p>
-                        </div>
-                        <div className="text-right text-xs text-slate-400">
-                          <p>{b.section_count} sections</p>
-                          <p>{b.item_count} items</p>
-                        </div>
-                        <DollarSign className="h-4 w-4 text-emerald-600" />
-                      </Link>
-                    ))}
-                    {boqs.length > 5 && (
-                      <Link
-                        href="/dashboard/qs/boq"
-                        className="block rounded-lg border border-dashed border-slate-200 py-3 text-center text-xs font-medium text-slate-500 hover:border-primary/30 hover:text-primary"
-                      >
-                        View all {boqs.length} BOQs
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
             {tab === "cost-control" && <CostControl         projectId={projectId} projectName={projectName} />}
             {tab === "contingency"   && <ContingencyRegister projectId={projectId} />}
             {tab === "portfolio"    && <PortfolioView />}

@@ -9,6 +9,10 @@ export interface ModuleNavTabItem {
   // Cost Control tab exposes Cost Dashboard / Budget & Variance / etc. this way
   // instead of a second nested tab control on the page itself).
   children?: ModuleNavTabItem[];
+  // A hidden item still claims its route for active-group resolution (so the page keeps
+  // its header tabs and sidebar highlight) but is not rendered as a tab. Use it for
+  // advanced pages that are reached from another page rather than from the tab bar.
+  hidden?: boolean;
 }
 
 export interface ModuleNavGroup {

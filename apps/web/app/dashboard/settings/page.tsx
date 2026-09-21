@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Building2, BookType, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,8 +22,11 @@ const tabs: { id: Tab; label: string; icon: typeof Building2 }[] = [
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [checking, setChecking] = useState(true);
-  const [tab, setTab] = useState<Tab>("company");
+  const [tab, setTab] = useState<Tab>(() =>
+    searchParams.get("tab") === "modules" ? "modules" : "company",
+  );
 
   useEffect(() => {
     const supabase = createClient();

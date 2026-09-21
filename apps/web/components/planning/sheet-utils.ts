@@ -290,6 +290,30 @@ export interface VisibleRow {
 }
 
 /**
+ * Rows that should start collapsed so a large import doesn't render thousands
+ * of rows at once: every summary row with children at depth >= `minDepth`
+ * (depth 0 = project, 1 = phases, 2 = packages …). Used to seed both the
+ * grid's arborist open-state and the view's `collapsedIds`.
+ */
+export const DEFAULT_COLLAPSE_DEPTH = 2;
+
+export function autoCollapsedIds(
+  rows: SheetRow[],
+  minDepth: number = DEFAULT_COLLAPSE_DEPTH,
+): Set<string> {
+  const ids = new Set<string>();
+  const walk = (list: SheetRow[], depth: number) => {
+    for (const r of list) {
+      if (r.children.length === 0) continue;
+      if (depth >= minDepth) ids.add(r.id);
+      walk(r.children, depth + 1);
+    }
+  };
+  walk(rows, 0);
+  return ids;
+}
+
+/**
  * Depth-first flatten that RESPECTS collapse state. Drives both the grid and
  * the timeline, so the two panes always render the same rows in the same order.
  */

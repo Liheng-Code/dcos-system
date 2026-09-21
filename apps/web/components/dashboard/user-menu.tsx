@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Loader2 } from "lucide-react";
+import { LogOut, User, Loader2, LayoutGrid } from "lucide-react";
 
 interface Profile {
   full_name: string;
@@ -23,6 +23,7 @@ interface Profile {
 export function UserMenu() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { signOut, loading } = useSupabaseAuth();
 
   useEffect(() => {
@@ -37,7 +38,10 @@ export function UserMenu() {
         .eq("id", data.user.id)
         .single()
         .then(({ data: profileData }) => {
-          if (profileData) setProfile(profileData);
+          if (profileData) {
+            setProfile(profileData);
+            setIsAdmin(profileData.role === "admin");
+          }
         });
     });
   }, []);
@@ -78,6 +82,12 @@ export function UserMenu() {
           <User className="h-4 w-4" />
           Profile Settings
         </DropdownMenuItem>
+        {isAdmin && (
+          <DropdownMenuItem onClick={() => router.push("/dashboard/settings?tab=modules")}>
+            <LayoutGrid className="h-4 w-4" />
+            Module Visibility
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={signOut} variant="destructive">
           {loading ? (

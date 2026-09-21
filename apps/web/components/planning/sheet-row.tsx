@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import {
   Building2,
   ChevronDown,
@@ -18,7 +19,7 @@ import { depsFromArrays } from "@/lib/planning/schedule-engine";
 import { formatPredecessors } from "@/lib/planning/predecessor-syntax";
 import { cn } from "@/lib/utils";
 import { SheetCell } from "./sheet-cell";
-import { useRowCtx } from "./sheet-grid-context";
+import { useRowCtx, useRowVolatile } from "./sheet-grid-context";
 import {
   ID_COL_WIDTH,
   PROJECT_NODE_TYPE,
@@ -33,12 +34,25 @@ interface SheetRowProps {
   dragHandle?: (el: HTMLDivElement | null) => void;
 }
 
+/** Per-row volatile facts derived from the selection/edit context. */
+interface SheetRowBodyProps extends SheetRowProps {
+  selected: boolean;
+  /** The active cell's field IF the active cell is on this row, else null. */
+  activeField: SheetField | null;
+  /** This row is the one being edited. */
+  editing: boolean;
+  /** Seed char for the open editor (only meaningful when `editing`). */
+  seed?: string;
+  editKey: number;
+}
+
 function cellFor(
   row: SheetRowT,
   field: SheetField,
   cal: WorkCalendar,
   rowNumberByTaskId: Map<string, number>,
   wbsCode: string,
+  formatDate: (iso: string | null | undefined) => string,
 ): { value: string; display?: string; editable: boolean } {
   if (row.kind === "task") {
     const t = row.task;
@@ -56,9 +70,9 @@ function cellFor(
         return { value: d != null ? String(d) : "", editable: true };
       }
       case "start":
-        return { value: t.start_date ?? "", editable: true };
+        return { value: t.start_date ?? "", display: t.start_date ? formatDate(t.start_date) : undefined, editable: true };
       case "finish":
-        return { value: t.end_date ?? "", editable: true };
+        return { value: t.end_date ?? "", display: t.end_date ? formatDate(t.end_date) : undefined, editable: true };
       case "predecessors": {
         const deps = depsFromArrays(
           t.dependency_task_ids,
@@ -97,9 +111,9 @@ function cellFor(
         editable: false,
       };
     case "start":
-      return { value: r.start ?? "", editable: false };
+      return { value: r.start ?? "", display: r.start ? formatDate(r.start) : undefined, editable: false };
     case "finish":
-      return { value: r.end ?? "", editable: false };
+      return { value: r.end ?? "", display: r.end ? formatDate(r.end) : undefined, editable: false };
     case "predecessors":
       return { value: "", editable: false };
     case "progress":
@@ -117,9 +131,60 @@ function cellFor(
   }
 }
 
+/**
+ * Thin wrapper: subscribes to the *volatile* selection/edit context, derives
+ * the few per-row primitives, and hands them to the memoized body. This
+ * re-renders on every selection/edit change, but does almost nothing; the body
+ * only re-renders when one of its primitive props actually changes — so a click
+ * re-renders ~2 rows instead of every mounted row.
+ */
 export function SheetRowView({ node, dragHandle }: SheetRowProps) {
+  const { selectedRowIds, activeCell, editing, editSeed, editKey } = useRowVolatile();
+  const rowId = node.data.id;
+  const onThisRow = activeCell?.rowId === rowId;
+  return (
+    <SheetRowBody
+      node={node}
+      dragHandle={dragHandle}
+      selected={selectedRowIds.has(rowId)}
+      activeField={onThisRow ? activeCell!.field : null}
+      editing={editing && onThisRow}
+      seed={editing && onThisRow ? editSeed : undefined}
+      editKey={editKey}
+    />
+  );
+}
+
+function bodyPropsEqual(a: SheetRowBodyProps, b: SheetRowBodyProps): boolean {
+  const na = a.node;
+  const nb = b.node;
+  return (
+    na === nb &&
+    na.data === nb.data &&
+    na.isOpen === nb.isOpen &&
+    na.isInternal === nb.isInternal &&
+    na.isDragging === nb.isDragging &&
+    na.willReceiveDrop === nb.willReceiveDrop &&
+    na.level === nb.level &&
+    a.dragHandle === b.dragHandle &&
+    a.selected === b.selected &&
+    a.activeField === b.activeField &&
+    a.editing === b.editing &&
+    a.seed === b.seed &&
+    a.editKey === b.editKey
+  );
+}
+
+const SheetRowBody = memo(function SheetRowBody({
+  node,
+  dragHandle,
+  selected,
+  activeField,
+  editing,
+  seed,
+  editKey,
+}: SheetRowBodyProps) {
   const {
-    selectedRowIds,
     calendar,
     colWidths,
     rowWidth,
@@ -131,10 +196,8 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
     violations,
     wbsCodeByRowId,
     lockedRowIds,
-    activeCell,
-    editing,
-    editSeed,
-    editKey,
+    formatDate,
+    onOpenTaskDetail,
     onActivateCell,
     onStartEdit,
     onCommitCell,
@@ -149,12 +212,12 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
   const isNode = row.kind === "node";
   const isProjectRow = isNode && row.node.node_type === PROJECT_NODE_TYPE;
   const task = row.kind === "task" ? row.task : null;
-  const selected = selectedRowIds.has(row.id);
   const locked = lockedRowIds.has(row.id); // under a locked WBS backbone
   const rowNumber = rowNumberById.get(row.id) ?? 0;
   const taskFloat = task ? float.get(task.id) : undefined;
   const violation = task ? violations.get(task.id) : undefined;
   const critical = !isNode && taskFloat?.critical === true;
+  const nearCritical = !isNode && !critical && taskFloat?.nearCritical === true;
   const deadlineFlag = task ? getDeadlineFlag(task) : null;
 
   // Double-clicking anywhere that a specific cell didn't already claim (the
@@ -162,7 +225,11 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
   // editor — MS-Project style. A cell that handles its own double-click stops
   // propagation, so this only fires for the "everything else" areas.
   const handleRowDoubleClick =
-    isProjectRow || locked ? undefined : () => onStartEdit(row.id, "name");
+    isProjectRow || locked
+      ? undefined
+      : onOpenTaskDetail && row.kind === "task"
+        ? () => onOpenTaskDetail(row.task.id)
+        : () => onStartEdit(row.id, "name");
 
   return (
     <div
@@ -201,10 +268,11 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
           calendar,
           rowNumberByTaskId,
           wbsCodeByRowId.get(row.id) ?? "",
+          formatDate,
         );
         const { value, display } = cf;
         const editable = cf.editable && !locked;
-        const active = activeCell?.rowId === row.id && activeCell.field === col.field;
+        const active = activeField === col.field;
 
         // Task-mode column: a pin toggle, not an editable cell.
         if (col.field === "mode") {
@@ -334,7 +402,7 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
                   editable={editable}
                   active={active}
                   editing={editing && active}
-                  seed={active ? editSeed : undefined}
+                  seed={active ? seed : undefined}
                   editKey={editKey}
                   onActivate={(mods) => onActivateCell(row.id, col.field, mods)}
                   onStartEdit={() => onStartEdit(row.id, col.field)}
@@ -367,10 +435,11 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
               editable={editable}
               active={active}
               editing={editing && active}
-              seed={active ? editSeed : undefined}
+              seed={active ? seed : undefined}
               editKey={editKey}
               className={cn(
                 critical && showCritical && (col.field === "duration" || col.field === "finish") && "text-red-600",
+                nearCritical && showCritical && (col.field === "duration" || col.field === "finish") && "text-amber-600",
               )}
               onPickValue={
                 col.variant === "date"
@@ -387,4 +456,4 @@ export function SheetRowView({ node, dragHandle }: SheetRowProps) {
       })}
     </div>
   );
-}
+}, bodyPropsEqual);

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Plus, AlertTriangle, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 interface BackCharge {
   id: string;
@@ -21,6 +22,7 @@ interface BackCharge {
 
 export default function BackChargesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<BackCharge[]>([]);
   const [subcontracts, setSubcontracts] = useState<{id:string,subcontract_no:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,15 +34,23 @@ export default function BackChargesPage() {
     amount: "0", category: "defect_rectification",
   });
 
+  const itemsQuery = useCallback(() => {
+    let q = supabase.from("subcontract_back_charges").select("*, subcontracts!inner(project_id)").order("raised_date", { ascending: false });
+    if (selectedProjectId) q = q.eq("subcontracts.project_id", selectedProjectId);
+    return q;
+  }, [supabase, selectedProjectId]);
+
   useEffect(() => {
-    supabase.from("subcontracts").select("id,subcontract_no").then(({ data }) => {
+    let sq = supabase.from("subcontracts").select("id,subcontract_no");
+    if (selectedProjectId) sq = sq.eq("project_id", selectedProjectId);
+    sq.then(({ data }) => {
       if (data) setSubcontracts(data);
     });
-    supabase.from("subcontract_back_charges").select("*").order("raised_date", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as BackCharge[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
@@ -56,7 +66,7 @@ export default function BackChargesPage() {
     toast.success("Back charge created");
     setShowForm(false);
     setForm({ subcontract_id: "", charge_no: "", description: "", amount: "0", category: "defect_rectification" });
-    supabase.from("subcontract_back_charges").select("*").order("raised_date", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as BackCharge[]);
     });
     setSaving(false);

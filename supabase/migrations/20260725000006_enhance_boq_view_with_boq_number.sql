@@ -1,7 +1,11 @@
 -- Add boq_number and boq_type columns to the BOQ requisition status view
 -- so the PR picker can distinguish Main Works vs Preliminaries items.
 
-CREATE OR REPLACE VIEW qs_v_boq_requisition_status AS
+-- Drop first: the column order differs from the view created in
+-- 20260725000005, which CREATE OR REPLACE VIEW cannot change.
+DROP VIEW IF EXISTS qs_v_boq_requisition_status;
+
+CREATE VIEW qs_v_boq_requisition_status AS
 SELECT
   bi.id            AS boq_item_id,
   bi.project_id,

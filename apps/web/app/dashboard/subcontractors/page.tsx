@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Plus, FileText, AlertTriangle, DollarSign, Eye } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 interface Subcontract {
   id: string;
@@ -25,6 +26,7 @@ interface Subcontract {
 
 export default function SubcontractorsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<Subcontract[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -37,15 +39,21 @@ export default function SubcontractorsPage() {
     retention_pct: "5.00", start_date: "", end_date: "",
   });
 
+  const itemsQuery = useCallback(() => {
+    let q = supabase.from("subcontracts").select("*").order("created_at", { ascending: false });
+    if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
+    return q;
+  }, [supabase, selectedProjectId]);
+
   useEffect(() => {
-    supabase.from("projects").select("id,name").then(({ data }) => {
+    supabase.from("projects").select("id,name:project_name").then(({ data }) => {
       if (data) setProjects(data);
     });
-    supabase.from("subcontracts").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as Subcontract[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
@@ -64,7 +72,7 @@ export default function SubcontractorsPage() {
     toast.success("Subcontract created");
     setShowForm(false);
     setForm({ project_id: "", subcontract_no: "", scope_of_work: "", contract_type: "lump_sum", contract_value: "0", currency: "USD", retention_pct: "5.00", start_date: "", end_date: "" });
-    supabase.from("subcontracts").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as Subcontract[]);
     });
     setSaving(false);

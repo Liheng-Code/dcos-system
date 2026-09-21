@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Plus, FileSignature, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -8,9 +8,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 export default function ContractRegisterPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [projects, setProjects] = useState<{id:string,name:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,15 +26,21 @@ export default function ContractRegisterPage() {
     start_date: "", end_date: "",
   });
 
+  const itemsQuery = useCallback(() => {
+    let q = supabase.from("contract_register").select("*").order("created_at", { ascending: false });
+    if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
+    return q;
+  }, [supabase, selectedProjectId]);
+
   useEffect(() => {
-    supabase.from("projects").select("id,name").then(({ data }) => {
+    supabase.from("projects").select("id,name:project_name").then(({ data }) => {
       if (data) setProjects(data);
     });
-    supabase.from("contract_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
@@ -51,7 +59,7 @@ export default function ContractRegisterPage() {
     toast.success("Contract created");
     setShowForm(false);
     setForm({ project_id: "", contract_no: "", contract_type: "head_contract", title: "", party_name: "", contract_value: "0", currency: "USD", start_date: "", end_date: "" });
-    supabase.from("contract_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data);
     });
     setSaving(false);

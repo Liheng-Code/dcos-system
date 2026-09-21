@@ -6,6 +6,7 @@ import { X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { LocationPicker } from "@/components/ui/location-picker";
 import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
 
 export interface Project {
@@ -30,6 +31,8 @@ export interface Project {
   category: string | null;
   building_type: string | null;
   location: string | null;
+  latitude: number | null;
+  longitude: number | null;
   time_zone: string | null;
   dlp_period: string | null;
   retention: number | null;
@@ -164,6 +167,8 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
     category: project?.category ?? "",
     building_type: project?.building_type ?? "",
     location: project?.location ?? "",
+    latitude: project?.latitude?.toString() ?? "",
+    longitude: project?.longitude?.toString() ?? "",
     time_zone: project?.time_zone ?? "Asia/Phnom_Penh",
     dlp_period: project?.dlp_period ?? "",
     retention: project?.retention?.toString() ?? "",
@@ -300,6 +305,8 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
       category: form.category || null,
       building_type: form.building_type || null,
       location: form.location || null,
+      latitude: form.latitude ? parseFloat(form.latitude) : null,
+      longitude: form.longitude ? parseFloat(form.longitude) : null,
       time_zone: form.time_zone || "Asia/Phnom_Penh",
       dlp_period: form.dlp_period || null,
       retention: form.retention ? parseFloat(form.retention) : null,
@@ -489,15 +496,20 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="location">Location</Label>
-                <input
-                  id="location"
-                  value={form.location}
-                  onChange={(e) => update("location", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
-                />
-              </div>
+              <div className="space-y-1.5 col-span-2">
+              <Label htmlFor="location">Location</Label>
+              <LocationPicker
+                lat={form.latitude ? parseFloat(form.latitude) : null}
+                lng={form.longitude ? parseFloat(form.longitude) : null}
+                address={form.location}
+                country="kh"
+                onChange={(lat, lng, address) => {
+                  update("latitude", String(lat));
+                  update("longitude", String(lng));
+                  update("location", address);
+                }}
+              />
+            </div>
               <div className="space-y-1.5">
                 <Label htmlFor="time_zone">Time Zone</Label>
                 <select

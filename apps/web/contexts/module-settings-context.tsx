@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getActiveModuleKeys, toggleModule as toggleModuleService } from "@/lib/module-settings-service";
 import {
   getNavItemSettings,
@@ -63,6 +64,8 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
   const [navItemSettings, setNavItemSettings] = useState<NavItemSetting[]>([]);
   const [navLoading, setNavLoading] = useState(true);
 
+  const supabase = useMemo(() => createClient(), []);
+
   const fetchKeys = useCallback(async () => {
     const keys = await getActiveModuleKeys(true);
     setActiveKeys(keys);
@@ -82,6 +85,35 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     fetchNavItems();
   }, [fetchNavItems]);
+
+  // Realtime: live-sync module_settings and nav_item_settings from ANY client
+  // (another tab, another admin, or the settings page itself). Keeps the sidebar
+  // and module hub in sync without a page refresh — requires the tables to be on
+  // the supabase_realtime publication (20260923000001_module_settings_realtime.sql).
+  useEffect(() => {
+    if (!supabase) return;
+    let channel: RealtimeChannel | null = null;
+
+    channel = supabase
+      .channel("module-settings-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "module_settings" },
+        () => { void fetchKeys(); },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "nav_item_settings" },
+        () => { void fetchNavItems(); },
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [supabase, fetchKeys, fetchNavItems]);
 
   const isModuleActive = useCallback(
     (key: string) => activeKeys.includes(key),

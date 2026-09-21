@@ -100,7 +100,6 @@ export function WbsBuilder({
         onOutdent={() => selectedRowId && data.actions.outdentRow(selectedRowId)}
         onExpandAll={() => treeApiRef.current?.openAll()}
         onCollapseAll={() => treeApiRef.current?.closeAll()}
-        onRefresh={() => data.reload()}
         onSaveVersion={() => openVersions("save")}
         onOpenVersions={() => openVersions("list")}
       />

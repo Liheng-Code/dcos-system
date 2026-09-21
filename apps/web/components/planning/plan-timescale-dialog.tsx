@@ -40,6 +40,14 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+/** Today ± `days`, as an ISO `yyyy-MM-dd` string. */
+function isoFromToday(days: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 const SHOW_OPTIONS: { value: 1 | 2 | 3; label: string }[] = [
   { value: 1, label: "One tier (Bottom)" },
   { value: 2, label: "Two tiers (Middle, Bottom)" },
@@ -258,6 +266,75 @@ export function PlanTimescaleDialog({ projectId, config, onClose, onSaved }: Pro
                 ))}
               </select>
             </label>
+          </div>
+
+          {/* Display range — clip the timeline to a window so Today sits mid-chart */}
+          <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">
+                Display range
+              </div>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      displayRange: { from: isoFromToday(-90), to: isoFromToday(90) },
+                    }))
+                  }
+                  className="rounded border border-border px-2 py-0.5 text-[10px] font-semibold hover:bg-muted/50"
+                >
+                  Center on today
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({ ...d, displayRange: { from: null, to: null } }))
+                  }
+                  className="rounded border border-border px-2 py-0.5 text-[10px] font-semibold hover:bg-muted/50"
+                >
+                  Auto (whole programme)
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="font-semibold">From</span>
+                <input
+                  type="date"
+                  value={draft.displayRange.from ?? ""}
+                  max={draft.displayRange.to ?? undefined}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      displayRange: { ...d.displayRange, from: e.target.value || null },
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="font-semibold">To</span>
+                <input
+                  type="date"
+                  value={draft.displayRange.to ?? ""}
+                  min={draft.displayRange.from ?? undefined}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      displayRange: { ...d.displayRange, to: e.target.value || null },
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none"
+                />
+              </label>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Limits the Gantt timeline to this window so the Today line sits mid-chart
+              instead of at the far left. Leave blank / “Auto” to fit the whole
+              programme. Bars outside the window are clipped, not deleted.
+            </p>
           </div>
 
           {/* Live preview */}

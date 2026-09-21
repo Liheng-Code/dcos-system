@@ -36,6 +36,12 @@
 -- Idempotent: `add column if not exists`; backfill guarded by
 -- `where dwl_work_item_id is null` so re-running is a safe no-op.
 
+-- Production already has tender_boq_items.unit_rate_id (FK to
+-- tender_unit_rates) but no earlier migration declares it, so a fresh local
+-- DB (supabase start) lacks it. Add it when missing; no-op on production.
+alter table public.tender_boq_items
+  add column if not exists unit_rate_id uuid references public.tender_unit_rates(id);
+
 alter table public.tender_boq_items
   add column if not exists dwl_work_item_id uuid references public.dwl_work_items(id);
 

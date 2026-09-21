@@ -34,6 +34,8 @@ interface ProjectRow {
   project_code: string | null;
   project_name: string;
   project_status: string | null;
+  /** Completion Plan 2.7 — Planned Value is anchored on this, not wall-clock time, so EVM matches the as-of date IPC claims use. */
+  data_date: string | null;
 }
 
 interface BoqItemRow {
@@ -121,7 +123,7 @@ export function completeEvm(input: { bac: number; ev: number; pv: number; ac: nu
 export async function getProjectCostAnalytics(projectId?: string): Promise<ProjectCostAnalytics[]> {
   const supabase = createClient();
   const [projectsRes, tasksRes, boqRes, txRes] = await Promise.all([
-    supabase.from("projects").select("id, project_code, project_name, project_status").order("project_name"),
+    supabase.from("projects").select("id, project_code, project_name, project_status, data_date").order("project_name"),
     (projectId
       ? supabase.from("wbs_tasks").select("*").eq("project_id", projectId)
       : supabase.from("wbs_tasks").select("*")),
@@ -155,12 +157,18 @@ export async function getProjectCostAnalytics(projectId?: string): Promise<Proje
       ? projectTasks.reduce((sum, task) => sum + toNumber(task.budget_cost) * ((task.progress ?? 0) / 100), 0) / taskBudget * 100
       : average(projectTasks.map((task) => task.progress ?? 0));
 
-    const taskEvm = calculateEvmFromTasks(projectTasks);
+    // Anchor Planned Value on the project's schedule data date (falls back to
+    // now if unset) so EVM reads as-of the same date Planning's progress
+    // snapshots and IPC claims use — not today's wall-clock time.
+    const dataDateMs = project.data_date ? new Date(project.data_date).getTime() : Date.now();
+    const nowMs = Number.isFinite(dataDateMs) ? dataDateMs : Date.now();
+
+    const taskEvm = calculateEvmFromTasks(projectTasks, nowMs);
     const evm = budget > 0
       ? completeEvm({
           bac: budget,
           ev: budget * (weightedProgress / 100),
-          pv: taskEvm?.pv ?? getTimeLinearPlannedValue(projectTasks, budget),
+          pv: taskEvm?.pv ?? getTimeLinearPlannedValue(projectTasks, budget, nowMs),
           ac: actual,
         })
       : taskEvm;
@@ -215,10 +223,9 @@ export async function getWbsNodeCostBreakdown(projectId: string, wbsNodeId: stri
   };
 }
 
-function getTimeLinearPlannedValue(tasks: WbsTaskRecord[], fallbackBudget: number): number {
+function getTimeLinearPlannedValue(tasks: WbsTaskRecord[], fallbackBudget: number, now = Date.now()): number {
   const baselined = tasks.filter((task) => task.baseline_start_date && task.baseline_finish_date);
   if (baselined.length === 0) return 0;
-  const now = Date.now();
   let plannedWeight = 0;
 
   for (const task of baselined) {

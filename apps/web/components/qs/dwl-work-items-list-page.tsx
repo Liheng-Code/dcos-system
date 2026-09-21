@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ClipboardList, Loader2, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -43,6 +45,7 @@ interface DetailLine {
 export default function DwlWorkItemsListPage() {
   const supabase = useMemo(() => createClient(), []);
   const { can, loaded: permsLoaded } = useQsPermissions();
+  const searchParams = useSearchParams();
 
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -52,7 +55,8 @@ export default function DwlWorkItemsListPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
+  // Pre-filled when arriving from a Cost Item's "Open in Rate Build-Up" link.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [sectionFilter, setSectionFilter] = useState<string>("all");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -273,9 +277,13 @@ export default function DwlWorkItemsListPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
+          <div className="mb-1 flex flex-wrap items-center gap-3 text-xs">
+            <Link href="/dashboard/qs/dwl-cost-items" className="text-muted-foreground hover:text-foreground">← Cost Item Library</Link>
+            <Link href="/dashboard/qs/dwl-assemblies" className="text-primary hover:underline">Assembly Builder</Link>
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">Direct Works Cost Library — Rate Build-Up</h1>
           <p className="text-sm text-muted-foreground">
-            Level 2: work items priced as recipes of Level 1 resources. Select a work item to see why it costs what it costs.
+            Level 2: work items priced as recipes of Level 1 resources. Select a work item to see why it costs what it costs. Advanced editor.
           </p>
         </div>
         <Button

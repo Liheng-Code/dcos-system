@@ -22,6 +22,9 @@ export interface WbsNodeRecord {
   is_locked?: boolean;
   locked_at?: string | null;
   locked_by?: string | null;
+  cost_code?: string | null;
+  discipline?: string | null;
+  area_label?: string | null;
 }
 
 export interface WbsNodeData {
@@ -103,6 +106,9 @@ export interface WbsTaskRecord {
   sort_order: number;
   task_type: string | null;
   category: string | null;
+  cost_code?: string | null;
+  area_label?: string | null;
+  duration_days?: number | null;
   started_at: string | null;
   paused_at: string | null;
   comments: TaskComment[];

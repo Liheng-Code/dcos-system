@@ -141,11 +141,27 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
       }
 
       for (const section of tree.sections) collect(section);
-      if (rows.length > 0) {
-        const { error } = await supabase.from("tender_preliminaries_items").insert(rows);
+
+      // tender_preliminaries_items has no unique (tender_id, code), so loading the same case twice
+      // would silently duplicate every line. Only add codes this tender does not already have.
+      const { data: existing, error: existingError } = await supabase
+        .from("tender_preliminaries_items")
+        .select("code")
+        .eq("tender_id", tenderId);
+      if (existingError) throw new Error(existingError.message);
+      const existingCodes = new Set((existing ?? []).map((r) => r.code));
+      const newRows = rows.filter((r) => !existingCodes.has(r.code));
+      const skipped = rows.length - newRows.length;
+
+      if (newRows.length > 0) {
+        const { error } = await supabase.from("tender_preliminaries_items").insert(newRows);
         if (error) throw new Error(error.message);
       }
-      toast.success(`${rows.length} item(s) loaded from library`);
+      toast.success(
+        skipped > 0
+          ? `${newRows.length} item(s) loaded from library, ${skipped} already on this tender skipped`
+          : `${newRows.length} item(s) loaded from library`,
+      );
       onLoaded();
       onClose();
     } catch (e) {

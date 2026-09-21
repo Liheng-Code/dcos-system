@@ -17,11 +17,22 @@ import {
   depsToArrays,
   scheduleProject,
   wouldCycle,
+  DEFAULT_FLOAT_THRESHOLDS,
   type DepType,
   type EngineDep,
   type EngineTask,
+  type FloatThresholds,
   type TaskFloat,
 } from "@/lib/planning/schedule-engine";
+import { computeScheduleKpis, type ScheduleKpis } from "@/lib/planning/schedule-kpis";
+import { logScheduleAudit, logScheduleFieldChanges, type ScheduleAuditAction } from "@/lib/planning/schedule-audit";
+import {
+  DEFAULT_PROGRESS_LINE_STYLE,
+  type ProgressLineDateSource,
+  type ProgressLinePointShape,
+  type ProgressLineStyle,
+} from "./gantt-progress-line";
+import { DEFAULT_BAR_STYLE, type GanttBarStyleSettings } from "@/lib/planning/gantt-bar-style";
 import { parsePredecessors } from "@/lib/planning/predecessor-syntax";
 import { addAssignment, findOrCreateResourceForProfile } from "@/lib/planning/resource-service";
 import {
@@ -153,6 +164,12 @@ export interface UseSheetData {
   float: Map<string, TaskFloat>;
   violations: Map<string, string>;
   scheduleError: string | null;
+  /** Dashboard/toolbar headline numbers (Completion Plan 1.4 / 1.5). */
+  kpis: ScheduleKpis;
+  /** Task ids with a pending progress-review row (Completion Plan 2.2) — drives the Sheet's pending badge. */
+  pendingProgressReviewTaskIds: Set<string>;
+  /** Moves the project's schedule data date forward and re-snapshots progress (Completion Plan F2 / 1.2). Throws on failure. */
+  advanceDataDate: (newDate: string, note?: string) => Promise<void>;
   /** Row ids (`task:<id>` / `node:<id>`) under a locked WBS backbone — read-only. */
   lockedRowIds: Set<string>;
   /** Task ids under a locked WBS backbone — for the timeline. */
@@ -165,11 +182,30 @@ export interface UseSheetData {
   setAutoSchedule: (v: boolean) => void;
   /** Auto-schedule is off and a schedule-affecting edit is pending (needs Calculate). */
   calcNeeded: boolean;
+  /** Per-project critical / near-critical float cutoffs (days) — drives `float`'s `critical`/`nearCritical` flags. */
+  floatThresholds: FloatThresholds;
+  updateFloatThresholds: (next: FloatThresholds) => Promise<void>;
+  /** Per-project progress-line style (date source, colors, marker shape). Visibility itself is a client-side toggle. */
+  progressLineStyle: ProgressLineStyle;
+  updateProgressLineSettings: (next: ProgressLineStyle) => Promise<void>;
+  /** Per-project Gantt bar appearance (color/shape by category, text label positions). Edited via double-click "Format Bar". */
+  barStyle: GanttBarStyleSettings;
+  updateBarStyle: (next: GanttBarStyleSettings) => Promise<void>;
   reload: () => Promise<void>;
   actions: SheetActions;
 }
 
-export function useSheetData(projectId: string, isManager = false): UseSheetData {
+export function useSheetData(
+  projectId: string,
+  isManager = false,
+  /**
+   * When set, the grid + timeline render every task's dates from this
+   * `taskId → { start, end }` map instead of the live values, and ALL write
+   * actions become no-ops (a "read-only" toast). Used by the Gantt "View"
+   * selector to look at a saved schedule revision without editing it.
+   */
+  overrideDates?: Map<string, { start: string | null; end: string | null }> | null,
+): UseSheetData {
   const supabase = useMemo(() => createClient(), []);
   const [tasks, setTasks] = useState<SheetTask[]>([]);
   const [nodes, setNodes] = useState<SheetNode[]>([]);
@@ -178,11 +214,20 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
   const [containerId, setContainerId] = useState<string | null>(null);
   const [calendar, setCalendar] = useState<WorkCalendar>(DEFAULT_CALENDAR);
   const [wbsCodeMask, setWbsCodeMask] = useState<WbsCodeMask>(DEFAULT_MASK);
+  const [floatThresholds, setFloatThresholds] = useState<FloatThresholds>(DEFAULT_FLOAT_THRESHOLDS);
+  const [progressLineStyle, setProgressLineStyle] = useState<ProgressLineStyle>(DEFAULT_PROGRESS_LINE_STYLE);
+  const [barStyle, setBarStyle] = useState<GanttBarStyleSettings>(DEFAULT_BAR_STYLE);
   const [loading, setLoading] = useState(true);
   const [autoSchedule, setAutoSchedule] = useState(true);
   const [calcNeeded, setCalcNeeded] = useState(false);
+  /** PCR from the most recently closed weekly plan (Completion Plan 1.8's close_weekly_plan()). Null until one has been closed. */
+  const [weeklyPlanPcr, setWeeklyPlanPcr] = useState<number | null>(null);
+  /** Task ids with a pending wbs_task_progress_reviews row (Completion Plan 2.2) — drives the Sheet's pending badge. */
+  const [pendingProgressReviewTaskIds, setPendingProgressReviewTaskIds] = useState<Set<string>>(new Set());
 
   const nextSort = useRef(makeSortAllocator()).current;
+  /** Debounce timer for the schedule-alert evaluation call (Completion Plan 1.6) — coalesces a burst of edits into one evaluation. */
+  const alertEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerPromise = useRef<Promise<string> | null>(null);
   const warnedNoCalendar = useRef<string | null>(null);
   // Latest state for use inside async callbacks without stale closures.
@@ -190,6 +235,14 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
   const nodesRef = useRef(nodes);
   const calendarRef = useRef(calendar);
   const autoScheduleRef = useRef(autoSchedule);
+  /** Acting user id for wbs_audit_log rows (Completion Plan 1.1) — fetched once, read synchronously from write paths. */
+  const currentUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      currentUserIdRef.current = data.user?.id ?? null;
+    });
+  }, [supabase]);
+  useEffect(() => () => { if (alertEvalTimer.current) clearTimeout(alertEvalTimer.current); }, []);
 
   // Node ids that are, or descend from, a locked WBS node. Drives the read-only
   // treatment for everyone (mirrors the WBS Builder); the edit guards below let
@@ -261,7 +314,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
   }, [lockedNodeIds, tasks]);
 
   const fetchAll = useCallback(async () => {
-    const [tRes, nRes, pRes, calRes, maskRes] = await Promise.all([
+    const [tRes, nRes, pRes, calRes, maskRes, floatRes, pcrRes, pendingReviewRes] = await Promise.all([
       supabase
         .from("wbs_tasks")
         .select(TASK_COLS)
@@ -275,7 +328,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         .order("sort_order", { ascending: true, nullsFirst: false }),
       supabase
         .from("projects")
-        .select("id, project_code, project_name, progress_percentage, data_date")
+        .select("id, project_code, project_name, progress_percentage, data_date, end_date")
         .eq("id", projectId)
         .maybeSingle(),
       supabase
@@ -290,9 +343,72 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         .select("code_prefix, levels, generate_for_new, verify_unique")
         .eq("project_id", projectId)
         .maybeSingle(),
+      supabase
+        .from("plan_schedule_settings")
+        .select(
+          "critical_float_threshold_days, near_critical_float_threshold_days, progress_line_date_source, progress_line_custom_date, progress_line_color, progress_line_point_shape, progress_line_point_color, progress_line_show_date, bar_style",
+        )
+        .eq("project_id", projectId)
+        .maybeSingle(),
+      supabase
+        .from("weekly_plans")
+        .select("pcr")
+        .eq("project_id", projectId)
+        .eq("status", "approved")
+        .not("pcr", "is", null)
+        .order("closed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("wbs_task_progress_reviews")
+        .select("wbs_task_id")
+        .eq("project_id", projectId)
+        .eq("status", "pending"),
     ]);
     if (tRes.error) toast.error(tRes.error.message);
     setWbsCodeMask(maskFromRow((maskRes.data as WbsMaskRow | null) ?? null));
+    const settingsRow = floatRes.data as {
+      critical_float_threshold_days: number;
+      near_critical_float_threshold_days: number;
+      progress_line_date_source: ProgressLineDateSource;
+      progress_line_custom_date: string | null;
+      progress_line_color: string;
+      progress_line_point_shape: ProgressLinePointShape;
+      progress_line_point_color: string;
+      progress_line_show_date: boolean;
+      bar_style: GanttBarStyleSettings | null;
+    } | null;
+    setFloatThresholds(
+      settingsRow
+        ? { critical: settingsRow.critical_float_threshold_days, nearCritical: settingsRow.near_critical_float_threshold_days }
+        : DEFAULT_FLOAT_THRESHOLDS,
+    );
+    setProgressLineStyle(
+      settingsRow
+        ? {
+            dateSource: settingsRow.progress_line_date_source,
+            customDate: settingsRow.progress_line_custom_date,
+            color: settingsRow.progress_line_color,
+            pointShape: settingsRow.progress_line_point_shape,
+            pointColor: settingsRow.progress_line_point_color,
+            showDate: settingsRow.progress_line_show_date,
+          }
+        : DEFAULT_PROGRESS_LINE_STYLE,
+    );
+    setBarStyle(
+      settingsRow?.bar_style
+        ? {
+            normal: { ...DEFAULT_BAR_STYLE.normal, ...settingsRow.bar_style.normal },
+            critical: { ...DEFAULT_BAR_STYLE.critical, ...settingsRow.bar_style.critical },
+            nearCritical: { ...DEFAULT_BAR_STYLE.nearCritical, ...settingsRow.bar_style.nearCritical },
+            text: { ...DEFAULT_BAR_STYLE.text, ...settingsRow.bar_style.text },
+          }
+        : DEFAULT_BAR_STYLE,
+    );
+    setWeeklyPlanPcr((pcrRes.data as { pcr: number | null } | null)?.pcr ?? null);
+    setPendingProgressReviewTaskIds(
+      new Set(((pendingReviewRes.data ?? []) as { wbs_task_id: string }[]).map((r) => r.wbs_task_id)),
+    );
 
     const calRow = (calRes.data ?? null) as PlanCalendarRow | null;
     let exceptions: PlanCalendarExceptionRow[] = [];
@@ -315,11 +431,25 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       project_name: string | null;
       progress_percentage: number | null;
       data_date: string | null;
+      end_date: string | null;
     } | null;
 
-    setTasks((tRes.data ?? []) as unknown as SheetTask[]);
-    setNodes((nRes.data ?? []) as unknown as SheetNode[]);
-    setContainerId(findContainer((nRes.data ?? []) as unknown as SheetNode[]));
+    const freshTasks = (tRes.data ?? []) as unknown as SheetTask[];
+    const freshNodes = (nRes.data ?? []) as unknown as SheetNode[];
+    const freshCalendar = buildWorkCalendar(calRow, exceptions);
+
+    // Mirror the just-fetched data into the async-callback refs *now*, before
+    // React has re-rendered. Without this, an operation that reloads and then
+    // immediately runs the scheduler (e.g. Move Project → reload →
+    // runAutoSchedule) would recompute from the pre-reload snapshot and paint
+    // stale dates until a manual page refresh.
+    tasksRef.current = freshTasks;
+    nodesRef.current = freshNodes;
+    calendarRef.current = freshCalendar;
+
+    setTasks(freshTasks);
+    setNodes(freshNodes);
+    setContainerId(findContainer(freshNodes));
     setDataDate(proj?.data_date ?? null);
     setProject(
       proj
@@ -328,10 +458,11 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
             project_code: proj.project_code ?? "PROJ",
             project_name: proj.project_name ?? "Project",
             progress_percentage: proj.progress_percentage ?? 0,
+            end_date: proj.end_date ?? null,
           }
         : null,
     );
-    setCalendar(buildWorkCalendar(calRow, exceptions));
+    setCalendar(freshCalendar);
   }, [supabase, projectId]);
 
   useEffect(() => {
@@ -363,13 +494,30 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
   // -------------------------------------------------------------------------
   // Derived
   // -------------------------------------------------------------------------
+  const readOnly = !!overrideDates;
+
+  /**
+   * Live tasks, or — when a saved revision is being *viewed* — the same tasks
+   * with their dates swapped for the revision's. Everything that renders (tree,
+   * rollups, float, timeline, grid) reads this; the write path keeps using the
+   * raw `tasks` / `tasksRef`, and is disabled anyway while `overrideDates` is on.
+   */
+  const viewTasks = useMemo(() => {
+    if (!overrideDates) return tasks;
+    return tasks.map((t) => {
+      const d = overrideDates.get(t.id);
+      if (!d || (!d.start && !d.end)) return t;
+      return { ...t, start_date: d.start ?? t.start_date, end_date: d.end ?? t.end_date };
+    });
+  }, [tasks, overrideDates]);
+
   const tree = useMemo(
-    () => buildSheetTree(nodes, tasks, containerId, project),
-    [nodes, tasks, containerId, project],
+    () => buildSheetTree(nodes, viewTasks, containerId, project),
+    [nodes, viewTasks, containerId, project],
   );
   const flatRows = useMemo(() => flattenRows(tree), [tree]);
   const nextCodePreview = useMemo(() => nextTaskCode(tasks), [tasks]);
-  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const taskById = useMemo(() => new Map(viewTasks.map((t) => [t.id, t])), [viewTasks]);
 
   /**
    * MS-Project WBS code per row: the persisted `wbs_outline_code` override when
@@ -386,7 +534,11 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         const here = isProjectRow ? [] : [...path, i + 1];
         const override =
           r.kind === "task" ? r.task.wbs_outline_code : r.node.wbs_outline_code ?? null;
-        out.set(r.id, override || computeWbsCode(here, wbsCodeMask));
+        const computed = computeWbsCode(here, wbsCodeMask);
+        // The project row's mask has no numeric segment of its own (`here` is
+        // always []); fall back to "0" rather than leaving it blank when no
+        // code prefix is configured — mirrors MS Project's project-summary WBS.
+        out.set(r.id, override || (isProjectRow && !computed ? "0" : computed));
         if (r.children.length) walk(r.children, here);
       });
     };
@@ -423,30 +575,48 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
 
   /** CPM analysis over the current task set — drives float / critical colouring. */
   const analysis = useMemo(() => {
-    if (tasks.length === 0) {
+    if (viewTasks.length === 0) {
       return {
         float: new Map<string, TaskFloat>(),
+        dates: new Map<string, { start: string; finish: string }>(),
         violations: new Map<string, string>(),
         error: null as string | null,
       };
     }
     const result = scheduleProject(
-      toEngineTasks(tasks, calendar),
+      toEngineTasks(viewTasks, calendar),
       calendar,
       dataDate ?? todayISO(),
+      floatThresholds,
     );
     if (!result.ok) {
       const names = result.cycle
-        .map((id) => tasks.find((t) => t.id === id)?.task_code ?? id.slice(0, 8))
+        .map((id) => viewTasks.find((t) => t.id === id)?.task_code ?? id.slice(0, 8))
         .join(" → ");
       return {
         float: new Map<string, TaskFloat>(),
+        dates: new Map<string, { start: string; finish: string }>(),
         violations: new Map<string, string>(),
         error: `Circular dependency: ${names}`,
       };
     }
-    return { float: result.float, violations: result.violations, error: null };
-  }, [tasks, calendar, dataDate]);
+    return { float: result.float, dates: result.dates, violations: result.violations, error: null };
+  }, [viewTasks, calendar, dataDate, floatThresholds]);
+
+  /** Dashboard/toolbar headline numbers (Planning Completion Plan 1.4 / 1.5). */
+  const kpis = useMemo(
+    () =>
+      computeScheduleKpis(
+        viewTasks,
+        analysis.float,
+        analysis.dates,
+        calendar,
+        dataDate ?? todayISO(),
+        project?.end_date ?? null,
+        weeklyPlanPcr,
+      ),
+    [viewTasks, analysis.float, analysis.dates, calendar, dataDate, project?.end_date, weeklyPlanPcr],
+  );
 
   // -------------------------------------------------------------------------
   // Container node
@@ -600,6 +770,50 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         }
       }
 
+      // Audit trail (Completion Plan 1.1) — one row per changed field on a
+      // directly-patched task, plus one "ripple" row per task the CPM engine
+      // rescheduled as a side effect. Fire-and-forget: never blocks the UI on
+      // a logging failure (logScheduleAudit already swallows its own errors).
+      const auditBase = { projectId, userId: currentUserIdRef.current };
+      const before = new Map(snapshot.map((t) => [t.id, t]));
+      for (const { id, patch } of patches) {
+        const b = before.get(id);
+        if (!b) continue;
+        const changes: { action: ScheduleAuditAction; fieldName: string; oldValue: string | null; newValue: string | null }[] = [];
+        if ("start_date" in patch) changes.push({ action: "Plan Start Changed", fieldName: "start_date", oldValue: b.start_date, newValue: patch.start_date ?? null });
+        if ("end_date" in patch) changes.push({ action: "Plan Finish Changed", fieldName: "end_date", oldValue: b.end_date, newValue: patch.end_date ?? null });
+        if ("dependency_task_ids" in patch) {
+          changes.push({
+            action: "Dependency Changed",
+            fieldName: "dependency_task_ids",
+            oldValue: JSON.stringify(b.dependency_task_ids ?? []),
+            newValue: JSON.stringify(patch.dependency_task_ids ?? []),
+          });
+        }
+        if ("constraint_type" in patch || "constraint_date" in patch) {
+          changes.push({
+            action: "Constraint Changed",
+            fieldName: "constraint_type",
+            oldValue: b.constraint_type ? `${b.constraint_type} ${b.constraint_date ?? ""}`.trim() : null,
+            newValue: patch.constraint_type ? `${patch.constraint_type} ${patch.constraint_date ?? b.constraint_date ?? ""}`.trim() : null,
+          });
+        }
+        if (changes.length > 0) void logScheduleFieldChanges(supabase, { ...auditBase, taskId: id, nodeId: b.wbs_node_id }, changes);
+      }
+      for (const r of ripplePayload) {
+        const b = before.get(r.id);
+        if (!b) continue;
+        void logScheduleAudit(supabase, {
+          ...auditBase,
+          taskId: r.id,
+          nodeId: b.wbs_node_id,
+          action: "Task Rescheduled",
+          fieldName: "ripple",
+          oldValue: JSON.stringify({ start: b.start_date, end: b.end_date }),
+          newValue: JSON.stringify({ start: r.start_date, end: r.end_date }),
+        });
+      }
+
       // MS-Project calculation state: a schedule edit with auto-schedule OFF
       // leaves the plan "needs Calculate"; running the engine clears it.
       if (engineRan) setCalcNeeded(false);
@@ -610,6 +824,16 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         toast.message(
           `${ripplePayload.length} task${ripplePayload.length === 1 ? "" : "s"} rescheduled`,
         );
+      }
+
+      // Schedule alerts (Completion Plan 1.6) — debounced so a burst of edits
+      // (e.g. dragging several bars) triggers one server-side evaluation, not
+      // one per edit. Fire-and-forget: never blocks the UI on the network call.
+      if (engineRan) {
+        if (alertEvalTimer.current) clearTimeout(alertEvalTimer.current);
+        alertEvalTimer.current = setTimeout(() => {
+          fetch(`/api/planning/alerts/${projectId}/evaluate`, { method: "POST" }).catch(() => {});
+        }, 2000);
       }
     },
     [dataDate, projectId, supabase],
@@ -670,7 +894,18 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         };
         const res = await supabase.from("wbs_tasks").insert(payload).select(TASK_COLS).single();
         if (!res.error && res.data) {
-          setTasks((p) => [...p, res.data as unknown as SheetTask]);
+          const created = res.data as unknown as SheetTask;
+          setTasks((p) => [...p, created]);
+          void logScheduleAudit(supabase, {
+            projectId,
+            taskId: created.id,
+            nodeId,
+            userId: currentUserIdRef.current,
+            action: "Task Created",
+            fieldName: "task_name",
+            oldValue: null,
+            newValue: trimmed,
+          });
           return;
         }
         if (res.error && isDuplicateTaskCodeError(res.error.message)) {
@@ -828,15 +1063,32 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         toast.error("Failed to save: " + error.message);
         return;
       }
+      if (field === "progress") {
+        void logScheduleAudit(supabase, {
+          projectId,
+          taskId,
+          nodeId: task.wbs_node_id,
+          userId: currentUserIdRef.current,
+          action: "Progress Updated",
+          fieldName: "progress",
+          oldValue: String(snapshot.progress),
+          newValue: String(patch.progress ?? snapshot.progress),
+        });
+      }
       if (note) toast.message(note);
       if (field === "progress") reload();
     },
-    [applySchedule, dataDate, guardLocked, reload, setPredecessors, supabase, taskLocked],
+    [applySchedule, dataDate, guardLocked, projectId, reload, setPredecessors, supabase, taskLocked],
   );
 
   const deleteTask = useCallback(
     async (taskId: string) => {
       if (guardLocked(taskLocked(taskId))) return;
+      // Captured before the delete — wbs_audit_log.wbs_task_id has ON DELETE
+      // CASCADE, so a row inserted *after* the delete with this taskId would
+      // simply fail its FK check (the parent no longer exists). Log with
+      // taskId: null and the identifying text in old_value instead.
+      const deleted = tasksRef.current.find((t) => t.id === taskId) ?? null;
       const res = await supabase
         .from("wbs_tasks")
         .delete()
@@ -850,6 +1102,18 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       if (!res.data) {
         toast.error("You don't have permission to delete tasks");
         return;
+      }
+      if (deleted) {
+        void logScheduleAudit(supabase, {
+          projectId,
+          taskId: null,
+          nodeId: deleted.wbs_node_id,
+          userId: currentUserIdRef.current,
+          action: "Task Deleted",
+          fieldName: "task_name",
+          oldValue: `${deleted.task_code} ${deleted.task_name}`,
+          newValue: null,
+        });
       }
       // Drop the deleted task from every successor's dependency arrays.
       const orphaned = tasksRef.current.filter((t) =>
@@ -878,7 +1142,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       }
       toast.success("Task deleted");
     },
-    [guardLocked, supabase, taskLocked],
+    [guardLocked, projectId, supabase, taskLocked],
   );
 
   // -------------------------------------------------------------------------
@@ -984,6 +1248,7 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       const task = tasksRef.current.find((t) => t.id === taskId);
       if (!task || task.progress === n) return;
       if (guardLocked(taskLocked(taskId))) return;
+      const previous = task.progress;
       setTasks((p) => p.map((t) => (t.id === taskId ? { ...t, progress: n } : t)));
       const pending = progressTimers.current.get(taskId);
       if (pending) clearTimeout(pending);
@@ -991,13 +1256,21 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
         taskId,
         setTimeout(async () => {
           progressTimers.current.delete(taskId);
-          const { error } = await supabase
-            .from("wbs_tasks")
-            .update({ progress: n })
-            .eq("id", taskId);
+          // Completion Plan 2.2 — submit_progress() writes directly when the
+          // project has no review flow enabled (the common case); otherwise it
+          // parks the change as a pending wbs_task_progress_reviews row and we
+          // must roll the optimistic update back until a planner decides it.
+          const { data, error } = await supabase.rpc("submit_progress", { p_task_id: taskId, p_progress: n });
           if (error) {
             toast.error("Failed to save % complete: " + error.message);
             reload();
+            return;
+          }
+          const mode = (data as { mode?: string } | null)?.mode;
+          if (mode === "pending") {
+            setTasks((p) => p.map((t) => (t.id === taskId ? { ...t, progress: previous } : t)));
+            setPendingProgressReviewTaskIds((prev) => new Set(prev).add(taskId));
+            toast.message(`"${task.task_name}" progress change (${n}%) submitted for review`);
           }
         }, 450),
       );
@@ -1396,8 +1669,39 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
     [applyNodeMove, moveTaskToNode],
   );
 
-  const actions = useMemo<SheetActions>(
-    () => ({
+  const actions = useMemo<SheetActions>(() => {
+    if (readOnly) {
+      const blocked = async () => {
+        toast.message("Read-only — you're viewing a saved schedule. Switch View to \"Live\" to edit.");
+      };
+      return {
+        createTask: blocked,
+        updateTaskField: blocked,
+        deleteTask: blocked,
+        createNode: blocked,
+        renameNode: blocked,
+        deleteNode: blocked,
+        indentRow: blocked,
+        outdentRow: blocked,
+        moveRow: blocked,
+        setPredecessors: blocked,
+        linkTasks: blocked,
+        updateLink: blocked,
+        removeLink: blocked,
+        rescheduleTask: blocked,
+        setProgress: () => {
+          toast.message("Read-only — you're viewing a saved schedule. Switch View to \"Live\" to edit.");
+        },
+        toggleMilestone: blocked,
+        toggleManualSchedule: blocked,
+        setConstraint: blocked,
+        assignOwner: blocked,
+        runAutoSchedule: blocked,
+        renumberWbsCodes: blocked,
+        setWbsCode: blocked,
+      };
+    }
+    return {
       createTask,
       updateTaskField,
       deleteTask,
@@ -1420,8 +1724,10 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
       runAutoSchedule,
       renumberWbsCodes,
       setWbsCode,
-    }),
+    };
+  },
     [
+      readOnly,
       createTask,
       updateTaskField,
       deleteTask,
@@ -1447,15 +1753,109 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
     ],
   );
 
+  const updateFloatThresholds = useCallback(
+    async (next: FloatThresholds) => {
+      setFloatThresholds(next);
+      try {
+        await supabase.from("plan_schedule_settings").upsert(
+          {
+            project_id: projectId,
+            critical_float_threshold_days: next.critical,
+            near_critical_float_threshold_days: next.nearCritical,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "project_id" },
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to save float settings");
+      }
+    },
+    [projectId, supabase],
+  );
+
+  /**
+   * Advances the project's schedule data date (Completion Plan F2 / 1.2):
+   * moves data_date forward, captures a progress snapshot, and reruns the
+   * engine from the new date. Throws on failure so the calling dialog can
+   * show the error inline instead of a toast.
+   */
+  const advanceDataDate = useCallback(
+    async (newDate: string, note?: string) => {
+      const { data, error } = await supabase.rpc("advance_data_date", {
+        p_project_id: projectId,
+        p_new_date: newDate,
+        p_note: note ?? null,
+      });
+      if (error) throw new Error(error.message);
+      setDataDate(newDate);
+      await applySchedule([], { force: true, silent: true });
+      const reportJobId = (data as { report_job_id?: string } | null)?.report_job_id;
+      if (reportJobId) {
+        // Fire-and-forget — the monthly report is a background job; its
+        // success/failure doesn't block the data-date advance the user is
+        // waiting on. Failures are visible via plan_report_jobs.status.
+        fetch(`/api/planning/reports/monthly/${projectId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: reportJobId }),
+        }).catch((e) => console.error("Monthly report generation failed to start:", e));
+      }
+    },
+    [projectId, supabase, applySchedule],
+  );
+
+  const updateProgressLineSettings = useCallback(
+    async (next: ProgressLineStyle) => {
+      setProgressLineStyle(next);
+      try {
+        await supabase.from("plan_schedule_settings").upsert(
+          {
+            project_id: projectId,
+            progress_line_date_source: next.dateSource,
+            progress_line_custom_date: next.customDate,
+            progress_line_color: next.color,
+            progress_line_point_shape: next.pointShape,
+            progress_line_point_color: next.pointColor,
+            progress_line_show_date: next.showDate,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "project_id" },
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to save progress line settings");
+      }
+    },
+    [projectId, supabase],
+  );
+
+  const updateBarStyle = useCallback(
+    async (next: GanttBarStyleSettings) => {
+      setBarStyle(next);
+      try {
+        await supabase.from("plan_schedule_settings").upsert(
+          {
+            project_id: projectId,
+            bar_style: next,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "project_id" },
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to save bar style");
+      }
+    },
+    [projectId, supabase],
+  );
+
   return {
     loading,
     tree,
     flatRows,
     rowNumberById,
-    tasks,
+    tasks: viewTasks,
     taskById,
-    taskCount: tasks.length,
-    capped: tasks.length >= TASK_LIMIT,
+    taskCount: viewTasks.length,
+    capped: viewTasks.length >= TASK_LIMIT,
     nextCodePreview,
     project,
     calendar,
@@ -1463,6 +1863,9 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
     float: analysis.float,
     violations: analysis.violations,
     scheduleError: analysis.error,
+    kpis,
+    advanceDataDate,
+    pendingProgressReviewTaskIds,
     lockedRowIds,
     lockedTaskIds,
     wbsCodeMask,
@@ -1470,6 +1873,12 @@ export function useSheetData(projectId: string, isManager = false): UseSheetData
     autoSchedule,
     setAutoSchedule,
     calcNeeded,
+    floatThresholds,
+    updateFloatThresholds,
+    progressLineStyle,
+    updateProgressLineSettings,
+    barStyle,
+    updateBarStyle,
     reload,
     actions,
   };

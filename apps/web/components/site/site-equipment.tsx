@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProject } from "@/components/dashboard/project-context";
 import { Plus, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function SiteEquipment() {
+  const { selectedProjectId, loading: projectLoading } = useProject();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -38,10 +40,12 @@ export function SiteEquipment() {
   const [eqNotes, setEqNotes] = useState("");
 
   async function load() {
+    if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from("site_equipment")
       .select("*")
+      .eq("project_id", selectedProjectId)
       .order("date", { ascending: false })
       .limit(200);
     if (error) toast.error(error.message);
@@ -49,7 +53,7 @@ export function SiteEquipment() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedProjectId]);
 
   function resetForm() {
     setDate(""); setName(""); setCode(""); setEqType(""); setOperator("");
@@ -67,6 +71,7 @@ export function SiteEquipment() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!selectedProjectId) { toast.error("Select a project first"); return; }
     setSaving(true);
     const payload: Record<string, any> = {
       date, equipment_name: name, equipment_code: code || null, equipment_type: eqType || null,
@@ -75,7 +80,7 @@ export function SiteEquipment() {
     };
     const { error } = editing
       ? await supabase.from("site_equipment").update(payload).eq("id", editing.id)
-      : await supabase.from("site_equipment").insert([{ ...payload, project_id: crypto.randomUUID() }]);
+      : await supabase.from("site_equipment").insert([{ ...payload, project_id: selectedProjectId }]);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);
@@ -85,7 +90,8 @@ export function SiteEquipment() {
     !search || r.equipment_name?.toLowerCase().includes(search.toLowerCase()) || r.equipment_code?.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) return <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (projectLoading || loading) return <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (!selectedProjectId) return <p className="py-10 text-center text-sm text-muted-foreground">Select a project from the sidebar to record site equipment.</p>;
 
   return (
     <div className="space-y-4">

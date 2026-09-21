@@ -270,6 +270,9 @@ export function GanttView({
         ...t,
         dependency_lag_days: t.dependency_lag_days || [],
         is_critical: criticalIds.has(t.id),
+        // This legacy engine (get_critical_path_tasks RPC) doesn't compute a
+        // near-critical band — only the client CPM engine (toGanttTask) does.
+        is_near_critical: false,
         total_float: cpm?.total_float_days ?? null,
         early_start: cpm?.early_start ?? null,
         early_finish: cpm?.early_finish ?? null,
@@ -942,6 +945,7 @@ export function GanttView({
                           left={x}
                           width={w}
                           dayWidth={dayW}
+                          depth={group.wbs_depth}
                         />
                       )}
                     </div>

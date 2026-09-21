@@ -9,7 +9,6 @@ import {
   IndentDecrease,
   IndentIncrease,
   Plus,
-  RefreshCw,
   Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,6 @@ interface WbsBuilderToolbarProps {
   onOutdent: () => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
-  onRefresh: () => void;
   onSaveVersion: () => void;
   onOpenVersions: () => void;
 }
@@ -39,7 +37,6 @@ export function WbsBuilderToolbar({
   onOutdent,
   onExpandAll,
   onCollapseAll,
-  onRefresh,
   onSaveVersion,
   onOpenVersions,
 }: WbsBuilderToolbarProps) {
@@ -105,9 +102,6 @@ export function WbsBuilderToolbar({
       </Button>
       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onCollapseAll} title="Collapse all">
         <ChevronsDownUp className="h-3.5 w-3.5" />
-      </Button>
-      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onRefresh} title="Refresh">
-        <RefreshCw className="h-3.5 w-3.5" />
       </Button>
 
       <span className="mx-1 h-4 w-px bg-border" />

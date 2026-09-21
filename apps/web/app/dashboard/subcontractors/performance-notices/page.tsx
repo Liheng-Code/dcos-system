@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Plus, FileWarning, CheckCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 interface PerfNotice {
   id: string; subcontract_id: string;
@@ -18,6 +19,7 @@ interface PerfNotice {
 
 export default function PerformanceNoticesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<PerfNotice[]>([]);
   const [subcontracts, setSubcontracts] = useState<{id:string,subcontract_no:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,15 +31,23 @@ export default function PerformanceNoticesPage() {
     subject: "", description: "", issued_date: "", response_due_date: "",
   });
 
+  const itemsQuery = useCallback(() => {
+    let q = supabase.from("subcontract_performance_notices").select("*, subcontracts!inner(project_id)").order("created_at", { ascending: false });
+    if (selectedProjectId) q = q.eq("subcontracts.project_id", selectedProjectId);
+    return q;
+  }, [supabase, selectedProjectId]);
+
   useEffect(() => {
-    supabase.from("subcontracts").select("id,subcontract_no").then(({ data }) => {
+    let sq = supabase.from("subcontracts").select("id,subcontract_no");
+    if (selectedProjectId) sq = sq.eq("project_id", selectedProjectId);
+    sq.then(({ data }) => {
       if (data) setSubcontracts(data);
     });
-    supabase.from("subcontract_performance_notices").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as PerfNotice[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
@@ -54,7 +64,7 @@ export default function PerformanceNoticesPage() {
     toast.success("Performance notice created");
     setShowForm(false);
     setForm({ subcontract_id: "", notice_no: "", notice_type: "warning", subject: "", description: "", issued_date: "", response_due_date: "" });
-    supabase.from("subcontract_performance_notices").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as PerfNotice[]);
     });
     setSaving(false);
@@ -64,7 +74,7 @@ export default function PerformanceNoticesPage() {
     const { error } = await supabase.from("subcontract_performance_notices").update({ status }).eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success(`Notice ${status}`);
-    supabase.from("subcontract_performance_notices").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data as PerfNotice[]);
     });
   }

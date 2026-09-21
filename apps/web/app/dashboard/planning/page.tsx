@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import {
-  GanttChartSquare, CalendarRange, GitCompare, Users, BarChart2, Loader2, CalendarDays,
-  TrendingUp, Camera, Layers, Briefcase, Target, ClipboardList, Activity, Table2,
+  GanttChartSquare, Loader2, Camera, AlertTriangle, CalendarClock, Gauge, ArrowRight, CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,27 +12,26 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
 import { captureProgressSnapshot, getProgressSnapshots } from "@/lib/schedule-service";
+import { useSheetData } from "@/components/planning/use-sheet-data";
+import { PlanningQuickActions } from "@/components/planning/planning-quick-actions";
+import { PlanningScurveCard } from "@/components/planning/planning-scurve-card";
+import {
+  TaskStatusDonutCard, PhaseProgressCard, LookaheadBarsCard, FloatHistogramCard, DelaysByCauseCard,
+} from "@/components/planning/planning-dashboard-charts";
+import { ManpowerHistogramCard, LevellingDiagramCard } from "@/components/planning/planning-resource-charts";
+import { todayISO } from "@/components/planning/sheet-utils";
 import { toast } from "sonner";
 
-const SCHEDULE_LEVELS = [
-  { href: "/dashboard/planning/gantt?level=1", label: "Level 1 — Executive",    icon: Briefcase,    desc: "Portfolio reporting & oversight",         color: "bg-slate-50 text-slate-700" },
-  { href: "/dashboard/planning/gantt?level=2", label: "Level 2 — Master",       icon: Target,       desc: "Phases, milestones & project overview",   color: "bg-indigo-50 text-indigo-600" },
-  { href: "/dashboard/planning/gantt?level=3", label: "Level 3 — Control",      icon: GanttChartSquare, desc: "Granular CPM tracking & baselines",     color: "bg-teal-50 text-teal-600" },
-  { href: "/dashboard/planning/gantt?level=4", label: "Level 4 — Execution",    icon: ClipboardList,desc: "Work packages & execution planning",      color: "bg-blue-50 text-blue-600" },
-  { href: "/dashboard/planning/gantt?level=5", label: "Level 5 — Look-ahead",   icon: Activity,     desc: "Daily/weekly tactical planning",         color: "bg-amber-50 text-amber-600" },
-];
-
-const MODULES = [
-  { href: "/dashboard/planning/gantt",             label: "Gantt Chart",        icon: GanttChartSquare, desc: "Schedule bars, milestones, CPM",    color: "bg-teal-50 text-teal-600" },
-  { href: "/dashboard/planning/sheet",             label: "Task Sheet",         icon: Table2,           desc: "Editable MS-Project-style grid",    color: "bg-cyan-50 text-cyan-600" },
-  { href: "/dashboard/planning/lookahead",         label: "Look-ahead",         icon: CalendarRange,    desc: "Weekly plans & rolling window",     color: "bg-blue-50 text-blue-600" },
-  { href: "/dashboard/planning/scurve",            label: "S-Curve & EVM",      icon: TrendingUp,       desc: "Progress snapshots, planned vs actual", color: "bg-indigo-50 text-indigo-600" },
-  { href: "/dashboard/planning/calendars",         label: "Calendars",          icon: CalendarDays,     desc: "Work calendars & holidays",         color: "bg-green-50 text-green-600" },
-  { href: "/dashboard/planning/comparison",        label: "Comparison",         icon: GitCompare,       desc: "Baseline vs actual variance",       color: "bg-purple-50 text-purple-600" },
-  { href: "/dashboard/planning/resource-loading",  label: "Resource Loading",   icon: Users,            desc: "Resource allocation timeline",      color: "bg-orange-50 text-orange-600" },
-  { href: "/dashboard/planning/reports",           label: "Schedule Reports",   icon: BarChart2,        desc: "Delay analysis & milestones",       color: "bg-red-50 text-red-600" },
-  { href: "/dashboard/planning/delays",            label: "Delay Register",     icon: BarChart2,        desc: "Delay events & EOT tracking",       color: "bg-rose-50 text-rose-600" },
-];
+const PROGRAMME_STATUS_LABEL: Record<string, string> = {
+  on_track: "On Track",
+  at_risk: "At Risk",
+  overrun: "Overrun",
+};
+const PROGRAMME_STATUS_CLASS: Record<string, string> = {
+  on_track: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  at_risk: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  overrun: "bg-red-500/15 text-red-400 border-red-500/30",
+};
 
 export default function PlanningPage() {
   const { selectedProjectId, loading: projectLoading } = useProject();
@@ -41,10 +39,22 @@ export default function PlanningPage() {
   const [snapshot, setSnapshot] = useState<{ planned_progress: number | null; actual_progress: number | null } | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [scurveRefresh, setScurveRefresh] = useState(0);
   const supabase = createClient();
+  // Reuses the same CPM engine + task load as the Gantt/Sheet pages (Completion
+  // Plan 1.4/1.5) rather than re-implementing schedule health here — heavier
+  // than the dashboard strictly needs, but it is the module's one source of
+  // truth for float/critical/forecast-finish.
+  const schedule = useSheetData(selectedProjectId ?? "");
 
   useEffect(() => {
-    if (!selectedProjectId) { setCounts({}); setSnapshot(null); setLoading(false); return; }
+    if (!selectedProjectId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing local state when the project selection is cleared
+      setCounts({});
+      setSnapshot(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     Promise.all([
       supabase.from("wbs_tasks").select("*", { count: "exact", head: true }).eq("project_id", selectedProjectId),
@@ -72,9 +82,10 @@ export default function PlanningPage() {
         const latest = snaps[snaps.length - 1];
         setSnapshot({ planned_progress: latest.planned_progress, actual_progress: latest.actual_progress });
       }
+      setScurveRefresh((n) => n + 1);
       toast.success("Snapshot captured");
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to capture snapshot");
     }
     setCapturing(false);
   }
@@ -83,99 +94,159 @@ export default function PlanningPage() {
     ? Math.round(((snapshot.actual_progress ?? 0) / snapshot.planned_progress) * 100) / 100
     : null;
 
-  const spiColor = spi === null ? "" : spi >= 1.0 ? "text-green-600" : spi >= 0.9 ? "text-yellow-600" : "text-red-600";
+  const spiColor = spi === null ? "" : spi >= 1.0 ? "text-green-400" : spi >= 0.9 ? "text-yellow-400" : "text-red-400";
+
+  const spinner = <Loader2 className="h-4 w-4 animate-spin inline" />;
+  // Same "as of" date the KPI tiles use, so charts and tiles never disagree.
+  const asOf = schedule.dataDate ?? todayISO();
+  // Project start → finish, from the earliest task start to the latest task finish.
+  const projectSpan = useMemo(() => {
+    let start: string | null = null;
+    let end: string | null = null;
+    for (const t of schedule.tasks) {
+      if (t.start_date && (!start || t.start_date < start)) start = t.start_date;
+      if (t.end_date && (!end || t.end_date > end)) end = t.end_date;
+    }
+    return start && end ? { start, end } : null;
+  }, [schedule.tasks]);
 
   return (
     <PlanPageShell title="Planning & Scheduling" description="Schedule management, Gantt, CPM, resource loading" icon={GanttChartSquare}>
       <div className="space-y-6">
-        {/* Schedule Levels */}
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <Layers className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Schedule Levels</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-            {SCHEDULE_LEVELS.map(sl => (
-              <Link key={sl.href} href={sl.href}>
-                <Card className="transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer h-full">
-                  <CardContent className="flex flex-col items-center gap-2 p-4 text-center">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${sl.color}`}>
-                      <sl.icon className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold">{sl.label}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{sl.desc}</p>
-                    </div>
+        {/* Schedule Health (Completion Plan 1.4 / 1.5) */}
+        {selectedProjectId && !schedule.loading && (
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Gauge className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-foreground">Schedule Health</h2>
+                <span
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                    PROGRAMME_STATUS_CLASS[schedule.kpis.programmeStatus],
+                  )}
+                >
+                  {PROGRAMME_STATUS_LABEL[schedule.kpis.programmeStatus]}
+                </span>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleCaptureSnapshot} disabled={capturing}>
+                {capturing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
+                Capture Progress Snapshot
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+              <Link href="/dashboard/planning/sheet">
+                <Card className={cn("h-full transition-colors hover:bg-muted/50", schedule.kpis.overdue > 0 && "border-red-500/40")}>
+                  <CardContent className="p-4 text-center">
+                    <p className={cn("text-2xl font-bold", schedule.kpis.overdue > 0 ? "text-red-400" : "text-foreground")}>{schedule.kpis.overdue}</p>
+                    <p className="text-xs text-muted-foreground">Overdue</p>
                   </CardContent>
                 </Card>
               </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Planning Modules */}
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <GanttChartSquare className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Planning Tools</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {MODULES.map(m => (
-            <Link key={m.href} href={m.href}>
-              <Card className="transition-colors hover:bg-muted/50 cursor-pointer h-full">
-                <CardContent className="flex items-center gap-4 p-5">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${m.color}`}>
-                    <m.icon className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold">{m.label}</p>
-                    <p className="text-xs text-muted-foreground truncate">{m.desc}</p>
-                  </div>
+              <Link href="/dashboard/planning/sheet">
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-2xl font-bold">{schedule.kpis.startingNext14d}</p>
+                    <p className="text-xs text-muted-foreground">Starting (14d)</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/dashboard/planning/sheet">
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardContent className="p-4 text-center">
+                    <p className="text-2xl font-bold">{schedule.kpis.finishingNext14d}</p>
+                    <p className="text-xs text-muted-foreground">Finishing (14d)</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/dashboard/planning/gantt">
+                <Card className={cn("h-full transition-colors hover:bg-muted/50", schedule.kpis.negativeFloat > 0 && "border-red-500/40")}>
+                  <CardContent className="p-4 text-center">
+                    <p className={cn("text-2xl font-bold", schedule.kpis.negativeFloat > 0 ? "text-red-400" : "text-foreground")}>{schedule.kpis.negativeFloat}</p>
+                    <p className="text-xs text-muted-foreground">Critical (0 float)</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/dashboard/planning/gantt">
+                <Card className={cn("h-full transition-colors hover:bg-muted/50", schedule.kpis.nearCritical > 0 && "border-amber-500/40")}>
+                  <CardContent className="p-4 text-center">
+                    <p className={cn("text-2xl font-bold", schedule.kpis.nearCritical > 0 ? "text-amber-400" : "text-foreground")}>{schedule.kpis.nearCritical}</p>
+                    <p className="text-xs text-muted-foreground">Near-critical</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Card className="h-full">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold">{schedule.kpis.pcr !== null ? `${schedule.kpis.pcr}%` : "—"}</p>
+                  <p className="text-xs text-muted-foreground">Last PCR</p>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
-        </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{loading ? <Loader2 className="h-5 w-5 animate-spin inline" /> : counts.tasks ?? "—"}</p>
-            <p className="text-xs text-muted-foreground">Total Tasks</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{loading ? <Loader2 className="h-5 w-5 animate-spin inline" /> : counts.calendars ?? "—"}</p>
-            <p className="text-xs text-muted-foreground">Calendars</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{loading ? <Loader2 className="h-5 w-5 animate-spin inline" /> : snapshot ? `${snapshot.planned_progress ?? 0}%` : "—"}</p>
-            <p className="text-xs text-muted-foreground">Planned Progress</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{loading ? <Loader2 className="h-5 w-5 animate-spin inline" /> : snapshot ? `${snapshot.actual_progress ?? 0}%` : "—"}</p>
-            <p className="text-xs text-muted-foreground">Actual Progress</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className={cn("text-2xl font-bold", spiColor)}>
-              {loading ? <Loader2 className="h-5 w-5 animate-spin inline" /> : spi !== null ? spi.toFixed(2) : "—"}
-            </p>
-            <p className="text-xs text-muted-foreground">SPI</p>
-          </CardContent></Card>
-        </div>
-
-        {selectedProjectId && (
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={handleCaptureSnapshot} disabled={capturing || !selectedProjectId}>
-              {capturing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
-              Capture Progress Snapshot
-            </Button>
+              <Card className="h-full">
+                <CardContent className="p-4 text-center">
+                  <p className={cn("text-2xl font-bold", spiColor)}>
+                    {loading ? spinner : spi !== null ? spi.toFixed(2) : "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">SPI</p>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5" />
+                Forecast finish: <strong className="text-foreground">{schedule.kpis.forecastFinish ?? "—"}</strong>
+              </span>
+              {schedule.project?.end_date && (
+                <span className="inline-flex items-center gap-1.5">
+                  <ArrowRight className="h-3 w-3" />
+                  Contract end: <strong className="text-foreground">{schedule.project.end_date}</strong>
+                </span>
+              )}
+              {schedule.kpis.overrunWd !== null && (
+                <span className={cn("inline-flex items-center gap-1.5 font-semibold", schedule.kpis.overrunWd > 0 ? "text-red-400" : "text-emerald-400")}>
+                  {schedule.kpis.overrunWd > 0 ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {schedule.kpis.overrunWd > 0
+                    ? `${schedule.kpis.overrunWd} working day${schedule.kpis.overrunWd === 1 ? "" : "s"} overrun`
+                    : `${Math.abs(schedule.kpis.overrunWd)} working day${Math.abs(schedule.kpis.overrunWd) === 1 ? "" : "s"} ahead`}
+                </span>
+              )}
+              <span className="ml-auto inline-flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>Tasks: <strong className="text-foreground">{loading ? spinner : counts.tasks ?? "—"}</strong></span>
+                <span>Calendars: <strong className="text-foreground">{loading ? spinner : counts.calendars ?? "—"}</strong></span>
+                <span>Planned: <strong className="text-foreground">{loading ? spinner : snapshot ? `${snapshot.planned_progress ?? 0}%` : "—"}</strong></span>
+                <span>Actual: <strong className="text-foreground">{loading ? spinner : snapshot ? `${snapshot.actual_progress ?? 0}%` : "—"}</strong></span>
+              </span>
+            </div>
           </div>
         )}
 
-        {!selectedProjectId && !projectLoading && (
-          <p className="text-sm text-muted-foreground text-center py-4">Select a project from the sidebar to view planning data.</p>
+        {/* Charts (full width) */}
+        {selectedProjectId && (
+          <>
+            <PlanningScurveCard
+              projectId={selectedProjectId}
+              dataDate={schedule.dataDate}
+              refreshKey={scurveRefresh}
+            />
+            <div className="grid gap-6 xl:grid-cols-2">
+              <TaskStatusDonutCard tasks={schedule.tasks} asOf={asOf} loading={schedule.loading} />
+              <PhaseProgressCard tree={schedule.tree} loading={schedule.loading} />
+            </div>
+            <LookaheadBarsCard tasks={schedule.tasks} asOf={asOf} loading={schedule.loading} />
+            {/* Resource charts span the whole project, start to finish, stacked one above the other */}
+            <ManpowerHistogramCard projectId={selectedProjectId} asOf={asOf} range={projectSpan} />
+            <LevellingDiagramCard projectId={selectedProjectId} asOf={asOf} range={projectSpan} />
+            <div className="grid gap-6 xl:grid-cols-2">
+              <FloatHistogramCard tasks={schedule.tasks} float={schedule.float} loading={schedule.loading} />
+              <DelaysByCauseCard projectId={selectedProjectId} />
+            </div>
+          </>
         )}
+        {!selectedProjectId && !projectLoading && (
+          <p className="py-4 text-center text-sm text-muted-foreground">Select a project from the sidebar to view planning data.</p>
+        )}
+
+        {/* Quick Actions — last */}
+        <PlanningQuickActions />
       </div>
     </PlanPageShell>
   );

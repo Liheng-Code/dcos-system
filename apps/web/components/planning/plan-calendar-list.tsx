@@ -30,6 +30,7 @@ export function PlanCalendarList() {
     saturday: false, sunday: false,
   });
   const [isDefault, setIsDefault] = useState(false);
+  const [hoursPerDay, setHoursPerDay] = useState("8");
 
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
@@ -43,13 +44,14 @@ export function PlanCalendarList() {
   useEffect(() => { load(); }, [selectedProjectId]);
 
   function resetForm() {
-    setName(""); setDesc(""); setIsDefault(false);
+    setName(""); setDesc(""); setIsDefault(false); setHoursPerDay("8");
     setDayFlags({ monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false });
     setEditing(null);
   }
 
   function openEdit(row: any) {
     setName(row.name); setDesc(row.description || ""); setIsDefault(row.is_default);
+    setHoursPerDay(String(row.hours_per_day ?? 8));
     const flags: Record<string, boolean> = {};
     for (const d of DAYS) flags[d] = row[d] ?? false;
     setDayFlags(flags);
@@ -58,8 +60,13 @@ export function PlanCalendarList() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const hours = Number(hoursPerDay);
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      toast.error("Hours per day must be more than 0 and at most 24");
+      return;
+    }
     setSaving(true);
-    const payload: Record<string, any> = { name, description: desc || null, is_default: isDefault };
+    const payload: Record<string, any> = { name, description: desc || null, is_default: isDefault, hours_per_day: hours };
     for (const d of DAYS) payload[d] = dayFlags[d];
     const { error } = editing
       ? await supabase.from("plan_calendars").update(payload).eq("id", editing.id)
@@ -105,7 +112,15 @@ export function PlanCalendarList() {
                   ))}
                 </div>
               </div>
-              <div className="col-span-2">
+              <div className="space-y-1.5">
+                <Label>Hours per day *</Label>
+                <Input
+                  type="number" min="0.5" max="24" step="0.5"
+                  value={hoursPerDay} onChange={e => setHoursPerDay(e.target.value)} required
+                />
+                <p className="text-[11px] text-muted-foreground">Productive hours in a working day. Used to turn man-hours into crew-days.</p>
+              </div>
+              <div className="flex items-end pb-6">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={isDefault} onChange={e => setIsDefault(e.target.checked)} />
                   Default calendar
@@ -127,6 +142,7 @@ export function PlanCalendarList() {
               <th className="px-3 py-2 text-left font-medium">Name</th>
               <th className="px-3 py-2 text-left font-medium">Description</th>
               <th className="px-3 py-2 text-left font-medium">Work Days</th>
+              <th className="px-3 py-2 text-right font-medium">Hours/day</th>
               <th className="px-3 py-2 text-center font-medium">Default</th>
               <th className="px-3 py-2"></th>
             </tr>
@@ -141,6 +157,7 @@ export function PlanCalendarList() {
                     {DAYS.map(d => r[d] ? <Badge key={d} variant="outline" className="text-[10px] px-1">{d.slice(0, 3)}</Badge> : null)}
                   </div>
                 </td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.hours_per_day ?? 8}</td>
                 <td className="px-3 py-2 text-center">{r.is_default ? "✓" : ""}</td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1">

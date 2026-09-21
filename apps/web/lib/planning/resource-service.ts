@@ -34,6 +34,12 @@ export interface AllocationRow {
   total_allocation: number;
   max_units: number;
   is_overallocated: boolean;
+  /** Present when read through `get_resource_loading` (working-day, hours-aware). */
+  resource_type?: ResourceType;
+  /** Productive hours in that working day, from the resource's calendar. */
+  hours_per_day?: number;
+  /** Man-hours that day: total_allocation / 100 × hours_per_day. */
+  work_hours?: number;
 }
 
 export interface CreateResourceInput {
@@ -199,12 +205,74 @@ export async function removeAssignment(taskId: string, resourceId: string): Prom
   if (error) throw new Error(error.message);
 }
 
+/** PostgREST caps a single response (`max_rows`, 1000 by default), so page through the RPC. */
+const ALLOCATION_PAGE = 1000;
+/** Safety stop: 200 pages = 200k resource-days, far beyond any project. */
+const ALLOCATION_MAX_PAGES = 200;
+
+/**
+ * Resource loading per (resource, working day), read through `get_resource_loading`
+ * (migration 20260922000002): only days that are working per the resource's / project's
+ * calendar, with hours. The older `get_resource_allocation` spread assignments over every
+ * calendar day, Sundays and holidays included, and is no longer used here.
+ */
 export async function getResourceAllocation(projectId: string): Promise<AllocationRow[]> {
-  const { data, error } = await createClient().rpc("get_resource_allocation", {
-    p_project_id: projectId,
-  });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as AllocationRow[];
+  const supabase = createClient();
+  const rows: AllocationRow[] = [];
+  for (let page = 0; page < ALLOCATION_MAX_PAGES; page++) {
+    const from = page * ALLOCATION_PAGE;
+    const { data, error } = await supabase
+      .rpc("get_resource_loading", { p_project_id: projectId })
+      .range(from, from + ALLOCATION_PAGE - 1);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as AllocationRow[];
+    rows.push(...batch);
+    if (batch.length < ALLOCATION_PAGE) break;
+  }
+  return rows;
+}
+
+export interface TypeHistogramPoint {
+  work_date: string;
+  resource_type: ResourceType;
+  /** Sum of total_allocation (%) across every resource of this type on this date. */
+  demand: number;
+  /** Sum of max_units (%) across every active resource of this type — constant across dates. */
+  capacity: number;
+}
+
+/**
+ * Aggregates per-resource allocation into per-(date, resource_type) demand vs
+ * capacity (Completion Plan 1.7) — pure, no I/O, so it is unit-testable on its
+ * own and reusable outside the resource-loading page.
+ */
+export function aggregateByType(
+  allocation: AllocationRow[],
+  resources: PlanResource[],
+): TypeHistogramPoint[] {
+  const typeByResource = new Map(resources.map((r) => [r.id, r.resource_type]));
+  const capacityByType = new Map<ResourceType, number>();
+  for (const r of resources) {
+    if (!r.is_active) continue;
+    capacityByType.set(r.resource_type, (capacityByType.get(r.resource_type) ?? 0) + r.max_units);
+  }
+
+  const demandByKey = new Map<string, number>();
+  for (const row of allocation) {
+    const type = typeByResource.get(row.resource_id);
+    if (!type) continue;
+    const key = `${row.work_date}|${type}`;
+    demandByKey.set(key, (demandByKey.get(key) ?? 0) + row.total_allocation);
+  }
+
+  const points: TypeHistogramPoint[] = [];
+  for (const [key, demand] of demandByKey) {
+    const sep = key.indexOf("|");
+    const work_date = key.slice(0, sep);
+    const resource_type = key.slice(sep + 1) as ResourceType;
+    points.push({ work_date, resource_type, demand, capacity: capacityByType.get(resource_type) ?? 0 });
+  }
+  return points.sort((a, b) => a.work_date.localeCompare(b.work_date) || a.resource_type.localeCompare(b.resource_type));
 }
 
 export interface ProjectAssignmentRow {

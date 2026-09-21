@@ -67,7 +67,7 @@ export function ChangePasswordCard() {
   }
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <KeyRound className="h-4 w-4 text-muted-foreground" />
@@ -77,8 +77,8 @@ export function ChangePasswordCard() {
           Changing your password signs you out of your other devices.
         </p>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <CardContent className="flex flex-1 flex-col">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 flex-col space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="current_password">Current Password</Label>
             <PasswordInput id="current_password" {...register("current_password")} aria-invalid={!!errors.current_password} />

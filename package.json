@@ -11,6 +11,9 @@
 		"doc": "docs"
 	},
 	"scripts": {
+		"dev": "pnpm --dir apps/web dev",
+		"build": "pnpm --dir apps/web build",
+		"lint": "pnpm --dir apps/web lint",
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
 	"repository": {
@@ -24,5 +27,8 @@
 	"bugs": {
 		"url": "https://github.com/Liheng-Code/dcos-system/issues"
 	},
-	"homepage": "https://github.com/Liheng-Code/dcos-system#readme"
+	"homepage": "https://github.com/Liheng-Code/dcos-system#readme",
+	"devDependencies": {
+		"supabase": "^2.117.0"
+	}
 }

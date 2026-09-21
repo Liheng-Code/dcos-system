@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DATE_FORMAT_PRESETS, DEFAULT_DATE_FORMAT_ID } from "@/lib/date-format";
 
 interface Company {
   id: string;
@@ -17,6 +18,7 @@ interface Company {
   website: string | null;
   tax_id: string | null;
   description: string | null;
+  date_format: string | null;
 }
 
 interface FormData {
@@ -29,6 +31,7 @@ interface FormData {
   website: string;
   tax_id: string;
   description: string;
+  date_format: string;
 }
 
 export function CompanyProfilePage() {
@@ -46,6 +49,7 @@ export function CompanyProfilePage() {
     website: "",
     tax_id: "",
     description: "",
+    date_format: DEFAULT_DATE_FORMAT_ID,
   });
 
   useEffect(() => {
@@ -62,6 +66,7 @@ export function CompanyProfilePage() {
           website: data.website ?? "",
           tax_id: data.tax_id ?? "",
           description: data.description ?? "",
+          date_format: data.date_format ?? DEFAULT_DATE_FORMAT_ID,
         });
       } else if (error?.code !== "PGRST116") {
         toast.error("Failed to load company profile");
@@ -81,7 +86,8 @@ export function CompanyProfilePage() {
       form.email !== (company.email ?? "") ||
       form.website !== (company.website ?? "") ||
       form.tax_id !== (company.tax_id ?? "") ||
-      form.description !== (company.description ?? "")
+      form.description !== (company.description ?? "") ||
+      form.date_format !== (company.date_format ?? DEFAULT_DATE_FORMAT_ID)
     );
   }, [form, company]);
 
@@ -102,6 +108,7 @@ export function CompanyProfilePage() {
       website: form.website || null,
       tax_id: form.tax_id || null,
       description: form.description || null,
+      date_format: form.date_format,
     };
     const { error } = await supabase.from("companies").update(payload).eq("id", company.id);
     if (error) {
@@ -211,6 +218,23 @@ export function CompanyProfilePage() {
                 placeholder="https://example.com/logo.png"
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
               />
+            </Field>
+          </div>
+          <div className="border-t border-border pt-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Regional</h3>
+            <Field label="Date format">
+              <select
+                value={form.date_format}
+                onChange={(e) => update("date_format", e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+              >
+                {DATE_FORMAT_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Default date display across the app. Anyone can override this for themselves from the schedule&apos;s Columns menu.
+              </span>
             </Field>
           </div>
         </div>

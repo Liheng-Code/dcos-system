@@ -26,6 +26,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
           { label: "Look-ahead", href: "/dashboard/wbs/lookahead?sub=lookahead" },
           { label: "Weekly Plans", href: "/dashboard/wbs/lookahead?sub=weekly" },
           { label: "S-Curve & EVM", href: "/dashboard/wbs/lookahead?sub=scurve" },
+          { label: "Progress Reviews", href: "/dashboard/wbs/lookahead?sub=progress-reviews" },
         ],
       },
       {
@@ -38,6 +39,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
+      { label: "Activity Step Templates", href: "/dashboard/planning/activity-step-templates" },
     ],
   },
   {
@@ -47,7 +49,15 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/planning/resource-loading",
     items: [
       { label: "Resources", href: "/dashboard/planning/resource-loading" },
-      { label: "Delay Register", href: "/dashboard/planning/delays" },
+      { label: "Members", href: "/dashboard/planning/members" },
+      {
+        label: "Delay Register",
+        href: "/dashboard/planning/delays",
+        children: [
+          { label: "Register", href: "/dashboard/planning/delays?sub=register" },
+          { label: "Time Impact Analysis", href: "/dashboard/planning/delays?sub=tia" },
+        ],
+      },
       {
         label: "Reports",
         href: "/dashboard/planning/reports",
@@ -57,6 +67,17 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
           { label: "Milestones", href: "/dashboard/planning/reports?sub=milestone" },
         ],
       },
+    ],
+  },
+  {
+    // Productivity plan (docs/…/16-Productivity-and-Resource-Costing-Plan.md), Phase 1
+    key: "productivity",
+    navKey: "group:planning:productivity",
+    label: "Productivity",
+    href: "/dashboard/planning/productivity",
+    items: [
+      { label: "Norm Library", href: "/dashboard/planning/productivity" },
+      { label: "Task Work", href: "/dashboard/planning/productivity/task-work" },
     ],
   },
 ];

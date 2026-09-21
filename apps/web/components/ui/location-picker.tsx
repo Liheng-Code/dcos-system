@@ -8,8 +8,12 @@ interface LocationPickerProps {
   lat: number | null;
   lng: number | null;
   address: string;
-  radius: number;
+  radius?: number;
   onChange: (lat: number, lng: number, address: string) => void;
+  /** ISO 3166-1 alpha-2 code (e.g. "kh") to bias search results to one country. */
+  country?: string;
+  /** Initial viewport when no lat/lng is set. Defaults to Cambodia / Phnom Penh. */
+  defaultCenter?: { lat: number; lng: number; zoom: number };
 }
 
 interface NominatimResult {
@@ -21,7 +25,11 @@ interface NominatimResult {
 
 const LEAFLET_CDN = "https://unpkg.com/leaflet@1.9.4/dist";
 
-export function LocationPicker({ lat, lng, address, radius, onChange }: LocationPickerProps) {
+// Cambodia-focused defaults: Phnom Penh (11.5564, 104.9282). Zoom 7 shows the
+// whole country; zoom 11 gets to the Phnom Penh / Kandal metro area.
+const DEFAULT_CENTER = { lat: 11.5564, lng: 104.9282, zoom: 12 };
+
+export function LocationPicker({ lat, lng, address, radius = 0, onChange, country, defaultCenter = DEFAULT_CENTER }: LocationPickerProps) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
@@ -40,10 +48,10 @@ export function LocationPicker({ lat, lng, address, radius, onChange }: Location
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
-  // Update circle radius when prop changes
+  // Update circle radius when prop changes (no-op when radius is 0/unset)
   useEffect(() => {
     radiusRef.current = radius;
-    circleRef.current?.setRadius(radius);
+    if (radius > 0) circleRef.current?.setRadius(radius);
   }, [radius]);
 
   async function reverseGeocode(rlat: number, rlng: number) {
@@ -89,9 +97,9 @@ export function LocationPicker({ lat, lng, address, radius, onChange }: Location
         shadowSize: [41, 41],
       });
 
-      const initLat = lat ?? 13.7563;
-      const initLng = lng ?? 100.5018;
-      const initZoom = lat && lng ? 16 : 5;
+      const initLat = lat ?? defaultCenter.lat;
+      const initLng = lng ?? defaultCenter.lng;
+      const initZoom = lat && lng ? 16 : defaultCenter.zoom;
 
       const map = L.map(mapDivRef.current!).setView([initLat, initLng], initZoom);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -102,23 +110,30 @@ export function LocationPicker({ lat, lng, address, radius, onChange }: Location
       function addMarkerAndCircle(mlat: number, mlng: number) {
         if (markerRef.current) {
           markerRef.current.setLatLng([mlat, mlng]);
-          circleRef.current?.setLatLng([mlat, mlng]);
+          if (radiusRef.current > 0) circleRef.current?.setLatLng([mlat, mlng]);
         } else {
           const marker = L.marker([mlat, mlng], { icon: defaultIcon, draggable: true }).addTo(map);
-          const circle = L.circle([mlat, mlng], {
-            radius: radiusRef.current,
-            color: "#3b82f6",
-            fillColor: "#3b82f6",
-            fillOpacity: 0.12,
-            weight: 2,
-          }).addTo(map);
-          marker.on("dragend", () => {
-            const pos = marker.getLatLng();
-            circle.setLatLng(pos);
-            reverseGeocode(pos.lat, pos.lng);
-          });
+          if (radiusRef.current > 0) {
+            const circle = L.circle([mlat, mlng], {
+              radius: radiusRef.current,
+              color: "#3b82f6",
+              fillColor: "#3b82f6",
+              fillOpacity: 0.12,
+              weight: 2,
+            }).addTo(map);
+            marker.on("dragend", () => {
+              const pos = marker.getLatLng();
+              circle.setLatLng(pos);
+              reverseGeocode(pos.lat, pos.lng);
+            });
+            circleRef.current = circle;
+          } else {
+            marker.on("dragend", () => {
+              const pos = marker.getLatLng();
+              reverseGeocode(pos.lat, pos.lng);
+            });
+          }
           markerRef.current = marker;
-          circleRef.current = circle;
         }
       }
 
@@ -162,7 +177,8 @@ export function LocationPicker({ lat, lng, address, radius, onChange }: Location
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/geo/search?q=${encodeURIComponent(value)}`);
+        const cc = country ? `&country=${encodeURIComponent(country)}` : "";
+        const res = await fetch(`/api/geo/search?q=${encodeURIComponent(value)}${cc}`);
         setSuggestions(await res.json());
       } catch {
         setSuggestions([]);

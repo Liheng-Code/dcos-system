@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
 import { Plus, Loader2, Pencil, Trash2, X } from "lucide-react";
@@ -11,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+type Lifecycle = "notified" | "assessed" | "submitted" | "agreed" | "rejected" | "closed";
 
 interface DelayRow {
   id: string;
@@ -27,9 +29,31 @@ interface DelayRow {
   status: "open" | "resolved" | "disputed";
   notes: string | null;
   created_at: string;
+  /** Completion Plan 2.5 — delay governance. */
+  lifecycle: Lifecycle;
+  eot_notice_id: string | null;
+  taskIds: string[];
 }
 
 interface TaskOption { id: string; task_code: string; task_name: string; }
+interface ContractOption { id: string; contract_no: string; title: string; }
+
+const LIFECYCLE_LABELS: Record<Lifecycle, string> = {
+  notified: "Notified",
+  assessed: "Assessed",
+  submitted: "Submitted",
+  agreed: "Agreed",
+  rejected: "Rejected",
+  closed: "Closed",
+};
+const LIFECYCLE_COLORS: Record<Lifecycle, string> = {
+  notified: "bg-slate-100 text-slate-600",
+  assessed: "bg-blue-100 text-blue-700",
+  submitted: "bg-violet-100 text-violet-700",
+  agreed: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-red-100 text-red-700",
+  closed: "bg-slate-200 text-slate-700",
+};
 
 const DELAY_TYPE_LABELS: Record<string, string> = {
   excusable: "Excusable",
@@ -52,7 +76,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 interface DelayForm {
-  wbs_task_id: string;
+  task_ids: string[];
   description: string;
   delay_type: "excusable" | "non_excusable" | "compensable" | "non_compensable";
   cause: string;
@@ -60,11 +84,12 @@ interface DelayForm {
   start_date: string;
   finish_date: string;
   status: "open" | "resolved" | "disputed";
+  lifecycle: Lifecycle;
   notes: string;
 }
 
 const EMPTY_FORM: DelayForm = {
-  wbs_task_id: "",
+  task_ids: [],
   description: "",
   delay_type: "excusable",
   cause: "",
@@ -72,6 +97,7 @@ const EMPTY_FORM: DelayForm = {
   start_date: "",
   finish_date: "",
   status: "open",
+  lifecycle: "notified",
   notes: "",
 };
 
@@ -82,33 +108,57 @@ export function PlanDelayRegister() {
   const { selectedProjectId, loading: projectLoading } = useProject();
   const [rows, setRows] = useState<DelayRow[]>([]);
   const [taskOptions, setTaskOptions] = useState<TaskOption[]>([]);
+  const [contractOptions, setContractOptions] = useState<ContractOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DelayRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [form, setForm] = useState<DelayForm>(EMPTY_FORM);
+  const [raisingEotFor, setRaisingEotFor] = useState<string | null>(null);
+  const [eotContractId, setEotContractId] = useState("");
+  const [eotBusy, setEotBusy] = useState(false);
 
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    const [delaysRes, tasksRes] = await Promise.all([
+    const [delaysRes, tasksRes, linksRes, contractsRes] = await Promise.all([
       supabase.from("delay_register").select("*").eq("project_id", selectedProjectId).order("created_at", { ascending: false }),
       supabase.from("wbs_tasks").select("id, task_code, task_name").eq("project_id", selectedProjectId).order("task_code").limit(500),
+      supabase.from("delay_register_tasks").select("delay_id, wbs_task_id"),
+      supabase.from("contract_register").select("id, contract_no, title").eq("project_id", selectedProjectId).order("contract_no"),
     ]);
-    if (delaysRes.error) toast.error(delaysRes.error.message);
-    else setRows(delaysRes.data as DelayRow[]);
+    if (delaysRes.error) {
+      toast.error(delaysRes.error.message);
+    } else {
+      const linksByDelay = new Map<string, string[]>();
+      for (const l of (linksRes.data ?? []) as { delay_id: string; wbs_task_id: string }[]) {
+        if (!linksByDelay.has(l.delay_id)) linksByDelay.set(l.delay_id, []);
+        linksByDelay.get(l.delay_id)!.push(l.wbs_task_id);
+      }
+      setRows(
+        (delaysRes.data as Omit<DelayRow, "taskIds">[]).map((r) => ({
+          ...r,
+          taskIds: linksByDelay.get(r.id) ?? (r.wbs_task_id ? [r.wbs_task_id] : []),
+        })),
+      );
+    }
     if (tasksRes.data) setTaskOptions(tasksRes.data as TaskOption[]);
+    if (contractsRes.data) setContractOptions(contractsRes.data as ContractOption[]);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [selectedProjectId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() flips its own loading flag
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
 
   function resetForm() { setForm(EMPTY_FORM); setEditing(null); }
 
   function openEdit(row: DelayRow) {
     setForm({
-      wbs_task_id: row.wbs_task_id ?? "",
+      task_ids: row.taskIds,
       description: row.description,
       delay_type: row.delay_type,
       cause: row.cause ?? "",
@@ -116,6 +166,7 @@ export function PlanDelayRegister() {
       start_date: row.start_date ?? "",
       finish_date: row.finish_date ?? "",
       status: row.status,
+      lifecycle: row.lifecycle,
       notes: row.notes ?? "",
     });
     setEditing(row);
@@ -126,7 +177,7 @@ export function PlanDelayRegister() {
     e.preventDefault();
     if (!selectedProjectId) return;
     setSaving(true);
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       project_id: selectedProjectId,
       description: form.description,
       delay_type: form.delay_type,
@@ -135,18 +186,44 @@ export function PlanDelayRegister() {
       start_date: form.start_date || null,
       finish_date: form.finish_date || null,
       status: form.status,
+      lifecycle: form.lifecycle,
       notes: form.notes || null,
-      wbs_task_id: form.wbs_task_id || null,
+      wbs_task_id: form.task_ids[0] ?? null,
     };
-    const { error } = editing
-      ? await supabase.from("delay_register").update(payload).eq("id", editing.id)
-      : await supabase.from("delay_register").insert([{ ...payload, delay_code: "" }]);
+    const { data: savedRow, error } = editing
+      ? await supabase.from("delay_register").update(payload).eq("id", editing.id).select("id").single()
+      : await supabase.from("delay_register").insert([{ ...payload, delay_code: "" }]).select("id").single();
     if (error) { toast.error(error.message); setSaving(false); return; }
+    const delayId = savedRow.id as string;
+    const { error: delLinksError } = await supabase.from("delay_register_tasks").delete().eq("delay_id", delayId);
+    if (delLinksError) { toast.error(delLinksError.message); setSaving(false); return; }
+    if (form.task_ids.length > 0) {
+      const { error: linkError } = await supabase
+        .from("delay_register_tasks")
+        .insert(form.task_ids.map((taskId) => ({ delay_id: delayId, wbs_task_id: taskId })));
+      if (linkError) { toast.error(linkError.message); setSaving(false); return; }
+    }
     toast.success(editing ? "Delay updated" : "Delay logged");
     setShowForm(false);
     resetForm();
     load();
     setSaving(false);
+  }
+
+  async function raiseEotNotice(delayId: string) {
+    if (!eotContractId) { toast.error("Select a contract first"); return; }
+    setEotBusy(true);
+    const { error } = await supabase.rpc("create_eot_notice_from_delay", {
+      p_delay_id: delayId,
+      p_contract_id: eotContractId,
+      p_deadline: null,
+    });
+    setEotBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("EOT notice raised");
+    setRaisingEotFor(null);
+    setEotContractId("");
+    load();
   }
 
   async function handleDelete(id: string) {
@@ -193,25 +270,43 @@ export function PlanDelayRegister() {
                 <Label>Description *</Label>
                 <Input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} required placeholder="Brief description of the delay" />
               </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>Linked Tasks {form.task_ids.length > 0 && <span className="text-muted-foreground">({form.task_ids.length} selected)</span>}</Label>
+                <div className="max-h-32 overflow-y-auto rounded-md border border-input p-2 space-y-1">
+                  {taskOptions.map(t => (
+                    <label key={t.id} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={form.task_ids.includes(t.id)}
+                        onChange={e => setForm(p => ({
+                          ...p,
+                          task_ids: e.target.checked ? [...p.task_ids, t.id] : p.task_ids.filter(id => id !== t.id),
+                        }))}
+                      />
+                      <span className="font-mono text-muted-foreground">{t.task_code}</span> {t.task_name}
+                    </label>
+                  ))}
+                  {taskOptions.length === 0 && <p className="text-xs text-muted-foreground">No tasks available.</p>}
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <Label>Linked Task</Label>
+                <Label>Lifecycle</Label>
                 <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                  value={form.wbs_task_id} onChange={e => setForm(p => ({ ...p, wbs_task_id: e.target.value }))}>
-                  <option value="">None</option>
-                  {taskOptions.map(t => <option key={t.id} value={t.id}>{t.task_code} — {t.task_name}</option>)}
+                  value={form.lifecycle} onChange={e => setForm(p => ({ ...p, lifecycle: e.target.value as Lifecycle }))}>
+                  {Object.entries(LIFECYCLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <Label>Delay Type *</Label>
                 <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                  value={form.delay_type} onChange={e => setForm(p => ({ ...p, delay_type: e.target.value as any }))}>
+                  value={form.delay_type} onChange={e => setForm(p => ({ ...p, delay_type: e.target.value as DelayForm["delay_type"] }))}>
                   {Object.entries(DELAY_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <Label>Status</Label>
                 <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                  value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as any }))}>
+                  value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as DelayForm["status"] }))}>
                   <option value="open">Open</option>
                   <option value="resolved">Resolved</option>
                   <option value="disputed">Disputed</option>
@@ -260,45 +355,86 @@ export function PlanDelayRegister() {
               <th className="px-3 py-2 text-center font-medium">Finish</th>
               <th className="px-3 py-2 text-center font-medium">Days</th>
               <th className="px-3 py-2 text-left font-medium">Status</th>
+              <th className="px-3 py-2 text-left font-medium">Lifecycle</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
             {filtered.map(r => (
-              <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className="px-3 py-2 font-mono text-xs font-medium">{r.delay_code}</td>
-                <td className="px-3 py-2 max-w-xs">
-                  <p className="font-medium truncate">{r.description}</p>
-                  {r.notes && <p className="text-xs text-muted-foreground truncate">{r.notes}</p>}
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TYPE_COLORS[r.delay_type]}`}>
-                    {DELAY_TYPE_LABELS[r.delay_type]}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{r.cause || "—"}</td>
-                <td className="px-3 py-2 text-muted-foreground">{r.responsible_party || "—"}</td>
-                <td className="px-3 py-2 text-center text-muted-foreground">{r.start_date?.slice(0, 10) || "—"}</td>
-                <td className="px-3 py-2 text-center text-muted-foreground">{r.finish_date?.slice(0, 10) || "—"}</td>
-                <td className="px-3 py-2 text-center">
-                  {r.impact_days !== null ? (
-                    <span className={cn("font-semibold", r.impact_days > 7 ? "text-red-600" : r.impact_days > 0 ? "text-yellow-600" : "")}>
-                      {r.impact_days}d
+              <Fragment key={r.id}>
+                <tr className="border-b last:border-0 hover:bg-muted/20">
+                  <td className="px-3 py-2 font-mono text-xs font-medium">{r.delay_code}</td>
+                  <td className="px-3 py-2 max-w-xs">
+                    <p className="font-medium truncate">{r.description}</p>
+                    {r.notes && <p className="text-xs text-muted-foreground truncate">{r.notes}</p>}
+                    {r.taskIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {r.taskIds.length} task{r.taskIds.length > 1 ? "s" : ""} linked
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TYPE_COLORS[r.delay_type]}`}>
+                      {DELAY_TYPE_LABELS[r.delay_type]}
                     </span>
-                  ) : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status]}`}>
-                    {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{r.cause || "—"}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.responsible_party || "—"}</td>
+                  <td className="px-3 py-2 text-center text-muted-foreground">{r.start_date?.slice(0, 10) || "—"}</td>
+                  <td className="px-3 py-2 text-center text-muted-foreground">{r.finish_date?.slice(0, 10) || "—"}</td>
+                  <td className="px-3 py-2 text-center">
+                    {r.impact_days !== null ? (
+                      <span className={cn("font-semibold", r.impact_days > 7 ? "text-red-600" : r.impact_days > 0 ? "text-yellow-600" : "")}>
+                        {r.impact_days}d
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status]}`}>
+                      {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${LIFECYCLE_COLORS[r.lifecycle]}`}>
+                      {LIFECYCLE_LABELS[r.lifecycle]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
+                      {r.eot_notice_id ? (
+                        <Badge variant="outline" className="text-[10px]">EOT raised</Badge>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => { setRaisingEotFor(raisingEotFor === r.id ? null : r.id); setEotContractId(""); }}>
+                          EOT
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {raisingEotFor === r.id && (
+                  <tr className="border-b bg-muted/30">
+                    <td colSpan={10} className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Raise EOT notice under contract:</span>
+                        <select
+                          className="flex h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+                          value={eotContractId}
+                          onChange={e => setEotContractId(e.target.value)}
+                        >
+                          <option value="">Select contract…</option>
+                          {contractOptions.map(c => <option key={c.id} value={c.id}>{c.contract_no} — {c.title}</option>)}
+                        </select>
+                        <Button size="sm" disabled={eotBusy || !eotContractId} onClick={() => raiseEotNotice(r.id)}>
+                          {eotBusy ? "Raising..." : "Raise Notice"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setRaisingEotFor(null)}>Cancel</Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

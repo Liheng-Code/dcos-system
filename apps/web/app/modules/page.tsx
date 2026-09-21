@@ -43,7 +43,7 @@ function TypewriterTitle() {
   }, [phase, count, full]);
 
   const textClass =
-    "animate-text-shine whitespace-nowrap bg-gradient-to-r from-blue-700 via-indigo-500 to-blue-700 text-xl font-bold tracking-tight sm:text-2xl md:text-3xl";
+    "animate-text-shine whitespace-nowrap bg-gradient-to-r from-blue-400 via-indigo-300 to-blue-400 text-xl font-bold tracking-tight sm:text-2xl md:text-3xl";
 
   return (
     <div className="relative flex min-w-0 max-w-full justify-center overflow-hidden">
@@ -52,7 +52,7 @@ function TypewriterTitle() {
         <h1 className={textClass}>{WELCOME_TEXT.slice(0, count)}</h1>
         <span
           aria-hidden="true"
-          className="ml-1 inline-block h-[1.1em] w-[3px] animate-pulse rounded-full bg-indigo-500"
+          className="ml-1 inline-block h-[1.1em] w-[3px] animate-pulse rounded-full bg-indigo-300"
         />
       </div>
     </div>
@@ -88,21 +88,17 @@ export default function ModulesPage() {
         <TaskAlertsProvider>
           <div className="relative min-h-screen bg-slate-50">
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-              <div className="absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-indigo-100/70 via-blue-50/30 to-transparent" />
-              <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-indigo-200/60 blur-3xl" />
-              <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full bg-sky-200/60 blur-3xl" />
-              <div className="absolute -bottom-40 left-1/4 h-96 w-96 rounded-full bg-blue-200/50 blur-3xl" />
               <div
-                className="absolute inset-0 opacity-[0.3]"
+                className="absolute inset-0"
                 style={{
                   backgroundImage:
-                    "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
+                    "linear-gradient(to right, #ffffff0a 1px, transparent 1px), linear-gradient(to bottom, #ffffff0a 1px, transparent 1px)",
                   backgroundSize: "48px 48px",
                 }}
               />
             </div>
 
-            <header className="relative z-10 grid h-24 grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-slate-200/80 bg-white/70 px-6 backdrop-blur-sm sm:h-28 md:px-10">
+            <header className="relative z-10 grid h-24 grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-white/10 bg-background/80 px-6 backdrop-blur-sm sm:h-28 md:px-10">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm">
                   <HardHat className="h-5 w-5 text-primary-foreground" />

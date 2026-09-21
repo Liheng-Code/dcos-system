@@ -42,6 +42,12 @@ export interface TimescaleNonworking {
   color: string;
 }
 
+export interface TimescaleDisplayRange {
+  /** ISO `yyyy-MM-dd`, or null = auto (fit the whole programme). */
+  from: string | null;
+  to: string | null;
+}
+
 export interface TimescaleConfig {
   /** MS "Show: One / Two / Three tiers" — the bottom tier is always shown */
   tierCount: 1 | 2 | 3;
@@ -53,6 +59,9 @@ export interface TimescaleConfig {
   /** 1..12 */
   fiscalYearStartMonth: number;
   nonworking: TimescaleNonworking;
+  /** Clip the Gantt timeline to this window (MS-Project "Display range").
+   * Either side null = use the programme's own bound. */
+  displayRange: TimescaleDisplayRange;
 }
 
 const DAY_MS = 86_400_000;
@@ -164,7 +173,25 @@ export const DEFAULT_TIMESCALE: TimescaleConfig = {
   scaleSeparator: true,
   fiscalYearStartMonth: 1,
   nonworking: { draw: "none", color: "#e2e8f0" },
+  displayRange: { from: null, to: null },
 };
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Apply the saved Display Range window over the data-derived timeline range.
+ * A side that is unset or invalid keeps the data bound; an inverted window is
+ * ignored. */
+export function applyDisplayRange(
+  range: { min: Date; max: Date },
+  dr: TimescaleDisplayRange | undefined | null,
+): { min: Date; max: Date } {
+  if (!dr) return range;
+  let { min, max } = range;
+  if (dr.from && ISO_DATE_RE.test(dr.from)) min = new Date(`${dr.from}T00:00:00`);
+  if (dr.to && ISO_DATE_RE.test(dr.to)) max = new Date(`${dr.to}T00:00:00`);
+  if (max.getTime() <= min.getTime()) return range;
+  return { min, max };
+}
 
 /** Day / Week / Month quick presets — merged onto the live config, keeping
  * size / separator / fiscal / non-working untouched. */
@@ -462,6 +489,9 @@ export function parseTimescaleConfig(
   const raw = (row?.config ?? {}) as Record<string, unknown>;
   const tiersRaw = (raw.tiers ?? {}) as Record<string, unknown>;
   const nwRaw = (raw.nonworking ?? {}) as Record<string, unknown>;
+  const drRaw = (raw.displayRange ?? {}) as Record<string, unknown>;
+  const drSide = (v: unknown): string | null =>
+    typeof v === "string" && ISO_DATE_RE.test(v) ? v : null;
   const tierCount =
     raw.tierCount === 1 || raw.tierCount === 2 || raw.tierCount === 3
       ? raw.tierCount
@@ -497,6 +527,7 @@ export function parseTimescaleConfig(
           ? nwRaw.color
           : DEFAULT_TIMESCALE.nonworking.color,
     },
+    displayRange: { from: drSide(drRaw.from), to: drSide(drRaw.to) },
   };
 }
 

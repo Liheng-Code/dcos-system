@@ -33,6 +33,9 @@ import {
   Ruler,
   UserCheck,
   Network,
+  Boxes,
+  BookTemplate,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -85,6 +88,7 @@ const INVENTORY_GROUP_ICONS: Record<string, LucideIcon> = {
 
 const QS_GROUP_ICONS: Record<string, LucideIcon> = {
   tendering: FileSearch,
+  cost_rate_library: Boxes,
   libraries: Layers,
   cost_control: BarChart2,
   subcontractor: Handshake,
@@ -112,6 +116,7 @@ const REPORTING_GROUP_ICONS: Record<string, LucideIcon> = {
 const PLANNING_GROUP_ICONS: Record<string, LucideIcon> = {
   schedule: GanttChartSquare,
   resources_reports: Users,
+  productivity: Gauge,
 };
 
 const CONSTRUCTION_GROUP_ICONS: Record<string, LucideIcon> = {
@@ -381,7 +386,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
       return (
         <button
           onClick={onToggle}
-          className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-sm font-bold text-black transition-colors hover:text-black"
+          className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-sm font-bold text-white transition-colors hover:text-white"
         >
           <span className="flex-1 truncate text-left">{label}</span>
           <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform duration-200", !open && "-rotate-90")} />
@@ -625,7 +630,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     label={group.label}
                     icon={Icon}
                     active={activeQsKey === group.key}
-                    tabCount={group.items.length}
+                    tabCount={group.items.filter((item) => !item.hidden).length}
                     index={index}
                   />
                 );
@@ -724,6 +729,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 <NavItem href="/dashboard/administration/security"                   label="Security"               icon={ShieldAlert} />
                 <NavItem href="/dashboard/administration/audit-logs"                 label="Audit Logs"             icon={FileClock} />
                 <NavItem href="/dashboard/administration/stakeholder-templates"      label="Stakeholder Templates"   icon={FileText} />
+                <NavItem href="/dashboard/administration/master-libraries"           label="Master Libraries"       icon={BookTemplate} />
               </>
             )}
           </div>

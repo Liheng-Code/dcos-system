@@ -63,8 +63,8 @@ export function getDeadlineFlag(task: { status: string; end_date: string | null 
   return null;
 }
 
-export function getTaskStatus(task: TaskStatusInput): TaskStatusResult {
-  const today = new Date().toISOString().slice(0, 10);
+/** `today` defaults to the real date; the dashboard passes the project data date so it agrees with the KPI tiles. */
+export function getTaskStatus(task: TaskStatusInput, today: string = new Date().toISOString().slice(0, 10)): TaskStatusResult {
   const isComplete = task.status === "completed" || task.status === "closed" || task.status === "approved";
   const label = isComplete ? "Complete"
     : !task.end_date ? "No Date"

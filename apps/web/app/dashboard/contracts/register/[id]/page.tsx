@@ -20,7 +20,7 @@ export default function ContractDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("contract_register").select("*, projects(name)").eq("id", id).single().then(({ data, error }) => {
+    supabase.from("contract_register").select("*, projects(project_name)").eq("id", id).single().then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/register"); return; }
       setContract(data);
       setForm({ ...data, start_date: data.start_date?.slice(0, 10) || "", end_date: data.end_date?.slice(0, 10) || "", signed_date: data.signed_date?.slice(0, 10) || "", termination_date: data.termination_date?.slice(0, 10) || "" });
@@ -43,7 +43,7 @@ export default function ContractDetailPage() {
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Contract updated");
     setEditMode(false);
-    supabase.from("contract_register").select("*, projects(name)").eq("id", id).single().then(({ data }) => {
+    supabase.from("contract_register").select("*, projects(project_name)").eq("id", id).single().then(({ data }) => {
       if (data) { setContract(data); setForm({ ...data, start_date: data.start_date?.slice(0, 10) || "", end_date: data.end_date?.slice(0, 10) || "", signed_date: data.signed_date?.slice(0, 10) || "", termination_date: data.termination_date?.slice(0, 10) || "" }); }
     });
     setSaving(false);

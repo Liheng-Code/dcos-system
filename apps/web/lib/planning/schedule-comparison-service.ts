@@ -35,11 +35,19 @@ interface RawSnapshotTask {
   budget_cost: number | null;
 }
 
+export type RevisionStatus = "draft" | "submitted_internal" | "approved_internal" | "submitted_client" | "approved_client" | "rejected";
+
 export interface ScheduleStreamRevision {
   id: string;
   revision_number: number;
   note: string | null;
   created_at: string;
+  /** Completion Plan 2.3 — approval workflow. */
+  status: RevisionStatus;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  decision_comment: string | null;
+  transmittal_id: string | null;
 }
 
 export interface ScheduleStream {
@@ -159,7 +167,7 @@ export async function compareSchedules(
 export async function listScheduleStreams(projectId: string): Promise<ScheduleStream[]> {
   const { data, error } = await createClient()
     .from("plan_schedule_streams")
-    .select("id, project_id, stream_type, name, created_at, plan_schedule_revisions(id, revision_number, note, created_at)")
+    .select("id, project_id, stream_type, name, created_at, plan_schedule_revisions(id, revision_number, note, created_at, status, submitted_by, submitted_at, decision_comment, transmittal_id)")
     .eq("project_id", projectId)
     .order("created_at");
   if (error) throw new Error(error.message);
@@ -193,6 +201,38 @@ export async function createScheduleStream(
   return data.id as string;
 }
 
+/** Rename a stream. Allowed for any authenticated user (mirrors the table's UPDATE policy). */
+export async function renameScheduleStream(streamId: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Name cannot be empty.");
+  const { error } = await createClient()
+    .from("plan_schedule_streams")
+    .update({ name: trimmed })
+    .eq("id", streamId);
+  if (error) throw new Error(error.message);
+}
+
+/** Delete a whole stream and its revisions (cascade). Admin-only at the RLS layer. */
+export async function deleteScheduleStream(streamId: string): Promise<void> {
+  const { error } = await createClient().from("plan_schedule_streams").delete().eq("id", streamId);
+  if (error) throw new Error(error.message);
+}
+
+/** Delete one revision. Admin-only at the RLS layer. Leaves any lower revisions untouched. */
+export async function deleteScheduleRevision(revisionId: string): Promise<void> {
+  const { error } = await createClient().from("plan_schedule_revisions").delete().eq("id", revisionId);
+  if (error) throw new Error(error.message);
+}
+
+/** Edit a revision's note only — the captured dates stay frozen. */
+export async function updateScheduleRevisionNote(revisionId: string, note: string): Promise<void> {
+  const { error } = await createClient()
+    .from("plan_schedule_revisions")
+    .update({ note: note.trim() || null })
+    .eq("id", revisionId);
+  if (error) throw new Error(error.message);
+}
+
 /** Snapshots the current live schedule into a new revision of `streamId`. Returns the new revision number. */
 export async function captureScheduleRevision(streamId: string, note?: string): Promise<number> {
   const { data, error } = await createClient().rpc("capture_schedule_revision", {
@@ -201,6 +241,38 @@ export async function captureScheduleRevision(streamId: string, note?: string): 
   });
   if (error) throw new Error(error.message);
   return data as number;
+}
+
+export type RevisionAction = "submit" | "approve" | "reject" | "submit_client" | "client_approve" | "client_reject";
+
+/** Completion Plan 2.3 — draft -> submitted_internal -> approved_internal -> submitted_client -> approved_client | rejected. */
+export async function transitionRevision(
+  revisionId: string,
+  action: RevisionAction,
+  comment?: string,
+): Promise<{ status: RevisionStatus; baseline_number?: number; baseline_type?: string }> {
+  const { data, error } = await createClient().rpc("transition_revision", {
+    p_revision_id: revisionId,
+    p_action: action,
+    p_comment: comment ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as { status: RevisionStatus; baseline_number?: number; baseline_type?: string };
+}
+
+/** Completion Plan 2.3 — files a client-approved revision as a Document Control transmittal. */
+export async function createProgrammeTransmittal(
+  revisionId: string,
+  issuerCompanyId: string,
+  receiverStakeholderId: string,
+): Promise<{ transmittal_id: string; transmittal_code: string; document_id: string; document_number: string }> {
+  const { data, error } = await createClient().rpc("create_programme_transmittal", {
+    p_revision_id: revisionId,
+    p_issuer_company_id: issuerCompanyId,
+    p_receiver_stakeholder_id: receiverStakeholderId,
+  });
+  if (error) throw new Error(error.message);
+  return data as { transmittal_id: string; transmittal_code: string; document_id: string; document_number: string };
 }
 
 // ---------------------------------------------------------------------------

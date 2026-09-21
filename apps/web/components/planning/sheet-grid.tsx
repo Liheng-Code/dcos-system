@@ -28,9 +28,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CellNav } from "./sheet-cell";
-import { SheetCell } from "./sheet-cell";
 import { SheetRowView } from "./sheet-row";
-import { SheetRowContext, type RowCtx } from "./sheet-grid-context";
+import {
+  SheetRowContext,
+  SheetRowVolatileContext,
+  type RowCtx,
+  type RowVolatileCtx,
+} from "./sheet-grid-context";
 import { SheetRowContextMenu, type ContextMenuItem } from "./sheet-row-context-menu";
 import {
   canHideColumn,
@@ -48,9 +52,9 @@ import {
   type SheetField,
   type SheetRow,
 } from "./sheet-types";
+import { autoCollapsedIds } from "./sheet-utils";
 import type { UseSheetData } from "./use-sheet-data";
 
-const BLANK = "__blank__";
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 /**
@@ -107,6 +111,10 @@ interface SheetGridProps {
   canLinkSelected?: boolean;
   /** Show the critical-path red highlight on Duration/Finish text. */
   showCritical: boolean;
+  /** Formats an ISO date for the Start/Finish columns per the user's date-format preference. */
+  formatDate: (iso: string | null | undefined) => string;
+  /** Gantt Chart page only — see RowCtx.onOpenTaskDetail. */
+  onOpenTaskDetail?: (taskId: string) => void;
   /** Overrides the "No activities yet" copy — e.g. when a filter hid every row. */
   emptyState?: { title: string; hint: string };
   // --- Column preferences — owned by plan-schedule-view.tsx (see use-column-preferences.ts) ---
@@ -132,6 +140,8 @@ export function SheetGrid({
   onScrollToRow,
   canLinkSelected = false,
   showCritical,
+  formatDate,
+  onOpenTaskDetail,
   emptyState,
   columnOrder,
   columnVisibility,
@@ -144,7 +154,6 @@ export function SheetGrid({
     tree,
     flatRows,
     rowNumberById,
-    nextCodePreview,
     calendar,
     float,
     violations,
@@ -160,11 +169,10 @@ export function SheetGrid({
   const [editing, setEditing] = useState(false);
   const [editSeed, setEditSeed] = useState<string | undefined>(undefined);
   const [editNonce, setEditNonce] = useState(0);
-  const [blankName, setBlankName] = useState("");
 
   // "mode" first, then the user's visible/ordered columns — drives every
-  // `.map()` over the grid's columns (header, blank row, and each data row
-  // via RowCtx) so hide/reorder preferences apply everywhere consistently.
+  // `.map()` over the grid's columns (header and each data row via RowCtx) so
+  // hide/reorder preferences apply everywhere consistently.
   const columns = useMemo(
     () => visibleOrderedColumns(columnOrder, columnVisibility),
     [columnOrder, columnVisibility],
@@ -192,6 +200,19 @@ export function SheetGrid({
   }, [rowNumberById]);
 
   const editingCellRef = useRef<{ rowId: string; field: SheetField } | null>(null);
+  // Refs mirror volatile state so the row-context handlers keep a stable
+  // identity across selection / active-cell changes (see the memoized row body
+  // in sheet-row.tsx). Without this every click rebuilds `rowCtx` and re-renders
+  // every mounted row.
+  const activeCellRef = useRef(activeCell);
+  const selectedRowIdRef = useRef(selectedRowId);
+  const selectedIdSetRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    activeCellRef.current = activeCell;
+  });
+  useEffect(() => {
+    selectedRowIdRef.current = selectedRowId;
+  });
 
   const openEditor = useCallback(
     (cell: { rowId: string; field: SheetField }, seed?: string) => {
@@ -247,14 +268,12 @@ export function SheetGrid({
   );
 
   const visibleIds = useCallback((): string[] => {
-    const ids = treeRef.current?.visibleNodes?.map((n) => n.data.id) ?? flatRows.map((r) => r.id);
-    return [...ids, BLANK];
+    return treeRef.current?.visibleNodes?.map((n) => n.data.id) ?? flatRows.map((r) => r.id);
   }, [flatRows]);
 
   const isEditableCell = useCallback(
     (rowId: string, field: SheetField): boolean => {
       if (field === "mode") return false;
-      if (rowId === BLANK) return field === "name";
       if (rowId.startsWith("node:project:")) return false; // project row is read-only
       if (lockedRowIds.has(rowId)) return false; // under a locked WBS backbone
       const row = flatRows.find((r) => r.id === rowId);
@@ -306,7 +325,7 @@ export function SheetGrid({
       setActiveCell({ rowId, field });
       setEditing(false);
       setEditSeed(undefined);
-      if (rowId !== BLANK) onSelectedRowChange(rowId, mods);
+      onSelectedRowChange(rowId, mods);
       containerRef.current?.focus();
     },
     [onSelectedRowChange],
@@ -328,24 +347,11 @@ export function SheetGrid({
 
   const handleCommit = useCallback(
     async (raw: string, nav: CellNav) => {
-      const cell = editingCellRef.current ?? activeCell;
+      const cell = editingCellRef.current ?? activeCellRef.current;
       setEditing(false);
       setEditSeed(undefined);
       editingCellRef.current = null;
       if (!cell) return;
-
-      if (cell.rowId === BLANK) {
-        const name = raw.trim();
-        setBlankName("");
-        if (name) await actions.createTask(name, selectedRowId);
-        setActiveCell({ rowId: BLANK, field: "name" });
-        // Enter keeps the blank row open for continuous entry; a click elsewhere
-        // (nav "none") must NOT steal focus back.
-        if (nav === "down") {
-          requestAnimationFrame(() => openEditor({ rowId: BLANK, field: "name" }));
-        }
-        return;
-      }
 
       const row = flatRows.find((r) => r.id === cell.rowId);
       if (row) {
@@ -362,7 +368,7 @@ export function SheetGrid({
         containerRef.current?.focus();
       }
     },
-    [activeCell, actions, flatRows, moveActive, openEditor, selectedRowId],
+    [actions, flatRows, moveActive],
   );
 
   // --- Multi-select + right-click context menu -----------------------------
@@ -370,6 +376,9 @@ export function SheetGrid({
     () => selectedRowIds ?? new Set(selectedRowId ? [selectedRowId] : []),
     [selectedRowIds, selectedRowId],
   );
+  useEffect(() => {
+    selectedIdSetRef.current = selectedIdSet;
+  });
 
   const [contextMenu, setContextMenu] = useState<
     { x: number; y: number; row: SheetRow } | null
@@ -378,10 +387,10 @@ export function SheetGrid({
   const handleRowContextMenu = useCallback(
     (e: ReactMouseEvent, row: SheetRow) => {
       e.preventDefault();
-      if (!selectedIdSet.has(row.id)) onSelectedRowChange(row.id);
+      if (!selectedIdSetRef.current.has(row.id)) onSelectedRowChange(row.id);
       setContextMenu({ x: e.clientX, y: e.clientY, row });
     },
-    [selectedIdSet, onSelectedRowChange],
+    [onSelectedRowChange],
   );
 
   // --- Column header: right-click to hide, drag to reorder -----------------
@@ -585,10 +594,8 @@ export function SheetGrid({
         case "ArrowRight":
           e.preventDefault();
           if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-            if (activeCell.rowId !== BLANK) {
-              if (e.key === "ArrowRight") actions.indentRow(activeCell.rowId);
-              else actions.outdentRow(activeCell.rowId);
-            }
+            if (e.key === "ArrowRight") actions.indentRow(activeCell.rowId);
+            else actions.outdentRow(activeCell.rowId);
             break;
           }
           moveActive(
@@ -625,11 +632,20 @@ export function SheetGrid({
     [editing, activeCell, moveActive, isEditableCell, openEditor, actions],
   );
 
-  const blankActive = activeCell?.rowId === BLANK;
-  const blankEditing = editing && blankActive;
   // No internal scrollbar — the list is sized to fit every visible row so the
   // pane wrapper scrolls and the timeline can mirror its scrollTop exactly.
   const listHeight = Math.max(ROW_HEIGHT, visibleCount * ROW_HEIGHT);
+
+  // Seed arborist's open-state from the same helper the view uses for
+  // `collapsedIds`, so a big imported programme starts with deep branches
+  // collapsed and both panes render the same rows. react-arborist only reads
+  // this on mount; later recomputes are ignored.
+  const initialOpenState = useMemo<Record<string, boolean> | undefined>(() => {
+    if (tree.length === 0) return undefined;
+    const m: Record<string, boolean> = {};
+    for (const id of autoCollapsedIds(tree)) m[id] = false;
+    return m;
+  }, [tree]);
 
   // --- Stable <Tree> props. If any of these change identity per render,
   //     react-arborist bumps its DataUpdates counter and remounts rows. ---
@@ -670,10 +686,10 @@ export function SheetGrid({
     [onToggleRow],
   );
 
+  // Stable context — only changes on real data / column / calendar changes, so
+  // the memoized row body ignores selection & edit churn.
   const rowCtx = useMemo<RowCtx>(
     () => ({
-      selectedRowId,
-      selectedRowIds: selectedIdSet,
       calendar,
       colWidths,
       rowWidth,
@@ -685,10 +701,8 @@ export function SheetGrid({
       violations,
       wbsCodeByRowId,
       lockedRowIds,
-      activeCell,
-      editing,
-      editSeed,
-      editKey: editNonce,
+      formatDate,
+      onOpenTaskDetail,
       onActivateCell: activateCell,
       onStartEdit: startEdit,
       onCommitCell: handleCommit,
@@ -699,8 +713,6 @@ export function SheetGrid({
       onToggleManual: actions.toggleManualSchedule,
     }),
     [
-      selectedRowId,
-      selectedIdSet,
       calendar,
       colWidths,
       rowWidth,
@@ -712,10 +724,8 @@ export function SheetGrid({
       violations,
       wbsCodeByRowId,
       lockedRowIds,
-      activeCell,
-      editing,
-      editSeed,
-      editNonce,
+      formatDate,
+      onOpenTaskDetail,
       activateCell,
       startEdit,
       handleCommit,
@@ -725,6 +735,20 @@ export function SheetGrid({
       handleRowContextMenu,
       actions.toggleManualSchedule,
     ],
+  );
+
+  // Volatile context — selection / active-cell / edit state. Only the thin
+  // <SheetRowView> wrapper subscribes; it derives per-row primitives for the
+  // memoized body, so a click re-renders ~2 rows instead of every mounted row.
+  const rowVolatile = useMemo<RowVolatileCtx>(
+    () => ({
+      selectedRowIds: selectedIdSet,
+      activeCell,
+      editing,
+      editSeed,
+      editKey: editNonce,
+    }),
+    [selectedIdSet, activeCell, editing, editSeed, editNonce],
   );
 
   return (
@@ -789,16 +813,18 @@ export function SheetGrid({
           style={{ minHeight: listHeight }}
         >
           <p>{emptyState?.title ?? "No activities yet."}</p>
-          <p>{emptyState?.hint ?? "Type a task name in the row below and press Enter."}</p>
+          <p>{emptyState?.hint ?? "Use the “＋ Task” button on the toolbar to add the first one."}</p>
         </div>
       ) : (
         <SheetRowContext.Provider value={rowCtx}>
+         <SheetRowVolatileContext.Provider value={rowVolatile}>
           <Tree<SheetRow>
             ref={setTreeApi}
             data={tree}
             idAccessor="id"
             childrenAccessor={childrenAccessor}
             openByDefault
+            initialOpenState={initialOpenState}
             rowHeight={ROW_HEIGHT}
             indent={0}
             padding={0}
@@ -814,68 +840,9 @@ export function SheetGrid({
           >
             {NodeRenderer}
           </Tree>
+         </SheetRowVolatileContext.Provider>
         </SheetRowContext.Provider>
       )}
-
-      {/* Blank new-task row */}
-      <div
-        className={cn(
-          "flex shrink-0 items-stretch border-t border-border bg-background text-xs",
-          blankActive && "bg-primary/5",
-        )}
-        style={{ height: ROW_HEIGHT }}
-      >
-        <div
-          className="flex items-center justify-center border-r border-border/60 text-[10px] text-muted-foreground"
-          style={{ width: ID_COL_WIDTH }}
-        >
-          +
-        </div>
-        {columns.map((c) => {
-          const width = colWidths[c.field] ?? c.width;
-          if (c.field === "name") {
-            return (
-              <div
-                key={c.field}
-                className="h-full shrink-0 border-r border-border/60"
-                style={{ width }}
-                onMouseDown={() => activateCell(BLANK, "name")}
-              >
-                <SheetCell
-                  column={c}
-                  value={blankName}
-                  editable
-                  active={blankActive}
-                  editing={blankEditing}
-                  seed={blankActive ? editSeed : undefined}
-                  editKey={editNonce}
-                  onActivate={() => activateCell(BLANK, "name")}
-                  onStartEdit={() => startEdit(BLANK, "name")}
-                  onCommit={handleCommit}
-                  onCancel={() => {
-                    setBlankName("");
-                    cancelEdit();
-                  }}
-                />
-              </div>
-            );
-          }
-          const ghost =
-            c.field === "code" ? nextCodePreview : c.field === "duration" ? "1" : "";
-          return (
-            <div
-              key={c.field}
-              className={cn(
-                "flex h-full shrink-0 items-center border-r border-border/60 px-1.5 text-muted-foreground/50",
-                c.align === "right" && "justify-end",
-              )}
-              style={{ width }}
-            >
-              {ghost}
-            </div>
-          );
-        })}
-      </div>
 
       {contextMenu && (
         <SheetRowContextMenu

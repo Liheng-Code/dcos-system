@@ -54,6 +54,8 @@ export interface SheetProject {
   project_code: string;
   project_name: string;
   progress_percentage: number;
+  /** Contract completion date — used as the forecast-finish overrun reference (Planning Completion Plan 1.5). */
+  end_date: string | null;
 }
 
 /**
@@ -152,7 +154,7 @@ export const PRIORITY_OPTIONS = [
 
 export const SHEET_COLUMNS: SheetColumn[] = [
   { field: "mode", label: "", width: 28, variant: "icon" },
-  { field: "wbs", label: "WBS", width: 96, variant: "text", mono: true },
+  { field: "wbs", label: "WBS Code", width: 104, variant: "text", mono: true },
   { field: "code", label: "Code", width: 92, variant: "text", mono: true },
   { field: "name", label: "Task Name", width: 300, variant: "text" },
   { field: "duration", label: "Dur (d)", width: 68, variant: "number", align: "right" },

@@ -460,53 +460,8 @@ export function exportPrelimTreeToExcel(
   XLSX.writeFile(wb, `Prelim_Cost_Library_${caseName}_${date}.xlsx`);
 }
 
-// ── Apply to Tender ──────────────────────────────────────────────────────────
-
-export async function applyLibraryToTender(
-  tenderId: string,
-  tree: CalculatedPrelimTree,
-  replace: boolean = true
-): Promise<void> {
-  const supabase = createClient();
-
-  if (replace) {
-    await supabase.from("tender_preliminaries_items").delete().eq("tender_id", tenderId);
-  }
-
-  const rows: Array<{
-    tender_id: string;
-    code: string;
-    description: string;
-    unit: string;
-    quantity: number;
-    rate: number;
-    sort_order: number;
-    notes: string | null;
-  }> = [];
-
-  function flatten(items: CalculatedPrelimItem[], parentCode: string | null) {
-    for (const item of items) {
-      rows.push({
-        tender_id: tenderId,
-        code: item.code,
-        description: item.description,
-        unit: item.unit,
-        quantity: item.quantity,
-        rate: item.rate,
-        sort_order: item.sort_order,
-        notes: null,
-      });
-      flatten(item.children, item.code);
-    }
-  }
-
-  flatten(tree.sections, null);
-
-  if (rows.length > 0) {
-    const { error } = await supabase.from("tender_preliminaries_items").insert(rows);
-    if (error) throw new Error(error.message);
-  }
-}
+// Applying prelims to a tender is done from the tender's Preliminaries tab
+// (components/tenders/cost-estimation/load-library-dialog.tsx), which loads a saved case.
 
 // ── Cases CRUD ───────────────────────────────────────────────────────────────
 

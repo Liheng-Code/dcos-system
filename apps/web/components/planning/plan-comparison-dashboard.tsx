@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   compareSchedules,
   listComparisonSources,
+  type ComparisonSource,
   type ComparisonSourceOption,
   type MultiCompareRow,
 } from "@/lib/planning/schedule-comparison-service";
@@ -52,7 +53,12 @@ export function PlanComparisonDashboard() {
   const [manageOpen, setManageOpen] = useState(false);
 
   const optionByKey = useMemo(() => new Map(sourceOptions.map((o) => [o.key, o])), [sourceOptions]);
-  const activeSlots = SLOT_KEYS.filter((k) => selection[k]);
+  // A slot only counts once its pick still exists in the current option list —
+  // a schedule/revision deleted in "Manage Schedules" leaves a stale key behind.
+  const activeSlots = SLOT_KEYS.filter((k) => {
+    const key = selection[k];
+    return key != null && optionByKey.has(key);
+  });
 
   function loadSources() {
     if (!selectedProjectId) return;
@@ -60,10 +66,18 @@ export function PlanComparisonDashboard() {
     listComparisonSources(selectedProjectId)
       .then((opts) => {
         setSourceOptions(opts);
+        const validKeys = new Set(opts.map((o) => o.key));
         setSelection((prev) => {
-          if (prev.A || prev.B) return prev; // preserve the user's own pick across reloads
+          // Drop any pick whose schedule/revision no longer exists (e.g. deleted
+          // in "Manage Schedules") so a stale key can't crash the compare.
+          const pruned: Record<SlotKey, string | null> = {
+            A: prev.A && validKeys.has(prev.A) ? prev.A : null,
+            B: prev.B && validKeys.has(prev.B) ? prev.B : null,
+            C: prev.C && validKeys.has(prev.C) ? prev.C : null,
+          };
+          if (pruned.A || pruned.B) return pruned; // keep the user's surviving picks
           const activeBaseline = opts.find((o) => o.source.kind === "baseline" && o.label.endsWith("(active)"));
-          return { A: activeBaseline?.key ?? opts[0]?.key ?? null, B: "live", C: null };
+          return { A: activeBaseline?.key ?? opts[0]?.key ?? null, B: "live", C: pruned.C };
         });
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
@@ -83,13 +97,21 @@ export function PlanComparisonDashboard() {
       setRows([]);
       return;
     }
+    // Re-resolve here too: optionByKey can update between render and effect.
+    const sources = activeSlots
+      .map((slot) => {
+        const opt = optionByKey.get(selection[slot]!);
+        return opt ? { key: slot as string, source: opt.source } : null;
+      })
+      .filter((s): s is { key: string; source: ComparisonSource } => s !== null);
+    if (sources.length < 2) {
+      setRows([]);
+      return;
+    }
     let cancelled = false;
     setLoadingRows(true);
     /* eslint-enable react-hooks/set-state-in-effect */
-    compareSchedules(
-      selectedProjectId,
-      activeSlots.map((slot) => ({ key: slot, source: optionByKey.get(selection[slot]!)!.source })),
-    )
+    compareSchedules(selectedProjectId, sources)
       .then((r) => !cancelled && setRows(r))
       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
       .finally(() => !cancelled && setLoadingRows(false));

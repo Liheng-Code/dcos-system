@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   AlertTriangle,
   Calendar,
+  Clock,
+  Download,
   Gauge,
   LineChart as LineChartIcon,
   Package,
+  Plus,
   RefreshCw,
   Scale,
   Search,
@@ -30,13 +34,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
 import { cn } from "@/lib/utils";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { DwlMaterialPriceDialog } from "@/components/qs/dwl-material-price-dialog";
 import {
   DWL_EXPIRY_WINDOWS,
+  dwlDisplayResourceDescription,
   type DwlCurrentPrice,
   type DwlExpiryWindow,
-  type DwlResourcePriceHistory,
+  type DwlPriceHistoryRow,
+  type DwlPriceStatus,
   type DwlSourceType,
 } from "@/components/qs/dwl-types";
+
+const PRICE_COLUMNS =
+  "id, tenant_id, resource_id, supplier_id, unit_price, currency, valid_from, quote_valid_until, source_type, location, " +
+  "notes, quantity, discount, delivery_cost, handling_cost, other_charges, tax_amount, effective_unit_cost, payment_terms, " +
+  "delivery_terms, lead_time_days, source_document, quotation_ref, quotation_date, project_code, price_status, approved_by, " +
+  "approved_at, submission_id, dwl_quotation_id, created_by, created_at";
+
+const PRICE_STATUS_STYLE: Record<DwlPriceStatus, string> = {
+  approved: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  active: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  submitted: "border-amber-300 bg-amber-50 text-amber-700",
+  verified: "border-amber-300 bg-amber-50 text-amber-700",
+  draft: "border-border bg-muted text-muted-foreground",
+  rejected: "border-destructive/40 bg-destructive/10 text-destructive",
+  expired: "border-border bg-muted text-muted-foreground",
+  superseded: "border-border bg-muted text-muted-foreground",
+  archived: "border-border bg-muted text-muted-foreground",
+};
 
 function formatMoney(value: number, currency: string) {
   try {
@@ -95,10 +120,11 @@ export default function DwlPriceDashboard() {
   const supabase = useMemo(() => createClient(), []);
   const { can, loaded: permsLoaded } = useQsPermissions();
 
-  const [activeTab, setActiveTab] = useState<"expiring" | "trends" | "gaps">("expiring");
+  const [activeTab, setActiveTab] = useState<"records" | "expiring" | "trends" | "gaps">("records");
 
   const [currentPrices, setCurrentPrices] = useState<DwlCurrentPrice[]>([]);
-  const [priceHistory, setPriceHistory] = useState<DwlResourcePriceHistory[]>([]);
+  const [priceHistory, setPriceHistory] = useState<DwlPriceHistoryRow[]>([]);
+  const [resources, setResources] = useState<Map<string, { code: string; description: string; unit: string }>>(new Map());
   const [suppliers, setSuppliers] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -108,19 +134,39 @@ export default function DwlPriceDashboard() {
   const [trendSearch, setTrendSearch] = useState("");
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
 
+  const [recordsSearch, setRecordsSearch] = useState("");
+  const [recordsMaterial, setRecordsMaterial] = useState("all");
+  const [recordsSupplier, setRecordsSupplier] = useState("all");
+  const [recordsStatus, setRecordsStatus] = useState("all");
+  const [showRecordPrice, setShowRecordPrice] = useState(false);
+  const [tenantId, setTenantId] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (!uid) return;
+      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      if (profile?.company_id) setTenantId(profile.company_id as string);
+    })();
+  }, [supabase]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const [currentResult, historyResult, supplierResult] = await Promise.all([
+    const [currentResult, historyResult, supplierResult, resourceResult] = await Promise.all([
       supabase
         .from("dwl_v_current_prices")
         .select("resource_id, code, description, unit, unit_price, currency, valid_from, quote_valid_until, source_type, supplier_name, is_expired")
         .order("code"),
       supabase
         .from("dwl_resource_prices")
-        .select("id, tenant_id, resource_id, supplier_id, unit_price, currency, valid_from, quote_valid_until, source_type, location, notes, created_by, created_at")
+        .select(PRICE_COLUMNS)
         .order("valid_from", { ascending: true }),
       supabase.from("dwl_suppliers").select("id, name"),
+      supabase.from("dwl_resources").select("id, code, description, unit").eq("category", "material"),
     ]);
 
     if (currentResult.error) {
@@ -135,13 +181,19 @@ export default function DwlPriceDashboard() {
     }
 
     setCurrentPrices((currentResult.data ?? []) as DwlCurrentPrice[]);
-    setPriceHistory((historyResult.data ?? []) as DwlResourcePriceHistory[]);
+    setPriceHistory((historyResult.data ?? []) as unknown as DwlPriceHistoryRow[]);
 
     const supplierMap = new Map<string, string>();
     for (const s of supplierResult.data ?? []) {
       supplierMap.set(s.id as string, s.name as string);
     }
     setSuppliers(supplierMap);
+
+    const resourceMap = new Map<string, { code: string; description: string; unit: string }>();
+    for (const r of (resourceResult.data ?? []) as { id: string; code: string; description: string; unit: string }[]) {
+      resourceMap.set(r.id, { code: r.code, description: r.description, unit: r.unit });
+    }
+    setResources(resourceMap);
 
     setLoading(false);
   }, [supabase]);
@@ -193,7 +245,7 @@ export default function DwlPriceDashboard() {
 
   // ── Price trends ─────────────────────────────────────────────────────
   const historyByResource = useMemo(() => {
-    const map = new Map<string, DwlResourcePriceHistory[]>();
+    const map = new Map<string, DwlPriceHistoryRow[]>();
     for (const row of priceHistory) {
       const list = map.get(row.resource_id) ?? [];
       list.push(row);
@@ -288,6 +340,57 @@ export default function DwlPriceDashboard() {
     return rows.sort((a, b) => Math.abs(b.gapPct) - Math.abs(a.gapPct));
   }, [historyByResource, resourceMetaById]);
 
+  // ── Price History & Benchmark Records ─────────────────────────────────
+  const canRecordDirect = can("qs_libraries", "can_create");
+  const canSubmitPrice = can("qs_price_approval", "submit");
+
+  const recordsRows = useMemo(() => {
+    const q = recordsSearch.trim().toLowerCase();
+    return priceHistory
+      .filter((p) => recordsMaterial === "all" || p.resource_id === recordsMaterial)
+      .filter((p) => recordsSupplier === "all" || p.supplier_id === recordsSupplier)
+      .filter((p) => recordsStatus === "all" || p.price_status === recordsStatus)
+      .filter((p) => {
+        if (!q) return true;
+        const meta = resources.get(p.resource_id);
+        return (
+          (meta?.code.toLowerCase().includes(q) ?? false)
+          || (meta?.description.toLowerCase().includes(q) ?? false)
+          || (p.quotation_ref?.toLowerCase().includes(q) ?? false)
+        );
+      })
+      .sort((a, b) => b.valid_from.localeCompare(a.valid_from) || b.created_at.localeCompare(a.created_at));
+  }, [priceHistory, resources, recordsSearch, recordsMaterial, recordsSupplier, recordsStatus]);
+
+  function handleExcelExport() {
+    const data = recordsRows.map((r) => {
+      const meta = resources.get(r.resource_id);
+      return {
+        Date: r.valid_from,
+        Code: meta?.code ?? "",
+        "Material Specification": meta ? dwlDisplayResourceDescription(meta.description) : "",
+        Unit: meta?.unit ?? "",
+        Supplier: r.supplier_id ? (suppliers.get(r.supplier_id) ?? "") : "",
+        "Basic Price": r.unit_price,
+        Discount: r.discount,
+        Delivery: r.delivery_cost,
+        Handling: r.handling_cost,
+        Tax: r.tax_amount,
+        "Effective Unit Cost": r.effective_unit_cost ?? "",
+        Currency: r.currency,
+        "Payment Terms": r.payment_terms ?? "",
+        "Delivery Terms": r.delivery_terms ?? "",
+        "Quotation Ref": r.quotation_ref ?? "",
+        Status: r.price_status,
+      };
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = Object.keys(data[0] ?? {}).map((k) => ({ wch: Math.max(k.length, 12) }));
+    XLSX.utils.book_append_sheet(wb, ws, "Price History");
+    XLSX.writeFile(wb, `Price_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   const canView = !permsLoaded || can("qs_libraries", "view");
 
   if (permsLoaded && !canView) {
@@ -304,9 +407,9 @@ export default function DwlPriceDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Direct Works Cost Library — Price Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Price Analytics</h1>
           <p className="text-sm text-muted-foreground">
-            Expiring quotations, price trends and quotation-vs-purchase gaps across the resource price history.
+            Price history records, expiring quotations, price trends and quotation-vs-purchase gaps across the resource price history.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
@@ -330,11 +433,14 @@ export default function DwlPriceDashboard() {
           </Button>
         </div>
       ) : currentPrices.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
           <Package className="h-8 w-8 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">
-            No priced resources yet. Add resources and prices on the Resource &amp; Price Entry screen first.
-          </p>
+          <p className="text-sm text-muted-foreground">No priced resources yet.</p>
+          {(canRecordDirect || canSubmitPrice) && (
+            <Button size="sm" onClick={() => setShowRecordPrice(true)} disabled={!tenantId}>
+              <Plus className="h-3.5 w-3.5" /> Record New Price
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -373,6 +479,9 @@ export default function DwlPriceDashboard() {
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
             <TabsList>
+              <TabsTrigger value="records">
+                <Clock className="h-3.5 w-3.5" /> Records
+              </TabsTrigger>
               <TabsTrigger value="expiring">
                 <Calendar className="h-3.5 w-3.5" /> Expiring Quotations
               </TabsTrigger>
@@ -383,6 +492,151 @@ export default function DwlPriceDashboard() {
                 <Scale className="h-3.5 w-3.5" /> Quotation vs Purchase
               </TabsTrigger>
             </TabsList>
+
+            {/* ── Price History & Benchmark Records ────────────────────── */}
+            <TabsContent value="records" className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="flex items-center gap-2 text-base font-semibold">
+                    Price History &amp; Benchmark Records
+                    <Badge variant="secondary">{recordsRows.length} Records</Badge>
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Audit-traceable transactions including basic prices, delivery logistics, taxes, and effective rates.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={recordsRows.length === 0}>
+                    <Download className="h-3.5 w-3.5" /> Excel Export
+                  </Button>
+                  {(canRecordDirect || canSubmitPrice) && (
+                    <Button size="sm" onClick={() => setShowRecordPrice(true)} disabled={!tenantId}>
+                      <Plus className="h-3.5 w-3.5" /> Record New Price
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={recordsSearch}
+                    onChange={(e) => setRecordsSearch(e.target.value)}
+                    placeholder="Search material, supplier, quotation ID…"
+                    className="pl-8"
+                  />
+                </div>
+                <select
+                  value={recordsMaterial}
+                  onChange={(e) => setRecordsMaterial(e.target.value)}
+                  className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                >
+                  <option value="all">All Materials ({resources.size})</option>
+                  {[...resources.entries()].sort((a, b) => a[1].code.localeCompare(b[1].code)).map(([id, meta]) => (
+                    <option key={id} value={id}>{meta.code} — {dwlDisplayResourceDescription(meta.description)}</option>
+                  ))}
+                </select>
+                <select
+                  value={recordsSupplier}
+                  onChange={(e) => setRecordsSupplier(e.target.value)}
+                  className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                >
+                  <option value="all">All Suppliers ({suppliers.size})</option>
+                  {[...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+                <select
+                  value={recordsStatus}
+                  onChange={(e) => setRecordsStatus(e.target.value)}
+                  className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                >
+                  <option value="all">All Status</option>
+                  {(["draft", "submitted", "verified", "approved", "rejected", "expired", "superseded", "archived", "active"] as DwlPriceStatus[]).map((s) => (
+                    <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {recordsRows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
+                  <Clock className="h-8 w-8 text-muted-foreground/50" />
+                  <p className="text-sm text-muted-foreground">No price records match the current filters.</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-24">Date</TableHead>
+                        <TableHead>Material Specification</TableHead>
+                        <TableHead className="w-40">Supplier</TableHead>
+                        <TableHead className="w-24 text-right">Basic Price</TableHead>
+                        <TableHead className="w-20 text-right">Discount</TableHead>
+                        <TableHead className="w-20 text-right">Delivery</TableHead>
+                        <TableHead className="w-20 text-right">Tax</TableHead>
+                        <TableHead className="w-28 text-right">Effective Unit Cost</TableHead>
+                        <TableHead className="w-40">Terms &amp; Doc</TableHead>
+                        <TableHead className="w-28">Approval</TableHead>
+                        <TableHead className="w-20 text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recordsRows.map((r) => {
+                        const meta = resources.get(r.resource_id);
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-xs text-muted-foreground">{formatDate(r.valid_from)}</TableCell>
+                            <TableCell>
+                              <p className="text-sm font-medium">{meta ? dwlDisplayResourceDescription(meta.description) : "—"}</p>
+                              <p className="font-mono text-[11px] text-muted-foreground">{meta?.code} • {meta?.unit}</p>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {r.supplier_id ? (suppliers.get(r.supplier_id) ?? "—") : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs font-medium">{formatMoney(r.unit_price, r.currency)}</TableCell>
+                            <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                              {r.discount ? `-${formatMoney(r.discount, r.currency)}` : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                              {r.delivery_cost ? `+${formatMoney(r.delivery_cost, r.currency)}` : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                              {r.tax_amount ? `+${formatMoney(r.tax_amount, r.currency)}` : "—"}
+                            </TableCell>
+                            <TableCell className="bg-emerald-50/60 text-right font-mono text-xs font-semibold text-emerald-700">
+                              {r.effective_unit_cost != null ? formatMoney(r.effective_unit_cost, r.currency) : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {r.payment_terms && <p>{r.payment_terms}</p>}
+                              {r.quotation_ref && <p className="font-mono text-[11px]">{r.quotation_ref}</p>}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={cn("capitalize", PRICE_STATUS_STYLE[r.price_status])}>
+                                {r.price_status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedResourceId(r.resource_id);
+                                  setActiveTab("trends");
+                                }}
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
 
             {/* ── Expiring Quotations ───────────────────────────────────── */}
             <TabsContent value="expiring" className="flex flex-col gap-4">
@@ -445,7 +699,7 @@ export default function DwlPriceDashboard() {
                         (row) => (
                           <TableRow key={row.resource_id}>
                             <TableCell className="font-mono text-xs font-medium">{row.code}</TableCell>
-                            <TableCell className="text-sm">{row.description}</TableCell>
+                            <TableCell className="text-sm">{dwlDisplayResourceDescription(row.description)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{row.unit}</TableCell>
                             <TableCell className="text-right font-mono text-xs font-medium">
                               {formatMoney(row.unit_price, row.currency)}
@@ -514,7 +768,7 @@ export default function DwlPriceDashboard() {
               >
                 {trendPickerOptions.map((p) => (
                   <option key={p.resource_id} value={p.resource_id}>
-                    {p.code} — {p.description}
+                    {p.code} — {dwlDisplayResourceDescription(p.description)}
                     {(historyByResource.get(p.resource_id)?.length ?? 0) > 1 ? " ★" : ""}
                   </option>
                 ))}
@@ -529,7 +783,7 @@ export default function DwlPriceDashboard() {
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center gap-4 text-sm">
                     <span className="font-medium">{selectedCurrentPrice.code}</span>
-                    <span className="text-muted-foreground">{selectedCurrentPrice.description}</span>
+                    <span className="text-muted-foreground">{dwlDisplayResourceDescription(selectedCurrentPrice.description)}</span>
                     <Badge variant="outline">{SOURCE_LABEL[selectedCurrentPrice.source_type]}</Badge>
                     {selectedCurrentPrice.is_expired && <Badge variant="destructive">Expired</Badge>}
                   </div>
@@ -656,7 +910,7 @@ export default function DwlPriceDashboard() {
                       {gapRows.map((g) => (
                         <TableRow key={g.resource_id}>
                           <TableCell className="font-mono text-xs font-medium">{g.code}</TableCell>
-                          <TableCell className="text-sm">{g.description}</TableCell>
+                          <TableCell className="text-sm">{dwlDisplayResourceDescription(g.description)}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{formatMoney(g.quotationPrice, g.currency)}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{formatMoney(g.purchasePrice, g.currency)}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{g.gapPct.toFixed(1)}%</TableCell>
@@ -683,6 +937,17 @@ export default function DwlPriceDashboard() {
           </Tabs>
         </>
       )}
+
+      <DwlMaterialPriceDialog
+        open={showRecordPrice}
+        onOpenChange={setShowRecordPrice}
+        resourceId={null}
+        tenantId={tenantId}
+        userId={userId}
+        canSubmit={canSubmitPrice}
+        canRecordDirect={canRecordDirect}
+        onSaved={() => void loadData()}
+      />
     </div>
   );
 }

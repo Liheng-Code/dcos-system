@@ -74,7 +74,7 @@ export function ProfileAccountInfoCard({ profile, departments }: ProfileAccountI
     departments.find((d) => d.id === profile.department_id)?.department_name ?? "—";
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <IdCard className="h-4 w-4 text-muted-foreground" />

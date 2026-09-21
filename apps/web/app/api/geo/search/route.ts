@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q");
+  const country = request.nextUrl.searchParams.get("country");
   if (!q?.trim()) return NextResponse.json([]);
 
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=0`;
+  const countrycodes = country?.trim() ? `&countrycodes=${encodeURIComponent(country.trim())}` : "";
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=0${countrycodes}`;
   const res = await fetch(url, {
     headers: {
       "User-Agent": "DCOS-AttendanceApp/1.0 (contact@dcos.local)",

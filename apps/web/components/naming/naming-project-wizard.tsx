@@ -6,6 +6,7 @@ import { X, Loader2, Save, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucid
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { LocationPicker } from "@/components/ui/location-picker";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { STEPS, formStateFromProject, formToPayload, type WizardFormState } from "@/components/projects/steps/step-panel";
 import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
@@ -479,8 +480,17 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
         </div>
         <div className="md:col-span-2 space-y-1.5">
           <Label htmlFor="nwz_location">Location</Label>
-          <input id="nwz_location" value={fv(form.location)} onChange={(e) => update("location", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary" />
+          <LocationPicker
+            lat={form.latitude ? Number(form.latitude) : null}
+            lng={form.longitude ? Number(form.longitude) : null}
+            address={form.location}
+            country="kh"
+            onChange={(lat, lng, address) => {
+              update("latitude", String(lat));
+              update("longitude", String(lng));
+              update("location", address);
+            }}
+          />
         </div>
         <div className="md:col-span-2 space-y-1.5">
           <Label htmlFor="nwz_description">Description</Label>

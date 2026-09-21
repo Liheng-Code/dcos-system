@@ -73,13 +73,16 @@ export function isModuleActive(modules: ModuleSetting[], key: string): boolean {
 }
 
 /**
- * Sidebar module keys that are gated by `isModulePermitted()` (the global toggle composed
- * with the role-based check from `apps/web/hooks/use-permitted-modules.ts`) — mirrors exactly
- * the 11 top-level sections in `apps/web/components/dashboard/sidebar.tsx` that were switched
- * from `isModuleActive` to `isModulePermitted`. Deliberately excludes `"administration"`:
- * that folder keeps its own, unrelated `(isAdmin || isHr)` gate in the sidebar, untouched by
- * Phase A, so the direct-URL guard below stays consistent with it (global-toggle-only) rather
- * than introducing a second, divergent role check for the same routes.
+ * Module keys that get a direct-URL role gate. Module *visibility* is a sidebar
+ * + module-hub concern only (see `isRouteBlocked` below): globally disabling a
+ * module hides it from navigation but never blocks its routes. The only remaining
+ * direct-URL gate is the RBAC role check — a disabled-per-role section redirects to
+ * /dashboard for users whose role can't see it.
+ *
+ * Deliberately excludes `"administration"`: that folder keeps its own, unrelated
+ * `(isAdmin || isHr)` gate in the sidebar, so it is never role-blocked here (and, per
+ * the module-visibility rule above, also never toggle-blocked) — its own gate is the
+ * single source of truth for who enters those routes.
  */
 const ROLE_GOVERNED_MODULE_KEYS = new Set([
   "project",
@@ -95,9 +98,13 @@ const ROLE_GOVERNED_MODULE_KEYS = new Set([
   "account",
 ]);
 
+// Module visibility is a sidebar + module-hub concern only: a globally disabled
+// module hides it from navigation, but the routes themselves remain reachable via
+// direct URL (per user decision — "Hide in sidebar + hub only"). The remaining
+// direct-URL gate is the RBAC role check below (ROLE_GOVERNED_MODULE_KEYS), which is
+// a separate mechanism and deliberately untouched here.
 export function isRouteBlocked(
   pathname: string,
-  activeKeys: string[],
   permittedModuleKeys?: string[],
 ): boolean {
   const routeModuleMap: Record<string, string> = {
@@ -128,7 +135,6 @@ export function isRouteBlocked(
 
   for (const [prefix, moduleKey] of Object.entries(routeModuleMap)) {
     if (pathname === prefix || pathname.startsWith(prefix + "/")) {
-      if (!activeKeys.includes(moduleKey)) return true;
       if (
         permittedModuleKeys &&
         ROLE_GOVERNED_MODULE_KEYS.has(moduleKey) &&

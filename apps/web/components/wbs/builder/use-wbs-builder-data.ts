@@ -442,6 +442,14 @@ export function useWbsBuilderData(
           patch.status = raw;
           break;
         }
+        case "discipline":
+        case "area_label":
+        case "cost_code": {
+          const v = raw.trim();
+          if (v === (node[field] ?? "")) return;
+          patch[field] = v || null;
+          break;
+        }
         case "node_type": {
           if (raw === node.node_type) return;
           patch.node_type = raw;

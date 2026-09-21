@@ -6,6 +6,7 @@ import { X, Loader2, Save, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangl
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { LocationPicker } from "@/components/ui/location-picker";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { STEPS, formStateFromProject, formToPayload, type WizardFormState } from "@/components/projects/steps/step-panel";
 import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
@@ -292,10 +293,19 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
           <input id="wz_project_name" value={fv(form.project_name)} onChange={(e) => update("project_name", e.target.value)}
             className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary" />
         </div>
-        <div className="space-y-1.5">
+        <div className="md:col-span-2 space-y-1.5">
           <Label htmlFor="wz_location">Location</Label>
-          <input id="wz_location" value={fv(form.location)} onChange={(e) => update("location", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary" />
+          <LocationPicker
+            lat={form.latitude ? Number(form.latitude) : null}
+            lng={form.longitude ? Number(form.longitude) : null}
+            address={form.location}
+            country="kh"
+            onChange={(lat, lng, address) => {
+              update("latitude", String(lat));
+              update("longitude", String(lng));
+              update("location", address);
+            }}
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="wz_time_zone">Time Zone</Label>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Bell, Mail, Send } from "lucide-react";
+import { Loader2, Bell, Mail, Send, GanttChartSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,8 @@ interface NotificationPreferences {
   email: boolean;
   telegram: boolean;
   telegram_chat_id: string | null;
+  /** Schedule alerts (critical path, overrun, float consumed…) — defaults to the general email toggle until set. */
+  schedule_alerts_email?: boolean;
 }
 
 export function NotificationPreferencesPanel() {
@@ -23,6 +25,7 @@ export function NotificationPreferencesPanel() {
     email: true,
     telegram: false,
     telegram_chat_id: null,
+    schedule_alerts_email: true,
   });
 
   useEffect(() => {
@@ -38,7 +41,7 @@ export function NotificationPreferencesPanel() {
         .single();
 
       if (profile?.notification_preferences) {
-        setPrefs(profile.notification_preferences as NotificationPreferences);
+        setPrefs((p) => ({ ...p, ...(profile.notification_preferences as NotificationPreferences) }));
       }
       setLoading(false);
     })();
@@ -58,7 +61,7 @@ export function NotificationPreferencesPanel() {
 
   if (loading) {
     return (
-      <Card>
+      <Card className="h-full">
         <CardContent className="flex items-center justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </CardContent>
@@ -67,14 +70,14 @@ export function NotificationPreferencesPanel() {
   }
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Bell className="h-4 w-4 text-muted-foreground" />
           Notification Preferences
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="flex flex-1 flex-col justify-between space-y-5">
         {/* Email */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -91,7 +94,29 @@ export function NotificationPreferencesPanel() {
               onChange={(e) => setPrefs((p) => ({ ...p, email: e.target.checked }))}
               className="sr-only peer"
             />
-            <div className="h-5 w-9 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-900 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:after:translate-x-4" />
+            <div className="h-5 w-9 rounded-full bg-orange-200 transition-colors peer-checked:bg-orange-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:after:translate-x-4" />
+          </label>
+        </div>
+
+        <hr className="border-border" />
+
+        {/* Planning schedule alerts */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <GanttChartSquare className="mt-0.5 h-4 w-4 text-slate-500 shrink-0" />
+            <div>
+              <p className="text-sm font-medium">Schedule alert emails</p>
+              <p className="text-xs text-muted-foreground">Critical path changes, programme overrun, float consumed on your projects</p>
+            </div>
+          </div>
+          <label className="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={prefs.schedule_alerts_email ?? prefs.email}
+              onChange={(e) => setPrefs((p) => ({ ...p, schedule_alerts_email: e.target.checked }))}
+              className="sr-only peer"
+            />
+            <div className="h-5 w-9 rounded-full bg-orange-200 transition-colors peer-checked:bg-orange-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:after:translate-x-4" />
           </label>
         </div>
 
@@ -114,7 +139,7 @@ export function NotificationPreferencesPanel() {
                 onChange={(e) => setPrefs((p) => ({ ...p, telegram: e.target.checked }))}
                 className="sr-only peer"
               />
-              <div className="h-5 w-9 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-900 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:after:translate-x-4" />
+              <div className="h-5 w-9 rounded-full bg-orange-200 transition-colors peer-checked:bg-orange-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:after:translate-x-4" />
             </label>
           </div>
           {prefs.telegram && (

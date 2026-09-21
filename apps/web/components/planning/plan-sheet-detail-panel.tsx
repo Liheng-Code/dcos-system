@@ -7,6 +7,7 @@ import { ExternalLink, Loader2, Table2, UserPlus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PRIORITY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS, type SheetField, type SheetTask } from "./sheet-types";
+import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
 
 interface StaffProfile {
   id: string;
@@ -55,6 +56,7 @@ export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }:
   // there is no state to resync when the selected task changes (no effect
   // needed: the parent remounts this panel with key={task.id} per task).
   const [dragProgress, setDragProgress] = useState<number | null>(null);
+  const [hasActivitySteps, setHasActivitySteps] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
@@ -233,25 +235,44 @@ export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }:
               type="range"
               min={0}
               max={100}
+              disabled={hasActivitySteps}
               value={dragProgress ?? task.progress}
               onChange={(e) => setDragProgress(Number(e.target.value))}
               onMouseUp={(e) => commitProgress(Number((e.target as HTMLInputElement).value))}
               onTouchEnd={(e) => commitProgress(Number((e.target as HTMLInputElement).value))}
-              className="h-1.5 flex-1 accent-primary"
+              className="h-1.5 flex-1 accent-primary disabled:opacity-50"
             />
             <input
               type="number"
               min={0}
               max={100}
+              disabled={hasActivitySteps}
               value={dragProgress ?? task.progress}
               onChange={(e) => setDragProgress(Number(e.target.value))}
               onBlur={(e) => commitProgress(Number(e.target.value))}
               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              className="w-14 shrink-0 rounded-md border border-border bg-background px-1.5 py-1 text-right text-xs outline-none focus:border-primary"
+              className="w-14 shrink-0 rounded-md border border-border bg-background px-1.5 py-1 text-right text-xs outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <span className="shrink-0 text-xs text-muted-foreground">%</span>
           </div>
+          {hasActivitySteps && (
+            <p className="mt-1 text-[10px] text-muted-foreground">Calculated automatically from Activity Steps below.</p>
+          )}
         </div>
+
+        {/* Activity Steps */}
+        <WbsActivityStepsPanel
+          taskId={task.id}
+          taskStart={task.start_date}
+          taskEnd={task.end_date}
+          canEdit={true}
+          onStepsChange={(hasSteps, computed) => {
+            setHasActivitySteps(hasSteps);
+            if (hasSteps && computed != null && computed !== task.progress) {
+              void onUpdateField(task.id, "progress", String(computed));
+            }
+          }}
+        />
 
         {/* Priority */}
         <label className="block">

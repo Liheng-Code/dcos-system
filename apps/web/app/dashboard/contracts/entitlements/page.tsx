@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Plus, Shield, Clock, DollarSign, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -8,9 +8,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useProject } from "@/components/dashboard/project-context";
 
 export default function EntitlementsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [contracts, setContracts] = useState<{id:string,contract_no:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,15 +26,23 @@ export default function EntitlementsPage() {
     estimated_time_days: "0", estimated_cost: "0",
   });
 
+  const itemsQuery = useCallback(() => {
+    let q = supabase.from("entitlement_register").select("*, contract_register!inner(project_id)").order("created_at", { ascending: false });
+    if (selectedProjectId) q = q.eq("contract_register.project_id", selectedProjectId);
+    return q;
+  }, [supabase, selectedProjectId]);
+
   useEffect(() => {
-    supabase.from("contract_register").select("id,contract_no").then(({ data }) => {
+    let cq = supabase.from("contract_register").select("id,contract_no");
+    if (selectedProjectId) cq = cq.eq("project_id", selectedProjectId);
+    cq.then(({ data }) => {
       if (data) setContracts(data);
     });
-    supabase.from("entitlement_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, [supabase, selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
@@ -51,7 +61,7 @@ export default function EntitlementsPage() {
     toast.success("Entitlement recorded");
     setShowForm(false);
     setForm({ contract_id: "", entitlement_no: "", title: "", description: "", category: "both", contract_clause: "", trigger_event: "", estimated_time_days: "0", estimated_cost: "0" });
-    supabase.from("entitlement_register").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    itemsQuery().then(({ data }) => {
       if (data) setItems(data);
     });
     setSaving(false);

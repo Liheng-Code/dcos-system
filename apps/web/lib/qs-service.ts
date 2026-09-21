@@ -956,6 +956,10 @@ export interface QsClaimItem {
   certified_variance_reason?: string | null;
   total_to_date: number;
   pct_complete: number;
+  /** Completion Plan 2.7 — Planning progress as the IPC source of truth. */
+  planning_pct?: number | null;
+  planning_snapshot_date?: string | null;
+  override_reason?: string | null;
   qs_boq_sections?: { title: string } | null;
 }
 
@@ -1040,6 +1044,8 @@ export async function createProgressClaim(payload: {
   original_contract_sum: number;
   advance_recovery_this_period?: number;
   notes?: string | null;
+  /** Completion Plan 2.7 — as-of date for get_node_progress_asof(); defaults to period_end. */
+  data_date?: string;
 }): Promise<QsProgressClaim> {
   const supabase = createClient();
 
@@ -1071,6 +1077,8 @@ export async function createProgressClaim(payload: {
   const prevAdvanceRecovered = (prevClaims ?? []).reduce((s, c) => s + Number(c.advance_recovery_this_period ?? 0), 0);
   const advanceRecoveryThisPeriod = payload.advance_recovery_this_period ?? 0;
 
+  const dataDate = payload.data_date ?? payload.period_end;
+
   const { data, error } = await supabase
     .from("qs_progress_claims")
     .insert({
@@ -1085,13 +1093,14 @@ export async function createProgressClaim(payload: {
       advance_recovery_this_period: advanceRecoveryThisPeriod,
       advance_recovery_cumulative:  prevAdvanceRecovered,
       notes:                        payload.notes ?? null,
+      data_date:                    dataDate,
     })
     .select()
     .single();
   if (error) throw new Error(error.message);
 
   // Initialize claim items from BOQ
-  await initializeClaimItems(data.id, payload.project_id, data.id);
+  await initializeClaimItems(data.id, payload.project_id, data.id, dataDate);
   return data as QsProgressClaim;
 }
 
@@ -1099,12 +1108,13 @@ async function initializeClaimItems(
   claimId: string,
   projectId: string,
   currentClaimId: string,
+  asOfDate: string,
 ): Promise<void> {
   const supabase = createClient();
 
   const itemsRes = await supabase
     .from("qs_boq_items")
-    .select("id, boq_section_id, description, unit, total_amount")
+    .select("id, boq_section_id, description, unit, total_amount, wbs_node_id")
     .eq("project_id", projectId)
     .in("baseline_status", ["approved", "locked"])
     .order("seq");
@@ -1133,17 +1143,44 @@ async function initializeClaimItems(
     }
   }
 
-  const rows = itemsRes.data.map((item) => ({
-    claim_id:        claimId,
-    boq_section_id:  item.boq_section_id,
-    boq_item_id:     item.id,
-    description:     item.description,
-    unit:            item.unit ?? "",
-    scheduled_value: Number(item.total_amount ?? 0),
-    prev_completed:  prevMap[item.id] ?? 0,
-    this_period:     0,
-    materials_stored: 0,
-  }));
+  // Completion Plan 2.7 — Planning's as-of progress is the source of truth
+  // for this_period when a BOQ item is linked to a WBS node; unlinked items
+  // fall back to the pre-existing manual-entry behaviour (this_period: 0).
+  const planningPctByNode = new Map<string, number>();
+  const { data: nodeProgress, error: progressError } = await supabase.rpc("get_node_progress_asof", {
+    p_project_id: projectId,
+    p_date: asOfDate,
+  });
+  if (progressError) {
+    // RPC not yet applied or unavailable — degrade to manual entry rather than blocking claim creation.
+    console.error("get_node_progress_asof failed, falling back to manual entry:", progressError.message);
+  } else {
+    for (const row of (nodeProgress ?? []) as { wbs_node_id: string; progress_pct: number }[]) {
+      planningPctByNode.set(row.wbs_node_id, Number(row.progress_pct));
+    }
+  }
+
+  const rows = itemsRes.data.map((item) => {
+    const scheduledValue = Number(item.total_amount ?? 0);
+    const prevCompleted = prevMap[item.id] ?? 0;
+    const planningPct = item.wbs_node_id ? planningPctByNode.get(item.wbs_node_id) ?? null : null;
+    const thisPeriod = planningPct !== null
+      ? Math.max(0, (planningPct / 100) * scheduledValue - prevCompleted)
+      : 0;
+    return {
+      claim_id:        claimId,
+      boq_section_id:  item.boq_section_id,
+      boq_item_id:     item.id,
+      description:     item.description,
+      unit:            item.unit ?? "",
+      scheduled_value: scheduledValue,
+      prev_completed:  prevCompleted,
+      this_period:     thisPeriod,
+      materials_stored: 0,
+      planning_pct:            planningPct,
+      planning_snapshot_date:  planningPct !== null ? asOfDate : null,
+    };
+  });
 
   await supabase.from("qs_claim_items").insert(rows);
 }
@@ -1159,20 +1196,47 @@ export async function getClaimItems(claimId: string): Promise<QsClaimItem[]> {
   return (data ?? []) as QsClaimItem[];
 }
 
+/** Completion Plan 2.7 — Planning-derived this_period may only be overridden with a stated reason. */
+const PLANNING_PCT_OVERRIDE_TOLERANCE = 0.01;
+
 export async function updateClaimItem(
   id: string,
   this_period: number,
   materials_stored: number,
   client_adjustment: number = 0,
   adjustment_reason?: string | null,
+  override_reason?: string | null,
 ): Promise<void> {
-  const { error } = await createClient()
+  const supabase = createClient();
+
+  const { data: item, error: fetchError } = await supabase
+    .from("qs_claim_items")
+    .select("scheduled_value, prev_completed, planning_pct")
+    .eq("id", id)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+
+  if (item.planning_pct !== null && item.planning_pct !== undefined) {
+    const planningImplied = Math.max(
+      0,
+      (Number(item.planning_pct) / 100) * Number(item.scheduled_value) - Number(item.prev_completed),
+    );
+    const deviates = Math.abs(this_period - planningImplied) > PLANNING_PCT_OVERRIDE_TOLERANCE;
+    if (deviates && !override_reason?.trim()) {
+      throw new Error(
+        `This period (${this_period.toFixed(2)}) deviates from Planning's confirmed progress (${planningImplied.toFixed(2)}). An override reason is required.`,
+      );
+    }
+  }
+
+  const { error } = await supabase
     .from("qs_claim_items")
     .update({
       this_period,
       materials_stored,
       client_adjustment,
       adjustment_reason: adjustment_reason ?? null,
+      override_reason: override_reason ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -1869,16 +1933,20 @@ export async function getQsAuditLog(
   const supabase = createClient();
 
   // Get all relevant record IDs for this project across QS tables
-  const [vosRes, claimsRes, retRes] = await Promise.all([
+  const [vosRes, claimsRes, retRes, contRes, revRes] = await Promise.all([
     supabase.from("qs_variation_orders").select("id").eq("project_id", projectId),
     supabase.from("qs_progress_claims").select("id").eq("project_id", projectId),
     supabase.from("qs_retention_ledger").select("id").eq("project_id", projectId),
+    supabase.from("qs_contingency_drawdowns").select("id").eq("project_id", projectId),
+    supabase.from("qs_budget_revisions").select("id").eq("project_id", projectId),
   ]);
 
   const recordIds = [
     ...(vosRes.data ?? []).map((r) => r.id),
     ...(claimsRes.data ?? []).map((r) => r.id),
     ...(retRes.data ?? []).map((r) => r.id),
+    ...(contRes.data ?? []).map((r) => r.id),
+    ...(revRes.data ?? []).map((r) => r.id),
   ];
 
   if (recordIds.length === 0) return [];

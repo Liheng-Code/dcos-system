@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Blocks, Loader2, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -33,6 +35,7 @@ function formatMoney(value: number) {
 export default function DwlAssembliesListPage() {
   const supabase = useMemo(() => createClient(), []);
   const { can, loaded: permsLoaded } = useQsPermissions();
+  const searchParams = useSearchParams();
 
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -42,7 +45,8 @@ export default function DwlAssembliesListPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
+  // Pre-filled when arriving from a Cost Item's "Open in Assembly Builder" link.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [groupFilter, setGroupFilter] = useState<string>("all");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -284,9 +288,13 @@ export default function DwlAssembliesListPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
+          <div className="mb-1 flex flex-wrap items-center gap-3 text-xs">
+            <Link href="/dashboard/qs/dwl-cost-items" className="text-muted-foreground hover:text-foreground">← Cost Item Library</Link>
+            <Link href="/dashboard/qs/dwl-work-items" className="text-primary hover:underline">Rate Build-Up (work items)</Link>
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">Direct Works Cost Library — Assembly Builder</h1>
           <p className="text-sm text-muted-foreground">
-            Level 3: complete building elements priced as recipes of Level 2 work items, using design ratios.
+            Level 3: complete building elements priced as recipes of Level 2 work items, using design ratios. Advanced editor — use it for assemblies built from several work items.
           </p>
         </div>
         <Button

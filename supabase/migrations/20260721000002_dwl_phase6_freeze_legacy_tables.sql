@@ -193,8 +193,18 @@ comment on table public.tender_price_list_items is
 -- SECURITY DEFINER functions run with the function owner's privileges, not
 -- the caller's. postgres/service_role retain EXECUTE (unaffected) for any
 -- legitimate admin/back-office use.
-revoke execute on function public.recalc_from_price_item(uuid) from anon, authenticated;
-revoke execute on function public.recalc_from_unit_rate(uuid) from anon, authenticated;
+-- Both functions exist only in production (no migration declares them), so
+-- guard on existence to keep a fresh local DB (supabase start) replayable.
+do $$
+begin
+  if to_regprocedure('public.recalc_from_price_item(uuid)') is not null then
+    revoke execute on function public.recalc_from_price_item(uuid) from anon, authenticated;
+  end if;
+  if to_regprocedure('public.recalc_from_unit_rate(uuid)') is not null then
+    revoke execute on function public.recalc_from_unit_rate(uuid) from anon, authenticated;
+  end if;
+end
+$$;
 
 commit;
 

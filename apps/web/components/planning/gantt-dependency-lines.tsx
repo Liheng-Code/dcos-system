@@ -16,21 +16,33 @@ interface GanttDependencyLinesProps {
   highlightIds: Set<string>;
   /** Draw every link regardless of `highlightIds` */
   showAll?: boolean;
+  /**
+   * Master on/off for the whole dependency layer. When `false`, nothing is
+   * drawn no matter what `showAll` / `highlightIds` say — this is the toolbar's
+   * single "show / hide arrows" switch. Defaults to `true`.
+   */
+  visible?: boolean;
+  /** Show the FS/SS/FF/SF text badge at each link's midpoint. Defaults to on; the arrows/lines stay regardless. */
+  showLabels?: boolean;
   /** Open the relation editor for successor `succId`, dependency array slot `index` */
   onEditLink: (succId: string, index: number) => void;
 }
 
-const STROKE = "#334155"; // slate-700
-const BADGE_FILL = "#1e293b"; // slate-800
+export const DEP_LINE_STROKE = "#334155"; // slate-700
+export const DEP_LINE_BADGE_FILL = "#1e293b"; // slate-800
+const STROKE = DEP_LINE_STROKE;
+const BADGE_FILL = DEP_LINE_BADGE_FILL;
 
 /** Clearance kept between a bar edge and the first/last turn of the line. */
-const STUB = 12;
+export const DEP_LINE_STUB = 12;
 /** Fan-out spacing so several arrows off the same bar don't sit on top of each other. */
-const LANE = 7;
+export const DEP_LINE_LANE = 7;
+const STUB = DEP_LINE_STUB;
+const LANE = DEP_LINE_LANE;
 
-type LinkType = "FS" | "SS" | "FF" | "SF";
+export type LinkType = "FS" | "SS" | "FF" | "SF";
 
-interface Bar {
+export interface Bar {
   left: number;
   right: number;
   cy: number;
@@ -45,7 +57,7 @@ interface Bar {
  * turns the corner in the row gutter, so tight / negative lag can't make the
  * line run along or through a bar.
  */
-function routePath(
+export function routePath(
   sx: number,
   sy: number,
   exitDir: 1 | -1,
@@ -109,9 +121,12 @@ export function GanttDependencyLines({
   containerWidth,
   highlightIds,
   showAll = false,
+  visible = true,
+  showLabels = true,
   onEditLink,
 }: GanttDependencyLinesProps) {
   const links = useMemo(() => {
+    if (!visible) return [];
     if (!showAll && highlightIds.size === 0) return [];
 
     // Bar geometry for every drawn task, plus bar x-intervals per row so the
@@ -217,6 +232,7 @@ export function GanttDependencyLines({
     containerWidth,
     highlightIds,
     showAll,
+    visible,
   ]);
 
   if (links.length === 0) return null;
@@ -257,20 +273,22 @@ export function GanttDependencyLines({
             strokeLinejoin="round"
             markerEnd="url(#gantt-dep-arrow)"
           />
-          <g transform={`translate(${l.bx}, ${l.by})`}>
-            <rect x={-10} y={-6.5} width={20} height={13} rx={3} fill={BADGE_FILL} />
-            <text
-              x={0}
-              y={0}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fontSize={8}
-              fontWeight={700}
-              fill="#fff"
-            >
-              {l.type}
-            </text>
-          </g>
+          {showLabels && (
+            <g transform={`translate(${l.bx}, ${l.by})`}>
+              <rect x={-10} y={-6.5} width={20} height={13} rx={3} fill={BADGE_FILL} />
+              <text
+                x={0}
+                y={0}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={8}
+                fontWeight={700}
+                fill="#fff"
+              >
+                {l.type}
+              </text>
+            </g>
+          )}
         </g>
       ))}
     </svg>

@@ -30,14 +30,14 @@ export function ChartWrapper({
   height = 280,
 }: ChartWrapperProps) {
   return (
-    <div className={cn("rounded-lg border border-slate-100 bg-white", className)}>
+    <div className={cn("rounded-lg border border-border bg-card", className)}>
       {(title || description) && (
         <div className="px-3 pt-3 pb-1">
           {title && (
-            <p className="text-xs font-semibold text-slate-700">{title}</p>
+            <p className="text-xs font-semibold text-foreground">{title}</p>
           )}
           {description && (
-            <p className="text-[10px] text-slate-400">{description}</p>
+            <p className="text-[10px] text-muted-foreground">{description}</p>
           )}
         </div>
       )}
@@ -46,7 +46,7 @@ export function ChartWrapper({
         style={{ minHeight: height }}
       >
         {loading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : error ? (
           <div className="flex flex-col items-center gap-1 px-4 text-center">
             <p className="text-xs text-red-500">{error}</p>
@@ -54,14 +54,14 @@ export function ChartWrapper({
               <button
                 type="button"
                 onClick={onRetry}
-                className="text-[10px] text-slate-400 underline hover:text-slate-600"
+                className="text-[10px] text-muted-foreground underline hover:text-foreground"
               >
                 Retry
               </button>
             )}
           </div>
         ) : empty ? (
-          <p className="text-xs text-slate-400">{emptyMessage}</p>
+          <p className="text-xs text-muted-foreground">{emptyMessage}</p>
         ) : (
           children
         )}

@@ -60,9 +60,19 @@ export interface TaskFloat {
   totalFloat: number;
   freeFloat: number;
   critical: boolean;
+  /** Float > the critical threshold but within the near-critical warning band. */
+  nearCritical: boolean;
   lateStart: string;
   lateFinish: string;
 }
+
+/** A task is "critical" when totalFloat <= critical, "near-critical" when it's above that but <= nearCritical. */
+export interface FloatThresholds {
+  critical: number;
+  nearCritical: number;
+}
+
+export const DEFAULT_FLOAT_THRESHOLDS: FloatThresholds = { critical: 0, nearCritical: 5 };
 
 export type ScheduleResult =
   | {
@@ -145,6 +155,7 @@ export function scheduleProject(
   tasks: EngineTask[],
   cal: WorkCalendar,
   projectStart: string,
+  thresholds: FloatThresholds = DEFAULT_FLOAT_THRESHOLDS,
 ): ScheduleResult {
   const topo = topoOrder(tasks);
   if ("cycle" in topo) return { ok: false, cycle: topo.cycle };
@@ -337,7 +348,8 @@ export function scheduleProject(
     float.set(t.id, {
       totalFloat,
       freeFloat: freeFloat === null ? totalFloat : Math.max(0, freeFloat),
-      critical: totalFloat <= 0,
+      critical: totalFloat <= thresholds.critical,
+      nearCritical: totalFloat > thresholds.critical && totalFloat <= thresholds.nearCritical,
       lateStart: ls,
       lateFinish: lf,
     });
@@ -411,11 +423,20 @@ export function scheduleProject(
   return { ok: true, dates, float, violations };
 }
 
+/** The latest finish date across every task — the project's overall finish. Null for an empty schedule. */
+export function projectFinish(dates: Map<string, TaskDates>): string | null {
+  let finish: string | null = null;
+  for (const d of dates.values()) {
+    if (finish === null || d.finish > finish) finish = d.finish;
+  }
+  return finish;
+}
+
 /**
  * Working days from `from` to `to`, signed: 0 when equal, positive when `to` is
  * later, negative when earlier. (`workingDaysBetween` is inclusive, so subtract 1.)
  */
-function signedWorkingDayGap(cal: WorkCalendar, from: string, to: string): number {
+export function signedWorkingDayGap(cal: WorkCalendar, from: string, to: string): number {
   if (from === to) return 0;
   if (parseISO(to).getTime() > parseISO(from).getTime()) {
     return Math.max(0, workingDaysBetween(cal, from, to) - 1);

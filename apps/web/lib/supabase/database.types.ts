@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       account_ap_invoices: {
@@ -847,6 +872,83 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      activity_step_template_item: {
+        Row: {
+          discipline: string | null
+          est_duration_days: number | null
+          id: string
+          inspection_hold_point: boolean
+          notes: string | null
+          resource_crew: string | null
+          step_name: string
+          step_no: number
+          template_id: string
+          weight: number
+        }
+        Insert: {
+          discipline?: string | null
+          est_duration_days?: number | null
+          id?: string
+          inspection_hold_point?: boolean
+          notes?: string | null
+          resource_crew?: string | null
+          step_name: string
+          step_no: number
+          template_id: string
+          weight?: number
+        }
+        Update: {
+          discipline?: string | null
+          est_duration_days?: number | null
+          id?: string
+          inspection_hold_point?: boolean
+          notes?: string | null
+          resource_crew?: string | null
+          step_name?: string
+          step_no?: number
+          template_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_step_template_item_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "activity_step_template_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activity_step_template_master: {
+        Row: {
+          created_at: string
+          description: string | null
+          group_name: string
+          id: string
+          is_active: boolean
+          template_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          group_name: string
+          id?: string
+          is_active?: boolean
+          template_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          group_name?: string
+          id?: string
+          is_active?: boolean
+          template_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       approval_thresholds: {
         Row: {
@@ -1902,6 +2004,39 @@ export type Database = {
         }
         Relationships: []
       }
+      building_master: {
+        Row: {
+          building_code: string
+          building_name: string
+          building_type: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          building_code: string
+          building_name: string
+          building_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          building_code?: string
+          building_name?: string
+          building_type?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       candidates: {
         Row: {
           candidate_name: string
@@ -1963,6 +2098,7 @@ export type Database = {
           address: string | null
           code: string
           created_at: string
+          date_format: string
           description: string | null
           email: string | null
           id: string
@@ -1977,6 +2113,7 @@ export type Database = {
           address?: string | null
           code: string
           created_at?: string
+          date_format?: string
           description?: string | null
           email?: string | null
           id?: string
@@ -1991,6 +2128,7 @@ export type Database = {
           address?: string | null
           code?: string
           created_at?: string
+          date_format?: string
           description?: string | null
           email?: string | null
           id?: string
@@ -4265,6 +4403,39 @@ export type Database = {
         }
         Relationships: []
       }
+      discipline_master: {
+        Row: {
+          created_at: string
+          description: string | null
+          discipline_code: string
+          discipline_name: string
+          id: string
+          is_active: boolean
+          sequence_no: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          discipline_code: string
+          discipline_name: string
+          id?: string
+          is_active?: boolean
+          sequence_no?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          discipline_code?: string
+          discipline_name?: string
+          id?: string
+          is_active?: boolean
+          sequence_no?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       document_audit_log: {
         Row: {
           action: string
@@ -4770,6 +4941,324 @@ export type Database = {
           },
         ]
       }
+      dwl_assembly_costing: {
+        Row: {
+          assembly_id: string
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          daily_output: number | null
+          discipline: string | null
+          equipment_cost_override_per_unit: number | null
+          guardrail_note: string | null
+          labor_cost_override_per_unit: number | null
+          manual_direct_cost_per_unit: number | null
+          material_base_cost_override: number | null
+          material_waste_pct_override: number | null
+          overhead_pct: number
+          profit_pct: number
+          risk_pct: number
+          scope_of_works: string | null
+          status: string
+          tenant_id: string
+          tuned_at: string | null
+          updated_at: string
+          vat_pct: number
+          version_label: string | null
+          work_item_type: string | null
+        }
+        Insert: {
+          assembly_id: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          daily_output?: number | null
+          discipline?: string | null
+          equipment_cost_override_per_unit?: number | null
+          guardrail_note?: string | null
+          labor_cost_override_per_unit?: number | null
+          manual_direct_cost_per_unit?: number | null
+          material_base_cost_override?: number | null
+          material_waste_pct_override?: number | null
+          overhead_pct?: number
+          profit_pct?: number
+          risk_pct?: number
+          scope_of_works?: string | null
+          status?: string
+          tenant_id: string
+          tuned_at?: string | null
+          updated_at?: string
+          vat_pct?: number
+          version_label?: string | null
+          work_item_type?: string | null
+        }
+        Update: {
+          assembly_id?: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          daily_output?: number | null
+          discipline?: string | null
+          equipment_cost_override_per_unit?: number | null
+          guardrail_note?: string | null
+          labor_cost_override_per_unit?: number | null
+          manual_direct_cost_per_unit?: number | null
+          material_base_cost_override?: number | null
+          material_waste_pct_override?: number | null
+          overhead_pct?: number
+          profit_pct?: number
+          risk_pct?: number
+          scope_of_works?: string | null
+          status?: string
+          tenant_id?: string
+          tuned_at?: string | null
+          updated_at?: string
+          vat_pct?: number
+          version_label?: string | null
+          work_item_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_costing_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_material_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_assembly_crew: {
+        Row: {
+          assembly_id: string
+          benchmark_note: string | null
+          description: string | null
+          id: string
+          quantity: number
+          resource_id: string
+          role_label: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          assembly_id: string
+          benchmark_note?: string | null
+          description?: string | null
+          id?: string
+          quantity?: number
+          resource_id: string
+          role_label: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          assembly_id?: string
+          benchmark_note?: string | null
+          description?: string | null
+          id?: string
+          quantity?: number
+          resource_id?: string
+          role_label?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_crew_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_assembly_equipment: {
+        Row: {
+          assembly_id: string
+          description: string | null
+          id: string
+          quantity: number
+          resource_id: string
+          role_label: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          assembly_id: string
+          description?: string | null
+          id?: string
+          quantity?: number
+          resource_id: string
+          role_label: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          assembly_id?: string
+          description?: string | null
+          id?: string
+          quantity?: number
+          resource_id?: string
+          role_label?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_equipment_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
       dwl_assembly_items: {
         Row: {
           assembly_id: string
@@ -4810,6 +5299,20 @@ export type Database = {
             foreignKeyName: "dwl_assembly_items_assembly_id_fkey"
             columns: ["assembly_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_items_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_items_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_assembly_rates"
             referencedColumns: ["assembly_id"]
           },
@@ -4833,6 +5336,772 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "dwl_work_items"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_assembly_layer_materials: {
+        Row: {
+          id: string
+          layer_id: string
+          resource_id: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          layer_id: string
+          resource_id: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          layer_id?: string
+          resource_id?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assembly_layers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_assembly_layer_specs: {
+        Row: {
+          id: string
+          layer_id: string
+          sort_order: number
+          spec_label: string
+          spec_value: string
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          layer_id: string
+          sort_order?: number
+          spec_label: string
+          spec_value: string
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          layer_id?: string
+          sort_order?: number
+          spec_label?: string
+          spec_value?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_layer_specs_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assembly_layers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_assembly_layers: {
+        Row: {
+          assembly_id: string
+          color_hex: string
+          id: string
+          layer_name: string
+          material_label: string | null
+          sort_order: number
+          tenant_id: string
+          thickness_mm: number
+        }
+        Insert: {
+          assembly_id: string
+          color_hex?: string
+          id?: string
+          layer_name: string
+          material_label?: string | null
+          sort_order?: number
+          tenant_id: string
+          thickness_mm: number
+        }
+        Update: {
+          assembly_id?: string
+          color_hex?: string
+          id?: string
+          layer_name?: string
+          material_label?: string | null
+          sort_order?: number
+          tenant_id?: string
+          thickness_mm?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+        ]
+      }
+      dwl_assembly_specs: {
+        Row: {
+          assembly_id: string
+          id: string
+          section: string
+          sort_order: number
+          spec_label: string
+          spec_value: string
+          tenant_id: string
+        }
+        Insert: {
+          assembly_id: string
+          id?: string
+          section?: string
+          sort_order?: number
+          spec_label: string
+          spec_value: string
+          tenant_id: string
+        }
+        Update: {
+          assembly_id?: string
+          id?: string
+          section?: string
+          sort_order?: number
+          spec_label?: string
+          spec_value?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_specs_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_specs_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_specs_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_specs_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+        ]
+      }
+      dwl_labor_rate_attributes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          resource_id: string
+          skill_level: string | null
+          standard_productivity_note: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          resource_id: string
+          skill_level?: string | null
+          standard_productivity_note?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          resource_id?: string
+          skill_level?: string | null
+          standard_productivity_note?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_material_attributes: {
+        Row: {
+          application_element: string | null
+          application_scope: string | null
+          brand: string | null
+          budget_code_id: string | null
+          category_id: string | null
+          color_finish: string | null
+          created_at: string
+          created_by: string | null
+          dimension: string | null
+          discipline: string | null
+          grade: string | null
+          legacy_code: string | null
+          lifecycle_status: string
+          manufacturer: string | null
+          material_name: string | null
+          material_type: string | null
+          model: string | null
+          notes: string | null
+          package_size: string | null
+          resource_id: string
+          standard: string | null
+          subcategory: string | null
+          tags: string[]
+          tech_spec_summary: string | null
+          tenant_id: string
+          thickness: string | null
+          updated_at: string
+          updated_by: string | null
+          weight: string | null
+        }
+        Insert: {
+          application_element?: string | null
+          application_scope?: string | null
+          brand?: string | null
+          budget_code_id?: string | null
+          category_id?: string | null
+          color_finish?: string | null
+          created_at?: string
+          created_by?: string | null
+          dimension?: string | null
+          discipline?: string | null
+          grade?: string | null
+          legacy_code?: string | null
+          lifecycle_status?: string
+          manufacturer?: string | null
+          material_name?: string | null
+          material_type?: string | null
+          model?: string | null
+          notes?: string | null
+          package_size?: string | null
+          resource_id: string
+          standard?: string | null
+          subcategory?: string | null
+          tags?: string[]
+          tech_spec_summary?: string | null
+          tenant_id: string
+          thickness?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          weight?: string | null
+        }
+        Update: {
+          application_element?: string | null
+          application_scope?: string | null
+          brand?: string | null
+          budget_code_id?: string | null
+          category_id?: string | null
+          color_finish?: string | null
+          created_at?: string
+          created_by?: string | null
+          dimension?: string | null
+          discipline?: string | null
+          grade?: string | null
+          legacy_code?: string | null
+          lifecycle_status?: string
+          manufacturer?: string | null
+          material_name?: string | null
+          material_type?: string | null
+          model?: string | null
+          notes?: string | null
+          package_size?: string | null
+          resource_id?: string
+          standard?: string | null
+          subcategory?: string | null
+          tags?: string[]
+          tech_spec_summary?: string | null
+          tenant_id?: string
+          thickness?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          weight?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_attributes_budget_code_id_fkey"
+            columns: ["budget_code_id"]
+            isOneToOne: false
+            referencedRelation: "budget_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_material_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_material_categories: {
+        Row: {
+          code: string | null
+          color_tag: string | null
+          cost_code_prefix: string | null
+          created_at: string
+          description: string | null
+          discipline: string | null
+          group_name: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          specific_element: string | null
+          updated_at: string
+        }
+        Insert: {
+          code?: string | null
+          color_tag?: string | null
+          cost_code_prefix?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          group_name?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          specific_element?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string | null
+          color_tag?: string | null
+          cost_code_prefix?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          group_name?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          specific_element?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      dwl_material_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          resource_id: string
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          resource_id: string
+          storage_path: string
+          tenant_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          resource_id?: string
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_photos_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_material_spec_revisions: {
+        Row: {
+          approval_req: string | null
+          brand: string | null
+          created_at: string
+          created_by: string | null
+          density: string | null
+          dimension: string | null
+          effective_date: string
+          expiry_date: string | null
+          grade: string | null
+          id: string
+          installation_req: string | null
+          manufacturer: string | null
+          revision_no: string
+          source_document: string | null
+          spec_id: string
+          standard: string | null
+          status: string
+          strength_performance: string | null
+          technical_req: string | null
+          tenant_id: string
+          testing_req: string | null
+          thickness: string | null
+          unit: string | null
+        }
+        Insert: {
+          approval_req?: string | null
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          density?: string | null
+          dimension?: string | null
+          effective_date: string
+          expiry_date?: string | null
+          grade?: string | null
+          id?: string
+          installation_req?: string | null
+          manufacturer?: string | null
+          revision_no: string
+          source_document?: string | null
+          spec_id: string
+          standard?: string | null
+          status?: string
+          strength_performance?: string | null
+          technical_req?: string | null
+          tenant_id: string
+          testing_req?: string | null
+          thickness?: string | null
+          unit?: string | null
+        }
+        Update: {
+          approval_req?: string | null
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          density?: string | null
+          dimension?: string | null
+          effective_date?: string
+          expiry_date?: string | null
+          grade?: string | null
+          id?: string
+          installation_req?: string | null
+          manufacturer?: string | null
+          revision_no?: string
+          source_document?: string | null
+          spec_id?: string
+          standard?: string | null
+          status?: string
+          strength_performance?: string | null
+          technical_req?: string | null
+          tenant_id?: string
+          testing_req?: string | null
+          thickness?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_spec_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_spec_revisions_spec_id_fkey"
+            columns: ["spec_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_material_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_spec_revisions_spec_id_fkey"
+            columns: ["spec_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_current_material_spec"
+            referencedColumns: ["spec_id"]
+          },
+        ]
+      }
+      dwl_material_specs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          discipline: string | null
+          id: string
+          resource_id: string
+          spec_code: string
+          spec_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          discipline?: string | null
+          id?: string
+          resource_id: string
+          spec_code: string
+          spec_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          discipline?: string | null
+          id?: string
+          resource_id?: string
+          spec_code?: string
+          spec_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_specs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
           },
         ]
       }
@@ -4876,6 +6145,20 @@ export type Database = {
             foreignKeyName: "dwl_model_factors_assembly_id_fkey"
             columns: ["assembly_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_model_factors_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_model_factors_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_assembly_rates"
             referencedColumns: ["assembly_id"]
           },
@@ -4884,6 +6167,287 @@ export type Database = {
             columns: ["model_id"]
             isOneToOne: false
             referencedRelation: "dwl_quantity_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_price_status_events: {
+        Row: {
+          actor: string | null
+          created_at: string
+          from_status: string | null
+          id: string
+          note: string | null
+          submission_id: string
+          tenant_id: string
+          to_status: string
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          note?: string | null
+          submission_id: string
+          tenant_id: string
+          to_status: string
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          note?: string | null
+          submission_id?: string
+          tenant_id?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_price_status_events_actor_fkey"
+            columns: ["actor"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_status_events_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_price_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_status_events_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_price_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_price_submissions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_cost: number
+          delivery_terms: string | null
+          discount: number
+          dwl_quotation_id: string | null
+          handling_cost: number
+          id: string
+          lead_time_days: number | null
+          location: string | null
+          notes: string | null
+          other_charges: number
+          payment_terms: string | null
+          project_code: string | null
+          quantity: number | null
+          quotation_date: string | null
+          quotation_ref: string | null
+          quote_valid_until: string | null
+          rejected_reason: string | null
+          resource_id: string
+          resulting_price_id: string | null
+          source_document: string | null
+          source_type: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          supplier_id: string | null
+          tax_amount: number
+          tenant_id: string
+          unit_price: number
+          updated_at: string
+          valid_from: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_cost?: number
+          delivery_terms?: string | null
+          discount?: number
+          dwl_quotation_id?: string | null
+          handling_cost?: number
+          id?: string
+          lead_time_days?: number | null
+          location?: string | null
+          notes?: string | null
+          other_charges?: number
+          payment_terms?: string | null
+          project_code?: string | null
+          quantity?: number | null
+          quotation_date?: string | null
+          quotation_ref?: string | null
+          quote_valid_until?: string | null
+          rejected_reason?: string | null
+          resource_id: string
+          resulting_price_id?: string | null
+          source_document?: string | null
+          source_type?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id?: string | null
+          tax_amount?: number
+          tenant_id: string
+          unit_price: number
+          updated_at?: string
+          valid_from: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_cost?: number
+          delivery_terms?: string | null
+          discount?: number
+          dwl_quotation_id?: string | null
+          handling_cost?: number
+          id?: string
+          lead_time_days?: number | null
+          location?: string | null
+          notes?: string | null
+          other_charges?: number
+          payment_terms?: string | null
+          project_code?: string | null
+          quantity?: number | null
+          quotation_date?: string | null
+          quotation_ref?: string | null
+          quote_valid_until?: string | null
+          rejected_reason?: string | null
+          resource_id?: string
+          resulting_price_id?: string | null
+          source_document?: string | null
+          source_type?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id?: string | null
+          tax_amount?: number
+          tenant_id?: string
+          unit_price?: number
+          updated_at?: string
+          valid_from?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_price_submissions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_dwl_quotation_id_fkey"
+            columns: ["dwl_quotation_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resulting_price_id_fkey"
+            columns: ["resulting_price_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resource_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resulting_price_id_fkey"
+            columns: ["resulting_price_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["price_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -5017,58 +6581,342 @@ export type Database = {
         }
         Relationships: []
       }
-      dwl_resource_prices: {
+      dwl_quotation_items: {
         Row: {
+          created_at: string
+          delivery: number
+          description: string | null
+          discount: number
+          effective_price: number | null
+          handling: number
+          id: string
+          lead_time_days: number | null
+          line_no: number
+          other_charges: number
+          quantity: number | null
+          quotation_id: string
+          remarks: string | null
+          resource_id: string | null
+          spec_ref: string | null
+          supplier_product_code: string | null
+          tax: number
+          tenant_id: string
+          unit: string | null
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          delivery?: number
+          description?: string | null
+          discount?: number
+          effective_price?: number | null
+          handling?: number
+          id?: string
+          lead_time_days?: number | null
+          line_no: number
+          other_charges?: number
+          quantity?: number | null
+          quotation_id: string
+          remarks?: string | null
+          resource_id?: string | null
+          spec_ref?: string | null
+          supplier_product_code?: string | null
+          tax?: number
+          tenant_id: string
+          unit?: string | null
+          unit_price?: number
+        }
+        Update: {
+          created_at?: string
+          delivery?: number
+          description?: string | null
+          discount?: number
+          effective_price?: number | null
+          handling?: number
+          id?: string
+          lead_time_days?: number | null
+          line_no?: number
+          other_charges?: number
+          quantity?: number | null
+          quotation_id?: string
+          remarks?: string | null
+          resource_id?: string | null
+          spec_ref?: string | null
+          supplier_product_code?: string | null
+          tax?: number
+          tenant_id?: string
+          unit?: string | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_quotation_items_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_quotations: {
+        Row: {
+          contact_person: string | null
           created_at: string
           created_by: string | null
           currency: string
+          delivery_terms: string | null
           id: string
+          notes: string | null
+          payment_terms: string | null
+          procurement_quotation_id: string | null
+          project_code: string | null
+          quote_date: string | null
+          quote_no: string
+          rfq_ref: string | null
+          source_document: string | null
+          status: string
+          supplier_id: string | null
+          tenant_id: string
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          contact_person?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_terms?: string | null
+          id?: string
+          notes?: string | null
+          payment_terms?: string | null
+          procurement_quotation_id?: string | null
+          project_code?: string | null
+          quote_date?: string | null
+          quote_no: string
+          rfq_ref?: string | null
+          source_document?: string | null
+          status?: string
+          supplier_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          contact_person?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_terms?: string | null
+          id?: string
+          notes?: string | null
+          payment_terms?: string | null
+          procurement_quotation_id?: string | null
+          project_code?: string | null
+          quote_date?: string | null
+          quote_no?: string
+          rfq_ref?: string | null
+          source_document?: string | null
+          status?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_quotations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
+      dwl_resource_prices: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_cost: number
+          delivery_terms: string | null
+          discount: number
+          dwl_quotation_id: string | null
+          effective_unit_cost: number | null
+          handling_cost: number
+          id: string
+          lead_time_days: number | null
           location: string | null
           notes: string | null
+          other_charges: number
+          overtime_rate_per_hr: number | null
+          payment_terms: string | null
+          price_status: string
+          project_code: string | null
+          quantity: number | null
+          quotation_date: string | null
+          quotation_ref: string | null
           quote_valid_until: string | null
+          rate_type: string | null
           resource_id: string
+          source_document: string | null
           source_type: string
+          submission_id: string | null
           supplier_id: string | null
+          tax_amount: number
           tenant_id: string
           unit_price: number
           valid_from: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           created_by?: string | null
           currency?: string
+          delivery_cost?: number
+          delivery_terms?: string | null
+          discount?: number
+          dwl_quotation_id?: string | null
+          effective_unit_cost?: number | null
+          handling_cost?: number
           id?: string
+          lead_time_days?: number | null
           location?: string | null
           notes?: string | null
+          other_charges?: number
+          overtime_rate_per_hr?: number | null
+          payment_terms?: string | null
+          price_status?: string
+          project_code?: string | null
+          quantity?: number | null
+          quotation_date?: string | null
+          quotation_ref?: string | null
           quote_valid_until?: string | null
+          rate_type?: string | null
           resource_id: string
+          source_document?: string | null
           source_type: string
+          submission_id?: string | null
           supplier_id?: string | null
+          tax_amount?: number
           tenant_id: string
           unit_price: number
           valid_from: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           created_by?: string | null
           currency?: string
+          delivery_cost?: number
+          delivery_terms?: string | null
+          discount?: number
+          dwl_quotation_id?: string | null
+          effective_unit_cost?: number | null
+          handling_cost?: number
           id?: string
+          lead_time_days?: number | null
           location?: string | null
           notes?: string | null
+          other_charges?: number
+          overtime_rate_per_hr?: number | null
+          payment_terms?: string | null
+          price_status?: string
+          project_code?: string | null
+          quantity?: number | null
+          quotation_date?: string | null
+          quotation_ref?: string | null
           quote_valid_until?: string | null
+          rate_type?: string | null
           resource_id?: string
+          source_document?: string | null
           source_type?: string
+          submission_id?: string | null
           supplier_id?: string | null
+          tax_amount?: number
           tenant_id?: string
           unit_price?: number
           valid_from?: string
         }
         Relationships: [
           {
+            foreignKeyName: "dwl_resource_prices_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "dwl_resource_prices_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_dwl_quotation_id_fkey"
+            columns: ["dwl_quotation_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_quotations"
             referencedColumns: ["id"]
           },
           {
@@ -5079,11 +6927,67 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_price_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_price_submissions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "dwl_resource_prices_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "dwl_suppliers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
           },
         ]
       }
@@ -5134,6 +7038,331 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_subcon_attributes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          lifecycle_status: string
+          resource_id: string
+          tenant_id: string
+          trade: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          lifecycle_status?: string
+          resource_id: string
+          tenant_id: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          lifecycle_status?: string
+          resource_id?: string
+          tenant_id?: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_subcon_attributes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_supplier_materials: {
+        Row: {
+          brand: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          lead_time_days: number | null
+          manufacturer: string | null
+          moq: number | null
+          notes: string | null
+          package_size: string | null
+          resource_id: string
+          specification: string | null
+          standard: string | null
+          supplier_id: string
+          supplier_product_code: string | null
+          supplier_product_name: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          lead_time_days?: number | null
+          manufacturer?: string | null
+          moq?: number | null
+          notes?: string | null
+          package_size?: string | null
+          resource_id: string
+          specification?: string | null
+          standard?: string | null
+          supplier_id: string
+          supplier_product_code?: string | null
+          supplier_product_name?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          brand?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          lead_time_days?: number | null
+          manufacturer?: string | null
+          moq?: number | null
+          notes?: string | null
+          package_size?: string | null
+          resource_id?: string
+          specification?: string | null
+          standard?: string | null
+          supplier_id?: string
+          supplier_product_code?: string | null
+          supplier_product_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_supplier_materials_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
+      dwl_supplier_profiles: {
+        Row: {
+          address: string | null
+          contact_person: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          credit_terms: string | null
+          delivery_terms: string | null
+          email: string | null
+          lead_time_days: number | null
+          lifecycle_status: string
+          moq: number | null
+          notes: string | null
+          overall_rating: number | null
+          payment_terms: string | null
+          phone: string | null
+          position: string | null
+          price_competitiveness: string | null
+          product_categories: string[]
+          province_city: string | null
+          quality_rating: string | null
+          reliability_rating: string | null
+          supplier_code: string | null
+          supplier_id: string
+          supplier_type: string | null
+          tenant_id: string
+          trading_name: string | null
+          updated_at: string
+          vendor_kind: string
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_terms?: string | null
+          delivery_terms?: string | null
+          email?: string | null
+          lead_time_days?: number | null
+          lifecycle_status?: string
+          moq?: number | null
+          notes?: string | null
+          overall_rating?: number | null
+          payment_terms?: string | null
+          phone?: string | null
+          position?: string | null
+          price_competitiveness?: string | null
+          product_categories?: string[]
+          province_city?: string | null
+          quality_rating?: string | null
+          reliability_rating?: string | null
+          supplier_code?: string | null
+          supplier_id: string
+          supplier_type?: string | null
+          tenant_id: string
+          trading_name?: string | null
+          updated_at?: string
+          vendor_kind?: string
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_terms?: string | null
+          delivery_terms?: string | null
+          email?: string | null
+          lead_time_days?: number | null
+          lifecycle_status?: string
+          moq?: number | null
+          notes?: string | null
+          overall_rating?: number | null
+          payment_terms?: string | null
+          phone?: string | null
+          position?: string | null
+          price_competitiveness?: string | null
+          product_categories?: string[]
+          province_city?: string | null
+          quality_rating?: string | null
+          reliability_rating?: string | null
+          supplier_code?: string | null
+          supplier_id?: string
+          supplier_type?: string | null
+          tenant_id?: string
+          trading_name?: string | null
+          updated_at?: string
+          vendor_kind?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_supplier_profiles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_profiles_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_profiles_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_profiles_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
           },
         ]
       }
@@ -5218,6 +7447,34 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
             foreignKeyName: "dwl_work_item_resources_work_item_id_fkey"
             columns: ["work_item_id"]
             isOneToOne: false
@@ -5289,6 +7546,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      element_master: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          discipline: string | null
+          element_code: string
+          element_name: string
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          element_code: string
+          element_name: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          element_code?: string
+          element_name?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       employee_assets: {
         Row: {
@@ -9825,6 +12118,39 @@ export type Database = {
           },
         ]
       }
+      level_master: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          level_code: string
+          level_name: string
+          level_type: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          level_code: string
+          level_name: string
+          level_type?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          level_code?: string
+          level_name?: string
+          level_type?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       level_naming_templates: {
         Row: {
           config: Json
@@ -11912,6 +14238,39 @@ export type Database = {
           },
         ]
       }
+      phase_master: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          phase_code: string
+          phase_name: string
+          sequence_no: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          phase_code: string
+          phase_name: string
+          sequence_no?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          phase_code?: string
+          phase_name?: string
+          sequence_no?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plan_calendar_exceptions: {
         Row: {
           calendar_id: string
@@ -12005,6 +14364,381 @@ export type Database = {
             foreignKeyName: "plan_calendars_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_resources: {
+        Row: {
+          calendar_id: string | null
+          cost_per_unit: number | null
+          created_at: string
+          id: string
+          is_active: boolean
+          max_units: number
+          name: string
+          profile_id: string | null
+          project_id: string
+          resource_type: string
+          unit_label: string | null
+        }
+        Insert: {
+          calendar_id?: string | null
+          cost_per_unit?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_units?: number
+          name: string
+          profile_id?: string | null
+          project_id: string
+          resource_type?: string
+          unit_label?: string | null
+        }
+        Update: {
+          calendar_id?: string | null
+          cost_per_unit?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_units?: number
+          name?: string
+          profile_id?: string | null
+          project_id?: string
+          resource_type?: string
+          unit_label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_resources_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "plan_calendars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_resources_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_resources_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_resources_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_schedule_revisions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          revision_number: number
+          snapshot_data: Json
+          stream_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          revision_number: number
+          snapshot_data: Json
+          stream_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          revision_number?: number
+          snapshot_data?: Json
+          stream_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_schedule_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_schedule_revisions_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "plan_schedule_streams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_schedule_settings: {
+        Row: {
+          bar_style: Json
+          critical_float_threshold_days: number
+          near_critical_float_threshold_days: number
+          progress_line_color: string
+          progress_line_custom_date: string | null
+          progress_line_date_source: string
+          progress_line_point_color: string
+          progress_line_point_shape: string
+          progress_line_show_date: boolean
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          bar_style?: Json
+          critical_float_threshold_days?: number
+          near_critical_float_threshold_days?: number
+          progress_line_color?: string
+          progress_line_custom_date?: string | null
+          progress_line_date_source?: string
+          progress_line_point_color?: string
+          progress_line_point_shape?: string
+          progress_line_show_date?: boolean
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          bar_style?: Json
+          critical_float_threshold_days?: number
+          near_critical_float_threshold_days?: number
+          progress_line_color?: string
+          progress_line_custom_date?: string | null
+          progress_line_date_source?: string
+          progress_line_point_color?: string
+          progress_line_point_shape?: string
+          progress_line_show_date?: boolean
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_schedule_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_schedule_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_schedule_state: {
+        Row: {
+          computed_at: string
+          critical_task_ids: string[]
+          near_critical_task_ids: string[]
+          project_finish: string | null
+          project_id: string
+        }
+        Insert: {
+          computed_at?: string
+          critical_task_ids?: string[]
+          near_critical_task_ids?: string[]
+          project_finish?: string | null
+          project_id: string
+        }
+        Update: {
+          computed_at?: string
+          critical_task_ids?: string[]
+          near_critical_task_ids?: string[]
+          project_finish?: string | null
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_schedule_state_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_schedule_state_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_schedule_streams: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          project_id: string
+          stream_type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          project_id: string
+          stream_type: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          stream_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_schedule_streams_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_schedule_streams_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_schedule_streams_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_task_assignments: {
+        Row: {
+          allocation_percent: number
+          created_at: string
+          id: string
+          resource_id: string
+          task_id: string
+        }
+        Insert: {
+          allocation_percent?: number
+          created_at?: string
+          id?: string
+          resource_id: string
+          task_id: string
+        }
+        Update: {
+          allocation_percent?: number
+          created_at?: string
+          id?: string
+          resource_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_task_assignments_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "plan_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_task_assignments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_timescale: {
+        Row: {
+          config: Json
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_timescale_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_timescale_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_wbs_code_mask: {
+        Row: {
+          code_prefix: string
+          generate_for_new: boolean
+          levels: Json
+          project_id: string
+          updated_at: string
+          verify_unique: boolean
+        }
+        Insert: {
+          code_prefix?: string
+          generate_for_new?: boolean
+          levels?: Json
+          project_id: string
+          updated_at?: string
+          verify_unique?: boolean
+        }
+        Update: {
+          code_prefix?: string
+          generate_for_new?: boolean
+          levels?: Json
+          project_id?: string
+          updated_at?: string
+          verify_unique?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_wbs_code_mask_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "plan_wbs_code_mask_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
@@ -13869,6 +16603,7 @@ export type Database = {
           planned_progress: number | null
           project_id: string
           snapshot_date: string
+          source: string
           wbs_node_id: string | null
         }
         Insert: {
@@ -13882,6 +16617,7 @@ export type Database = {
           planned_progress?: number | null
           project_id: string
           snapshot_date: string
+          source?: string
           wbs_node_id?: string | null
         }
         Update: {
@@ -13895,6 +16631,7 @@ export type Database = {
           planned_progress?: number | null
           project_id?: string
           snapshot_date?: string
+          source?: string
           wbs_node_id?: string | null
         }
         Relationships: [
@@ -14141,6 +16878,66 @@ export type Database = {
           prefix?: string
         }
         Relationships: []
+      }
+      project_members: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          project_id: string
+          role_code: string | null
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          project_id: string
+          role_code?: string | null
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          project_id?: string
+          role_code?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_role_code_fkey"
+            columns: ["role_code"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "project_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_notification_rules: {
         Row: {
@@ -14578,14 +17375,17 @@ export type Database = {
           contract_value: number | null
           created_at: string
           currency: string
+          data_date: string | null
           description: string | null
           dlp_period: string | null
           duration: string | null
           end_date: string | null
           engineering_manager_id: string | null
           id: string
+          latitude: number | null
           level_naming_template_id: string | null
           location: string | null
+          longitude: number | null
           planning_manager_id: string | null
           progress_percentage: number | null
           project_code: string
@@ -14615,14 +17415,17 @@ export type Database = {
           contract_value?: number | null
           created_at?: string
           currency?: string
+          data_date?: string | null
           description?: string | null
           dlp_period?: string | null
           duration?: string | null
           end_date?: string | null
           engineering_manager_id?: string | null
           id?: string
+          latitude?: number | null
           level_naming_template_id?: string | null
           location?: string | null
+          longitude?: number | null
           planning_manager_id?: string | null
           progress_percentage?: number | null
           project_code: string
@@ -14652,14 +17455,17 @@ export type Database = {
           contract_value?: number | null
           created_at?: string
           currency?: string
+          data_date?: string | null
           description?: string | null
           dlp_period?: string | null
           duration?: string | null
           end_date?: string | null
           engineering_manager_id?: string | null
           id?: string
+          latitude?: number | null
           level_naming_template_id?: string | null
           location?: string | null
+          longitude?: number | null
           planning_manager_id?: string | null
           progress_percentage?: number | null
           project_code?: string
@@ -15265,6 +18071,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "budget_codes"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "qs_budget_section_elemental_map_budget_section_code_fkey"
+            columns: ["budget_section_code"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["budget_code"]
           },
         ]
       }
@@ -18141,6 +20954,42 @@ export type Database = {
         }
         Relationships: []
       }
+      room_master: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          discipline: string | null
+          id: string
+          is_active: boolean
+          room_code: string
+          room_name: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          id?: string
+          is_active?: boolean
+          room_code: string
+          room_name: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          discipline?: string | null
+          id?: string
+          is_active?: boolean
+          room_code?: string
+          room_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       schedule_levels_config: {
         Row: {
           default_zoom: string
@@ -18746,6 +21595,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stage_master: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          sequence_no: number
+          stage_code: string
+          stage_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          sequence_no?: number
+          stage_code: string
+          stage_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          sequence_no?: number
+          stage_code?: string
+          stage_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       stakeholder_abbreviations: {
         Row: {
@@ -19905,6 +22787,8 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          source: string
+          source_ref: string | null
           status: string
           task_id: string
           updated_at: string
@@ -19915,6 +22799,8 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          source?: string
+          source_ref?: string | null
           status?: string
           task_id: string
           updated_at?: string
@@ -19925,6 +22811,8 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          source?: string
+          source_ref?: string | null
           status?: string
           task_id?: string
           updated_at?: string
@@ -19977,6 +22865,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      task_group_master: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          task_group_code: string
+          task_group_name: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          task_group_code: string
+          task_group_name: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          task_group_code?: string
+          task_group_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       task_recurrences: {
         Row: {
@@ -20045,6 +22966,124 @@ export type Database = {
             columns: ["template_task_id"]
             isOneToOne: false
             referencedRelation: "wbs_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_template_master: {
+        Row: {
+          approval_required: boolean
+          approval_workflow: string | null
+          auto_assign_role: string | null
+          category: string
+          created_at: string
+          default_duration: number
+          default_priority: string
+          default_weight: number | null
+          deliverable: string | null
+          dependency: string | null
+          description: string | null
+          discipline_id: string | null
+          duration_unit: string
+          id: string
+          is_active: boolean
+          milestone: boolean
+          phase_id: string | null
+          predecessor: string | null
+          remarks: string | null
+          required_document: string | null
+          requires_checklist: boolean
+          requires_document: boolean
+          requires_inspection: boolean
+          requires_photo: boolean
+          successor: string | null
+          task_group_id: string | null
+          task_name: string
+          template_code: string
+          updated_at: string
+        }
+        Insert: {
+          approval_required?: boolean
+          approval_workflow?: string | null
+          auto_assign_role?: string | null
+          category?: string
+          created_at?: string
+          default_duration?: number
+          default_priority?: string
+          default_weight?: number | null
+          deliverable?: string | null
+          dependency?: string | null
+          description?: string | null
+          discipline_id?: string | null
+          duration_unit?: string
+          id?: string
+          is_active?: boolean
+          milestone?: boolean
+          phase_id?: string | null
+          predecessor?: string | null
+          remarks?: string | null
+          required_document?: string | null
+          requires_checklist?: boolean
+          requires_document?: boolean
+          requires_inspection?: boolean
+          requires_photo?: boolean
+          successor?: string | null
+          task_group_id?: string | null
+          task_name: string
+          template_code: string
+          updated_at?: string
+        }
+        Update: {
+          approval_required?: boolean
+          approval_workflow?: string | null
+          auto_assign_role?: string | null
+          category?: string
+          created_at?: string
+          default_duration?: number
+          default_priority?: string
+          default_weight?: number | null
+          deliverable?: string | null
+          dependency?: string | null
+          description?: string | null
+          discipline_id?: string | null
+          duration_unit?: string
+          id?: string
+          is_active?: boolean
+          milestone?: boolean
+          phase_id?: string | null
+          predecessor?: string | null
+          remarks?: string | null
+          required_document?: string | null
+          requires_checklist?: boolean
+          requires_document?: boolean
+          requires_inspection?: boolean
+          requires_photo?: boolean
+          successor?: string | null
+          task_group_id?: string | null
+          task_name?: string
+          template_code?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_template_master_discipline_id_fkey"
+            columns: ["discipline_id"]
+            isOneToOne: false
+            referencedRelation: "discipline_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_template_master_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "phase_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_template_master_task_group_id_fkey"
+            columns: ["task_group_id"]
+            isOneToOne: false
+            referencedRelation: "task_group_master"
             referencedColumns: ["id"]
           },
         ]
@@ -20566,6 +23605,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "dwl_assemblies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_boq_items_dwl_assembly_id_fkey"
+            columns: ["dwl_assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "tender_boq_items_dwl_assembly_id_fkey"
+            columns: ["dwl_assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
           },
           {
             foreignKeyName: "tender_boq_items_dwl_assembly_id_fkey"
@@ -22515,6 +25568,27 @@ export type Database = {
           },
         ]
       }
+      user_ui_preferences: {
+        Row: {
+          preference_key: string
+          updated_at: string
+          user_id: string
+          value: Json
+        }
+        Insert: {
+          preference_key: string
+          updated_at?: string
+          user_id: string
+          value: Json
+        }
+        Update: {
+          preference_key?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       wbs_audit_log: {
         Row: {
           action: string
@@ -22594,37 +25668,65 @@ export type Database = {
         Row: {
           baseline_date: string
           baseline_name: string
+          baseline_number: number
           baseline_type: string
+          client_accepted: boolean
+          client_accepted_at: string | null
+          client_accepted_by: string | null
           created_at: string
           created_by: string | null
           id: string
           is_active: boolean
+          locked: boolean
           project_id: string
+          reason: string | null
+          set_by: string | null
           snapshot_data: Json
         }
         Insert: {
           baseline_date?: string
           baseline_name: string
+          baseline_number?: number
           baseline_type?: string
+          client_accepted?: boolean
+          client_accepted_at?: string | null
+          client_accepted_by?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           is_active?: boolean
+          locked?: boolean
           project_id: string
+          reason?: string | null
+          set_by?: string | null
           snapshot_data?: Json
         }
         Update: {
           baseline_date?: string
           baseline_name?: string
+          baseline_number?: number
           baseline_type?: string
+          client_accepted?: boolean
+          client_accepted_at?: string | null
+          client_accepted_by?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           is_active?: boolean
+          locked?: boolean
           project_id?: string
+          reason?: string | null
+          set_by?: string | null
           snapshot_data?: Json
         }
         Relationships: [
+          {
+            foreignKeyName: "wbs_baselines_client_accepted_by_fkey"
+            columns: ["client_accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wbs_baselines_created_by_fkey"
             columns: ["created_by"]
@@ -22732,13 +25834,19 @@ export type Database = {
       }
       wbs_nodes: {
         Row: {
+          area_label: string | null
+          cost_code: string | null
           created_at: string
+          discipline: string | null
           full_path: string | null
           id: string
           is_basement: boolean
           is_below_ground: boolean
           is_external_works: boolean
+          is_locked: boolean
           is_summary: boolean | null
+          locked_at: string | null
+          locked_by: string | null
           node_type: string
           parent_id: string | null
           progress_percent: number
@@ -22749,15 +25857,22 @@ export type Database = {
           updated_at: string
           wbs_code: string
           wbs_name: string
+          wbs_outline_code: string | null
         }
         Insert: {
+          area_label?: string | null
+          cost_code?: string | null
           created_at?: string
+          discipline?: string | null
           full_path?: string | null
           id?: string
           is_basement?: boolean
           is_below_ground?: boolean
           is_external_works?: boolean
+          is_locked?: boolean
           is_summary?: boolean | null
+          locked_at?: string | null
+          locked_by?: string | null
           node_type: string
           parent_id?: string | null
           progress_percent?: number
@@ -22768,15 +25883,22 @@ export type Database = {
           updated_at?: string
           wbs_code: string
           wbs_name: string
+          wbs_outline_code?: string | null
         }
         Update: {
+          area_label?: string | null
+          cost_code?: string | null
           created_at?: string
+          discipline?: string | null
           full_path?: string | null
           id?: string
           is_basement?: boolean
           is_below_ground?: boolean
           is_external_works?: boolean
+          is_locked?: boolean
           is_summary?: boolean | null
+          locked_at?: string | null
+          locked_by?: string | null
           node_type?: string
           parent_id?: string | null
           progress_percent?: number
@@ -22787,6 +25909,7 @@ export type Database = {
           updated_at?: string
           wbs_code?: string
           wbs_name?: string
+          wbs_outline_code?: string | null
         }
         Relationships: [
           {
@@ -23115,11 +26238,88 @@ export type Database = {
           },
         ]
       }
+      wbs_task_steps: {
+        Row: {
+          created_at: string
+          discipline: string | null
+          end_date: string | null
+          est_duration_days: number | null
+          id: string
+          inspection_hold_point: boolean
+          notes: string | null
+          progress: number
+          resource_crew: string | null
+          source_template_id: string | null
+          start_date: string | null
+          step_name: string
+          step_no: number
+          task_id: string
+          updated_at: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          discipline?: string | null
+          end_date?: string | null
+          est_duration_days?: number | null
+          id?: string
+          inspection_hold_point?: boolean
+          notes?: string | null
+          progress?: number
+          resource_crew?: string | null
+          source_template_id?: string | null
+          start_date?: string | null
+          step_name: string
+          step_no: number
+          task_id: string
+          updated_at?: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          discipline?: string | null
+          end_date?: string | null
+          est_duration_days?: number | null
+          id?: string
+          inspection_hold_point?: boolean
+          notes?: string | null
+          progress?: number
+          resource_crew?: string | null
+          source_template_id?: string | null
+          start_date?: string | null
+          step_name?: string
+          step_no?: number
+          task_id?: string
+          updated_at?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wbs_task_steps_source_template_id_fkey"
+            columns: ["source_template_id"]
+            isOneToOne: false
+            referencedRelation: "activity_step_template_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wbs_task_steps_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wbs_tasks: {
         Row: {
+          activity_type: string | null
           actual_cost: number | null
+          actual_finish_date: string | null
           actual_hours: number | null
+          actual_start_date: string | null
+          area_label: string | null
           assignee_id: string | null
+          baseline_cost: number | null
           baseline_finish_date: string | null
           baseline_set_at: string | null
           baseline_set_by: string | null
@@ -23129,9 +26329,15 @@ export type Database = {
           comments: Json
           constraint_date: string | null
           constraint_type: string | null
+          cost_code: string | null
           created_at: string
+          cross_dept_decided_at: string | null
+          cross_dept_decided_by: string | null
+          cross_dept_note: string | null
+          cross_dept_status: string | null
           delay_reason: string | null
           delay_status: string | null
+          department_id: string | null
           dependency_lag_days: number[] | null
           dependency_task_id: string | null
           dependency_task_ids: string[] | null
@@ -23141,11 +26347,14 @@ export type Database = {
           description: string | null
           discipline: string | null
           docs_count: number
+          duration_days: number | null
           end_date: string | null
+          field_observation_notes: string | null
           id: string
           is_milestone: boolean | null
           lag_days: number
           last_synced_at: string | null
+          manually_scheduled: boolean
           msp_outline_number: string | null
           msp_uid: string | null
           owner_id: string | null
@@ -23157,6 +26366,7 @@ export type Database = {
           progress: number
           project_id: string
           qa_status: string | null
+          requesting_department_id: string | null
           schedule_level: number | null
           sort_order: number
           start_date: string | null
@@ -23169,11 +26379,17 @@ export type Database = {
           task_type: string | null
           updated_at: string
           wbs_node_id: string
+          wbs_outline_code: string | null
         }
         Insert: {
+          activity_type?: string | null
           actual_cost?: number | null
+          actual_finish_date?: string | null
           actual_hours?: number | null
+          actual_start_date?: string | null
+          area_label?: string | null
           assignee_id?: string | null
+          baseline_cost?: number | null
           baseline_finish_date?: string | null
           baseline_set_at?: string | null
           baseline_set_by?: string | null
@@ -23183,9 +26399,15 @@ export type Database = {
           comments?: Json
           constraint_date?: string | null
           constraint_type?: string | null
+          cost_code?: string | null
           created_at?: string
+          cross_dept_decided_at?: string | null
+          cross_dept_decided_by?: string | null
+          cross_dept_note?: string | null
+          cross_dept_status?: string | null
           delay_reason?: string | null
           delay_status?: string | null
+          department_id?: string | null
           dependency_lag_days?: number[] | null
           dependency_task_id?: string | null
           dependency_task_ids?: string[] | null
@@ -23195,11 +26417,14 @@ export type Database = {
           description?: string | null
           discipline?: string | null
           docs_count?: number
+          duration_days?: number | null
           end_date?: string | null
+          field_observation_notes?: string | null
           id?: string
           is_milestone?: boolean | null
           lag_days?: number
           last_synced_at?: string | null
+          manually_scheduled?: boolean
           msp_outline_number?: string | null
           msp_uid?: string | null
           owner_id?: string | null
@@ -23211,6 +26436,7 @@ export type Database = {
           progress?: number
           project_id: string
           qa_status?: string | null
+          requesting_department_id?: string | null
           schedule_level?: number | null
           sort_order?: number
           start_date?: string | null
@@ -23223,11 +26449,17 @@ export type Database = {
           task_type?: string | null
           updated_at?: string
           wbs_node_id: string
+          wbs_outline_code?: string | null
         }
         Update: {
+          activity_type?: string | null
           actual_cost?: number | null
+          actual_finish_date?: string | null
           actual_hours?: number | null
+          actual_start_date?: string | null
+          area_label?: string | null
           assignee_id?: string | null
+          baseline_cost?: number | null
           baseline_finish_date?: string | null
           baseline_set_at?: string | null
           baseline_set_by?: string | null
@@ -23237,9 +26469,15 @@ export type Database = {
           comments?: Json
           constraint_date?: string | null
           constraint_type?: string | null
+          cost_code?: string | null
           created_at?: string
+          cross_dept_decided_at?: string | null
+          cross_dept_decided_by?: string | null
+          cross_dept_note?: string | null
+          cross_dept_status?: string | null
           delay_reason?: string | null
           delay_status?: string | null
+          department_id?: string | null
           dependency_lag_days?: number[] | null
           dependency_task_id?: string | null
           dependency_task_ids?: string[] | null
@@ -23249,11 +26487,14 @@ export type Database = {
           description?: string | null
           discipline?: string | null
           docs_count?: number
+          duration_days?: number | null
           end_date?: string | null
+          field_observation_notes?: string | null
           id?: string
           is_milestone?: boolean | null
           lag_days?: number
           last_synced_at?: string | null
+          manually_scheduled?: boolean
           msp_outline_number?: string | null
           msp_uid?: string | null
           owner_id?: string | null
@@ -23265,6 +26506,7 @@ export type Database = {
           progress?: number
           project_id?: string
           qa_status?: string | null
+          requesting_department_id?: string | null
           schedule_level?: number | null
           sort_order?: number
           start_date?: string | null
@@ -23277,6 +26519,7 @@ export type Database = {
           task_type?: string | null
           updated_at?: string
           wbs_node_id?: string
+          wbs_outline_code?: string | null
         }
         Relationships: [
           {
@@ -23291,6 +26534,20 @@ export type Database = {
             columns: ["baseline_set_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wbs_tasks_cross_dept_decided_by_fkey"
+            columns: ["cross_dept_decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wbs_tasks_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
@@ -23322,6 +26579,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "wbs_tasks_requesting_department_id_fkey"
+            columns: ["requesting_department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "wbs_tasks_wbs_node_id_fkey"
             columns: ["wbs_node_id"]
             isOneToOne: false
@@ -23337,6 +26601,8 @@ export type Database = {
           node_type: string
           parent_id: string | null
           sort_order: number
+          source_library_id: string | null
+          source_library_type: string | null
           template_id: string
           wbs_code: string
           wbs_name: string
@@ -23347,6 +26613,8 @@ export type Database = {
           node_type: string
           parent_id?: string | null
           sort_order?: number
+          source_library_id?: string | null
+          source_library_type?: string | null
           template_id: string
           wbs_code: string
           wbs_name: string
@@ -23357,6 +26625,8 @@ export type Database = {
           node_type?: string
           parent_id?: string | null
           sort_order?: number
+          source_library_id?: string | null
+          source_library_type?: string | null
           template_id?: string
           wbs_code?: string
           wbs_name?: string
@@ -23382,6 +26652,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          generator_config: Json
           id: string
           is_active: boolean
           node_type_chain: Json
@@ -23393,6 +26664,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          generator_config?: Json
           id?: string
           is_active?: boolean
           node_type_chain?: Json
@@ -23404,6 +26676,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          generator_config?: Json
           id?: string
           is_active?: boolean
           node_type_chain?: Json
@@ -23416,8 +26689,10 @@ export type Database = {
       }
       weekly_plan_tasks: {
         Row: {
+          actual_progress: number | null
           created_at: string
           id: string
+          met: boolean | null
           notes: string | null
           responsible_id: string | null
           responsible_name: string | null
@@ -23426,8 +26701,10 @@ export type Database = {
           weekly_plan_id: string
         }
         Insert: {
+          actual_progress?: number | null
           created_at?: string
           id?: string
+          met?: boolean | null
           notes?: string | null
           responsible_id?: string | null
           responsible_name?: string | null
@@ -23436,8 +26713,10 @@ export type Database = {
           weekly_plan_id: string
         }
         Update: {
+          actual_progress?: number | null
           created_at?: string
           id?: string
+          met?: boolean | null
           notes?: string | null
           responsible_id?: string | null
           responsible_name?: string | null
@@ -23471,11 +26750,14 @@ export type Database = {
       }
       weekly_plans: {
         Row: {
+          closed_at: string | null
+          closed_by: string | null
           created_at: string
           created_by: string | null
           department_id: string | null
           id: string
           notes: string | null
+          pcr: number | null
           project_id: string
           status: string
           title: string | null
@@ -23483,11 +26765,14 @@ export type Database = {
           week_start_date: string
         }
         Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string
           created_by?: string | null
           department_id?: string | null
           id?: string
           notes?: string | null
+          pcr?: number | null
           project_id: string
           status?: string
           title?: string | null
@@ -23495,11 +26780,14 @@ export type Database = {
           week_start_date: string
         }
         Update: {
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string
           created_by?: string | null
           department_id?: string | null
           id?: string
           notes?: string | null
+          pcr?: number | null
           project_id?: string
           status?: string
           title?: string | null
@@ -23507,6 +26795,13 @@ export type Database = {
           week_start_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "weekly_plans_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "weekly_plans_created_by_fkey"
             columns: ["created_by"]
@@ -23573,6 +26868,36 @@ export type Database = {
           shift_type?: string
           start_time?: string | null
           work_days?: string[] | null
+        }
+        Relationships: []
+      }
+      zone_master: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
+          zone_code: string
+          zone_name: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          zone_code: string
+          zone_name: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          zone_code?: string
+          zone_name?: string
         }
         Relationships: []
       }
@@ -23834,6 +27159,126 @@ export type Database = {
           },
         ]
       }
+      dwl_v_assembly_costing_summary: {
+        Row: {
+          assembly_id: string | null
+          category_id: string | null
+          code: string | null
+          created_by: string | null
+          created_by_name: string | null
+          crew_cost_per_day: number | null
+          daily_output: number | null
+          description: string | null
+          direct_installed_cost: number | null
+          discipline: string | null
+          element_group: string | null
+          equipment_cost_per_day: number | null
+          equipment_cost_per_unit: number | null
+          guardrail_note: string | null
+          is_tuned: boolean | null
+          labor_cost_per_unit: number | null
+          manual_direct_cost_per_unit: number | null
+          material_base_cost: number | null
+          material_total_cost: number | null
+          overhead_pct: number | null
+          profit_pct: number | null
+          risk_pct: number | null
+          scope_of_works: string | null
+          status: string | null
+          target_tender_rate: number | null
+          tuned_at: string | null
+          unit: string | null
+          updated_at: string | null
+          vat_pct: number | null
+          version_label: string | null
+          waste_cost: number | null
+          work_item_type: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_costing_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_material_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_costing_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_v_assembly_layer_materials: {
+        Row: {
+          assembly_id: string | null
+          layer_id: string | null
+          material_codes: string | null
+          material_names: string | null
+          total_cost_contribution: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_layer_id_fkey"
+            columns: ["layer_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assembly_layers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_costing_summary"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["assembly_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layers_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_rates"
+            referencedColumns: ["assembly_id"]
+          },
+        ]
+      }
+      dwl_v_assembly_material_explosion: {
+        Row: {
+          assembly_code: string | null
+          assembly_id: string | null
+          base_cost_contribution: number | null
+          basis_note: string | null
+          consumption: number | null
+          cost_contribution: number | null
+          currency: string | null
+          effective_qty: number | null
+          is_expired: boolean | null
+          material_code: string | null
+          material_description: string | null
+          resource_id: string | null
+          sort_order: number | null
+          unit: string | null
+          unit_price: number | null
+          waste_cost_contribution: number | null
+          waste_pct: number | null
+        }
+        Relationships: []
+      }
       dwl_v_assembly_rates: {
         Row: {
           assembly_id: string | null
@@ -23846,16 +27291,95 @@ export type Database = {
         }
         Relationships: []
       }
+      dwl_v_current_material_spec: {
+        Row: {
+          approval_req: string | null
+          brand: string | null
+          density: string | null
+          dimension: string | null
+          effective_date: string | null
+          expiry_date: string | null
+          grade: string | null
+          installation_req: string | null
+          manufacturer: string | null
+          resource_id: string | null
+          revision_id: string | null
+          revision_no: string | null
+          source_document: string | null
+          spec_code: string | null
+          spec_id: string | null
+          spec_name: string | null
+          standard: string | null
+          status: string | null
+          strength_performance: string | null
+          technical_req: string | null
+          testing_req: string | null
+          thickness: string | null
+          unit: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
       dwl_v_current_prices: {
         Row: {
           code: string | null
           currency: string | null
+          delivery_cost: number | null
+          delivery_terms: string | null
           description: string | null
+          discount: number | null
+          effective_unit_cost: number | null
+          handling_cost: number | null
           is_expired: boolean | null
+          lead_time_days: number | null
+          other_charges: number | null
+          overtime_rate_per_hr: number | null
+          payment_terms: string | null
+          price_status: string | null
+          project_code: string | null
+          quantity: number | null
+          quotation_date: string | null
+          quotation_ref: string | null
           quote_valid_until: string | null
           resource_id: string | null
           source_type: string | null
           supplier_name: string | null
+          tax_amount: number | null
           unit: string | null
           unit_price: number | null
           valid_from: string | null
@@ -23866,6 +27390,275 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+        ]
+      }
+      dwl_v_labor_rates: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          currency: string | null
+          daily_basic_rate: number | null
+          description: string | null
+          is_active: boolean | null
+          overtime_rate_per_hr: number | null
+          price_status: string | null
+          resource_id: string | null
+          skill_level: string | null
+          spec_reference: string | null
+          standard_productivity_note: string | null
+          unit: string | null
+          updated_at: string | null
+          valid_from: string | null
+        }
+        Relationships: []
+      }
+      dwl_v_materials: {
+        Row: {
+          application_element: string | null
+          application_scope: string | null
+          brand: string | null
+          budget_code: string | null
+          budget_code_id: string | null
+          category: string | null
+          category_id: string | null
+          category_name: string | null
+          code: string | null
+          color_finish: string | null
+          created_at: string | null
+          current_currency: string | null
+          current_effective_unit_cost: number | null
+          current_price_delivery_cost: number | null
+          current_price_discount: number | null
+          current_price_handling_cost: number | null
+          current_price_is_expired: boolean | null
+          current_price_other_charges: number | null
+          current_price_source_type: string | null
+          current_price_status: string | null
+          current_price_tax_amount: number | null
+          current_price_valid_from: string | null
+          current_price_valid_until: string | null
+          current_spec_code: string | null
+          current_spec_effective_date: string | null
+          current_spec_grade: string | null
+          current_spec_name: string | null
+          current_spec_revision_no: string | null
+          current_spec_standard: string | null
+          current_spec_status: string | null
+          current_supplier_name: string | null
+          current_unit_price: number | null
+          description: string | null
+          dimension: string | null
+          discipline: string | null
+          grade: string | null
+          is_active: boolean | null
+          legacy_code: string | null
+          lifecycle_status: string | null
+          manufacturer: string | null
+          material_name: string | null
+          material_type: string | null
+          model: string | null
+          notes: string | null
+          package_size: string | null
+          photo_count: number | null
+          resource_id: string | null
+          spec_reference: string | null
+          standard: string | null
+          subcategory: string | null
+          tags: string[] | null
+          tech_spec_summary: string | null
+          thickness: string | null
+          unit: string | null
+          updated_at: string | null
+          weight: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_material_attributes_budget_code_id_fkey"
+            columns: ["budget_code_id"]
+            isOneToOne: false
+            referencedRelation: "budget_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_material_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_v_price_submissions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          created_by: string | null
+          currency: string | null
+          delivery_cost: number | null
+          delivery_terms: string | null
+          discount: number | null
+          effective_unit_cost: number | null
+          handling_cost: number | null
+          id: string | null
+          lead_time_days: number | null
+          location: string | null
+          material_code: string | null
+          material_name: string | null
+          material_unit: string | null
+          notes: string | null
+          other_charges: number | null
+          payment_terms: string | null
+          project_code: string | null
+          quantity: number | null
+          quotation_date: string | null
+          quotation_ref: string | null
+          quote_valid_until: string | null
+          rejected_reason: string | null
+          resource_id: string | null
+          resulting_price_id: string | null
+          source_document: string | null
+          source_type: string | null
+          status: string | null
+          submitted_at: string | null
+          submitted_by: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          tax_amount: number | null
+          tenant_id: string | null
+          unit_price: number | null
+          updated_at: string | null
+          valid_from: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_price_submissions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resulting_price_id_fkey"
+            columns: ["resulting_price_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resource_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resulting_price_id_fkey"
+            columns: ["resulting_price_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["price_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -23881,6 +27674,248 @@ export type Database = {
           project_id: string | null
           quantity: number | null
           unit: string | null
+        }
+        Relationships: []
+      }
+      dwl_v_quotation_items: {
+        Row: {
+          currency: string | null
+          delivery: number | null
+          description: string | null
+          discount: number | null
+          effective_price: number | null
+          handling: number | null
+          id: string | null
+          lead_time_days: number | null
+          library_effective_unit_cost: number | null
+          library_unit_price: number | null
+          line_no: number | null
+          material_code: string | null
+          material_name: string | null
+          other_charges: number | null
+          quantity: number | null
+          quotation_id: string | null
+          quote_date: string | null
+          quote_no: string | null
+          remarks: string | null
+          resource_id: string | null
+          spec_ref: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          tax: number | null
+          tenant_id: string | null
+          unit: string | null
+          unit_price: number | null
+          valid_until: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_quotation_items_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
+      dwl_v_subcon_rates: {
+        Row: {
+          created_at: string | null
+          currency: string | null
+          effective_date: string | null
+          item_description: string | null
+          price_id: string | null
+          rate: number | null
+          rate_type: string | null
+          rate_year: number | null
+          resource_code: string | null
+          resource_id: string | null
+          scope_notes: string | null
+          source_type: string | null
+          subcontractor_code: string | null
+          subcontractor_id: string | null
+          subcontractor_name: string | null
+          tenant_id: string | null
+          trade: string | null
+          unit: string | null
+        }
+        Relationships: []
+      }
+      dwl_v_supplier_materials: {
+        Row: {
+          brand: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          lead_time_days: number | null
+          manufacturer: string | null
+          material_code: string | null
+          material_name: string | null
+          material_unit: string | null
+          moq: number | null
+          notes: string | null
+          package_size: string | null
+          resource_id: string | null
+          specification: string | null
+          standard: string | null
+          supplier_code: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          supplier_product_code: string | null
+          supplier_product_name: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["subcontractor_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_suppliers"
+            referencedColumns: ["supplier_id"]
+          },
+        ]
+      }
+      dwl_v_suppliers: {
+        Row: {
+          address: string | null
+          contact: string | null
+          contact_person: string | null
+          country: string | null
+          created_at: string | null
+          credit_terms: string | null
+          delivery_terms: string | null
+          email: string | null
+          is_active: boolean | null
+          lead_time_days: number | null
+          lifecycle_status: string | null
+          materials_linked: number | null
+          moq: number | null
+          name: string | null
+          notes: string | null
+          overall_rating: number | null
+          payment_terms: string | null
+          phone: string | null
+          position: string | null
+          price_competitiveness: string | null
+          product_categories: string[] | null
+          province_city: string | null
+          quality_rating: string | null
+          rating: string | null
+          reliability_rating: string | null
+          supplier_code: string | null
+          supplier_id: string | null
+          supplier_type: string | null
+          tenant_id: string | null
+          trading_name: string | null
+          updated_at: string | null
+          vendor_kind: string | null
+          website: string | null
         }
         Relationships: []
       }
@@ -24017,7 +28052,28 @@ export type Database = {
       }
     }
     Functions: {
+      accept_baseline_by_client: {
+        Args: { p_baseline_id: string }
+        Returns: undefined
+      }
+      activate_baseline: {
+        Args: { p_number: number; p_project_id: string }
+        Returns: undefined
+      }
+      advance_data_date: {
+        Args: { p_new_date: string; p_note?: string; p_project_id: string }
+        Returns: Json
+      }
+      apply_schedule_dates: {
+        Args: { p_project_id: string; p_rows: Json }
+        Returns: number
+      }
+      apply_wbs_codes: {
+        Args: { p_project_id: string; p_rows: Json }
+        Returns: number
+      }
       build_wbs_full_path: { Args: { p_id: string }; Returns: string }
+      can_manage_master_libraries: { Args: never; Returns: boolean }
       capture_kpi_snapshot: {
         Args: { p_project_id?: string }
         Returns: undefined
@@ -24025,6 +28081,14 @@ export type Database = {
       capture_progress_snapshot: {
         Args: { p_project_id: string }
         Returns: string
+      }
+      capture_schedule_revision: {
+        Args: { p_note?: string; p_stream_id: string }
+        Returns: number
+      }
+      clear_baseline: {
+        Args: { p_number: number; p_project_id: string; p_task_ids: string[] }
+        Returns: undefined
       }
       clone_wbs_nodes_between_projects: {
         Args: { p_source_project_id: string; p_target_project_id: string }
@@ -24034,6 +28098,7 @@ export type Database = {
         Args: { p_project_id: string; p_template_id: string }
         Returns: number
       }
+      close_weekly_plan: { Args: { p_plan_id: string }; Returns: number }
       complete_sync_session: {
         Args: {
           p_downloaded?: number
@@ -24061,6 +28126,24 @@ export type Database = {
         Args: { p_bid_revision_id: string }
         Returns: undefined
       }
+      dwl_approve_price_submission: {
+        Args: { p_note?: string; p_submission_id: string }
+        Returns: string
+      }
+      dwl_current_tenant: { Args: never; Returns: string }
+      dwl_price_capability: { Args: { p_field: string }; Returns: boolean }
+      dwl_reject_price_submission: {
+        Args: { p_reason: string; p_submission_id: string }
+        Returns: undefined
+      }
+      dwl_submit_price_submission: {
+        Args: { p_submission_id: string }
+        Returns: undefined
+      }
+      dwl_verify_price_submission: {
+        Args: { p_note?: string; p_submission_id: string }
+        Returns: undefined
+      }
       fn_auto_disable_inactive_accounts: { Args: never; Returns: undefined }
       generate_recurring_tasks: { Args: never; Returns: number }
       generate_wbs_from_master_library_items: {
@@ -24068,6 +28151,14 @@ export type Database = {
           p_project_id: string
           p_selections?: Json
           p_target_node_id?: string
+        }
+        Returns: number
+      }
+      generate_wbs_from_master_template: {
+        Args: {
+          p_project_id: string
+          p_template_id: string
+          p_variables?: Json
         }
         Returns: number
       }
@@ -24175,12 +28266,27 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: Json
       }
+      get_resource_allocation: {
+        Args: { p_project_id: string }
+        Returns: {
+          is_overallocated: boolean
+          max_units: number
+          resource_id: string
+          resource_name: string
+          total_allocation: number
+          work_date: string
+        }[]
+      }
       get_schedule_variance: {
         Args: { p_project_id: string }
         Returns: {
+          baseline_cost: number
           baseline_finish: string
           baseline_start: string
+          cost_variance: number
+          cost_variance_percent: number
           discipline: string
+          duration_variance_days: number
           finish_variance_days: number
           is_delayed: boolean
           planned_finish: string
@@ -24191,6 +28297,7 @@ export type Database = {
           task_name: string
         }[]
       }
+      get_scurve_series: { Args: { p_project_id: string }; Returns: Json }
       get_tasks_by_level: {
         Args: { p_level?: number; p_project_id: string }
         Returns: {
@@ -24216,6 +28323,14 @@ export type Database = {
           wbs_node_id: string
         }[]
       }
+      has_permission: {
+        Args: { p_action: string; p_field?: string; p_module: string }
+        Returns: boolean
+      }
+      import_master_wbs: {
+        Args: { p_mode?: string; p_payload: Json; p_project_id: string }
+        Returns: Json
+      }
       inv_flag_overdue_tool_issues: { Args: never; Returns: undefined }
       inv_flag_overdue_transfers: {
         Args: { p_days_in_transit?: number }
@@ -24224,6 +28339,17 @@ export type Database = {
       is_admin: { Args: { uid?: string }; Returns: boolean }
       is_hr: { Args: { uid?: string }; Returns: boolean }
       is_hr_admin: { Args: never; Returns: boolean }
+      is_project_member: { Args: { p_project_id: string }; Returns: boolean }
+      is_wbs_manager: { Args: { uid?: string }; Returns: boolean }
+      move_project: {
+        Args: {
+          p_delta_days: number
+          p_project_id: string
+          p_shift_baseline: boolean
+          p_shift_constraints: boolean
+        }
+        Returns: number
+      }
       process_sync_queue: {
         Args: { p_queue_ids: string[] }
         Returns: {
@@ -24242,9 +28368,33 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: undefined
       }
+      revoke_user_sessions: {
+        Args: { except_session_id?: string; target_user_id: string }
+        Returns: undefined
+      }
       run_task_escalation: { Args: never; Returns: number }
+      set_baseline: {
+        Args: {
+          p_name?: string
+          p_number: number
+          p_project_id: string
+          p_reason?: string
+          p_task_ids: string[]
+          p_type?: string
+        }
+        Returns: undefined
+      }
       set_project_baseline: {
         Args: { p_project_id: string }
+        Returns: undefined
+      }
+      upsert_plan_schedule_state: {
+        Args: {
+          p_critical: string[]
+          p_near_critical: string[]
+          p_project_finish: string
+          p_project_id: string
+        }
         Returns: undefined
       }
       upsert_wbs_gfa: {
@@ -24267,6 +28417,7 @@ export type Database = {
         }
         Returns: Json
       }
+      wbs_node_effectively_locked: { Args: { p_id: string }; Returns: boolean }
       wbs_node_is_external_works: {
         Args: { p_wbs_node_id: string }
         Returns: boolean
@@ -24289,12 +28440,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -24318,11 +28469,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -24343,11 +28494,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -24368,11 +28519,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -24385,11 +28536,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -24399,6 +28550,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
