@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { getScurveSeries, type ScurveSeries } from "@/lib/schedule-service";
 import { ProgressChart } from "@/components/reports/charts/progress-chart";
 import { todayISO } from "@/components/planning/sheet-utils";
+import { useCachedFetch } from "@/hooks/use-cached-fetch";
 
 interface PlanningScurveCardProps {
   projectId: string;
   /** Project data date — drives the "today" line so it agrees with the KPI tiles. */
   dataDate: string | null;
-  /** Bump to reload after a snapshot is captured. */
+  /** Bump (e.g. from the Dashboard's single Refresh button, or after capturing a snapshot) to reload. */
   refreshKey?: number;
 }
 
@@ -24,22 +25,12 @@ function formatDate(iso: string): string {
 }
 
 export function PlanningScurveCard({ projectId, dataDate, refreshKey = 0 }: PlanningScurveCardProps) {
-  const [series, setSeries] = useState<ScurveSeries | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- flag the fetch as in flight before it starts
-    setLoading(true);
-    setError(null);
-    getScurveSeries(projectId)
-      .then((s) => { if (!cancelled) setSeries(s); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load S-curve"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [projectId, refreshKey, retry]);
+  const { data: series, loading, error } = useCachedFetch<ScurveSeries>(
+    projectId ? `dcos.planning.dashboard.scurve.${projectId}` : null,
+    () => getScurveSeries(projectId),
+    `${refreshKey}:${retry}`,
+  );
 
   const todayX = dataDate ?? todayISO();
 

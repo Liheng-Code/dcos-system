@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Link2 } from "lucide-react";
 
 interface GanttMilestoneProps {
@@ -12,7 +12,7 @@ interface GanttMilestoneProps {
   onStartLink?: (e: React.MouseEvent) => void;
 }
 
-export function GanttMilestone({ left, name, date, onClick, onStartLink }: GanttMilestoneProps) {
+function GanttMilestoneImpl({ left, name, date, onClick, onStartLink }: GanttMilestoneProps) {
   const [hover, setHover] = useState(false);
 
   return (
@@ -55,3 +55,21 @@ export function GanttMilestone({ left, name, date, onClick, onStartLink }: Gantt
     </div>
   );
 }
+
+/**
+ * Same reasoning as GanttBar's comparator (gantt-bar.tsx) — ScheduleTimeline
+ * hands every milestone fresh `onClick`/`onStartLink` closures on every
+ * unrelated task edit, so callbacks are compared by definedness, not
+ * reference.
+ */
+function ganttMilestonePropsEqual(prev: Readonly<GanttMilestoneProps>, next: Readonly<GanttMilestoneProps>): boolean {
+  return (
+    prev.left === next.left &&
+    prev.name === next.name &&
+    prev.date === next.date &&
+    !!prev.onClick === !!next.onClick &&
+    !!prev.onStartLink === !!next.onStartLink
+  );
+}
+
+export const GanttMilestone = memo(GanttMilestoneImpl, ganttMilestonePropsEqual);

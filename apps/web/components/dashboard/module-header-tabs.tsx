@@ -17,6 +17,33 @@ function isItemActive(pathname: string, searchParams: URLSearchParams, href: str
     : pathname === hrefPath || pathname.startsWith(hrefPath + "/");
 }
 
+/**
+ * The single most-specific href across every top-level item (and its
+ * children) that matches the current location — never more than one. Plain
+ * `isItemActive` alone lets a group's index item (its href is always a
+ * prefix of every sibling route, e.g. "Dashboard" → `/dashboard/planning`)
+ * stay "active" on every other tab too; picking the longest matching href
+ * per group resolves the tie in favor of the more specific route.
+ */
+function bestActiveHref(pathname: string, searchParams: URLSearchParams, items: ModuleNavTabItem[]): string | null {
+  const candidates = items.flatMap(item => [item.href, ...(item.children ?? []).map(c => c.href)]);
+  let bestHref: string | null = null;
+  let bestScore = -1;
+  for (const href of candidates) {
+    if (!isItemActive(pathname, searchParams, href)) continue;
+    const [hrefPath] = href.split("?");
+    // A query-qualified child href pins one exact sub-view, so prefer it over
+    // a same-length plain path (there's no real length tie among query hrefs
+    // themselves, since only one `sub=` value can match at a time).
+    const score = hrefPath.length + (href.includes("?") ? 0.5 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestHref = href;
+    }
+  }
+  return bestHref;
+}
+
 function ModuleHeaderTab({ item, isActive, pathname, searchParams }: {
   item: ModuleNavTabItem;
   isActive: boolean;
@@ -91,16 +118,18 @@ function ModuleHeaderTabsInner({ activeGroup }: { activeGroup: ModuleNavGroup })
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { isNavItemActive } = useModuleSettings();
+  const bestHref = bestActiveHref(pathname, searchParams, activeGroup.items);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 shadow-sm shrink-0">
       {activeGroup.items.map(item => {
         if (item.hidden || !isNavItemActive(item.href)) return null;
+        const isActive = item.href === bestHref || (item.children?.some(c => c.href === bestHref) ?? false);
         return (
           <ModuleHeaderTab
             key={item.href}
             item={item}
-            isActive={isItemActive(pathname, searchParams, item.href)}
+            isActive={isActive}
             pathname={pathname}
             searchParams={searchParams}
           />

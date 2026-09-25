@@ -39,16 +39,12 @@ export async function getUserPermissions(
 
   const roleCodes = userRoles.map((r) => r.role_code);
 
-  const { data: roles } = await supabase
-    .from("roles")
-    .select("code, name")
-    .in("code", roleCodes);
-
-  const { data: perms } = await supabase
-    .from("role_permissions")
-    .select("*")
-    .in("role_code", roleCodes)
-    .eq("module", module);
+  // These two only depend on roleCodes (just resolved above), not on each
+  // other — run them concurrently instead of one-after-another.
+  const [{ data: roles }, { data: perms }] = await Promise.all([
+    supabase.from("roles").select("code, name").in("code", roleCodes),
+    supabase.from("role_permissions").select("*").in("role_code", roleCodes).eq("module", module),
+  ]);
 
   const permissionMap = new Map<string, Permission>();
   if (perms) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { Download, FlaskConical, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
@@ -10,6 +10,7 @@ import { outputPerCrewDay, roundTo } from "@/lib/planning/work-engine";
 import { cn } from "@/lib/utils";
 import { PlanNormDialog } from "./plan-norm-dialog";
 import { PlanNormDwlImportDialog } from "./plan-norm-dwl-import-dialog";
+import { PlanCalibrateNormDialog } from "./plan-calibrate-norm-dialog";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "border-amber-500/30 bg-amber-500/15 text-amber-400",
@@ -36,6 +37,7 @@ export function PlanNormLibrary() {
   const [scope, setScope] = useState("all");
   const [editing, setEditing] = useState<Norm | null | undefined>(undefined); // undefined = closed, null = new
   const [importing, setImporting] = useState(false);
+  const [calibrating, setCalibrating] = useState<Norm | null>(null);
 
   const canView = can("norms", "view");
   const canCreate = can("norms", "can_create");
@@ -153,9 +155,14 @@ export function PlanNormLibrary() {
                   <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{out !== null ? `${roundTo(out, 2)} ${n.unit}` : "—"}</td>
                   <td className="px-3 py-2"><span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", STATUS_STYLE[n.status])}>{n.status}</span></td>
                   <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                    {canDelete && n.status !== "approved" && (
-                      <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-400" title="Delete" onClick={() => remove(n)}><Trash2 className="h-4 w-4" /></button>
-                    )}
+                    <div className="flex justify-end gap-1">
+                      {canCreate && n.status === "approved" && (
+                        <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Propose calibrated norm from site logs" onClick={() => setCalibrating(n)}><FlaskConical className="h-4 w-4" /></button>
+                      )}
+                      {canDelete && n.status !== "approved" && (
+                        <button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-400" title="Delete" onClick={() => remove(n)}><Trash2 className="h-4 w-4" /></button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -190,6 +197,14 @@ export function PlanNormLibrary() {
           hoursPerDay={hoursPerDay}
           onClose={() => setImporting(false)}
           onImported={() => void load()}
+        />
+      )}
+      {calibrating && (
+        <PlanCalibrateNormDialog
+          norm={calibrating}
+          projectId={selectedProjectId}
+          onClose={() => setCalibrating(null)}
+          onProposed={() => void load()}
         />
       )}
     </div>

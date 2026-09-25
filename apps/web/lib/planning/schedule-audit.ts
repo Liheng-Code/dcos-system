@@ -70,21 +70,35 @@ export async function logScheduleAudit(
   }
 }
 
-/** Writes one audit row per changed field, skipping fields that didn't change. Returns the number of rows written. */
+/**
+ * Writes one audit row per changed field, skipping fields that didn't change.
+ * Returns the number of rows written. Batched into a single bulk insert
+ * instead of one sequential insert per field — same "never throw, only
+ * console.error" failure semantics as logScheduleAudit(), since the writes
+ * these rows describe have already succeeded by the time this runs.
+ */
 export async function logScheduleFieldChanges(
   supabase: SupabaseClient,
   base: Pick<ScheduleAuditEntry, "projectId" | "taskId" | "nodeId" | "userId">,
   changes: { action: ScheduleAuditAction; fieldName: string; oldValue: string | null; newValue: string | null }[],
 ): Promise<number> {
   const toWrite = changes.filter((c) => (c.oldValue ?? "") !== (c.newValue ?? ""));
-  for (const c of toWrite) {
-    await logScheduleAudit(supabase, {
-      ...base,
+  if (toWrite.length === 0) return 0;
+
+  const { error } = await supabase.from("wbs_audit_log").insert(
+    toWrite.map((c) => ({
+      project_id: base.projectId,
+      wbs_task_id: base.taskId ?? null,
+      wbs_node_id: base.nodeId ?? null,
+      user_id: base.userId,
       action: c.action,
-      fieldName: c.fieldName,
-      oldValue: c.oldValue,
-      newValue: c.newValue,
-    });
+      field_name: c.fieldName,
+      old_value: c.oldValue,
+      new_value: c.newValue,
+    })),
+  );
+  if (error) {
+    console.error("Schedule audit log bulk insert failed:", error.message);
   }
   return toWrite.length;
 }

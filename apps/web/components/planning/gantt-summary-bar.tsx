@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 // Compact bar representing an aggregated WBS summary row.
 // Shared by the standalone chart (gantt-view.tsx) and the split schedule view
 // (schedule-timeline.tsx).
@@ -31,7 +33,11 @@ function levelBarColor(depth: number): string {
   return LEVEL_BAR_COLORS[Math.min(Math.max(depth, 0), LEVEL_BAR_COLORS.length - 1)];
 }
 
-export function GanttSummaryBar({
+// Every prop here is a primitive, so React.memo's default shallow comparison
+// already skips a row untouched by whatever caused the parent to re-render —
+// no custom comparator needed (unlike GanttBar/GanttMilestone, which also
+// take callback props that ScheduleTimeline recreates on every render).
+export const GanttSummaryBar = memo(function GanttSummaryBar({
   label,
   progress,
   taskCount,
@@ -59,4 +65,4 @@ export function GanttSummaryBar({
       </div>
     </div>
   );
-}
+});

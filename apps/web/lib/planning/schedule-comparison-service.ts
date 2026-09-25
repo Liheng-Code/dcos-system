@@ -64,7 +64,15 @@ export async function listComparisonSources(projectId: string): Promise<Comparis
   const supabase = createClient();
   const out: ComparisonSourceOption[] = [{ key: "live", label: "Live / Current", source: { kind: "live" } }];
 
-  const baselines = await listBaselines(projectId);
+  // listBaselines and the revisions query are independent — run concurrently.
+  const [baselines, { data, error }] = await Promise.all([
+    listBaselines(projectId),
+    supabase
+      .from("plan_schedule_revisions")
+      .select("id, revision_number, plan_schedule_streams!inner(name, project_id)")
+      .eq("plan_schedule_streams.project_id", projectId)
+      .order("revision_number"),
+  ]);
   for (const b of baselines) {
     if (b.task_count === 0) continue;
     out.push({
@@ -73,12 +81,6 @@ export async function listComparisonSources(projectId: string): Promise<Comparis
       source: { kind: "baseline", baselineNumber: b.baseline_number },
     });
   }
-
-  const { data, error } = await supabase
-    .from("plan_schedule_revisions")
-    .select("id, revision_number, plan_schedule_streams!inner(name, project_id)")
-    .eq("plan_schedule_streams.project_id", projectId)
-    .order("revision_number");
   if (error) throw new Error(error.message);
   for (const r of data ?? []) {
     const stream = r.plan_schedule_streams as unknown as { name: string };
@@ -95,10 +97,14 @@ export async function resolveSource(projectId: string, source: ComparisonSource)
   const map = new Map<string, TaskSnapshot>();
 
   if (source.kind === "live") {
+    // Same cap as use-sheet-data.ts's TASK_LIMIT — without an explicit .limit(),
+    // PostgREST's default 1000-row cap would silently truncate a >1000-task
+    // project's comparison instead of erroring.
     const { data, error } = await createClient()
       .from("wbs_tasks")
       .select("id, start_date, end_date, budget_cost")
-      .eq("project_id", projectId);
+      .eq("project_id", projectId)
+      .limit(1000);
     if (error) throw new Error(error.message);
     for (const t of data ?? []) {
       map.set(t.id as string, {

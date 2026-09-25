@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { assignTaskToProfile, type AssignableTask } from "@/lib/tasks/assign-task";
+import { dedupe } from "@/lib/request-dedup";
 
 export type ResourceType = "labor" | "equipment" | "material" | "subcontractor";
 
@@ -14,6 +15,8 @@ export interface PlanResource {
   calendar_id: string | null;
   is_active: boolean;
   profile_id: string | null;
+  /** Set by plan_generate_resource_loading() on its pooled resources; null on a manually created one. */
+  trade: string | null;
   created_at: string;
 }
 
@@ -51,15 +54,22 @@ export interface CreateResourceInput {
   profile_id?: string | null;
 }
 
-/** All resources for a project, including inactive ones, ordered by name. */
-export async function listResources(projectId: string): Promise<PlanResource[]> {
-  const { data, error } = await createClient()
-    .from("plan_resources")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("name");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as PlanResource[];
+/**
+ * All resources for a project, including inactive ones, ordered by name.
+ * Dedupes concurrent calls for the same project (e.g. the Resource Loading
+ * page and the Dashboard's Manpower card can both call this around the same
+ * time) so only one fetch actually goes out.
+ */
+export function listResources(projectId: string): Promise<PlanResource[]> {
+  return dedupe(`resources:${projectId}`, async () => {
+    const { data, error } = await createClient()
+      .from("plan_resources")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []) as PlanResource[];
+  });
 }
 
 export async function createResource(projectId: string, input: CreateResourceInput): Promise<void> {
@@ -210,24 +220,60 @@ const ALLOCATION_PAGE = 1000;
 /** Safety stop: 200 pages = 200k resource-days, far beyond any project. */
 const ALLOCATION_MAX_PAGES = 200;
 
+/** How many pages to fire concurrently per batch once we know more are needed. */
+const ALLOCATION_CONCURRENCY = 4;
+
+async function fetchAllocationPage(
+  supabase: ReturnType<typeof createClient>,
+  projectId: string,
+  page: number,
+): Promise<AllocationRow[]> {
+  const from = page * ALLOCATION_PAGE;
+  const { data, error } = await supabase
+    .rpc("get_resource_loading", { p_project_id: projectId })
+    .range(from, from + ALLOCATION_PAGE - 1);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AllocationRow[];
+}
+
 /**
  * Resource loading per (resource, working day), read through `get_resource_loading`
  * (migration 20260922000002): only days that are working per the resource's / project's
  * calendar, with hours. The older `get_resource_allocation` spread assignments over every
  * calendar day, Sundays and holidays included, and is no longer used here.
+ *
+ * PostgREST caps a single response at ALLOCATION_PAGE rows, so this pages
+ * through the RPC — but fires pages CONCURRENTLY in batches rather than one
+ * at a time (each page reruns the whole RPC server-side then slices via
+ * `.range()`, so N sequential pages used to mean N full sequential round
+ * trips). Most projects fit in the first batch (one round trip); only a
+ * project whose allocation exceeds ALLOCATION_PAGE * ALLOCATION_CONCURRENCY
+ * rows needs a second batch.
+ *
+ * Also dedupes concurrent calls for the same project — the Resource Loading
+ * page and the Dashboard's Manpower card can both call this independently.
  */
-export async function getResourceAllocation(projectId: string): Promise<AllocationRow[]> {
+export function getResourceAllocation(projectId: string): Promise<AllocationRow[]> {
+  return dedupe(`resource-allocation:${projectId}`, () => fetchResourceAllocation(projectId));
+}
+
+async function fetchResourceAllocation(projectId: string): Promise<AllocationRow[]> {
   const supabase = createClient();
   const rows: AllocationRow[] = [];
-  for (let page = 0; page < ALLOCATION_MAX_PAGES; page++) {
-    const from = page * ALLOCATION_PAGE;
-    const { data, error } = await supabase
-      .rpc("get_resource_loading", { p_project_id: projectId })
-      .range(from, from + ALLOCATION_PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = (data ?? []) as AllocationRow[];
-    rows.push(...batch);
-    if (batch.length < ALLOCATION_PAGE) break;
+  for (let batchStart = 0; batchStart < ALLOCATION_MAX_PAGES; batchStart += ALLOCATION_CONCURRENCY) {
+    const pages = Array.from(
+      { length: Math.min(ALLOCATION_CONCURRENCY, ALLOCATION_MAX_PAGES - batchStart) },
+      (_, i) => batchStart + i,
+    );
+    const batches = await Promise.all(pages.map((page) => fetchAllocationPage(supabase, projectId, page)));
+    let sawPartialPage = false;
+    for (const batch of batches) {
+      rows.push(...batch);
+      if (batch.length < ALLOCATION_PAGE) sawPartialPage = true;
+    }
+    // A partial (or empty) page anywhere in this batch means we've reached the
+    // end — later pages in the same batch, if any, would just be empty too.
+    if (sawPartialPage) break;
   }
   return rows;
 }
@@ -273,6 +319,86 @@ export function aggregateByType(
     points.push({ work_date, resource_type, demand, capacity: capacityByType.get(resource_type) ?? 0 });
   }
   return points.sort((a, b) => a.work_date.localeCompare(b.work_date) || a.resource_type.localeCompare(b.resource_type));
+}
+
+// ── manpower required vs available BY TRADE (Phase 3) ───────────────────────
+// A trade is the finer grouping plan_generate_resource_loading() assigns its pooled resources
+// (plan_resources.trade); a manually created resource has no trade, so it becomes its own
+// single-resource "trade" bucket, using its name — informative and never silently dropped.
+const DAY_MS = 86_400_000;
+function toUtcMs(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+/** Monday of the week containing `iso`. */
+function weekStartOf(iso: string): string {
+  const ms = toUtcMs(iso);
+  const dow = new Date(ms).getUTCDay(); // 0 = Sunday
+  return new Date(ms - ((dow + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
+}
+
+export interface TradeHistogramPoint {
+  work_date: string;
+  trade: string;
+  /** Sum of total_allocation (%) across every resource of this trade on this date — "required". */
+  demand: number;
+  /** Sum of max_units (%) across every active resource of this trade — "available", constant across dates. */
+  capacity: number;
+}
+
+/** Same shape/purpose as aggregateByType, grouped by trade instead of resource_type. */
+export function aggregateByTrade(allocation: AllocationRow[], resources: PlanResource[]): TradeHistogramPoint[] {
+  const tradeByResource = new Map(resources.map((r) => [r.id, r.trade ?? r.name]));
+  const capacityByTrade = new Map<string, number>();
+  for (const r of resources) {
+    if (!r.is_active) continue;
+    const trade = r.trade ?? r.name;
+    capacityByTrade.set(trade, (capacityByTrade.get(trade) ?? 0) + r.max_units);
+  }
+
+  const demandByKey = new Map<string, number>();
+  for (const row of allocation) {
+    const trade = tradeByResource.get(row.resource_id);
+    if (!trade) continue;
+    const key = `${row.work_date}|${trade}`;
+    demandByKey.set(key, (demandByKey.get(key) ?? 0) + row.total_allocation);
+  }
+
+  const points: TradeHistogramPoint[] = [];
+  for (const [key, demand] of demandByKey) {
+    const sep = key.indexOf("|");
+    const work_date = key.slice(0, sep);
+    const trade = key.slice(sep + 1);
+    points.push({ work_date, trade, demand, capacity: capacityByTrade.get(trade) ?? 0 });
+  }
+  return points.sort((a, b) => a.work_date.localeCompare(b.work_date) || a.trade.localeCompare(b.trade));
+}
+
+export interface TradeShortageWeek {
+  trade: string;
+  week_start: string;
+  /** The worst single day's demand within the week. */
+  peak_demand: number;
+  capacity: number;
+}
+
+/**
+ * Buckets the daily by-trade histogram into ISO weeks (Monday start) and flags a week where the
+ * trade's peak daily demand exceeds its capacity at any point that week — "a shortage week".
+ */
+export function flagShortageWeeks(points: TradeHistogramPoint[]): TradeShortageWeek[] {
+  const peakByKey = new Map<string, { trade: string; week_start: string; peak: number; capacity: number }>();
+  for (const p of points) {
+    const week_start = weekStartOf(p.work_date);
+    const key = `${p.trade}|${week_start}`;
+    const cur = peakByKey.get(key);
+    if (!cur) peakByKey.set(key, { trade: p.trade, week_start, peak: p.demand, capacity: p.capacity });
+    else cur.peak = Math.max(cur.peak, p.demand);
+  }
+  return [...peakByKey.values()]
+    .filter((w) => w.capacity > 0 && w.peak > w.capacity)
+    .map((w) => ({ trade: w.trade, week_start: w.week_start, peak_demand: w.peak, capacity: w.capacity }))
+    .sort((a, b) => a.trade.localeCompare(b.trade) || a.week_start.localeCompare(b.week_start));
 }
 
 export interface ProjectAssignmentRow {

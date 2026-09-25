@@ -1,9 +1,25 @@
 // Test oracle: the ORIGINAL levelling algorithm (recomputes all demand on every push).
-// Slow but simple — kept only so tests can prove the fast engine decides identically.
+// Slow but simple — kept only so tests can prove the fast engine decides identically. Deliberately
+// single-resource (its own RefTask type, not the real engine's multi-resource LevelTask) — the equivalence
+// tests only ever compare single-resource programmes; multi-resource behaviour is tested directly in
+// resource-levelling.test.ts, which has no slow oracle to compare against.
 import { addWorkingDays, nextWorkingDay, parseISO, workingDaysBetween, type WorkCalendar } from "../work-calendar";
-import type { LevelTask } from "../resource-levelling";
 
-function refFinish(level: LevelTask, start: string, c: WorkCalendar): string {
+export interface RefTask {
+  id: string;
+  task_code: string;
+  task_name: string;
+  durationWd: number;
+  totalFloatWd: number;
+  freeFloatWd: number;
+  earliestStart: string;
+  latestFinish: string;
+  resource: string | null;
+  resourceUnits: number;
+  priority: number;
+}
+
+function refFinish(level: RefTask, start: string, c: WorkCalendar): string {
   return level.durationWd <= 0 ? start : addWorkingDays(c, start, level.durationWd - 1);
 }
 function refDays(c: WorkCalendar, from: string, to: string): string[] {
@@ -18,8 +34,8 @@ function refDays(c: WorkCalendar, from: string, to: string): string[] {
   return days;
 }
 
-export function referenceLevel(tasks: LevelTask[], c: WorkCalendar, capacities: Record<string, number>) {
-  type A = { level: LevelTask; start: string; finish: string; shiftedWd: number };
+export function referenceLevel(tasks: RefTask[], c: WorkCalendar, capacities: Record<string, number>) {
+  type A = { level: RefTask; start: string; finish: string; shiftedWd: number };
   const pool: A[] = tasks
     .filter((t) => t.resource && t.resourceUnits > 0 && t.durationWd > 0 && !!t.earliestStart)
     .map((t) => {

@@ -5,7 +5,10 @@ import { DEFAULT_CALENDAR } from "../work-calendar";
 
 const cal = DEFAULT_CALENDAR; // Mon–Fri
 
-function lev(id: string, overrides: Partial<LevelTask>): LevelTask {
+function lev(id: string, overrides: Partial<LevelTask> & { resource?: string | null; resourceUnits?: number } = {}): LevelTask {
+  const { resource, resourceUnits, resources, ...rest } = overrides;
+  const demands =
+    resources ?? (resource === null ? [] : [{ resourceId: resource ?? "Crew A", units: resourceUnits ?? 1 }]);
   return {
     id,
     task_code: id,
@@ -15,12 +18,14 @@ function lev(id: string, overrides: Partial<LevelTask>): LevelTask {
     freeFloatWd: 5,
     earliestStart: "2026-01-05",
     latestFinish: "2026-01-16",
-    resource: "Crew A",
-    resourceUnits: 1,
+    resources: demands,
     priority: 1,
-    ...overrides,
+    ...rest,
   };
 }
+
+const peakOf = (peaks: { resourceId: string; before: number; after: number }[], resourceId: string) =>
+  peaks.find((p) => p.resourceId === resourceId) ?? { resourceId, before: 0, after: 0 };
 
 describe("buildLevellingProfile", () => {
   it("shows the overlap before levelling and the flattened curve after", () => {
@@ -34,8 +39,8 @@ describe("buildLevellingProfile", () => {
     expect(peak("before")).toBe(2);
     expect(peak("after")).toBe(1);
     // Same peaks the engine reports — the chart and the engine cannot disagree.
-    expect(peak("before")).toBe(result.peakBefore);
-    expect(peak("after")).toBe(result.peakAfter);
+    expect(peak("before")).toBe(peakOf(result.peaks, "Crew A").before);
+    expect(peak("after")).toBe(peakOf(result.peaks, "Crew A").after);
     expect(p.capacity).toBe(1);
     // Three shared days over capacity before, none after.
     expect(p.overDaysBefore).toBe(3);
@@ -55,8 +60,16 @@ describe("buildLevellingProfile", () => {
     const tasks = ["T1", "T2", "T3"].map((id, i) => lev(id, { resourceUnits: 0.5, priority: i + 1 }));
     const capacities = { "Crew A": 1 };
     const result = levelResources(tasks, cal, capacities);
-    expect(result.peakBefore).toBe(1.5);
-    expect(result.peakAfter).toBeLessThanOrEqual(1);
+    expect(peakOf(result.peaks, "Crew A").before).toBe(1.5);
+    expect(peakOf(result.peaks, "Crew A").after).toBeLessThanOrEqual(1);
     expect(result.assignments.length).toBeGreaterThan(0);
+  });
+
+  it("a task holding two resources at once contributes to the combined curve twice, once per resource", () => {
+    const t1 = lev("T1", { resources: [{ resourceId: "Crew A", units: 1 }, { resourceId: "Crane 1", units: 1 }] });
+    const p = buildLevellingProfile([t1], cal, { "Crew A": 1, "Crane 1": 1 }, levelResources([t1], cal, { "Crew A": 1, "Crane 1": 1 }));
+    // One task, two resources, three working days each -> the combined "total" curve counts 2 units/day.
+    expect(Math.max(...p.daily.map((d) => d.before))).toBe(2);
+    expect(p.capacity).toBe(2); // 1 (Crew A) + 1 (Crane 1)
   });
 });

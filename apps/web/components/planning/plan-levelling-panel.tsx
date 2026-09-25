@@ -103,8 +103,11 @@ export function PlanLevellingPanel() {
         {result && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-4 text-xs">
-              <span>Peak demand before: <strong>{result.peakBefore}</strong></span>
-              <span>Peak demand after: <strong>{result.peakAfter}</strong></span>
+              {result.peaks.map((p) => (
+                <span key={p.resourceId}>
+                  {resourceLabel(p.resourceId)} peak: <strong>{p.before}</strong> → <strong>{p.after}</strong>
+                </span>
+              ))}
               <span className={cn("font-semibold", result.overAllocationResolved ? "text-emerald-600" : "text-amber-600")}>
                 {result.overAllocationResolved ? "Fully resolved within float" : `${result.residual.length} residual conflict(s)`}
               </span>

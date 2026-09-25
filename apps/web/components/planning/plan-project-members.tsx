@@ -47,12 +47,15 @@ export function PlanProjectMembers() {
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    const { data } = await supabase
-      .from("project_members")
-      .select("user_id, role_code, added_by, created_at, profiles(full_name, email)")
-      .eq("project_id", selectedProjectId)
-      .order("created_at", { ascending: true });
-    const { data: roles } = await supabase.from("roles").select("code, name, type, level").order("level", { ascending: true });
+    // Independent queries — run concurrently instead of one after the other.
+    const [{ data }, { data: roles }] = await Promise.all([
+      supabase
+        .from("project_members")
+        .select("user_id, role_code, added_by, created_at, profiles(full_name, email)")
+        .eq("project_id", selectedProjectId)
+        .order("created_at", { ascending: true }),
+      supabase.from("roles").select("code, name, type, level").order("level", { ascending: true }),
+    ]);
     if (roles) setRoleOptions(roles as RoleOption[]);
     if (!data) { setLoading(false); return; }
     const mapped = (data as unknown as Array<{
@@ -69,7 +72,11 @@ export function PlanProjectMembers() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [selectedProjectId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() flips its own loading flag
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!showAdd) return;

@@ -294,14 +294,22 @@ export interface TaskRow {
   is_milestone: boolean;
 }
 
+export type QuantitySource = "manual" | "boq" | "tender_boq" | "qto" | "import";
+
 export interface TaskWork {
   task_id: string;
   quantity: number | null;
   quantity_unit: string | null;
+  quantity_source: QuantitySource;
+  quantity_reason: string | null;
+  tender_boq_item_id: string | null;
+  qs_boq_item_id: string | null;
   norm_id: string | null;
   crews: number;
   productivity_adjust_pct: number;
   duration_mode: DurationMode;
+  ot_pct: number;
+  ot_type: string;
   // computed by the database
   work_hours: number | null;
   crew_workers_std: number | null;
@@ -312,17 +320,31 @@ export interface TaskWork {
   hours_per_day_used: number | null;
   calc_status: CalcStatus;
   calc_message: string | null;
+  planned_cost: number | null;
+  cost_calc_status: string | null;
+  cost_calc_message: string | null;
 }
 
-/** What the grid writes: inputs only. */
+/**
+ * What the grid writes: inputs only. `quantity_source` / the BOQ link fields default to "manual" / null when
+ * omitted — a manual edit to quantity or unit breaks a BOQ link (Phase 2: the value is no longer traceable to
+ * that line), which the grid enforces by simply not carrying the old link forward. `quantity_reason` is
+ * required by the database only when REVISING an already-recorded quantity (plan_task_work_quantity_history).
+ */
 export interface TaskWorkInput {
   task_id: string;
   quantity: number | null;
   quantity_unit: string | null;
+  quantity_source?: QuantitySource;
+  quantity_reason?: string | null;
+  tender_boq_item_id?: string | null;
+  qs_boq_item_id?: string | null;
   norm_id: string | null;
   crews: number;
   productivity_adjust_pct: number;
   duration_mode: DurationMode;
+  ot_pct?: number;
+  ot_type?: string;
 }
 
 const PAGE = 1000;
@@ -361,10 +383,16 @@ export async function listTaskWork(projectId: string): Promise<TaskWork[]> {
         task_id: r.task_id as string,
         quantity: n(r.quantity),
         quantity_unit: (r.quantity_unit as string | null) ?? null,
+        quantity_source: (r.quantity_source as QuantitySource) ?? "manual",
+        quantity_reason: (r.quantity_reason as string | null) ?? null,
+        tender_boq_item_id: (r.tender_boq_item_id as string | null) ?? null,
+        qs_boq_item_id: (r.qs_boq_item_id as string | null) ?? null,
         norm_id: (r.norm_id as string | null) ?? null,
         crews: Number(r.crews),
         productivity_adjust_pct: Number(r.productivity_adjust_pct),
         duration_mode: r.duration_mode as DurationMode,
+        ot_pct: Number(r.ot_pct ?? 0),
+        ot_type: (r.ot_type as string | null) ?? "weekday",
         work_hours: n(r.work_hours),
         crew_workers_std: n(r.crew_workers_std),
         crew_required: n(r.crew_required),
@@ -374,6 +402,9 @@ export async function listTaskWork(projectId: string): Promise<TaskWork[]> {
         hours_per_day_used: n(r.hours_per_day_used),
         calc_status: r.calc_status as CalcStatus,
         calc_message: (r.calc_message as string | null) ?? null,
+        planned_cost: n(r.planned_cost),
+        cost_calc_status: (r.cost_calc_status as string | null) ?? null,
+        cost_calc_message: (r.cost_calc_message as string | null) ?? null,
       });
     }
     if ((data ?? []).length < PAGE) break;
@@ -391,13 +422,24 @@ export async function saveTaskWork(rows: TaskWorkInput[], existingTaskIds: Set<s
   const changed = rows.filter((r) => existingTaskIds.has(r.task_id));
 
   if (fresh.length > 0) {
-    const { error } = await supabase
-      .from("plan_task_work")
-      .insert(fresh.map((r) => ({ ...r, quantity_source: "manual" })));
+    const { error } = await supabase.from("plan_task_work").insert(
+      fresh.map((r) => ({
+        ...r,
+        quantity_source: r.quantity_source ?? "manual",
+        tender_boq_item_id: r.tender_boq_item_id ?? null,
+        qs_boq_item_id: r.qs_boq_item_id ?? null,
+      })),
+    );
     if (error) throw new Error(friendly(error.message));
   }
   for (const r of changed) {
-    const { task_id, ...patch } = r;
+    const { task_id, ...rest } = r;
+    const patch = {
+      ...rest,
+      quantity_source: r.quantity_source ?? "manual",
+      tender_boq_item_id: r.tender_boq_item_id ?? null,
+      qs_boq_item_id: r.qs_boq_item_id ?? null,
+    };
     const { error } = await supabase.from("plan_task_work").update(patch).eq("task_id", task_id);
     if (error) throw new Error(friendly(error.message));
   }

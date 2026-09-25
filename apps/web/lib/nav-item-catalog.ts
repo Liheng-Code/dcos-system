@@ -170,6 +170,8 @@ export const NAV_ITEM_CATALOG: Record<string, NavCatalogEntry[]> = {
     { navKey: "/dashboard/tenders/cost-library", label: "Prelim Cost Library", nodeType: "item", parentGroupKey: "group:qs:libraries" },
 
     { navKey: "group:qs:cost_control", label: "Cost Control", nodeType: "item" },
+    { navKey: "/dashboard/qs/overview", label: "Overview", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
+    { navKey: "/dashboard/qs", label: "Dashboard", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
     { navKey: "/dashboard/qs/boq", label: "BOQ", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
     { navKey: "/dashboard/qs?tab=cost-control", label: "Cost Control", nodeType: "item", parentGroupKey: "group:qs:cost_control" },
     { navKey: "/dashboard/qs?tab=contingency", label: "Contingency", nodeType: "item", parentGroupKey: "group:qs:cost_control" },

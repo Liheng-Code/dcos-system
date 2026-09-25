@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/client";
 import { depsFromArrays, scheduleProject, type EngineTask } from "./schedule-engine";
 import { buildWorkCalendar, todayISO, workingDaysBetween, type PlanCalendarExceptionRow, type PlanCalendarRow, type WorkCalendar } from "./work-calendar";
 import { levelResources, type LevelTask, type ResourceLevellingResult } from "./resource-levelling";
-import { logScheduleAudit } from "./schedule-audit";
+import { recomputeProjectWork } from "./productivity-service";
+import { dedupe } from "@/lib/request-dedup";
 
 export interface LevellingContext {
   levelTasks: LevelTask[];
@@ -48,15 +49,25 @@ function toEngineTask(t: TaskRow, cal: WorkCalendar): EngineTask {
 }
 
 /**
- * Completion Plan 3.2 — gathers everything levelResources() needs for one
- * project: tasks that carry a resource assignment, their CPM float/dates
- * (computed here, client-side, same engine the rest of Planning uses), and
- * each resource's capacity (plan_resources.max_units). Percent values are
- * converted to units here (100% = 1) — the engine's contract. A task with more than
- * one assignment is levelled against its FIRST assignment only — multi-
- * resource levelling is out of scope for this pass.
+ * Completion Plan 3.2 (extended Productivity plan Phase 5, part B) — gathers everything
+ * levelResources() needs for one project: tasks that carry a resource assignment, their CPM
+ * float/dates (computed here, client-side, same engine the rest of Planning uses), and each
+ * resource's capacity (plan_resources.max_units). Percent values are converted to units here
+ * (100% = 1) — the engine's contract. A task demands EVERY assignment it has, in parallel — a
+ * task with a crew and a crane is levelled against both at once, since moving the task moves it
+ * against everything it holds simultaneously (there is no such thing as moving it for one
+ * resource but not the other).
+ *
+ * Dedupes concurrent calls for the same project — the Dashboard mounts
+ * LevellingDiagramCard and CostLevellingDiagramCard together, and both used
+ * to independently trigger this whole fetch + CPM pass; now the second call
+ * just awaits the first's in-flight result.
  */
-export async function loadLevellingContext(projectId: string): Promise<LevellingContext> {
+export function loadLevellingContext(projectId: string): Promise<LevellingContext> {
+  return dedupe(`levelling-context:${projectId}`, () => fetchLevellingContext(projectId));
+}
+
+async function fetchLevellingContext(projectId: string): Promise<LevellingContext> {
   const supabase = createClient();
   const [taskRes, calRes, assignRes] = await Promise.all([
     supabase
@@ -96,11 +107,13 @@ export async function loadLevellingContext(projectId: string): Promise<Levelling
 
   type AssignRow = { task_id: string; resource_id: string; allocation_percent: number; plan_resources: { name: string; max_units: number } };
   const assignments = (assignRes.data ?? []) as unknown as AssignRow[];
-  const firstAssignmentByTask = new Map<string, AssignRow>();
+  const assignmentsByTask = new Map<string, AssignRow[]>();
   const capacities: Record<string, number> = {};
   const resourceNames: Record<string, string> = {};
   for (const a of assignments) {
-    if (!firstAssignmentByTask.has(a.task_id)) firstAssignmentByTask.set(a.task_id, a);
+    const list = assignmentsByTask.get(a.task_id) ?? [];
+    list.push(a);
+    assignmentsByTask.set(a.task_id, list);
     // The engine works in units (1 crew = 1); the DB stores percent (100 = 1).
     capacities[a.resource_id] = Number(a.plan_resources.max_units ?? 100) / 100;
     resourceNames[a.resource_id] = a.plan_resources.name;
@@ -112,12 +125,20 @@ export async function loadLevellingContext(projectId: string): Promise<Levelling
 
   const levelTasks: LevelTask[] = [];
   for (const t of tasks) {
-    const assignment = firstAssignmentByTask.get(t.id);
-    if (!assignment) continue;
+    const taskAssignments = assignmentsByTask.get(t.id);
+    if (!taskAssignments || taskAssignments.length === 0) continue;
     const d = dates.get(t.id);
     const f = float.get(t.id);
     if (!d || !f) continue;
     const durationWd = t.is_milestone ? 0 : t.start_date && t.end_date ? Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date)) : 1;
+
+    // Two assignment rows for the same resource (shouldn't normally happen, but the Resource
+    // Loading UI doesn't prevent it) sum into one demand rather than silently dropping the second.
+    const unitsByResource = new Map<string, number>();
+    for (const a of taskAssignments) {
+      unitsByResource.set(a.resource_id, (unitsByResource.get(a.resource_id) ?? 0) + Number(a.allocation_percent ?? 100) / 100);
+    }
+
     levelTasks.push({
       id: t.id,
       task_code: t.task_code,
@@ -127,8 +148,7 @@ export async function loadLevellingContext(projectId: string): Promise<Levelling
       freeFloatWd: f.freeFloat,
       earliestStart: d.start,
       latestFinish: f.lateFinish,
-      resource: assignment.resource_id,
-      resourceUnits: Number(assignment.allocation_percent ?? 100) / 100,
+      resources: [...unitsByResource.entries()].map(([resourceId, units]) => ({ resourceId, units })),
       priority: PRIORITY_RANK[t.priority ?? "medium"] ?? 3,
     });
   }
@@ -147,8 +167,7 @@ export function serializeLevellingResult(result: ResourceLevellingResult): Recor
     assignments: result.assignments,
     starts: Object.fromEntries(result.starts),
     overAllocationResolved: result.overAllocationResolved,
-    peakBefore: result.peakBefore,
-    peakAfter: result.peakAfter,
+    peaks: result.peaks,
   };
 }
 
@@ -199,7 +218,12 @@ export async function listLevellingRuns(projectId: string): Promise<LevellingRun
  * constraint at its new start (never touches start_date/end_date directly —
  * the next Sheet/Gantt applySchedule() recomputes real dates from there, per
  * the completion plan's "preview then apply" design), and the run is marked
- * applied. Every move is audited individually via wbs_audit_log.
+ * applied. Every move is audited via wbs_audit_log.
+ *
+ * Batched into one RPC call + one bulk insert instead of 2 round trips PER
+ * moved task — mirrors the already-proven "batch the SQL, batch the audit
+ * insert" shape `applySchedule()` uses for reschedule ripples
+ * (use-sheet-data.ts, RPC apply_schedule_dates).
  */
 export async function applyLevellingRun(projectId: string, runId: string, assignments: { taskId: string; oldStart: string; newStart: string }[]): Promise<void> {
   const supabase = createClient();
@@ -207,21 +231,27 @@ export async function applyLevellingRun(projectId: string, runId: string, assign
     data: { user },
   } = await supabase.auth.getUser();
 
-  for (const a of assignments) {
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({ constraint_type: "start_no_earlier_than", constraint_date: a.newStart })
-      .eq("id", a.taskId);
-    if (error) throw new Error(error.message);
-    await logScheduleAudit(supabase, {
-      projectId,
-      taskId: a.taskId,
-      userId: user?.id ?? null,
-      action: "Constraint Changed",
-      fieldName: "constraint",
-      oldValue: `start_no_earlier_than n/a (was ${a.oldStart})`,
-      newValue: `start_no_earlier_than ${a.newStart} (resource levelling)`,
+  if (assignments.length > 0) {
+    const { error } = await supabase.rpc("apply_levelling_constraints", {
+      p_project_id: projectId,
+      p_rows: assignments.map((a) => ({ id: a.taskId, new_start: a.newStart })),
     });
+    if (error) throw new Error(error.message);
+
+    const { error: auditError } = await supabase.from("wbs_audit_log").insert(
+      assignments.map((a) => ({
+        project_id: projectId,
+        wbs_task_id: a.taskId,
+        user_id: user?.id ?? null,
+        action: "Constraint Changed",
+        field_name: "constraint",
+        old_value: `start_no_earlier_than n/a (was ${a.oldStart})`,
+        new_value: `start_no_earlier_than ${a.newStart} (resource levelling)`,
+      })),
+    );
+    // Audit logging must never break the underlying schedule edit — the write
+    // it describes has already succeeded by the time this runs.
+    if (auditError) console.error("Levelling audit log insert failed:", auditError.message);
   }
 
   const { error: runError } = await supabase
@@ -229,4 +259,13 @@ export async function applyLevellingRun(projectId: string, runId: string, assign
     .update({ applied: true, applied_at: new Date().toISOString() })
     .eq("id", runId);
   if (runError) throw new Error(runError.message);
+
+  // Phase 5 part B: keep plan_task_work's calc_at fresh for every moved task. This constraint-only apply
+  // does not itself change a task's real dates (see the doc comment above), so planned_cost's NUMBER is
+  // unaffected yet — but the moment the next Sheet/Gantt reschedule turns these constraints into real dates,
+  // the Cost Rollup / Cost Levelling charts read wbs_tasks.start_date/end_date live, so they pick up the new
+  // phasing automatically with no further action. This call just keeps the staleness bookkeeping honest.
+  if (assignments.length > 0) {
+    await recomputeProjectWork(projectId);
+  }
 }

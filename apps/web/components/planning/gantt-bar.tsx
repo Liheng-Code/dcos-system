@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { memo, useState, useCallback, useEffect, useRef } from "react";
 import { Link2 } from "lucide-react";
 import type { GanttTask } from "./gantt-types";
 import { diffDays, formatDate as defaultFormatDate } from "./gantt-utils";
@@ -67,7 +67,7 @@ interface GanttBarProps {
   showFloat?: boolean;
 }
 
-export function GanttBar({
+function GanttBarImpl({
   task,
   left,
   width,
@@ -415,3 +415,74 @@ export function GanttBar({
     </div>
   );
 }
+
+/**
+ * `ScheduleTimeline` renders one of these per visible row and, on ANY task
+ * edit anywhere in the project, rebuilds its whole `ganttTasks`/`taskMap`
+ * (schedule-timeline.tsx) — which hands every bar a brand-new `task` object
+ * reference (and fresh inline `onClick`/`onReschedule`/etc. closures) even
+ * when that specific task didn't change. Plain `React.memo`'s default
+ * shallow-reference check would therefore never skip a single bar. This
+ * comparator instead checks the actual fields GanttBar reads off `task`
+ * (see categoryStyleFor/barFieldValue in lib/planning/gantt-bar-style.ts)
+ * by value, and treats the callback props as equal whenever their
+ * definedness is unchanged (undefined vs. defined is the only thing that
+ * ever meaningfully changes bar *behavior* — e.g. a task becoming locked —
+ * since each closure only ever forwards to the same stable action with this
+ * bar's own task id). At 802 tasks this turns "edit one task" from ~802
+ * full bar re-renders into 1.
+ */
+function ganttBarPropsEqual(prev: Readonly<GanttBarProps>, next: Readonly<GanttBarProps>): boolean {
+  if (
+    prev.left !== next.left ||
+    prev.width !== next.width ||
+    prev.dayWidth !== next.dayWidth ||
+    prev.zoom !== next.zoom ||
+    prev.highlightCritical !== next.highlightCritical ||
+    prev.referenceLabel !== next.referenceLabel ||
+    prev.referenceLeft !== next.referenceLeft ||
+    prev.referenceWidth !== next.referenceWidth ||
+    prev.showFloat !== next.showFloat ||
+    prev.barStyle !== next.barStyle ||
+    prev.formatDate !== next.formatDate ||
+    prev.rangeMin?.getTime() !== next.rangeMin?.getTime() ||
+    !!prev.onClick !== !!next.onClick ||
+    !!prev.onReschedule !== !!next.onReschedule ||
+    !!prev.onStartLink !== !!next.onStartLink ||
+    !!prev.onSetProgress !== !!next.onSetProgress ||
+    !!prev.onFormatBar !== !!next.onFormatBar
+  ) {
+    return false;
+  }
+
+  const pr = prev.references;
+  const nr = next.references;
+  if ((pr?.length ?? 0) !== (nr?.length ?? 0)) return false;
+  if (pr && nr) {
+    for (let i = 0; i < pr.length; i++) {
+      if (pr[i].left !== nr[i].left || pr[i].width !== nr[i].width || pr[i].startISO !== nr[i].startISO || pr[i].endISO !== nr[i].endISO) {
+        return false;
+      }
+    }
+  }
+
+  const a = prev.task;
+  const b = next.task;
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.task_name === b.task_name &&
+    a.task_code === b.task_code &&
+    a.start_date === b.start_date &&
+    a.end_date === b.end_date &&
+    a.progress === b.progress &&
+    a.total_float === b.total_float &&
+    a.owner_name === b.owner_name &&
+    a.is_critical === b.is_critical &&
+    a.is_near_critical === b.is_near_critical &&
+    a.baseline_start_date === b.baseline_start_date &&
+    a.baseline_finish_date === b.baseline_finish_date
+  );
+}
+
+export const GanttBar = memo(GanttBarImpl, ganttBarPropsEqual);

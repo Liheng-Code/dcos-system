@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BarChart, Bar, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -17,9 +17,12 @@ import {
 } from "@/lib/planning/resource-service";
 import { loadLevellingContext, runLevelling } from "@/lib/planning/levelling-service";
 import { buildLevellingProfile, type LevellingProfile } from "@/lib/planning/levelling-profile";
+import { buildCostLevellingProfile, type CostLevelTask } from "@/lib/planning/cost-levelling-profile";
+import { listPlannedCosts } from "@/lib/planning/cost-service";
 import {
   DAY, LEGEND_STYLE, TICK, TOOLTIP_STYLE, fromUtc, toUtc, weekStart,
 } from "@/components/planning/planning-dashboard-charts";
+import { useCachedFetch } from "@/hooks/use-cached-fetch";
 
 const TYPE_LABEL: Record<string, string> = {
   labor: "Manpower",
@@ -90,6 +93,9 @@ interface CommonProps {
   /** Project start → finish. The chart covers every week in between. */
   range?: ProjectSpan | null;
   className?: string;
+  /** Bump (from the Dashboard's single Refresh button) to reload — otherwise this
+   *  card restores its last-fetched result from cache instead of re-fetching. */
+  refreshToken?: number;
 }
 
 /** Shared X axis: week-commencing dates on the axis data, month/year labels on the ticks. */
@@ -122,31 +128,26 @@ function todayMarker(weeks: string[], asOf: string) {
 }
 
 // ── Manpower histogram ───────────────────────────────────────────────────────
-export function ManpowerHistogramCard({ projectId, asOf, range, className }: CommonProps) {
-  const [allocation, setAllocation] = useState<AllocationRow[]>([]);
-  const [resources, setResources] = useState<PlanResource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface ManpowerData {
+  allocation: AllocationRow[];
+  resources: PlanResource[];
+}
+
+export function ManpowerHistogramCard({ projectId, asOf, range, className, refreshToken = 0 }: CommonProps) {
   const [retry, setRetry] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- flag the fetch as in flight before it starts
-    setLoading(true);
-    setError(null);
-    Promise.all([getResourceAllocation(projectId), listResources(projectId)])
-      .then(([alloc, res]) => {
-        if (cancelled) return;
-        setAllocation(alloc);
-        setResources(res);
-      })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load resource data"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [projectId, retry]);
-
-  const points = useMemo(() => aggregateByType(allocation, resources), [allocation, resources]);
+  const { data, loading, error } = useCachedFetch<ManpowerData>(
+    projectId ? `dcos.planning.dashboard.manpower.${projectId}` : null,
+    async () => {
+      const [allocation, resources] = await Promise.all([getResourceAllocation(projectId), listResources(projectId)]);
+      return { allocation, resources };
+    },
+    `${refreshToken}:${retry}`,
+  );
+  const points = useMemo(
+    () => aggregateByType(data?.allocation ?? [], data?.resources ?? []),
+    [data],
+  );
   const types = useMemo(
     () => [...new Set(points.filter((p) => p.demand > 0).map((p) => p.resource_type))].sort(),
     [points],
@@ -238,39 +239,33 @@ interface LevellingSummary {
   stoppedAtLimit: boolean;
 }
 
-export function LevellingDiagramCard({ projectId, asOf, range, className }: CommonProps) {
-  const [summary, setSummary] = useState<LevellingSummary | null>(null);
-  const [empty, setEmpty] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retry, setRetry] = useState(0);
+interface LevellingResult {
+  empty: boolean;
+  summary: LevellingSummary | null;
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- flag the fetch as in flight before it starts
-    setLoading(true);
-    setError(null);
-    loadLevellingContext(projectId)
-      .then((ctx) => {
-        if (cancelled) return;
-        if (ctx.levelTasks.length === 0) {
-          setEmpty(true);
-          setSummary(null);
-          return;
-        }
-        const result = runLevelling(ctx);
-        setEmpty(false);
-        setSummary({
+export function LevellingDiagramCard({ projectId, asOf, range, className, refreshToken = 0 }: CommonProps) {
+  const [retry, setRetry] = useState(0);
+  const { data, loading, error } = useCachedFetch<LevellingResult>(
+    projectId ? `dcos.planning.dashboard.levelling.${projectId}` : null,
+    async () => {
+      const ctx = await loadLevellingContext(projectId);
+      if (ctx.levelTasks.length === 0) return { empty: true, summary: null };
+      const result = runLevelling(ctx);
+      return {
+        empty: false,
+        summary: {
           profile: buildLevellingProfile(ctx.levelTasks, ctx.cal, ctx.capacities, result),
           shifts: result.assignments.length,
           residual: result.residual.length,
           stoppedAtLimit: result.stoppedAtLimit,
-        });
-      })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Failed to run levelling preview"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [projectId, retry]);
+        },
+      };
+    },
+    `${refreshToken}:${retry}`,
+  );
+  const empty = data?.empty ?? false;
+  const summary = data?.summary ?? null;
 
   const { rows, weeks, ticks } = useMemo(() => {
     if (!summary) return { rows: [], weeks: [] as string[], ticks: [] as string[] };
@@ -330,6 +325,109 @@ export function LevellingDiagramCard({ projectId, asOf, range, className }: Comm
           <Link href="/dashboard/planning/resource-loading" className="font-medium text-primary hover:underline">
             Resource Loading
           </Link>
+        </p>
+      </div>
+    </ChartWrapper>
+  );
+}
+
+// ── Cost levelling diagram (preview — nothing is written; the companion to the manpower one above) ─
+function money(n: number): string {
+  const rounded = Math.round(n); // round the signed value first — negating before rounding would shift .5 ties the wrong way (see plan-cost-rollup.tsx)
+  return rounded < 0 ? `-$${Math.abs(rounded).toLocaleString()}` : `$${rounded.toLocaleString()}`;
+}
+
+/** Range-independent: the raw weekly points plus the run summary. `range` is applied afterward in a
+ *  `useMemo`, same split as the other cards in this file, so a `range` change alone (without projectId/retry)
+ *  still recomputes the drawn axis without needing to re-fetch or re-run the leveller. */
+interface CostLevellingSummary {
+  points: ReturnType<typeof buildCostLevellingProfile>;
+  shifts: number;
+}
+
+interface CostLevellingResult {
+  empty: boolean;
+  summary: CostLevellingSummary | null;
+}
+
+export function CostLevellingDiagramCard({ projectId, asOf, range, className, refreshToken = 0 }: CommonProps) {
+  const [retry, setRetry] = useState(0);
+  const { data, loading, error } = useCachedFetch<CostLevellingResult>(
+    projectId ? `dcos.planning.dashboard.cost-levelling.${projectId}` : null,
+    async () => {
+      const [ctx, costs] = await Promise.all([loadLevellingContext(projectId), listPlannedCosts(projectId)]);
+      const costTasks: CostLevelTask[] = ctx.levelTasks.map((t) => ({
+        id: t.id,
+        durationWd: t.durationWd,
+        earliestStart: t.earliestStart,
+        plannedCost: costs.get(t.id) ?? null,
+      }));
+      if (costTasks.every((t) => !(t.plannedCost && t.plannedCost > 0))) return { empty: true, summary: null };
+      const result = runLevelling(ctx);
+      const points = buildCostLevellingProfile(costTasks, ctx.cal, result.starts);
+      return { empty: false, summary: { points, shifts: result.assignments.length } };
+    },
+    `${refreshToken}:${retry}`,
+  );
+  const empty = data?.empty ?? false;
+  const summary = data?.summary ?? null;
+
+  const { rows, ticks, totalAfter } = useMemo(() => {
+    if (!summary) return { rows: [] as { week: string; before: number; after: number; cumulativeBefore: number; cumulativeAfter: number }[], ticks: [] as string[], totalAfter: 0 };
+    const weeks = projectWeeks(range, summary.points.map((p) => p.weekStart));
+    const byWeek = new Map(summary.points.map((p) => [p.weekStart, p]));
+    // Cumulative must keep running even across weeks this diagram doesn't itself have a point for
+    // (the axis is padded to the project span; a week before/after any cost still needs a cumulative value).
+    let lastBefore = 0;
+    let lastAfter = 0;
+    const rows = weeks.map((wk) => {
+      const p = byWeek.get(wk);
+      if (p) { lastBefore = p.cumulativeBefore; lastAfter = p.cumulativeAfter; }
+      return {
+        week: wk,
+        before: round2(p?.before ?? 0),
+        after: round2(p?.after ?? 0),
+        cumulativeBefore: round2(lastBefore),
+        cumulativeAfter: round2(lastAfter),
+      };
+    });
+    return { rows, ticks: monthTicks(weeks), totalAfter: lastAfter };
+  }, [summary, range]);
+
+  return (
+    <ChartWrapper
+      title="Cost Levelling"
+      description={
+        summary
+          ? `Weekly cash flow before vs after the same ${summary.shifts} start shift${summary.shifts === 1 ? "" : "s"} — same total cost, ${money(totalAfter)}, redistributed by week · preview only`
+          : "Weekly cash flow before vs after resource levelling (preview only)"
+      }
+      loading={loading}
+      error={error}
+      onRetry={() => setRetry((n) => n + 1)}
+      empty={empty || (!loading && !error && !summary)}
+      emptyMessage="No priced, resourced tasks to level — enter a quantity + norm on Task Work and assign resources in Resource Loading"
+      height={340}
+      className={className}
+    >
+      <div className="w-full">
+        <ResponsiveContainer width="100%" height={340}>
+          <ComposedChart data={rows} margin={{ top: 16, right: 12, left: 4, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            {weekAxis(ticks)}
+            <YAxis yAxisId="l" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => money(Number(v))} />
+            <YAxis yAxisId="r" orientation="right" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => money(Number(v))} />
+            <Tooltip {...TOOLTIP_STYLE} labelFormatter={(wk) => `Week of ${fullDate(String(wk))}`} formatter={(v, name) => [money(Number(v)), String(name)]} />
+            <Legend wrapperStyle={LEGEND_STYLE} iconType="circle" iconSize={8} />
+            {todayMarker(rows.map((r) => r.week), asOf)}
+            <Bar yAxisId="l" dataKey="before" name="Weekly cost before" fill="#f59e0b" fillOpacity={0.45} radius={[2, 2, 0, 0]} maxBarSize={14} />
+            <Bar yAxisId="l" dataKey="after" name="Weekly cost after" fill="var(--chart-1)" radius={[2, 2, 0, 0]} maxBarSize={14} />
+            <Line yAxisId="r" type="monotone" dataKey="cumulativeBefore" name="Cumulative before" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 3" dot={false} />
+            <Line yAxisId="r" type="monotone" dataKey="cumulativeAfter" name="Cumulative after" stroke="var(--chart-3)" strokeWidth={2.5} dot={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+        <p className="px-3 pb-2 text-right text-[11px] text-muted-foreground">
+          A task&apos;s own planned cost never changes by moving it — only which week it lands in does.
         </p>
       </div>
     </ChartWrapper>

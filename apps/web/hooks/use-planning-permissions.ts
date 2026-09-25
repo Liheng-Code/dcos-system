@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { getUserPermissions, hasPermission, type UserPermissions } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
+import { usePlanningPermissionsContext } from "@/contexts/planning-permissions-context";
 
 /**
  * Completion Plan 2.1 — mirrors hooks/use-qs-permissions.ts for the new
@@ -10,22 +9,15 @@ import { getUserPermissions, hasPermission, type UserPermissions } from "@/lib/p
  * resources, delays, lookahead, baseline, programme, progress_review, tia,
  * levelling (see supabase/migrations/…_planning_role_permissions_seed.sql).
  * Productivity plan (20260922000004) adds: norms, task_work, productivity.
+ *
+ * The actual fetch now happens once per session in `PlanningPermissionsProvider`
+ * (`contexts/planning-permissions-context.tsx`, mounted by `planning-module-shell.tsx`)
+ * instead of once per page mount — this hook is a thin derived-selector over
+ * that shared context, kept byte-for-byte the same return shape so none of
+ * its 9 call sites need to change.
  */
 export function usePlanningPermissions() {
-  const [perms, setPerms] = useState<UserPermissions>({ roles: [], permissions: new Map() });
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoaded(true); return; }
-      const up = await getUserPermissions(supabase, user.id, "planning");
-      setPerms(up);
-      setLoaded(true);
-    }
-    void load();
-  }, []);
+  const { perms, loaded } = usePlanningPermissionsContext();
 
   const roleCodes = perms.roles.map((r) => r.code);
 

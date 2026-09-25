@@ -32,6 +32,12 @@ import {
   type WorkCalendar,
 } from "./work-calendar";
 
+export interface ResourceDemand {
+  resourceId: string;
+  /** Concurrent units this task demands of this resource, for its whole duration (1 crew = 1; 12 workers = 12). */
+  units: number;
+}
+
 export interface LevelTask {
   id: string;
   task_code: string;
@@ -43,9 +49,13 @@ export interface LevelTask {
   freeFloatWd: number;
   earliestStart: string;
   latestFinish: string;
-  resource: string | null;
-  /** Concurrent units this task demands of its resource (1 crew = 1; 12 workers = 12). */
-  resourceUnits: number;
+  /**
+   * Every resource (labour AND equipment) this task demands, IN PARALLEL, for its whole
+   * duration — a task with a crew and a crane demands both at once, so moving the task moves
+   * it against both simultaneously; there is no notion of "the task's resource" any more.
+   * Empty = the task does not compete for any resource and is never moved.
+   */
+  resources: ResourceDemand[];
   /** 1 = highest. Lower-priority tasks move first. */
   priority: number;
 }
@@ -78,8 +88,9 @@ export interface ResourceLevellingResult {
    * spend — the leveller stopped early rather than running out of float.
    */
   stoppedAtLimit: boolean;
-  peakBefore: number;
-  peakAfter: number;
+  /** Peak concurrent-unit demand per resource — before is not comparable ACROSS resources (a crew and a crane
+   *  don't share a unit scale), so this is reported per resource rather than as one combined number. */
+  peaks: { resourceId: string; before: number; after: number }[];
 }
 
 /** One pass = one task pushed one working day. Generous: a big programme needs thousands. */
@@ -126,11 +137,13 @@ export function levelResources(
   capacities: Record<string, number> = {},
 ): ResourceLevellingResult {
   const pool: Active0[] = tasks
-    .filter((t) => t.resource && t.resourceUnits > 0 && t.durationWd > 0 && !!t.earliestStart)
+    .filter((t) => t.resources.some((r) => r.units > 0) && t.durationWd > 0 && !!t.earliestStart)
     .map((t) => {
       const start = nextWorkingDay(cal, t.earliestStart, 1);
       const finish = finishOf(t, start, cal);
-      return { level: t, start, finish, days: datedWorkingDays(cal, start, finish), shiftedWd: 0 };
+      // Only positive-unit demands compete for anything; a zero/negative row is dead weight.
+      const level: LevelTask = { ...t, resources: t.resources.filter((r) => r.units > 0) };
+      return { level, start, finish, days: datedWorkingDays(cal, start, finish), shiftedWd: 0 };
     })
     .sort((a, b) => a.level.id.localeCompare(b.level.id));
 
@@ -140,6 +153,10 @@ export function levelResources(
   const capacityOf = (resource: string) => Math.max(0, capacities[resource] ?? 1);
   const byId = new Map(pool.map((a) => [a.level.id, a]));
 
+  /** A task's own demanded units of ONE resource (0 if it doesn't demand that resource at all). */
+  const unitsFor = (id: string, resource: string) =>
+    byId.get(id)!.level.resources.find((r) => r.resourceId === resource)?.units ?? 0;
+
   // ── Incremental demand: (resource, day) → the tasks occupying it ──────────
   const occupants = new Map<string, Set<string>>();
   /** Keys whose summed units exceed capacity. */
@@ -148,39 +165,41 @@ export function levelResources(
   const stuck = new Set<string>();
 
   // Summed in id order so the total never depends on insertion order.
-  const unitsOf = (ids: Set<string>) =>
-    [...ids].sort().reduce((n, id) => n + byId.get(id)!.level.resourceUnits, 0);
+  const unitsOf = (ids: Set<string>, resource: string) =>
+    [...ids].sort().reduce((n, id) => n + unitsFor(id, resource), 0);
 
   const refresh = (key: string, resource: string) => {
     stuck.delete(key);
     const ids = occupants.get(key);
     // Compare summed UNITS to capacity. (A task-count shortcut would hide conflicts whenever a task
     // demands more than one unit, e.g. 12 workers of a 50-worker trade.)
-    if (ids && ids.size > 0 && unitsOf(ids) > capacityOf(resource)) over.add(key);
+    if (ids && ids.size > 0 && unitsOf(ids, resource) > capacityOf(resource)) over.add(key);
     else over.delete(key);
   };
 
   const place = (a: Active0) => {
-    const resource = a.level.resource!;
-    for (const date of a.days) {
-      const key = keyOf(resource, date);
-      let ids = occupants.get(key);
-      if (!ids) occupants.set(key, (ids = new Set()));
-      ids.add(a.level.id);
-      refresh(key, resource);
+    for (const dem of a.level.resources) {
+      for (const date of a.days) {
+        const key = keyOf(dem.resourceId, date);
+        let ids = occupants.get(key);
+        if (!ids) occupants.set(key, (ids = new Set()));
+        ids.add(a.level.id);
+        refresh(key, dem.resourceId);
+      }
     }
   };
 
   const lift = (a: Active0) => {
-    const resource = a.level.resource!;
-    for (const date of a.days) {
-      const key = keyOf(resource, date);
-      const ids = occupants.get(key);
-      if (ids) {
-        ids.delete(a.level.id);
-        if (ids.size === 0) occupants.delete(key);
+    for (const dem of a.level.resources) {
+      for (const date of a.days) {
+        const key = keyOf(dem.resourceId, date);
+        const ids = occupants.get(key);
+        if (ids) {
+          ids.delete(a.level.id);
+          if (ids.size === 0) occupants.delete(key);
+        }
+        refresh(key, dem.resourceId);
       }
-      refresh(key, resource);
     }
   };
 
@@ -194,7 +213,7 @@ export function levelResources(
       const sep = key.indexOf(KEY_SEP);
       const resource = key.slice(0, sep);
       const date = key.slice(sep + 1);
-      const excess = unitsOf(occupants.get(key)!) - capacityOf(resource);
+      const excess = unitsOf(occupants.get(key)!, resource) - capacityOf(resource);
       if (
         !best ||
         excess > best.excess ||
@@ -273,7 +292,7 @@ export function levelResources(
     residual.push({
       resource,
       date: key.slice(sep + 1),
-      demand: unitsOf(occupants.get(key)!),
+      demand: unitsOf(occupants.get(key)!, resource),
       capacity: capacityOf(resource),
       committers: active
         .map((p) => ({ taskId: p.level.id, task_code: p.level.task_code, priority: p.level.priority }))
@@ -282,23 +301,32 @@ export function levelResources(
   }
   residual.sort((a, b) => b.demand - b.capacity - (a.demand - a.capacity) || a.date.localeCompare(b.date));
 
-  // `peak` with the reference snapshot totals the SAME resources; compute both
-  // against the same day range so Before/After is a fair comparison.
-  const beforeDayMap = new Map<string, number>();
+  // Peak concurrent-unit demand PER RESOURCE — before and after computed against each task's own before/after
+  // day range so the comparison is fair, and kept separate per resource since units aren't comparable across
+  // different resources (a crew and a crane don't share a scale).
+  const allResourceIds = new Set<string>();
+  for (const a of pool) for (const dem of a.level.resources) allResourceIds.add(dem.resourceId);
+
+  const bump = (map: Map<string, Map<string, number>>, resource: string, date: string, units: number) => {
+    const byDate = map.get(resource) ?? new Map<string, number>();
+    byDate.set(date, (byDate.get(date) ?? 0) + units);
+    map.set(resource, byDate);
+  };
+  const beforeByResource = new Map<string, Map<string, number>>();
+  const afterByResource = new Map<string, Map<string, number>>();
   for (const a of pool) {
     const s = initialStarts.get(a.level.id)!;
-    for (const date of datedWorkingDays(cal, s, finishOf(a.level, s, cal))) {
-      beforeDayMap.set(date, (beforeDayMap.get(date) ?? 0) + a.level.resourceUnits);
+    const beforeDays = datedWorkingDays(cal, s, finishOf(a.level, s, cal));
+    for (const dem of a.level.resources) {
+      for (const date of beforeDays) bump(beforeByResource, dem.resourceId, date, dem.units);
+      for (const date of a.days) bump(afterByResource, dem.resourceId, date, dem.units);
     }
   }
-  const afterDayMap = new Map<string, number>();
-  for (const a of pool) {
-    for (const date of a.days) {
-      afterDayMap.set(date, (afterDayMap.get(date) ?? 0) + a.level.resourceUnits);
-    }
-  }
-  const peakBefore = [...beforeDayMap.values()].reduce((m, n) => Math.max(m, n), 0);
-  const peakAfter = [...afterDayMap.values()].reduce((m, n) => Math.max(m, n), 0);
+  const peakOf = (map: Map<string, Map<string, number>>, resource: string) =>
+    Math.max(0, ...[...(map.get(resource)?.values() ?? [])]);
+  const peaks = [...allResourceIds]
+    .sort()
+    .map((resourceId) => ({ resourceId, before: peakOf(beforeByResource, resourceId), after: peakOf(afterByResource, resourceId) }));
 
   return {
     ok: true,
@@ -307,7 +335,6 @@ export function levelResources(
     overAllocationResolved: residual.length === 0,
     residual,
     stoppedAtLimit,
-    peakBefore,
-    peakAfter,
+    peaks,
   };
 }

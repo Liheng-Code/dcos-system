@@ -69,9 +69,11 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     key: "cost_control",
     navKey: "group:qs:cost_control",
     label: "Cost Control",
-    href: "/dashboard/qs/boq",
+    href: "/dashboard/qs",
     visible: ({ isPrecontract }) => !isPrecontract,
     items: [
+      { label: "Overview", href: "/dashboard/qs/overview" },
+      { label: "Dashboard", href: "/dashboard/qs" },
       { label: "BOQ", href: "/dashboard/qs/boq" },
       {
         label: "Cost Control",

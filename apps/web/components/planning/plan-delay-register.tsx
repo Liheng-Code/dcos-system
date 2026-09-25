@@ -122,10 +122,16 @@ export function PlanDelayRegister() {
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    const [delaysRes, tasksRes, linksRes, contractsRes] = await Promise.all([
-      supabase.from("delay_register").select("*").eq("project_id", selectedProjectId).order("created_at", { ascending: false }),
+    // delay_register_tasks has no project_id column of its own, so it can only be
+    // scoped by delay_id — fetch delay_register first, then filter the link table
+    // to just this project's delay ids instead of pulling every project's rows.
+    const delaysRes = await supabase.from("delay_register").select("*").eq("project_id", selectedProjectId).order("created_at", { ascending: false });
+    const delayIds = (delaysRes.data ?? []).map((r) => (r as { id: string }).id);
+    const [tasksRes, linksRes, contractsRes] = await Promise.all([
       supabase.from("wbs_tasks").select("id, task_code, task_name").eq("project_id", selectedProjectId).order("task_code").limit(500),
-      supabase.from("delay_register_tasks").select("delay_id, wbs_task_id"),
+      delayIds.length > 0
+        ? supabase.from("delay_register_tasks").select("delay_id, wbs_task_id").in("delay_id", delayIds)
+        : Promise.resolve({ data: [] as { delay_id: string; wbs_task_id: string }[] }),
       supabase.from("contract_register").select("id, contract_no, title").eq("project_id", selectedProjectId).order("contract_no"),
     ]);
     if (delaysRes.error) {

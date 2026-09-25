@@ -123,14 +123,48 @@ export default function BoqListPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50">
             <DollarSign className="h-5 w-5 text-emerald-600" />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold">Bill of Quantities</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="truncate text-sm text-muted-foreground">
               Manage multiple BOQs for {selectedProject?.project_name ?? "selected project"}
             </p>
           </div>
+          <div className="relative max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search BOQ number or title..."
+              className="w-full rounded-lg border border-border bg-white pl-9 pr-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          >
+            <option value="">All Types</option>
+            {Object.entries(BOQ_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          >
+            <option value="">All Status</option>
+            {(["draft", "active", "locked", "superseded"] as const).map((s) => (
+              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
+          </select>
+          {hasFilters && (
+            <Button variant="outline" size="sm" onClick={() => { setSearch(""); setTypeFilter(""); setStatusFilter(""); }}>
+              Clear
+            </Button>
+          )}
           {can("boq", "can_create") && (
-            <Button onClick={() => setShowCreate(true)} className="gap-1.5">
+            <Button onClick={() => setShowCreate(true)} className="shrink-0 gap-1.5">
               <Plus className="h-4 w-4" /> New BOQ
             </Button>
           )}
@@ -164,44 +198,6 @@ export default function BoqListPage() {
                   </p>
                 </div>
               ))}
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search BOQ number or title..."
-                  className="w-full rounded-lg border border-border bg-white pl-9 pr-3 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-              >
-                <option value="">All Types</option>
-                {Object.entries(BOQ_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-              >
-                <option value="">All Status</option>
-                {(["draft", "active", "locked", "superseded"] as const).map((s) => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
-              {hasFilters && (
-                <Button variant="outline" size="sm" onClick={() => { setSearch(""); setTypeFilter(""); setStatusFilter(""); }}>
-                  Clear
-                </Button>
-              )}
             </div>
 
             {/* BOQ list */}

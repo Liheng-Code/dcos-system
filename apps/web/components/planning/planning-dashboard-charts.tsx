@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LabelList,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { useCachedFetch } from "@/hooks/use-cached-fetch";
 import { getTaskStatus } from "@/components/planning/task-status";
 import type { SheetRow, SheetTask } from "@/components/planning/sheet-types";
 import type { TaskFloat } from "@/lib/planning/schedule-engine";
@@ -280,32 +281,26 @@ const DELAY_STATUS: { key: DelayRow["status"]; name: string; color: string }[] =
 ];
 
 export function DelaysByCauseCard({
-  projectId, className,
-}: { projectId: string; className?: string }) {
-  const [rows, setRows] = useState<DelayRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  projectId, className, refreshToken = 0,
+}: { projectId: string; className?: string; refreshToken?: number }) {
   const [retry, setRetry] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- flag the fetch as in flight before it starts
-    setLoading(true);
-    setError(null);
-    createClient()
-      .from("delay_register")
-      .select("cause, impact_days, status")
-      .eq("project_id", projectId)
-      .then(({ data, error: err }) => {
-        if (cancelled) return;
-        if (err) setError(err.message);
-        else setRows((data ?? []) as DelayRow[]);
-        setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [projectId, retry]);
+  const { data: rawRows, loading, error } = useCachedFetch<DelayRow[]>(
+    projectId ? `dcos.planning.dashboard.delays.${projectId}` : null,
+    async () => {
+      const { data, error: err } = await createClient()
+        .from("delay_register")
+        .select("cause, impact_days, status")
+        .eq("project_id", projectId)
+        .limit(2000);
+      if (err) throw new Error(err.message);
+      return (data ?? []) as DelayRow[];
+    },
+    `${refreshToken}:${retry}`,
+  );
+  const rows = rawRows ?? [];
 
   const { data, totalDays, openCount } = useMemo(() => {
+    const rows = rawRows ?? [];
     const byCause = new Map<string, { cause: string; open: number; disputed: number; resolved: number; total: number }>();
     let totalDays = 0;
     let openCount = 0;
@@ -321,7 +316,7 @@ export function DelaysByCauseCard({
     }
     const data = [...byCause.values()].sort((a, b) => b.total - a.total).slice(0, 8);
     return { data, totalDays, openCount };
-  }, [rows]);
+  }, [rawRows]);
 
   const height = Math.max(240, data.length * 40 + 60);
 

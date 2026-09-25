@@ -16,6 +16,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     label: "Schedule",
     href: "/dashboard/planning",
     items: [
+      { label: "Overview", href: "/dashboard/planning/overview" },
       { label: "Dashboard", href: "/dashboard/planning" },
       { label: "Gantt Chart", href: "/dashboard/planning/gantt" },
       { label: "Sheet", href: "/dashboard/planning/sheet" },
@@ -78,6 +79,9 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Norm Library", href: "/dashboard/planning/productivity" },
       { label: "Task Work", href: "/dashboard/planning/productivity/task-work" },
+      { label: "BOQ Mapping", href: "/dashboard/planning/productivity/boq-mapping" },
+      { label: "Cost Rollup", href: "/dashboard/planning/productivity/cost-rollup" },
+      { label: "Site Records", href: "/dashboard/planning/productivity/site-records" },
     ],
   },
 ];

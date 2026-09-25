@@ -1,12 +1,7 @@
 "use client";
 
-import { ModulePageLayout } from "@/components/dashboard/module-page-layout";
-import { PlanningModuleHeaderTabs } from "@/components/dashboard/planning-module-header-tabs";
+import { PlanningModuleShell } from "@/components/planning/planning-module-shell";
 
 export default function PlanningLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <ModulePageLayout headerTabs={<PlanningModuleHeaderTabs />}>
-      {children}
-    </ModulePageLayout>
-  );
+  return <PlanningModuleShell>{children}</PlanningModuleShell>;
 }

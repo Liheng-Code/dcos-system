@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { levelResources, type LevelTask } from "../resource-levelling";
 import { DEFAULT_CALENDAR } from "../work-calendar";
-import { referenceLevel } from "./reference-levelling";
+import { referenceLevel, type RefTask } from "./reference-levelling";
 
 const cal = DEFAULT_CALENDAR; // Mon–Fri
 // The reference is the slow original, so keep the sample modest.
@@ -21,16 +21,23 @@ function rng(seed: number) {
   return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32);
 }
 
-function instance(seed: number): { tasks: LevelTask[]; capacities: Record<string, number> } {
+// Every generated task demands exactly ONE resource, so `tasks` (the real engine's multi-resource shape,
+// with a single-entry `resources[]`) and `refTasks` (the oracle's single-resource shape) describe the same
+// programme — the oracle has no notion of multi-resource, so there is nothing to generate for it there.
+function instance(seed: number): { tasks: LevelTask[]; refTasks: RefTask[]; capacities: Record<string, number> } {
   const r = rng(seed);
   const pick = (n: number) => Math.floor(r() * n);
   const resources = ["Crew A", "Crew B", "Crew C"].slice(0, 1 + pick(3));
   const capacities: Record<string, number> = {};
   for (const res of resources) capacities[res] = 5 + pick(6); // 5..10 units
   const n = 4 + pick(7); // 4..10 tasks
-  const tasks: LevelTask[] = Array.from({ length: n }, (_, i) => {
+  const tasks: LevelTask[] = [];
+  const refTasks: RefTask[] = [];
+  for (let i = 0; i < n; i++) {
     const startDay = 5 + pick(12);
-    return {
+    const resource = resources[pick(resources.length)];
+    const units = 1 + pick(3); // 1..3 units per task (headcount-scale)
+    const common = {
       id: `T${String(i).padStart(2, "0")}`,
       task_code: `T${String(i).padStart(2, "0")}`,
       task_name: `T${i}`,
@@ -39,12 +46,12 @@ function instance(seed: number): { tasks: LevelTask[]; capacities: Record<string
       freeFloatWd: 60,
       earliestStart: `2026-01-${String(startDay).padStart(2, "0")}`,
       latestFinish: "2026-12-31",
-      resource: resources[pick(resources.length)],
-      resourceUnits: 1 + pick(3), // 1..3 units per task (headcount-scale)
       priority: 1 + pick(4),
     };
-  });
-  return { tasks, capacities };
+    tasks.push({ ...common, resources: [{ resourceId: resource, units }] });
+    refTasks.push({ ...common, resource, resourceUnits: units });
+  }
+  return { tasks, refTasks, capacities };
 }
 
 describe("levelResources — incremental engine matches the original algorithm", () => {
@@ -53,8 +60,8 @@ describe("levelResources — incremental engine matches the original algorithm",
     let exactWithMoves = 0;
     let skipped = 0;
     for (let seed = 1; seed <= SEEDS; seed++) {
-      const { tasks, capacities } = instance(seed);
-      const ref = referenceLevel(tasks, cal, capacities);
+      const { tasks, refTasks, capacities } = instance(seed);
+      const ref = referenceLevel(refTasks, cal, capacities);
       const got = levelResources(tasks, cal, capacities);
       expect(got.stoppedAtLimit, `seed ${seed}`).toBe(false);
 
@@ -79,8 +86,8 @@ describe("levelResources — incremental engine matches the original algorithm",
 
   it("where the original gave up early, the engine does at least as well", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
-      const { tasks, capacities } = instance(seed);
-      const ref = referenceLevel(tasks, cal, capacities);
+      const { tasks, refTasks, capacities } = instance(seed);
+      const ref = referenceLevel(refTasks, cal, capacities);
       if (!ref.stoppedNoMover) continue;
       const got = levelResources(tasks, cal, capacities);
       // Every task the original moved is moved at least as far (the engine keeps pushing others too).
@@ -97,10 +104,10 @@ describe("levelResources — incremental engine matches the original algorithm",
     // Crew B: T3 + T4 overlap with float → fixable, and must still be levelled.
     const zero = { totalFloatWd: 0, freeFloatWd: 0, latestFinish: "2026-01-07" };
     const tasks: LevelTask[] = [
-      { id: "T1", task_code: "T1", task_name: "T1", durationWd: 3, earliestStart: "2026-01-05", resource: "Crew A", resourceUnits: 1, priority: 1, ...zero },
-      { id: "T2", task_code: "T2", task_name: "T2", durationWd: 3, earliestStart: "2026-01-05", resource: "Crew A", resourceUnits: 1, priority: 2, ...zero },
-      { id: "T3", task_code: "T3", task_name: "T3", durationWd: 3, earliestStart: "2026-01-05", resource: "Crew B", resourceUnits: 1, priority: 1, totalFloatWd: 10, freeFloatWd: 10, latestFinish: "2026-01-30" },
-      { id: "T4", task_code: "T4", task_name: "T4", durationWd: 3, earliestStart: "2026-01-05", resource: "Crew B", resourceUnits: 1, priority: 2, totalFloatWd: 10, freeFloatWd: 10, latestFinish: "2026-01-30" },
+      { id: "T1", task_code: "T1", task_name: "T1", durationWd: 3, earliestStart: "2026-01-05", resources: [{ resourceId: "Crew A", units: 1 }], priority: 1, ...zero },
+      { id: "T2", task_code: "T2", task_name: "T2", durationWd: 3, earliestStart: "2026-01-05", resources: [{ resourceId: "Crew A", units: 1 }], priority: 2, ...zero },
+      { id: "T3", task_code: "T3", task_name: "T3", durationWd: 3, earliestStart: "2026-01-05", resources: [{ resourceId: "Crew B", units: 1 }], priority: 1, totalFloatWd: 10, freeFloatWd: 10, latestFinish: "2026-01-30" },
+      { id: "T4", task_code: "T4", task_name: "T4", durationWd: 3, earliestStart: "2026-01-05", resources: [{ resourceId: "Crew B", units: 1 }], priority: 2, totalFloatWd: 10, freeFloatWd: 10, latestFinish: "2026-01-30" },
     ];
     const result = levelResources(tasks, cal, { "Crew A": 1, "Crew B": 1 });
     expect(result.starts.get("T4")).toBe("2026-01-08"); // Crew B was levelled
@@ -110,7 +117,7 @@ describe("levelResources — incremental engine matches the original algorithm",
   });
 
   it("reports stoppedAtLimit false when it simply runs out of float", () => {
-    const tight: LevelTask = { id: "T1", task_code: "T1", task_name: "T1", durationWd: 3, totalFloatWd: 0, freeFloatWd: 0, earliestStart: "2026-01-05", latestFinish: "2026-01-07", resource: "Crew A", resourceUnits: 1, priority: 1 };
+    const tight: LevelTask = { id: "T1", task_code: "T1", task_name: "T1", durationWd: 3, totalFloatWd: 0, freeFloatWd: 0, earliestStart: "2026-01-05", latestFinish: "2026-01-07", resources: [{ resourceId: "Crew A", units: 1 }], priority: 1 };
     const result = levelResources([tight, { ...tight, id: "T2", task_code: "T2", priority: 2 }], cal);
     expect(result.overAllocationResolved).toBe(false);
     expect(result.stoppedAtLimit).toBe(false);

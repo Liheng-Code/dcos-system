@@ -11,11 +11,12 @@ import {
   Eye, EyeOff, Scissors, Ruler, Maximize2, Grid3X3, Camera,
   Settings, RotateCcw, Ghost, Layers, ArrowUpFromLine,
   Orbit, Hand, MousePointer2, Pencil, Trash2, Footprints,
-  ClipboardList, Loader2,
+  ClipboardList, Loader2, ListChecks,
 } from "lucide-react";
 import { Clipper, Hider } from "@thatopen/components";
 import { BimEditDialog } from "./bim-edit-dialog";
 import { BimDeleteDialog } from "./bim-delete-dialog";
+import { BimReviewPromoteDialog } from "./bim-review-promote-dialog";
 import { extractBoqFieldsFromItemData } from "@/lib/bim/ifc-helpers";
 import type { BimModel } from "@/lib/bim/bim-types";
 
@@ -69,6 +70,7 @@ export function BimToolbar({ modelId, model, onModelUpdated }: BimToolbarProps) 
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [promoteOpen, setPromoteOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
 
   const handleExtractTakeoff = async () => {
@@ -220,6 +222,7 @@ export function BimToolbar({ modelId, model, onModelUpdated }: BimToolbarProps) 
               label={extracting ? "Extracting..." : "Extract for Takeoff"}
               onClick={handleExtractTakeoff}
             />
+            <ToolBtn icon={ListChecks} label="Review & Promote Takeoff" onClick={() => setPromoteOpen(true)} />
             <ToolBtn icon={Pencil} label="Edit Model" onClick={() => setEditOpen(true)} />
             <ToolBtn icon={Trash2} label="Delete Model" onClick={() => setDeleteOpen(true)} />
           </>
@@ -239,6 +242,12 @@ export function BimToolbar({ modelId, model, onModelUpdated }: BimToolbarProps) 
             onOpenChange={setDeleteOpen}
             model={model}
             onComplete={handleDeleteComplete}
+          />
+          <BimReviewPromoteDialog
+            open={promoteOpen}
+            onOpenChange={setPromoteOpen}
+            modelId={modelId}
+            projectId={model.project_id}
           />
         </>
       )}

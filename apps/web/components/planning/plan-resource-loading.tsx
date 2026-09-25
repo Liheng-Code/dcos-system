@@ -3,15 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Pencil, Plus, Users, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Sparkles, Users, X } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
+import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   addAssignment,
+  aggregateByTrade,
   aggregateByType,
+  flagShortageWeeks,
   getResourceAllocation,
   listProjectAssignments,
   listResources,
@@ -20,6 +23,7 @@ import {
   type PlanResource,
   type ProjectAssignmentRow,
 } from "@/lib/planning/resource-service";
+import { generateResourceLoadingFromNorms } from "@/lib/planning/resource-generation-service";
 import { PlanResourceDialog } from "./plan-resource-dialog";
 import { PlanLevellingPanel } from "./plan-levelling-panel";
 
@@ -50,12 +54,15 @@ function initials(name: string): string {
 export function PlanResourceLoading() {
   const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
+  const { can } = usePlanningPermissions();
   const [tasks, setTasks] = useState<ResourceTask[]>([]);
   const [resources, setResources] = useState<PlanResource[]>([]);
   const [assignments, setAssignments] = useState<ProjectAssignmentRow[]>([]);
   const [allocation, setAllocation] = useState<AllocationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [dialogResource, setDialogResource] = useState<PlanResource | null | undefined>(undefined);
+  const canGenerate = can("resources", "edit") && can("resources", "delete");
 
   function load() {
     if (!selectedProjectId) {
@@ -138,6 +145,42 @@ export function PlanResourceLoading() {
     return map;
   }, [allocation, resources]);
   const histogramTypes = useMemo(() => [...histogramByType.keys()].sort(), [histogramByType]);
+
+  // Manpower required vs available BY TRADE (Phase 3) — a finer grouping than resource_type, driven by
+  // plan_resources.trade (set by "Generate from Norms"; a manual resource falls back to its own name).
+  const tradePoints = useMemo(() => aggregateByTrade(allocation, resources), [allocation, resources]);
+  const histogramByTrade = useMemo(() => {
+    const map = new Map<string, Map<string, { demand: number; capacity: number }>>();
+    for (const p of tradePoints) {
+      if (!map.has(p.trade)) map.set(p.trade, new Map());
+      map.get(p.trade)!.set(p.work_date, { demand: p.demand, capacity: p.capacity });
+    }
+    return map;
+  }, [tradePoints]);
+  const histogramTrades = useMemo(() => [...histogramByTrade.keys()].sort(), [histogramByTrade]);
+  const shortageWeeks = useMemo(() => flagShortageWeeks(tradePoints), [tradePoints]);
+  const shortageWeeksByTrade = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const w of shortageWeeks) map.set(w.trade, (map.get(w.trade) ?? 0) + 1);
+    return map;
+  }, [shortageWeeks]);
+
+  async function handleGenerate() {
+    if (!selectedProjectId) return;
+    setGenerating(true);
+    try {
+      const r = await generateResourceLoadingFromNorms(selectedProjectId);
+      toast.success(
+        `${r.assignmentsWritten} assignment${r.assignmentsWritten === 1 ? "" : "s"} generated`
+        + (r.resourcesCreated ? ` · ${r.resourcesCreated} new trade pool${r.resourcesCreated === 1 ? "" : "s"} created` : ""),
+      );
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   const relevantTasks = useMemo(
     () => tasks.filter((t) => assignedTaskIds.has(t.id) || t.owner_name),
@@ -318,6 +361,48 @@ export function PlanResourceLoading() {
     );
   }
 
+  function renderTradeHistogramStrip(trade: string) {
+    const byDate = histogramByTrade.get(trade);
+    const capacity = [...(byDate?.values() ?? [])][0]?.capacity ?? 0;
+    const shortageCount = shortageWeeksByTrade.get(trade) ?? 0;
+    return (
+      <div className="flex border-b last:border-0">
+        <div className="flex shrink-0 items-center gap-1.5 border-r px-2 py-1.5 text-xs" style={{ width: LABEL_W }}>
+          <span className="truncate font-medium" title={trade}>{trade}</span>
+          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">avail {capacity / 100}</span>
+          {shortageCount > 0 && (
+            <span className="shrink-0 rounded-full border border-red-500/30 bg-red-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-red-400" title={`${shortageCount} week${shortageCount === 1 ? "" : "s"} where required exceeds available`}>
+              {shortageCount} short
+            </span>
+          )}
+        </div>
+        <div className="relative flex" style={{ width: chartW }}>
+          {Array.from({ length: totalDays }).map((_, i) => {
+            const d = new Date(dateRange.min.getTime() + i * 86400000);
+            const key = d.toISOString().slice(0, 10);
+            const point = byDate?.get(key);
+            const ratio = point && point.capacity > 0 ? point.demand / point.capacity : point && point.demand > 0 ? 2 : 0;
+            const color = !point || point.demand <= 0
+              ? "bg-transparent"
+              : ratio > 1
+                ? "bg-red-500"
+                : ratio > 0.85
+                  ? "bg-amber-400"
+                  : "bg-emerald-300";
+            return (
+              <div
+                key={i}
+                className={cn("h-5 shrink-0 border-r border-background", color)}
+                style={{ width: BAR_W }}
+                title={point ? `${key}: ${point.demand / 100} required of ${point.capacity / 100} available${ratio > 1 ? " — SHORTAGE" : ""}` : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -335,13 +420,26 @@ export function PlanResourceLoading() {
             <p className="text-xs text-muted-foreground">Unassigned (Legacy)</p>
           </CardContent></Card>
         </div>
-        <button
-          type="button"
-          onClick={() => setDialogResource(null)}
-          className="ml-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-3.5 w-3.5" /> Add Resource
-        </button>
+        <div className="ml-4 flex gap-2">
+          {canGenerate && (
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating}
+              title="Rebuilds every trade's assignments from Task Work's quantity + norm (Planning ▸ Productivity). Manual assignments are never touched."
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Generate from Norms
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setDialogResource(null)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Resource
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
@@ -366,6 +464,33 @@ export function PlanResourceLoading() {
               <div className="min-w-fit">
                 {renderDayHeader()}
                 {histogramTypes.map((type) => <div key={type}>{renderHistogramStrip(type)}</div>)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {histogramTrades.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold">Manpower Required vs Available (by trade)</span>
+                <p className="text-[10px] text-muted-foreground">Required = crew from Task Work&apos;s quantity + norm. Available = active resources&apos; capacity. Numbers are workers, not percent.</p>
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-300" /> ≤85%</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" /> 85–100%</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" /> Shortage</span>
+              </div>
+            </div>
+            {shortageWeeks.length > 0 && (
+              <p className="mb-2 text-[11px] text-amber-400">{shortageWeeks.length} trade-week{shortageWeeks.length === 1 ? "" : "s"} where required exceeds available — see the &quot;short&quot; badges below.</p>
+            )}
+            <div className="overflow-x-auto">
+              <div className="min-w-fit">
+                {renderDayHeader()}
+                {histogramTrades.map((trade) => <div key={trade}>{renderTradeHistogramStrip(trade)}</div>)}
               </div>
             </div>
           </CardContent>

@@ -18,3 +18,5 @@ docs/04-Business-Modules/31-cwims/TLY*.csv
 
 # Claude Code personal settings
 .claude/settings.local.json
+
+.backups/

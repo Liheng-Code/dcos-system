@@ -43,7 +43,11 @@ export function buildLevellingProfile(
   capacities: Record<string, number>,
   result: ResourceLevellingResult,
 ): LevellingProfile {
-  const pool = tasks.filter((t) => t.resource && t.resourceUnits > 0 && t.durationWd > 0 && !!t.earliestStart);
+  // "Total concurrent units" sums a task's demand ACROSS every resource it holds at once (crew + crane both
+  // count), same convention `peaks` uses per resource in the engine itself — this chart shows one combined
+  // curve, so a task with two resources contributes once per resource to that curve, which is intentional:
+  // it is asking "how much is committed, in total, on this day", not "how many distinct tasks are running".
+  const pool = tasks.filter((t) => t.resources.length > 0 && t.durationWd > 0 && !!t.earliestStart);
 
   const totalBefore = new Map<string, number>();
   const totalAfter = new Map<string, number>();
@@ -58,15 +62,17 @@ export function buildLevellingProfile(
   ) => {
     const finish = addWorkingDays(cal, start, t.durationWd - 1);
     for (const date of workingDates(cal, start, finish)) {
-      total.set(date, (total.get(date) ?? 0) + t.resourceUnits);
-      const key = `${t.resource}\u0000${date}`;
-      perRes.set(key, (perRes.get(key) ?? 0) + t.resourceUnits);
+      for (const dem of t.resources) {
+        total.set(date, (total.get(date) ?? 0) + dem.units);
+        const key = `${dem.resourceId}\u0000${date}`;
+        perRes.set(key, (perRes.get(key) ?? 0) + dem.units);
+      }
     }
   };
 
   const resources = new Set<string>();
   for (const t of pool) {
-    resources.add(t.resource!);
+    for (const dem of t.resources) resources.add(dem.resourceId);
     const startBefore = nextWorkingDay(cal, t.earliestStart, 1);
     const startAfter = result.starts.get(t.id) ?? startBefore;
     add(t, startBefore, totalBefore, perResBefore);

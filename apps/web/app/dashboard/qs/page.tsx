@@ -214,7 +214,7 @@ function QsContent() {
           <div className="mt-3">
             <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-muted-foreground hover:text-foreground" onClick={() => { router.push("/dashboard/qs"); setTab(null); }}>
               <ArrowRight className="h-4 w-4 rotate-180" />
-              Back to Overview
+              Back to Dashboard
             </Button>
           </div>
         </div>

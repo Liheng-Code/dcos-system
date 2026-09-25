@@ -77,6 +77,8 @@ const NODE_COLS =
 const LOCK_TOAST =
   "Locked — this WBS branch is a Planning backbone. Unlock it in the WBS module to edit.";
 const TASK_LIMIT = 1000;
+const NODE_LIMIT = 2000;
+const CALENDAR_EXCEPTION_LIMIT = 5000;
 
 function isDuplicateTaskCodeError(message: string) {
   return (
@@ -205,6 +207,15 @@ export function useSheetData(
    * selector to look at a saved schedule revision without editing it.
    */
   overrideDates?: Map<string, { start: string | null; end: string | null }> | null,
+  /**
+   * When `false`, the mount/project-change effect below does not auto-fetch —
+   * the caller drives loading entirely via `reload()`. Every existing call
+   * site fetches immediately as before (default `true`); the Planning
+   * Dashboard is the one caller that passes `false`, so it can restore a
+   * cached snapshot instantly and only hit the network on an explicit
+   * Refresh (see `app/dashboard/planning/page.tsx`).
+   */
+  enabled = true,
 ): UseSheetData {
   const supabase = useMemo(() => createClient(), []);
   const [tasks, setTasks] = useState<SheetTask[]>([]);
@@ -325,7 +336,8 @@ export function useSheetData(
         .from("wbs_nodes")
         .select(NODE_COLS)
         .eq("project_id", projectId)
-        .order("sort_order", { ascending: true, nullsFirst: false }),
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .limit(NODE_LIMIT),
       supabase
         .from("projects")
         .select("id, project_code, project_name, progress_percentage, data_date, end_date")
@@ -416,7 +428,8 @@ export function useSheetData(
       const exRes = await supabase
         .from("plan_calendar_exceptions")
         .select("exception_date, is_working")
-        .eq("calendar_id", calRow.id);
+        .eq("calendar_id", calRow.id)
+        .limit(CALENDAR_EXCEPTION_LIMIT);
       exceptions = (exRes.data ?? []) as PlanCalendarExceptionRow[];
     } else if (warnedNoCalendar.current !== projectId) {
       warnedNoCalendar.current = projectId;
@@ -467,13 +480,15 @@ export function useSheetData(
 
   useEffect(() => {
     let cancelled = false;
-    if (!projectId) {
+    if (!projectId || !enabled) {
       /* eslint-disable react-hooks/set-state-in-effect */
-      setTasks([]);
-      setNodes([]);
-      setProject(null);
-      setContainerId(null);
-      setCalendar(DEFAULT_CALENDAR);
+      if (!projectId) {
+        setTasks([]);
+        setNodes([]);
+        setProject(null);
+        setContainerId(null);
+        setCalendar(DEFAULT_CALENDAR);
+      }
       setLoading(false);
       /* eslint-enable react-hooks/set-state-in-effect */
       return;
@@ -485,7 +500,7 @@ export function useSheetData(
     return () => {
       cancelled = true;
     };
-  }, [projectId, fetchAll]);
+  }, [projectId, fetchAll, enabled]);
 
   const reload = useCallback(async () => {
     await fetchAll();
