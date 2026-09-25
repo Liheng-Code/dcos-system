@@ -1,4 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
+import {
+  validateBoqForLock,
+  summarizeBoqIssues,
+  BoqLockValidationError,
+  type BoqIssue,
+  type BoqValidationItem,
+} from "@/lib/qs-boq-validation";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -318,6 +325,12 @@ export async function updateBoq(
     status?: BoqStatus;
   },
 ): Promise<QsBoq> {
+  // The header Status dropdown must not be a way around the pre-lock checks. Only an actual
+  // transition into 'locked' is checked, so editing an already-locked BOQ's title still works.
+  if (payload.status === "locked") {
+    const { data: current } = await createClient().from("qs_boq").select("status").eq("id", id).single();
+    if (current?.status !== "locked") await assertBoqLockable(id);
+  }
   const { data, error } = await createClient()
     .from("qs_boq")
     .update({ ...payload, updated_at: new Date().toISOString() })
@@ -482,6 +495,12 @@ export async function updateBoqBaselineStatus(
   boqId?: string,
 ): Promise<void> {
   const supabase = createClient();
+  if (status === "locked") {
+    // A per-BOQ check cannot cover the project-wide branch below, so locking needs a boqId.
+    if (!boqId) throw new Error("Locking a baseline requires a specific BOQ.");
+    await assertBaselineTransitionToLocked(boqId);
+    await assertBoqLockable(boqId);
+  }
   const { data: { user } } = await supabase.auth.getUser();
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {
@@ -516,6 +535,79 @@ export async function updateBoqBaselineStatus(
     if (sectionRes.error) throw new Error(sectionRes.error.message);
     if (itemRes.error) throw new Error(itemRes.error.message);
   }
+}
+
+// ── BOQ pre-lock validation ──────────────────────────────────────────────────
+// Rules live in lib/qs-boq-validation.ts; this section only loads the data and
+// enforces the result. Client-side only (RLS on these tables is open), so it
+// covers every normal path in the app but not direct API writes.
+
+const VALIDATION_PAGE = 1000; // supabase/config.toml max_rows — a plain select would silently truncate
+const VALIDATION_SECTION_CHUNK = 50;
+
+// Exported so a test can force a tiny page and prove the pagination path.
+export async function loadBoqItemsPaged(
+  boqSectionIds: string[],
+  pageSize: number = VALIDATION_PAGE,
+): Promise<BoqValidationItem[]> {
+  const supabase = createClient();
+  const all: BoqValidationItem[] = [];
+  for (let i = 0; i < boqSectionIds.length; i += VALIDATION_SECTION_CHUNK) {
+    const chunk = boqSectionIds.slice(i, i + VALIDATION_SECTION_CHUNK);
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("qs_boq_items")
+        .select("id, boq_section_id, seq, item_no, item_code, description, unit, quantity, unit_rate, is_provisional, budget_code_id, elemental_category")
+        .in("boq_section_id", chunk)
+        .order("id")
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as BoqValidationItem[];
+      all.push(...rows);
+      if (rows.length < pageSize) break;
+    }
+  }
+  return all;
+}
+
+export async function checkBoqForLock(boqId: string): Promise<BoqIssue[]> {
+  const supabase = createClient();
+  const [headerRes, sectionsRes, codesRes] = await Promise.all([
+    supabase.from("qs_boq").select("boq_type").eq("id", boqId).single(),
+    supabase.from("qs_boq_sections").select("id, title").eq("boq_id", boqId).order("seq"),
+    supabase.from("budget_codes").select("id, code, is_active"),
+  ]);
+  if (headerRes.error) throw new Error(headerRes.error.message);
+  if (sectionsRes.error) throw new Error(sectionsRes.error.message);
+  if (codesRes.error) throw new Error(codesRes.error.message);
+  const sections = sectionsRes.data ?? [];
+  // Every item under the BOQ counts, whatever its own baseline_status: new items land as 'draft'
+  // inside an approved BOQ and the lock update overwrites them all.
+  const items = sections.length > 0 ? await loadBoqItemsPaged(sections.map((s) => s.id)) : [];
+  return validateBoqForLock({
+    header: { boq_type: headerRes.data.boq_type as BoqType },
+    sections,
+    items,
+    budgetCodes: codesRes.data ?? [],
+  });
+}
+
+async function assertBoqLockable(boqId: string): Promise<void> {
+  const issues = await checkBoqForLock(boqId);
+  if (summarizeBoqIssues(issues).errors > 0) throw new BoqLockValidationError(issues);
+}
+
+// The old function would set 'locked' from any state, including straight from 'draft'.
+async function assertBaselineTransitionToLocked(boqId: string): Promise<void> {
+  const { data, error } = await createClient()
+    .from("qs_boq_sections")
+    .select("baseline_status")
+    .eq("boq_id", boqId);
+  if (error) throw new Error(error.message);
+  const states = (data ?? []).map((s) => s.baseline_status ?? "draft");
+  if (states.length === 0) return; // an empty BOQ is reported by the validator
+  if (states.every((s) => s === "locked")) throw new Error("This BOQ baseline is already locked.");
+  if (states.every((s) => s === "draft")) throw new Error("Approve the BOQ baseline before locking it.");
 }
 
 // ── Budget summary ────────────────────────────────────────────────────────────

@@ -815,6 +815,9 @@ function buildingLabel(code: string): string {
 export function printTenderSubmission(data: TenderSubmissionData): void {
   const { tender, bidSummary, elementalSummary, preliminariesTotal, preliminariesItems,
     boqItemsGrouped, excludeItems, directWorksTotal, blendedRate } = data;
+  const externalRefs = data.primaryExternalRefs ?? {};
+  const refSuffix = (budgetCodeId: string | null) =>
+    budgetCodeId && externalRefs[budgetCodeId] ? ` <span style="font-weight:normal;color:#666">(${externalRefs[budgetCodeId]})</span>` : "";
   const today = new Date().toLocaleDateString();
   const bs = bidSummary;
 
@@ -975,7 +978,7 @@ export function printTenderSubmission(data: TenderSubmissionData): void {
         tables += `
           <table class="repeat-header">
             <thead>
-              <tr><th colspan="10" style="background:#fff;color:#111;border:none;font-size:10pt;text-align:left;padding:0 0 6px">${label} — ${title} · ${bc.code} ${bc.description}</th></tr>
+              <tr><th colspan="10" style="background:#fff;color:#111;border:none;font-size:10pt;text-align:left;padding:0 0 6px">${label} — ${title} · ${bc.code} ${bc.description}${refSuffix(bc.budgetCodeId)}</th></tr>
               <tr><th style="width:45px">Level</th><th style="width:65px">Item</th><th style="width:130px">Section</th><th style="width:150px">Sub Section</th><th style="width:150px">Sub Element</th><th>Description</th><th style="width:40px">Unit</th><th style="width:60px">Qty</th><th style="width:95px">Rate</th><th style="width:110px">Amount</th></tr>
             </thead>
             <tbody>

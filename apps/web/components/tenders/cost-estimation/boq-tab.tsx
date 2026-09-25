@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment, useRef, useMemo } from "react";
-import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3 } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,8 +28,9 @@ import { TenderCostImportDialog } from "./tender-cost-import-dialog";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { BoqElementLibraryPickerDialog, type BoqElementLibrarySelection } from "./boq-element-library-picker-dialog";
 import { PriceListPickerDialog } from "./price-list-picker-dialog";
+import { AiBoqDraftDialog } from "./ai-boq-draft-dialog";
 
-const BOQ_UNITS = ["m", "m2", "m3", "kg", "tonne", "pcs", "no", "set", "day", "hr", "ls", "months", "bag", "roll", "sheet", "trip"];
+import { BOQ_UNITS } from "@/lib/boq-units";
 
 const emptyForm = {
   budget_code: "", section: "", sub_section: "", sub_element: "", level: "All", building_code: "", discipline: "", description: "", unit: "m",
@@ -50,6 +51,7 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAiDraft, setShowAiDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -677,6 +679,11 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
           </Button>
           )}
           {can("tender_boq", "can_create") && (
+          <Button size="sm" variant="outline" onClick={() => setShowAiDraft(true)} disabled={saving}>
+            <Sparkles className="mr-1 h-4 w-4" /> AI Draft from Drawing
+          </Button>
+          )}
+          {can("tender_boq", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowPriceListPicker(true)} disabled={saving}>
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Tag className="mr-1 h-4 w-4" />} Add from Price List
           </Button>
@@ -1097,6 +1104,15 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
         priceList={priceList}
         onConfirm={handlePriceListSelect}
       />
+
+      {showAiDraft && (
+        <AiBoqDraftDialog
+          tenderId={tenderId}
+          budgetCodes={budgetCodes}
+          onClose={() => setShowAiDraft(false)}
+          onAccepted={() => void load()}
+        />
+      )}
 
       {/* Assign form — intermediate step after Element Library or Price List selection */}
       {(() => {

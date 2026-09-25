@@ -20,8 +20,34 @@ export interface BudgetCode {
   is_active: boolean;
 }
 
+// Crosswalk from a firm budget code to an external classification standard.
+// Many refs per code: the A–Z codes are elemental, so one code usually spans
+// several MasterFormat divisions, and clients may want two standards at once.
+export type ExternalStandard = "csi_masterformat" | "csi_uniformat" | "rics_nrm1" | "rics_nrm2" | "din_276" | "other";
+
+export const EXTERNAL_STANDARDS: { value: ExternalStandard; label: string; short: string }[] = [
+  { value: "csi_masterformat", label: "CSI MasterFormat", short: "MF" },
+  { value: "csi_uniformat", label: "CSI UniFormat", short: "UF" },
+  { value: "rics_nrm1", label: "RICS NRM 1", short: "NRM1" },
+  { value: "rics_nrm2", label: "RICS NRM 2", short: "NRM2" },
+  { value: "din_276", label: "DIN 276", short: "DIN" },
+  { value: "other", label: "Other", short: "Other" },
+];
+
+export interface BudgetCodeExternalRef {
+  id: string;
+  budget_code_id: string;
+  standard: ExternalStandard;
+  standard_version: string | null;
+  external_code: string;
+  external_title: string | null;
+  is_primary: boolean;
+  notes: string | null;
+}
+
 export interface BudgetCodeTreeNode extends BudgetCode {
-  children: BudgetCode[];
+  children: (BudgetCode & { external_refs: BudgetCodeExternalRef[] })[];
+  external_refs: BudgetCodeExternalRef[];
 }
 
 export interface BudgetCodeGroupTree {
@@ -687,9 +713,12 @@ export async function getBudgetCodes(): Promise<BudgetCode[]> {
 }
 
 export async function getBudgetCodeTree(): Promise<BudgetCodeGroupTree[]> {
-  const [groups, codes] = await Promise.all([getBudgetCodeGroups(), getBudgetCodes()]);
+  const [groups, rawCodes, refs] = await Promise.all([getBudgetCodeGroups(), getBudgetCodes(), listBudgetCodeExternalRefs()]);
+  const refsByCode = new Map<string, BudgetCodeExternalRef[]>();
+  for (const r of refs) refsByCode.set(r.budget_code_id, [...(refsByCode.get(r.budget_code_id) ?? []), r]);
+  const codes = rawCodes.map((c) => ({ ...c, external_refs: refsByCode.get(c.id) ?? [] }));
   const level2 = codes.filter((c) => c.code_level === 2);
-  const childrenByParent: Record<string, BudgetCode[]> = {};
+  const childrenByParent: Record<string, (BudgetCode & { external_refs: BudgetCodeExternalRef[] })[]> = {};
   for (const c of codes) {
     if (c.parent_code_id) {
       (childrenByParent[c.parent_code_id] ??= []).push(c);
@@ -705,6 +734,95 @@ export async function getBudgetCodeTree(): Promise<BudgetCodeGroupTree[]> {
       .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
       .map((c) => ({ ...c, children: childrenByParent[c.id] ?? [] })),
   }));
+}
+
+// ── Budget code external refs (crosswalk) ───────────────────────────────────
+
+export async function listBudgetCodeExternalRefs(): Promise<BudgetCodeExternalRef[]> {
+  const { data, error } = await createClient()
+    .from("budget_code_external_refs")
+    .select("id, budget_code_id, standard, standard_version, external_code, external_title, is_primary, notes")
+    .order("standard")
+    .order("external_code");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BudgetCodeExternalRef[];
+}
+
+type ExternalRefInput = {
+  standard: ExternalStandard;
+  standard_version?: string | null;
+  external_code: string;
+  external_title?: string | null;
+  is_primary?: boolean;
+  notes?: string | null;
+};
+
+// Only one primary ref per (code, standard) — enforced by a partial unique
+// index — so clear any existing primary for that standard before setting one.
+async function clearPrimary(budgetCodeId: string, standard: ExternalStandard, exceptId?: string) {
+  let q = createClient()
+    .from("budget_code_external_refs")
+    .update({ is_primary: false })
+    .eq("budget_code_id", budgetCodeId)
+    .eq("standard", standard)
+    .eq("is_primary", true);
+  if (exceptId) q = q.neq("id", exceptId);
+  const { error } = await q;
+  if (error) throw new Error(error.message);
+}
+
+export async function createBudgetCodeExternalRef(budgetCodeId: string, input: ExternalRefInput): Promise<BudgetCodeExternalRef> {
+  if (input.is_primary) await clearPrimary(budgetCodeId, input.standard);
+  const { data, error } = await createClient()
+    .from("budget_code_external_refs")
+    .insert({
+      budget_code_id: budgetCodeId,
+      standard: input.standard,
+      standard_version: input.standard_version?.trim() || null,
+      external_code: input.external_code.trim(),
+      external_title: input.external_title?.trim() || null,
+      is_primary: input.is_primary ?? false,
+      notes: input.notes?.trim() || null,
+    })
+    .select("id, budget_code_id, standard, standard_version, external_code, external_title, is_primary, notes")
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("This budget code already has that external code for this standard.");
+    throw new Error(error.message);
+  }
+  return data as BudgetCodeExternalRef;
+}
+
+export async function updateBudgetCodeExternalRef(id: string, budgetCodeId: string, input: ExternalRefInput): Promise<BudgetCodeExternalRef> {
+  if (input.is_primary) await clearPrimary(budgetCodeId, input.standard, id);
+  const { data, error } = await createClient()
+    .from("budget_code_external_refs")
+    .update({
+      standard: input.standard,
+      standard_version: input.standard_version?.trim() || null,
+      external_code: input.external_code.trim(),
+      external_title: input.external_title?.trim() || null,
+      is_primary: input.is_primary ?? false,
+      notes: input.notes?.trim() || null,
+    })
+    .eq("id", id)
+    .select("id, budget_code_id, standard, standard_version, external_code, external_title, is_primary, notes")
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("This budget code already has that external code for this standard.");
+    throw new Error(error.message);
+  }
+  return data as BudgetCodeExternalRef;
+}
+
+export async function deleteBudgetCodeExternalRef(id: string): Promise<void> {
+  const { error } = await createClient().from("budget_code_external_refs").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export function formatExternalRef(ref: Pick<BudgetCodeExternalRef, "standard" | "external_code">): string {
+  const short = EXTERNAL_STANDARDS.find((s) => s.value === ref.standard)?.short ?? ref.standard;
+  return `${short} ${ref.external_code}`;
 }
 
 export async function createBudgetCode(payload: {
@@ -1877,6 +1995,8 @@ export interface TenderSubmissionData {
   excludeItems: TenderExcludeItem[];
   directWorksTotal: number;
   blendedRate: number | null;
+  // budget_code_id → primary external refs, e.g. "MF 04 20 00 · NRM1 2.5.1" (only codes that have any).
+  primaryExternalRefs: Record<string, string>;
 }
 
 export async function getTenderSubmissionData(tenderId: string, bidSummaryId?: string): Promise<TenderSubmissionData> {
@@ -1888,6 +2008,7 @@ export async function getTenderSubmissionData(tenderId: string, bidSummaryId?: s
     grouped,
     preliminariesItems,
     excludeItems,
+    externalRefs,
   ] = await Promise.all([
     supabase
       .from("tender_register")
@@ -1898,7 +2019,18 @@ export async function getTenderSubmissionData(tenderId: string, bidSummaryId?: s
     getBoqItemsGrouped(tenderId),
     getPreliminariesItems(tenderId),
     getExcludeItems(tenderId),
+    // The crosswalk is optional decoration for the print — never fail the submission over it.
+    listBudgetCodeExternalRefs().catch(() => [] as BudgetCodeExternalRef[]),
   ]);
+
+  const primaryExternalRefs: Record<string, string> = {};
+  for (const r of externalRefs) {
+    if (!r.is_primary) continue;
+    const label = formatExternalRef(r);
+    primaryExternalRefs[r.budget_code_id] = primaryExternalRefs[r.budget_code_id]
+      ? `${primaryExternalRefs[r.budget_code_id]} · ${label}`
+      : label;
+  }
 
   if (tender.error) throw new Error(tender.error.message);
 
@@ -1927,6 +2059,7 @@ export async function getTenderSubmissionData(tenderId: string, bidSummaryId?: s
     excludeItems,
     directWorksTotal,
     blendedRate,
+    primaryExternalRefs,
   };
 }
 

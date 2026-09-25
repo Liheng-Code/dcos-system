@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -117,13 +118,18 @@ export function DwlAssemblyResourceLineFormDialog({
       });
   }, [open, editingLine, nextSortOrder, resourceCategory, reset, supabase]);
 
+  // Hybrid search: ranked (typo-tolerant, meaning-based) hits first, plus the plain substring matches.
+  const librarySearch = useQsLibrarySearch(resourceSearch, ["resource"]);
   const filteredResources = useMemo(() => {
     if (!resourceSearch.trim()) return resources.slice(0, 50);
     const q = resourceSearch.trim().toLowerCase();
+    const ranks = librarySearch.ranks;
+    const rankOf = (id: string) => ranks?.get(id) ?? Number.MAX_SAFE_INTEGER;
     return resources
-      .filter((r) => r.code.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))
+      .filter((r) => (ranks?.has(r.id) ?? false) || r.code.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))
+      .sort((a, b) => rankOf(a.id) - rankOf(b.id))
       .slice(0, 50);
-  }, [resources, resourceSearch]);
+  }, [resources, resourceSearch, librarySearch.ranks]);
 
   async function onSubmit(values: ResourceLineFormValues) {
     if (!tenantId) {

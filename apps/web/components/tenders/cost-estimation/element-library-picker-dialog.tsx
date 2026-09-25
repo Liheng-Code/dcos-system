@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -28,6 +30,7 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
   const [expandedElements, setExpandedElements] = useState<Set<string>>(new Set());
   const [selectedElements, setSelectedElements] = useState<Set<string>>(new Set());
   const [selectedDescs, setSelectedDescs] = useState<Map<string, Set<string>>>(new Map());
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -40,21 +43,52 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
         setExpandedElements(new Set());
         setSelectedElements(new Set());
         setSelectedDescs(new Map());
+        setSearch("");
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load Element Library"))
       .finally(() => setLoading(false));
   }, [open]);
 
+  // Hybrid search (typo-tolerant + meaning-based) over element paths and description
+  // text. Filtering is display-only: selecting an element still pulls all of its
+  // descriptions, so selection counts below use the unfiltered descsByElement.
+  const librarySearch = useQsLibrarySearch(search, ["element", "element_description"]);
+  const isSearching = search.trim().length > 0;
+  const searchMatch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    const ranks = librarySearch.ranks;
+    const pathMatched = new Set<string>();
+    for (const el of elements) {
+      const path = `${el.discipline} ${el.section} ${el.sub_section} ${el.sub_element}`.toLowerCase();
+      if ((ranks?.has(el.id) ?? false) || path.includes(q)) pathMatched.add(el.id);
+    }
+    const descMatched = new Set<string>();
+    const elementsWithDescMatch = new Set<string>();
+    for (const d of descriptions) {
+      if ((ranks?.has(d.id) ?? false) || d.description.toLowerCase().includes(q)) {
+        descMatched.add(d.id);
+        elementsWithDescMatch.add(d.element_library_id);
+      }
+    }
+    return { pathMatched, descMatched, elementsWithDescMatch };
+  }, [elements, descriptions, search, librarySearch.ranks]);
+
+  const visibleElements = useMemo(
+    () => (searchMatch ? elements.filter((el) => searchMatch.pathMatched.has(el.id) || searchMatch.elementsWithDescMatch.has(el.id)) : elements),
+    [elements, searchMatch],
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, Map<string, QsElementLibraryItem[]>>();
-    for (const el of elements) {
+    for (const el of visibleElements) {
       if (!map.has(el.discipline)) map.set(el.discipline, new Map());
       const sections = map.get(el.discipline)!;
       if (!sections.has(el.section)) sections.set(el.section, []);
       sections.get(el.section)!.push(el);
     }
     return map;
-  }, [elements]);
+  }, [visibleElements]);
 
   const descsByElement = useMemo(() => {
     const map = new Map<string, QsDescriptionLibraryItem[]>();
@@ -64,6 +98,17 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
     }
     return map;
   }, [descriptions]);
+
+  // Descriptions shown under an element: all of them, unless a search narrows to the matching ones
+  // (an element matched by its own path still shows all its descriptions).
+  const visibleDescsByElement = useMemo(() => {
+    if (!searchMatch) return descsByElement;
+    const map = new Map<string, QsDescriptionLibraryItem[]>();
+    for (const [elId, descs] of descsByElement) {
+      map.set(elId, searchMatch.pathMatched.has(elId) ? descs : descs.filter((d) => searchMatch.descMatched.has(d.id)));
+    }
+    return map;
+  }, [descsByElement, searchMatch]);
 
   function toggleDiscipline(disc: string) {
     setExpandedDisciplines((prev) => {
@@ -158,9 +203,25 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
         ) : elements.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">No active Element Library items found.</p>
         ) : (
+          <>
+          <div className="relative shrink-0">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search elements & descriptions... (typos OK)"
+              className="pl-8"
+            />
+            {librarySearch.searching && (
+              <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          {isSearching && grouped.size === 0 && !librarySearch.searching && (
+            <p className="py-6 text-center text-sm text-muted-foreground">No elements match &quot;{search.trim()}&quot;.</p>
+          )}
           <div className="flex-1 overflow-y-auto space-y-1 pr-1">
             {Array.from(grouped.entries()).map(([disc, sections]) => {
-              const discExpanded = expandedDisciplines.has(disc);
+              const discExpanded = isSearching || expandedDisciplines.has(disc);
               const discElIds = Array.from(sections.values()).flat().map((e) => e.id);
               const discSelected = discElIds.every((id) => isElementSelected(id));
               const discPartial = discElIds.some((id) => isElementSelected(id)) && !discSelected;
@@ -201,8 +262,8 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
                       {Array.from(sections.entries()).map(([section, els]) => (
                         <div key={section} className="pl-6">
                           {els.map((el) => {
-                            const elDescs = descsByElement.get(el.id) ?? [];
-                            const elExpanded = expandedElements.has(el.id);
+                            const elDescs = visibleDescsByElement.get(el.id) ?? [];
+                            const elExpanded = (isSearching && !!searchMatch?.elementsWithDescMatch.has(el.id)) || expandedElements.has(el.id);
                             const elChecked = isElementSelected(el.id);
 
                             return (
@@ -272,6 +333,7 @@ export function ElementLibraryPickerDialog({ open, onClose, onConfirm }: Props) 
               );
             })}
           </div>
+          </>
         )}
 
         <DialogFooter>

@@ -143,6 +143,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
   const { selectedProject } = useProject();
   const isPrecontract = selectedProject?.project_type === "tender";
+  // Design & Build / Turnkey tenders carry the design, so the bid team needs the Design module.
+  const isDesignTender = isPrecontract && ["design_build", "turnkey"].includes(selectedProject?.contract_type ?? "");
   const { isModuleActive, isModulePermitted, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isHr, setIsHr] = useState(false);
@@ -513,7 +515,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── PLANNING ── */}
-        {isModulePermitted("planning") && !isPrecontract && (
+        {/* Shown for tender projects too: the tender programme is a bid deliverable; execution-only
+            pages are hidden per item in lib/planning-nav.ts. */}
+        {isModulePermitted("planning") && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Planning" open={planningOpen} onToggle={() => setPlanningOpen(!planningOpen)} level={1} />
           {(collapsed || planningOpen) && (
@@ -538,7 +542,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
 
         {/* ── DESIGN ── */}
-        {isModulePermitted("design") && !isPrecontract && (
+        {isModulePermitted("design") && (!isPrecontract || isDesignTender) && (
         <div className={cn(!collapsed && "mt-3")}>
           <FolderHeader label="Design" open={designOpen} onToggle={() => setDesignOpen(!designOpen)} level={1} />
           {(collapsed || designOpen) && (

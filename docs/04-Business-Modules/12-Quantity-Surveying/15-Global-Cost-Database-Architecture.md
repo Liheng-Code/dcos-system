@@ -214,17 +214,68 @@ Phased by risk and effort. Each item names the exact existing DCOS tables/servic
 
 **b. BOQ pre-lock validation rule engine.** Add a validation pass — missing quantity, zero rate, duplicate item code, budget-code compliance — that runs before `updateBoqBaselineStatus` allows a transition from `approved` to `locked`, mirroring the rule-table pattern QTO already has (`11-QTO-Module-Design.md` §22). Additive; does not change existing BOQ data or the freeze-on-lock behavior in §6.4.
 
+*Status (2026-09-25): implemented at the application layer.* Rules live in `apps/web/lib/qs-boq-validation.ts`; `updateBoqBaselineStatus` and `updateBoq` (`apps/web/lib/qs-service.ts`) refuse a lock while any error remains, and the builder's Lock/Re-lock button opens `components/qs/boq-lock-dialog.tsx`. Errors block: empty BOQ, blank description/unit, negative quantity or rate, duplicate item code, and zero quantity or rate on a priced main-works/variation/supplement item. Warnings do not block: the same zero cases on provisional or preliminary items, duplicate item number, missing item code, missing budget code, inactive budget code. It is advisory only — RLS on the BOQ tables is open and nothing in the database blocks a locked row being edited, so the procurement BOQ editor and direct API calls can still bypass it. **`[TBD — human to confirm]`**: a database trigger/RPC backstop, and validating at award conversion (`carryOverBoq`/`carryOverPreliminaries` insert already-locked rows without checks).
+
+*Correction to §6.8:* two of the six QTO rules cited above as the pattern to mirror — "quantity ≥ 0" and "measurement unit must match the quantity unit family" — are documented in `11-QTO-Module-Design.md` §22 but are not implemented in `qto-service.ts` or the database (only the superseded-drawing block, formula-finite check and preparer-cannot-approve rules are). The BOQ validator above is therefore the first place a non-negative quantity check actually runs (QTO items themselves are still unchecked); unit-family matching is not implemented anywhere yet.
+
 ### Phase 2 — moderate effort, additive, no schema-breaking change
 
 **a. Semantic search over the resource/cost-item/element libraries.** Add Postgres `pgvector` (available as a standard Supabase extension) and a lightweight embedding step over `dwl_resources`, `dwl_cost_items`/Cost Item Library, and the Element Library, to replace or augment today's `.includes()`/`ILIKE` search (§6.5). Scope this to search only — not AI-drafted BOQ generation — as the safer first increment; the existing manual AI-prompt workflow (§6.6) is left untouched.
 
+*Status (2026-09-25): implemented as hybrid search.*
+- **Index.** `public.qs_library_search` (migration `20260925000002_qs_library_search.sql`) is one index over resources (`dwl_resources` plus material attributes), element descriptions, and elements that have no descriptions. Sync triggers keep it current. It combines Postgres full-text search, `pg_trgm` trigram matching (typos, substrings, codes) and a `pgvector` embedding, fused by reciprocal rank in `search_qs_library()`.
+- **Embeddings.** They come from the built-in `gte-small` model (384 dimensions) inside the Supabase edge runtime, with no API key and no third party. `qs-library-search` embeds the query. `qs-library-embed` fills rows whose embedding is missing, including rows added or edited since the last run, via a "Refresh search" button on the Material Master and Element Library pages. Both functions are in `supabase/functions/`.
+- **Keyword fallback.** If the edge function is unavailable, the app calls the RPC keyword-only (`apps/web/lib/qs-library-search.ts`).
+- **Surfaces wired so far:**
+  - the tender BOQ element picker
+  - the price-list element picker (which previously had no search)
+  - the Material Master list and the two resource pickers used when building cost items
+  - the Element Library page (which can now search description text)
+  The other library search boxes still filter client-side.
+- **Operational notes:**
+  - The edge runtime caps CPU per request, so the embed worker processes a small slice per call (budget `QS_EMBED_TIME_BUDGET_MS`, default 700 ms). Backfilling the 1,683 local rows took about 90 s.
+  - Edge functions reach production only through the user's `/dbpush functions`.
+  - Re-embedding after edits is on demand (the Refresh button), not automatic. **`[TBD — human to confirm]`**: a scheduled refresh (pg_cron plus pg_net) needs per-environment function URLs and secrets.
+  - Assemblies, work items and the remaining search boxes can join the same index and hook later.
+
 **b. External classification crosswalk.** Add an optional pair of columns to `budget_codes` (e.g. `external_standard`, `external_code`) so firms or clients that need MasterFormat/NRM/DIN 276 cross-referencing can record it, without replacing the proprietary A–Z scheme (§6.2). This also reconciles the pre-existing MasterFormat references in `01-Business-Requirement.md`, `03-BOQ-Design.md` §4, and the archived `Old/06-` guide, which currently point at a standard the live schema doesn't actually implement.
+
+*Status (2026-09-25): implemented as a mapping table, not a pair of columns.* Most A–Z codes are elemental, so a single code usually spans several MasterFormat divisions (for example C.01 External Wall covers 04/05/07/08), and clients often want two standards at once. A pair of columns could hold neither case.
+- **Table.** `public.budget_code_external_refs` (migration `20260925000003_budget_code_external_refs.sql`) holds any number of references per code. Each has a standard (`csi_masterformat`, `csi_uniformat`, `rics_nrm1`, `rics_nrm2`, `din_276`, `other`), a code, an optional title and version, and an optional primary flag. There is one primary per code per standard, enforced by a partial unique index.
+- **Keyed on the budget code's `id`,** because codes are editable in the UI.
+- **Budget Codes page.** Refs are edited inline in `apps/web/app/dashboard/tenders/budget-codes/page.tsx`, gated by the existing `qs_libraries` permissions.
+- **Tender submission print.** It shows a code's primary refs next to its heading.
+- **No mappings are seeded.** The crosswalk is a QS judgement call, entered by the team.
 
 ### Phase 3 — larger, needs a product or vendor decision
 
 **a. In-app AI-assisted quantity/BOQ drafting from drawings or photos.** Builds on the Phase 1a BIM bridge and the existing manual AI-prompt workflow (§6.6), moving toward an integrated LLM call rather than a copy-paste prompt. **`[TBD — human to confirm]`**: this requires adding an AI SDK dependency and an ongoing inference cost, which is a vendor and budget decision, not purely an engineering one.
 
-**b. Multi-region "market edition" rate libraries.** Only relevant if DCOS expands its estimating scope beyond its current Cambodia-focused operation (§6.3). **`[TBD — human to confirm]`**: flag as possibly premature until that expansion is a confirmed near-term plan.
+*Status (2026-09-25): implemented with the Anthropic Claude API (vendor chosen by the product owner).* The flow is draft first, then review.
+- **Entry point.** On the tender BOQ tab, **AI Draft from Drawing** is gated by `tender_boq.can_create`. The QS picks either:
+  - a current (not superseded or obsolete) PDF revision from the tender's QTO drawing register, with up to 20 pages, or
+  - a PNG/JPEG image of up to 5 MB.
+  An optional instruction can be added.
+- **Route.** `apps/web/app/api/tenders/[tenderId]/ai-boq-draft/route.ts` cuts only the selected pages out with `pdf-lib`, then sends them to `claude-opus-5` with:
+  - a cached system prompt of QS measurement rules (measure only what is shown, never invent dimensions, net quantities, no rates)
+  - structured output: summary, warnings, and lines with unit, quantity or null, basis, location, section, confidence and assumptions
+  Off-list units are mapped onto the BOQ unit list; any unit that can't be mapped becomes `ls` with low confidence.
+- **Library matching.** Each line gets its top-3 matches from the Phase 2a hybrid search.
+- **Review.** Nothing is written to `tender_boq_items` until the QS accepts lines in the review table (`ai-boq-draft-dialog.tsx`), where they can:
+  - edit the description, unit and quantity
+  - pick a library match, which prices the line from the element description's net rates plus the tender margins
+  - set the required budget code
+  Low-confidence and unmeasured lines start unticked. Accepted items carry `AI draft <id> · basis · assumptions` in `notes`.
+- **Audit and cost.** Every run, including failed and refused runs, is logged with its token usage in `tender_ai_boq_drafts` (migration `20260925000004`), with the number of lines accepted.
+- **Data and configuration:**
+  - The drawing pages are sent to Anthropic.
+  - The key `ANTHROPIC_API_KEY` is server-only, set in `.env.local` and in the Vercel project env. Without it, the route returns `NOT_CONFIGURED`.
+  - Server-side refusal fallbacks (`fallbacks: "default"`) are enabled.
+  - The route allows up to 300 s (`maxDuration`).
+
+**b. Multi-region "market edition" rate libraries.** Only relevant if DCOS expands its estimating scope beyond its current Cambodia-focused operation (§6.3).
+
+*Status (2026-09-25): deferred by the product owner.* Not until work outside Cambodia is being priced.
 
 ### What should not change
 

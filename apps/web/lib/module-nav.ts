@@ -13,6 +13,9 @@ export interface ModuleNavTabItem {
   // its header tabs and sidebar highlight) but is not rendered as a tab. Use it for
   // advanced pages that are reached from another page rather than from the tab bar.
   hidden?: boolean;
+  // When provided the item is only rendered while the predicate returns true (e.g.
+  // execution-only Planning pages that are hidden during the pre-contract phase).
+  visible?: (ctx: ModuleNavContext) => boolean;
 }
 
 export interface ModuleNavGroup {
@@ -28,6 +31,19 @@ export interface ModuleNavGroup {
 
 export interface ModuleNavContext {
   isPrecontract: boolean;
+}
+
+function filterItems(items: ModuleNavTabItem[], ctx: ModuleNavContext): ModuleNavTabItem[] {
+  return items
+    .filter(item => !item.visible || item.visible(ctx))
+    .map(item => (item.children ? { ...item, children: filterItems(item.children, ctx) } : item));
+}
+
+// Returns a copy of the group with items (and their children) whose `visible`
+// predicate fails for ctx removed, ready to hand to ModuleHeaderTabs.
+export function filterGroupItems(group: ModuleNavGroup | null, ctx: ModuleNavContext): ModuleNavGroup | null {
+  if (!group) return null;
+  return { ...group, items: filterItems(group.items, ctx) };
 }
 
 // Returns the group whose tab route is the longest prefix match for pathname.

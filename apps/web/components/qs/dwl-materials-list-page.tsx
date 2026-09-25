@@ -6,9 +6,10 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
   AlertTriangle, Camera, Eye, FileDown, FileSpreadsheet, History,
-  ImageOff, LayoutGrid, Loader2, Package, Pencil, Plus,
+  ImageOff, LayoutGrid, Loader2, MoreHorizontal, Package, Pencil, Plus,
   Search, Table2, Tags, Trash2, Upload,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
+import { QsSearchIndexRefreshButton } from "@/components/qs/qs-search-index-refresh-button";
 import { DwlMaterialFormDialog } from "@/components/qs/dwl-material-form-dialog";
 import { DwlMaterialCategoryDialog } from "@/components/qs/dwl-material-category-dialog";
 import { DwlMaterialImportDialog } from "@/components/qs/dwl-material-import-dialog";
@@ -82,6 +88,7 @@ const V_COLUMNS =
 
 export default function DwlMaterialsListPage() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const { can, loaded: permsLoaded } = useQsPermissions();
 
   const [tenantId, setTenantId] = useState<string>("");
@@ -205,6 +212,10 @@ export default function DwlMaterialsListPage() {
     return Array.from(set).sort();
   }, [rows]);
 
+  // Hybrid search (typo-tolerant + meaning-based). Ranked hits come first; the
+  // plain substring filter below still applies, so nothing it found is lost.
+  const librarySearch = useQsLibrarySearch(search, ["resource"]);
+
   const filtered = useMemo(() => {
     let result = rows;
     if (statusFilter === "active") result = result.filter((r) => r.is_active);
@@ -214,8 +225,10 @@ export default function DwlMaterialsListPage() {
     if (elementFilter !== "all") result = result.filter((r) => r.application_element === elementFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
+      const ranks = librarySearch.ranks;
       result = result.filter(
         (r) =>
+          (ranks?.has(r.resource_id) ?? false) ||
           r.code.toLowerCase().includes(q) ||
           r.material_name.toLowerCase().includes(q) ||
           r.description.toLowerCase().includes(q) ||
@@ -226,9 +239,13 @@ export default function DwlMaterialsListPage() {
           (r.current_supplier_name?.toLowerCase().includes(q) ?? false) ||
           (r.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
       );
+      if (ranks) {
+        const rankOf = (id: string) => ranks.get(id) ?? Number.MAX_SAFE_INTEGER;
+        result = [...result].sort((a, b) => rankOf(a.resource_id) - rankOf(b.resource_id));
+      }
     }
     return result;
-  }, [rows, statusFilter, disciplineFilter, categoryFilter, elementFilter, search]);
+  }, [rows, statusFilter, disciplineFilter, categoryFilter, elementFilter, search, librarySearch.ranks]);
 
   const canView = !permsLoaded || can("qs_libraries", "view");
   const canCreate = can("qs_libraries", "can_create");
@@ -408,10 +425,14 @@ export default function DwlMaterialsListPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter code, name, grade, brand, cost code..."
+            placeholder="Search name, spec, use, code, brand... (typos OK)"
             className="pl-8"
           />
+          {librarySearch.searching && (
+            <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
         </div>
+        {canEdit && <QsSearchIndexRefreshButton />}
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm">
           <option value="all">All Categories ({rows.length})</option>
           {categories.filter((c) => c.is_active).map((c) => (
@@ -527,7 +548,7 @@ export default function DwlMaterialsListPage() {
                 <TableHead className="w-36">Supplier</TableHead>
                 <TableHead className="w-24">Updated</TableHead>
                 <TableHead className="w-24">Status</TableHead>
-                <TableHead className="w-28 text-center">Actions</TableHead>
+                <TableHead className="w-16 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -578,38 +599,37 @@ export default function DwlMaterialsListPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-center">
-                    <div className="flex justify-center gap-1">
-                      <Button asChild variant="outline" size="sm" title="View material detail">
-                        <Link href={`/dashboard/qs/dwl-materials/${r.resource_id}`}>
-                          <Eye className="h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
-                      <Button asChild variant="outline" size="sm" title="View price history">
-                        <Link href={`/dashboard/qs/dwl-resources?q=${encodeURIComponent(r.code)}`}>
-                          <History className="h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
-                      {canEdit && (
-                        <Button variant="outline" size="sm" title="Edit material" onClick={() => openEdit(r)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Delete material"
-                          disabled={deletingId === r.resource_id}
-                          onClick={() => setConfirmDeleteId(r.resource_id)}
-                        >
-                          {deletingId === r.resource_id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      )}
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={<Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Actions for ${r.code}`} />}
+                        disabled={deletingId === r.resource_id}
+                      >
+                        {deletingId === r.resource_id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <MoreHorizontal className="h-4 w-4" />}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/qs/dwl-materials/${r.resource_id}`)}>
+                          <Eye /> View detail
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/qs/dwl-resources?q=${encodeURIComponent(r.code)}`)}>
+                          <History /> Price history
+                        </DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem onClick={() => openEdit(r)}>
+                            <Pencil /> Edit
+                          </DropdownMenuItem>
+                        )}
+                        {canDelete && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onClick={() => setConfirmDeleteId(r.resource_id)}>
+                              <Trash2 /> Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}

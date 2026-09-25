@@ -10,6 +10,7 @@ import {
   type BoqType,
   type BoqStatus,
 } from "@/lib/qs-service";
+import { BoqLockValidationError } from "@/lib/qs-boq-validation";
 
 const BOQ_TYPES: { value: BoqType; label: string }[] = [
   { value: "main_works", label: "Main Works" },
@@ -56,7 +57,14 @@ export function UpdateBoqSlideIn({ boq, onClose, onUpdated }: Props) {
       toast.success("BOQ updated");
       onUpdated(updated);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update BOQ");
+      if (error instanceof BoqLockValidationError) {
+        const firstErrors = error.issues.filter((i) => i.level === "error").slice(0, 3);
+        toast.error(error.message, {
+          description: [...firstErrors.map((i) => `${i.itemLabel || "BOQ"}: ${i.message}`), "Use Lock Baseline in the BOQ builder to see every finding."].join("\n"),
+        });
+      } else {
+        toast.error(error instanceof Error ? error.message : "Failed to update BOQ");
+      }
       setSaving(false);
     }
   }

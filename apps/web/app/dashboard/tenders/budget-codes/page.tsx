@@ -10,6 +10,7 @@ import {
   type BudgetCodeGroupTree,
 } from "@/lib/tender-cost-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { BudgetCodeExternalRefs } from "@/components/tenders/budget-code-external-refs";
 
 export default function BudgetCodesPage() {
   const { can, loaded: permsLoaded } = useQsPermissions();
@@ -36,6 +37,19 @@ export default function BudgetCodesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Quiet reload after an external-ref change (no full-page spinner).
+  const refreshTree = useCallback(() => {
+    getBudgetCodeTree()
+      .then(setTree)
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to reload budget codes"));
+  }, []);
+
+  const refsPerms = {
+    canCreate: can("qs_libraries", "can_create"),
+    canEdit: can("qs_libraries", "edit"),
+    canDelete: can("qs_libraries", "delete"),
+  };
 
   async function handleCreate() {
     setSaving(true);
@@ -124,7 +138,7 @@ export default function BudgetCodesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Budget Codes</h1>
-          <p className="text-sm text-muted-foreground">Enterprise-wide elemental cost classification (A.00–Z.70), reused across all tenders</p>
+          <p className="text-sm text-muted-foreground">Enterprise-wide elemental cost classification (A.00–Z.70), reused across all tenders. External refs cross-reference a code to MasterFormat, UniFormat, NRM or DIN 276.</p>
         </div>
         <div className="flex items-center gap-2">
           {tree.length > 0 && (
@@ -189,7 +203,7 @@ export default function BudgetCodesPage() {
                           {editingId === c.id ? (
                             <tr>
                               <td className="px-4 py-1.5 font-mono text-xs w-24">{c.code}</td>
-                              <td className="px-4 py-1.5">
+                              <td className="px-4 py-1.5" colSpan={2}>
                                 <div className="flex flex-col gap-1.5">
                                   <select value={editForm.code_letter} onChange={(e) => setEditForm({ ...editForm, code_letter: e.target.value })} className="w-full rounded border border-border bg-background px-2 py-1 text-xs">
                                     {tree.map((g) => <option key={g.group.code_letter} value={g.group.code_letter}>{g.group.code_letter} — {g.group.name}</option>)}
@@ -212,6 +226,9 @@ export default function BudgetCodesPage() {
                             <tr>
                               <td className="px-4 py-1.5 font-mono text-xs w-24">{c.code}</td>
                               <td className="px-4 py-1.5">{c.description}</td>
+                              <td className="px-4 py-1.5 w-[38%]">
+                                <BudgetCodeExternalRefs budgetCodeId={c.id} refs={c.external_refs} {...refsPerms} onChanged={refreshTree} />
+                              </td>
                               <td className="px-4 py-1.5 w-20">
                                 <div className="flex items-center gap-1">
                                   {can("qs_libraries", "edit") && (
@@ -233,7 +250,7 @@ export default function BudgetCodesPage() {
                               {editingId === child.id ? (
                                 <>
                                   <td className="px-4 py-1.5 pl-8 font-mono text-xs w-24">{child.code}</td>
-                                  <td className="px-4 py-1.5">
+                                  <td className="px-4 py-1.5" colSpan={2}>
                                     <div className="flex flex-col gap-1.5">
                                       <select value={editForm.code_letter} onChange={(e) => setEditForm({ ...editForm, code_letter: e.target.value })} className="w-full rounded border border-border bg-background px-2 py-1 text-xs">
                                         {tree.map((g) => <option key={g.group.code_letter} value={g.group.code_letter}>{g.group.code_letter} — {g.group.name}</option>)}
@@ -256,6 +273,9 @@ export default function BudgetCodesPage() {
                                 <>
                                   <td className="px-4 py-1.5 pl-8 font-mono text-xs w-24">{child.code}</td>
                                   <td className="px-4 py-1.5 text-xs">{child.description}</td>
+                                  <td className="px-4 py-1.5 w-[38%]">
+                                    <BudgetCodeExternalRefs budgetCodeId={child.id} refs={child.external_refs} {...refsPerms} onChanged={refreshTree} />
+                                  </td>
                                   <td className="px-4 py-1.5 w-20">
                                     <div className="flex items-center gap-1">
                                       {can("qs_libraries", "edit") && (

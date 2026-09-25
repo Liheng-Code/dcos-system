@@ -22,6 +22,7 @@ import {
 } from "@/lib/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { RaisePrFromBoqDialog } from "@/components/procurement/raise-pr-from-boq-dialog";
+import { BoqLockDialog } from "@/components/qs/boq-lock-dialog";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -53,6 +54,7 @@ export function BoqBuilder({ projectId, boqId }: Props) {
   const [library, setLibrary]           = useState<QsCostItem[]>([]);
   const [loading, setLoading]           = useState(true);
 
+  const [lockDialogOpen, setLockDialogOpen] = useState(false);
   const [showAddSec, setShowAddSec] = useState(false);
   const [secTitle, setSecTitle]     = useState("");
   const [addingSec, setAddingSec]   = useState(false);
@@ -227,8 +229,16 @@ export function BoqBuilder({ projectId, boqId }: Props) {
           {baselineStatus === "draft" && allItems.length > 0 && can("boq", "approve") && (
             <Button size="sm" variant="outline" onClick={() => void handleBaselineStatus("approved")}>Approve BOQ</Button>
           )}
-          {baselineStatus === "approved" && can("boq", "approve") && (
-            <Button size="sm" variant="outline" onClick={() => void handleBaselineStatus("locked")}>Lock Baseline</Button>
+          {(baselineStatus === "approved" || baselineStatus === "revised") && can("boq", "approve") && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!boqId}
+              title={!boqId ? "Open a specific BOQ to lock its baseline" : undefined}
+              onClick={() => setLockDialogOpen(true)}
+            >
+              {baselineStatus === "revised" ? "Re-lock Baseline" : "Lock Baseline"}
+            </Button>
           )}
           {baselineStatus === "locked" && can("boq", "approve") && (
             <Button size="sm" variant="outline" onClick={() => void handleBaselineStatus("revised")}>Open Revision</Button>
@@ -549,6 +559,16 @@ export function BoqBuilder({ projectId, boqId }: Props) {
           </div>
         );
       })}
+
+      {lockDialogOpen && boqId && (
+        <BoqLockDialog
+          projectId={projectId}
+          boqId={boqId}
+          canApprove={can("boq", "approve")}
+          onClose={() => setLockDialogOpen(false)}
+          onLocked={() => void load()}
+        />
+      )}
     </div>
   );
 }

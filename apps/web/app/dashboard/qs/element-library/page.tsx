@@ -6,6 +6,8 @@ import { ChevronsUpDown, Loader2, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
+import { QsSearchIndexRefreshButton } from "@/components/qs/qs-search-index-refresh-button";
 import ElementLibraryTree from "@/components/tenders/element-library/element-library-tree";
 import ElementDetailPanel from "@/components/tenders/element-library/element-detail-panel";
 import AddElementDialog from "@/components/tenders/element-library/add-element-dialog";
@@ -91,6 +93,23 @@ export default function QsElementLibraryPage() {
     setSubElementFilter("");
   }
 
+  // Hybrid search (keyword + meaning) also matches description text, which the
+  // plain filter below never did. A description hit surfaces its parent element.
+  const librarySearch = useQsLibrarySearch(search, ["element", "element_description"]);
+  const searchMatchedElementIds = useMemo(() => {
+    if (!librarySearch.ranks) return null;
+    const elementIdByDescription = new Map(descriptions.map((d) => [d.id, d.element_library_id]));
+    const ids = new Set<string>();
+    for (const r of librarySearch.results) {
+      if (r.source_type === "element") ids.add(r.source_id);
+      else if (r.source_type === "element_description") {
+        const elementId = elementIdByDescription.get(r.source_id);
+        if (elementId) ids.add(elementId);
+      }
+    }
+    return ids;
+  }, [librarySearch.ranks, librarySearch.results, descriptions]);
+
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((i) => {
@@ -98,12 +117,13 @@ export default function QsElementLibraryPage() {
       if (subElementFilter && i.sub_element !== subElementFilter) return false;
       if (!q) return true;
       return (
+        searchMatchedElementIds?.has(i.id) ||
         i.section.toLowerCase().includes(q) ||
         i.sub_section.toLowerCase().includes(q) ||
         i.sub_element.toLowerCase().includes(q)
       );
     });
-  }, [items, search, subSectionFilter, subElementFilter]);
+  }, [items, search, subSectionFilter, subElementFilter, searchMatchedElementIds]);
 
   const grouped = useMemo(() => {
     const disciplineMap = new Map<string, Map<string, QsElementRow[]>>();
@@ -168,10 +188,14 @@ export default function QsElementLibraryPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
+              placeholder="Search elements & descriptions..."
               className="w-full rounded border border-border bg-background py-1.5 pl-8 pr-2 text-sm outline-hidden focus:border-primary"
             />
+            {librarySearch.searching && (
+              <Loader2 className="absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
           </div>
+          {canEdit && <QsSearchIndexRefreshButton />}
           <button
             type="button"
             onClick={handleToggleExpandAll}

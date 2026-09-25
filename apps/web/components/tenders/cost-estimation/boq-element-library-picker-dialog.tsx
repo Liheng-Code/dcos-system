@@ -16,6 +16,7 @@ import {
   type QsDescriptionLibraryItem,
 } from "@/lib/tender-cost-service";
 import { cn } from "@/lib/utils";
+import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
 
 export interface BoqElementLibrarySelection {
   elementId: string;
@@ -119,28 +120,50 @@ export function BoqElementLibraryPickerDialog({ open, onClose, elements, descrip
     return Array.from(seen).sort();
   }, [elements, disciplineFilter, sectionFilter, subSectionFilter]);
 
+  // Hybrid search (typo-tolerant + meaning-based) over element paths and description text.
+  // A matching description keeps its element visible; plain substring matches still count.
+  const librarySearch = useQsLibrarySearch(search, ["element", "element_description"]);
+  const searchMatch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    const ranks = librarySearch.ranks;
+    const pathMatched = new Set<string>();
+    for (const el of elements) {
+      if (
+        (ranks?.has(el.id) ?? false) ||
+        el.section.toLowerCase().includes(q) ||
+        el.sub_section.toLowerCase().includes(q) ||
+        el.sub_element.toLowerCase().includes(q)
+      ) pathMatched.add(el.id);
+    }
+    const descMatched = new Set<string>();
+    const elementsWithDescMatch = new Set<string>();
+    for (const d of descriptions) {
+      if ((ranks?.has(d.id) ?? false) || d.description.toLowerCase().includes(q)) {
+        descMatched.add(d.id);
+        elementsWithDescMatch.add(d.element_library_id);
+      }
+    }
+    return { pathMatched, descMatched, elementsWithDescMatch };
+  }, [elements, descriptions, search, librarySearch.ranks]);
+
   const filteredElements = useMemo(() => {
     let list = elements;
     if (disciplineFilter) list = list.filter((el) => el.discipline === disciplineFilter);
     if (sectionFilter) list = list.filter((el) => el.section === sectionFilter);
     if (subSectionFilter) list = list.filter((el) => el.sub_section === subSectionFilter);
     if (subElementFilter) list = list.filter((el) => el.sub_element === subElementFilter);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter((el) =>
-        el.section.toLowerCase().includes(q) ||
-        el.sub_section.toLowerCase().includes(q) ||
-        el.sub_element.toLowerCase().includes(q)
-      );
+    if (searchMatch) {
+      list = list.filter((el) => searchMatch.pathMatched.has(el.id) || searchMatch.elementsWithDescMatch.has(el.id));
     }
     return list;
-  }, [elements, disciplineFilter, sectionFilter, subSectionFilter, subElementFilter, search]);
+  }, [elements, disciplineFilter, sectionFilter, subSectionFilter, subElementFilter, searchMatch]);
 
   const filteredDescs = useMemo(() => {
-    if (!search.trim()) return descriptions;
-    const q = search.trim().toLowerCase();
-    return descriptions.filter((d) => d.description.toLowerCase().includes(q));
-  }, [descriptions, search]);
+    if (!searchMatch) return descriptions;
+    // An element matched by its own path shows all its descriptions; otherwise only the matching ones.
+    return descriptions.filter((d) => searchMatch.descMatched.has(d.id) || searchMatch.pathMatched.has(d.element_library_id));
+  }, [descriptions, searchMatch]);
 
   // Grouped: discipline → section → sub_section → elements[]
   const grouped = useMemo(() => {

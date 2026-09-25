@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useProject } from "@/components/dashboard/project-context";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
+import { filterGroupItems } from "@/lib/module-nav";
 import { getActivePlanningGroup } from "@/lib/planning-nav";
 
 // Planning routes span /dashboard/planning and /dashboard/wbs/lookahead, so
@@ -9,6 +11,8 @@ import { getActivePlanningGroup } from "@/lib/planning-nav";
 // resolves the active group from the current pathname).
 export function PlanningModuleHeaderTabs() {
   const pathname = usePathname();
-  const activeGroup = getActivePlanningGroup(pathname);
+  const { selectedProject } = useProject();
+  const isPrecontract = selectedProject?.project_type === "tender";
+  const activeGroup = filterGroupItems(getActivePlanningGroup(pathname), { isPrecontract });
   return <ModuleHeaderTabs activeGroup={activeGroup} />;
 }

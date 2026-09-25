@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1917,6 +1917,53 @@ export type Database = {
             columns: ["model_id"]
             isOneToOne: false
             referencedRelation: "bim_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_code_external_refs: {
+        Row: {
+          budget_code_id: string
+          created_at: string
+          external_code: string
+          external_title: string | null
+          id: string
+          is_primary: boolean
+          notes: string | null
+          standard: string
+          standard_version: string | null
+          updated_at: string
+        }
+        Insert: {
+          budget_code_id: string
+          created_at?: string
+          external_code: string
+          external_title?: string | null
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          standard: string
+          standard_version?: string | null
+          updated_at?: string
+        }
+        Update: {
+          budget_code_id?: string
+          created_at?: string
+          external_code?: string
+          external_title?: string | null
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          standard?: string
+          standard_version?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_code_external_refs_budget_code_id_fkey"
+            columns: ["budget_code_id"]
+            isOneToOne: false
+            referencedRelation: "budget_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -18250,6 +18297,7 @@ export type Database = {
           actual_progress: number | null
           created_at: string
           created_by: string | null
+          gfa_at_snapshot: number | null
           id: string
           planned_cost: number | null
           planned_progress: number | null
@@ -18263,6 +18311,7 @@ export type Database = {
           actual_progress?: number | null
           created_at?: string
           created_by?: string | null
+          gfa_at_snapshot?: number | null
           id?: string
           planned_cost?: number | null
           planned_progress?: number | null
@@ -18276,6 +18325,7 @@ export type Database = {
           actual_progress?: number | null
           created_at?: string
           created_by?: string | null
+          gfa_at_snapshot?: number | null
           id?: string
           planned_cost?: number | null
           planned_progress?: number | null
@@ -18749,6 +18799,10 @@ export type Database = {
           bid_price: number | null
           created_at: string
           estimated_value: number | null
+          go_no_go_by: string | null
+          go_no_go_date: string | null
+          go_no_go_decision: string | null
+          go_no_go_rationale: string | null
           id: string
           loss_reason: string | null
           procurement_method: string | null
@@ -18767,6 +18821,10 @@ export type Database = {
           bid_price?: number | null
           created_at?: string
           estimated_value?: number | null
+          go_no_go_by?: string | null
+          go_no_go_date?: string | null
+          go_no_go_decision?: string | null
+          go_no_go_rationale?: string | null
           id?: string
           loss_reason?: string | null
           procurement_method?: string | null
@@ -18785,6 +18843,10 @@ export type Database = {
           bid_price?: number | null
           created_at?: string
           estimated_value?: number | null
+          go_no_go_by?: string | null
+          go_no_go_date?: string | null
+          go_no_go_decision?: string | null
+          go_no_go_rationale?: string | null
           id?: string
           loss_reason?: string | null
           procurement_method?: string | null
@@ -18797,6 +18859,13 @@ export type Database = {
           winning_bidder?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "project_precontract_details_go_no_go_by_fkey"
+            columns: ["go_no_go_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "project_precontract_details_project_id_fkey"
             columns: ["project_id"]
@@ -19492,6 +19561,8 @@ export type Database = {
           quantity: number
           revision_reason: string | null
           seq: number
+          source_tender_boq_item_id: string | null
+          source_tender_prelim_item_id: string | null
           total_amount: number | null
           unit: string
           unit_rate: number
@@ -19522,6 +19593,8 @@ export type Database = {
           quantity?: number
           revision_reason?: string | null
           seq?: number
+          source_tender_boq_item_id?: string | null
+          source_tender_prelim_item_id?: string | null
           total_amount?: number | null
           unit: string
           unit_rate?: number
@@ -19552,6 +19625,8 @@ export type Database = {
           quantity?: number
           revision_reason?: string | null
           seq?: number
+          source_tender_boq_item_id?: string | null
+          source_tender_prelim_item_id?: string | null
           total_amount?: number | null
           unit?: string
           unit_rate?: number
@@ -19621,6 +19696,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_plan_client_programme"
             referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "qs_boq_items_source_tender_boq_item_id_fkey"
+            columns: ["source_tender_boq_item_id"]
+            isOneToOne: false
+            referencedRelation: "tender_boq_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qs_boq_items_source_tender_prelim_item_id_fkey"
+            columns: ["source_tender_prelim_item_id"]
+            isOneToOne: false
+            referencedRelation: "tender_preliminaries_items"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "qs_boq_items_wbs_node_id_fkey"
@@ -20666,6 +20755,51 @@ export type Database = {
             referencedColumns: ["project_id"]
           },
         ]
+      }
+      qs_library_search: {
+        Row: {
+          content_hash: string
+          embedded_at: string | null
+          embedding: string | null
+          id: string
+          search_text: string
+          source_id: string
+          source_type: string
+          subtitle: string | null
+          tenant_id: string | null
+          title: string
+          tsv: unknown
+          updated_at: string
+        }
+        Insert: {
+          content_hash: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          search_text: string
+          source_id: string
+          source_type: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          title: string
+          tsv?: unknown
+          updated_at?: string
+        }
+        Update: {
+          content_hash?: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          search_text?: string
+          source_id?: string
+          source_type?: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          title?: string
+          tsv?: unknown
+          updated_at?: string
+        }
+        Relationships: []
       }
       qs_notifications: {
         Row: {
@@ -23266,6 +23400,257 @@ export type Database = {
         }
         Relationships: []
       }
+      snap_price_list_items: {
+        Row: {
+          bid_revision_id: string
+          category: string
+          code: string
+          currency: string
+          description: string
+          id: string
+          is_active: boolean
+          notes: string | null
+          quote_date: string | null
+          quote_ref: string | null
+          snapped_at: string
+          source_id: string
+          supplier_name: string | null
+          tender_id: string
+          unit: string
+          unit_price: number
+          valid_until: string | null
+        }
+        Insert: {
+          bid_revision_id: string
+          category: string
+          code: string
+          currency: string
+          description: string
+          id?: string
+          is_active: boolean
+          notes?: string | null
+          quote_date?: string | null
+          quote_ref?: string | null
+          snapped_at?: string
+          source_id: string
+          supplier_name?: string | null
+          tender_id: string
+          unit: string
+          unit_price: number
+          valid_until?: string | null
+        }
+        Update: {
+          bid_revision_id?: string
+          category?: string
+          code?: string
+          currency?: string
+          description?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          quote_date?: string | null
+          quote_ref?: string | null
+          snapped_at?: string
+          source_id?: string
+          supplier_name?: string | null
+          tender_id?: string
+          unit?: string
+          unit_price?: number
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snap_price_list_items_bid_revision_id_fkey"
+            columns: ["bid_revision_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snap_tender_boq_items: {
+        Row: {
+          bid_revision_id: string
+          description: string
+          discipline: string | null
+          id: string
+          is_manual_rate: boolean
+          item_code: string
+          notes: string | null
+          quantity: number
+          section: string
+          snapped_at: string
+          source_id: string
+          sourcing: string
+          tender_id: string
+          total_amount: number | null
+          unit: string
+          unit_rate: number | null
+          unit_rate_id: string | null
+        }
+        Insert: {
+          bid_revision_id: string
+          description: string
+          discipline?: string | null
+          id?: string
+          is_manual_rate: boolean
+          item_code: string
+          notes?: string | null
+          quantity: number
+          section: string
+          snapped_at?: string
+          source_id: string
+          sourcing: string
+          tender_id: string
+          total_amount?: number | null
+          unit: string
+          unit_rate?: number | null
+          unit_rate_id?: string | null
+        }
+        Update: {
+          bid_revision_id?: string
+          description?: string
+          discipline?: string | null
+          id?: string
+          is_manual_rate?: boolean
+          item_code?: string
+          notes?: string | null
+          quantity?: number
+          section?: string
+          snapped_at?: string
+          source_id?: string
+          sourcing?: string
+          tender_id?: string
+          total_amount?: number | null
+          unit?: string
+          unit_rate?: number | null
+          unit_rate_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snap_tender_boq_items_bid_revision_id_fkey"
+            columns: ["bid_revision_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snap_unit_rate_lines: {
+        Row: {
+          bid_revision_id: string
+          category: string
+          id: string
+          line_total: number
+          price_list_item_id: string
+          qty_per_unit: number
+          snapped_at: string
+          sort_order: number
+          source_id: string
+          unit_rate_id: string
+          wastage_pct: number | null
+        }
+        Insert: {
+          bid_revision_id: string
+          category: string
+          id?: string
+          line_total: number
+          price_list_item_id: string
+          qty_per_unit: number
+          snapped_at?: string
+          sort_order: number
+          source_id: string
+          unit_rate_id: string
+          wastage_pct?: number | null
+        }
+        Update: {
+          bid_revision_id?: string
+          category?: string
+          id?: string
+          line_total?: number
+          price_list_item_id?: string
+          qty_per_unit?: number
+          snapped_at?: string
+          sort_order?: number
+          source_id?: string
+          unit_rate_id?: string
+          wastage_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snap_unit_rate_lines_bid_revision_id_fkey"
+            columns: ["bid_revision_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snap_unit_rates: {
+        Row: {
+          base_rate: number | null
+          bid_revision_id: string
+          code: string
+          description: string
+          id: string
+          is_active: boolean
+          mode: string
+          net_rate: number
+          notes: string | null
+          productivity_factor: number | null
+          snapped_at: string
+          source_id: string
+          tender_id: string
+          trade: string | null
+          unit: string
+          wastage_pct: number | null
+        }
+        Insert: {
+          base_rate?: number | null
+          bid_revision_id: string
+          code: string
+          description: string
+          id?: string
+          is_active: boolean
+          mode: string
+          net_rate: number
+          notes?: string | null
+          productivity_factor?: number | null
+          snapped_at?: string
+          source_id: string
+          tender_id: string
+          trade?: string | null
+          unit: string
+          wastage_pct?: number | null
+        }
+        Update: {
+          base_rate?: number | null
+          bid_revision_id?: string
+          code?: string
+          description?: string
+          id?: string
+          is_active?: boolean
+          mode?: string
+          net_rate?: number
+          notes?: string | null
+          productivity_factor?: number | null
+          snapped_at?: string
+          source_id?: string
+          tender_id?: string
+          trade?: string | null
+          unit?: string
+          wastage_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snap_unit_rates_bid_revision_id_fkey"
+            columns: ["bid_revision_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stage_master: {
         Row: {
           created_at: string
@@ -24986,6 +25371,85 @@ export type Database = {
           },
         ]
       }
+      tender_ai_boq_drafts: {
+        Row: {
+          accepted_count: number
+          cache_read_tokens: number | null
+          created_at: string
+          created_by: string | null
+          drawing_revision_id: string | null
+          error: string | null
+          id: string
+          input_tokens: number | null
+          instructions: string | null
+          model: string
+          output_tokens: number | null
+          pages: number[] | null
+          result: Json | null
+          source_name: string
+          status: string
+          tender_id: string
+        }
+        Insert: {
+          accepted_count?: number
+          cache_read_tokens?: number | null
+          created_at?: string
+          created_by?: string | null
+          drawing_revision_id?: string | null
+          error?: string | null
+          id?: string
+          input_tokens?: number | null
+          instructions?: string | null
+          model: string
+          output_tokens?: number | null
+          pages?: number[] | null
+          result?: Json | null
+          source_name: string
+          status: string
+          tender_id: string
+        }
+        Update: {
+          accepted_count?: number
+          cache_read_tokens?: number | null
+          created_at?: string
+          created_by?: string | null
+          drawing_revision_id?: string | null
+          error?: string | null
+          id?: string
+          input_tokens?: number | null
+          instructions?: string | null
+          model?: string
+          output_tokens?: number | null
+          pages?: number[] | null
+          result?: Json | null
+          source_name?: string
+          status?: string
+          tender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_ai_boq_drafts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_ai_boq_drafts_drawing_revision_id_fkey"
+            columns: ["drawing_revision_id"]
+            isOneToOne: false
+            referencedRelation: "qto_drawing_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_ai_boq_drafts_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tender_award_records: {
         Row: {
           acceptance_date: string | null
@@ -25169,6 +25633,7 @@ export type Database = {
           element_group: string | null
           element_id: string | null
           id: string
+          is_manual_rate: boolean
           item_code: string
           labor_margin_pct: number | null
           labor_net_cost: number | null
@@ -25177,6 +25642,7 @@ export type Database = {
           material_margin_pct: number | null
           material_net_cost: number | null
           material_type: string | null
+          net_cost: number | null
           notes: string | null
           package_name: string | null
           price_list_item_id: string | null
@@ -25185,6 +25651,7 @@ export type Database = {
           rate_source: string
           section: string
           sort_order: number | null
+          sourcing: string
           sub_element: string | null
           sub_section: string | null
           supplier: string | null
@@ -25208,6 +25675,7 @@ export type Database = {
           element_group?: string | null
           element_id?: string | null
           id?: string
+          is_manual_rate?: boolean
           item_code: string
           labor_margin_pct?: number | null
           labor_net_cost?: number | null
@@ -25216,6 +25684,7 @@ export type Database = {
           material_margin_pct?: number | null
           material_net_cost?: number | null
           material_type?: string | null
+          net_cost?: number | null
           notes?: string | null
           package_name?: string | null
           price_list_item_id?: string | null
@@ -25224,6 +25693,7 @@ export type Database = {
           rate_source?: string
           section: string
           sort_order?: number | null
+          sourcing?: string
           sub_element?: string | null
           sub_section?: string | null
           supplier?: string | null
@@ -25247,6 +25717,7 @@ export type Database = {
           element_group?: string | null
           element_id?: string | null
           id?: string
+          is_manual_rate?: boolean
           item_code?: string
           labor_margin_pct?: number | null
           labor_net_cost?: number | null
@@ -25255,6 +25726,7 @@ export type Database = {
           material_margin_pct?: number | null
           material_net_cost?: number | null
           material_type?: string | null
+          net_cost?: number | null
           notes?: string | null
           package_name?: string | null
           price_list_item_id?: string | null
@@ -25263,6 +25735,7 @@ export type Database = {
           rate_source?: string
           section?: string
           sort_order?: number | null
+          sourcing?: string
           sub_element?: string | null
           sub_section?: string | null
           supplier?: string | null
@@ -25374,6 +25847,119 @@ export type Database = {
           },
         ]
       }
+      tender_clarifications: {
+        Row: {
+          category: string
+          client_response: string | null
+          created_at: string
+          id: string
+          query_no: string
+          question: string
+          raised_by: string | null
+          raised_date: string
+          response_date: string | null
+          status: string
+          tender_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          client_response?: string | null
+          created_at?: string
+          id?: string
+          query_no: string
+          question: string
+          raised_by?: string | null
+          raised_date?: string
+          response_date?: string | null
+          status?: string
+          tender_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          client_response?: string | null
+          created_at?: string
+          id?: string
+          query_no?: string
+          question?: string
+          raised_by?: string | null
+          raised_date?: string
+          response_date?: string | null
+          status?: string
+          tender_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_clarifications_raised_by_fkey"
+            columns: ["raised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_clarifications_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_dayworks: {
+        Row: {
+          created_at: string
+          description: string
+          estimated_amount: number | null
+          estimated_qty: number
+          id: string
+          item_code: string
+          notes: string | null
+          rate: number
+          sort_order: number
+          tender_id: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          estimated_amount?: number | null
+          estimated_qty?: number
+          id?: string
+          item_code: string
+          notes?: string | null
+          rate?: number
+          sort_order?: number
+          tender_id: string
+          unit?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          estimated_amount?: number | null
+          estimated_qty?: number
+          id?: string
+          item_code?: string
+          notes?: string | null
+          rate?: number
+          sort_order?: number
+          tender_id?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_dayworks_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tender_exclude_items: {
         Row: {
           created_at: string
@@ -25381,9 +25967,13 @@ export type Database = {
           id: string
           item_code: string
           notes: string | null
+          quantity: number
           reason: string | null
           sort_order: number | null
           tender_id: string
+          total_amount: number | null
+          unit: string
+          unit_rate: number | null
         }
         Insert: {
           created_at?: string
@@ -25391,9 +25981,13 @@ export type Database = {
           id?: string
           item_code: string
           notes?: string | null
+          quantity?: number
           reason?: string | null
           sort_order?: number | null
           tender_id: string
+          total_amount?: number | null
+          unit?: string
+          unit_rate?: number | null
         }
         Update: {
           created_at?: string
@@ -25401,9 +25995,13 @@ export type Database = {
           id?: string
           item_code?: string
           notes?: string | null
+          quantity?: number
           reason?: string | null
           sort_order?: number | null
           tender_id?: string
+          total_amount?: number | null
+          unit?: string
+          unit_rate?: number | null
         }
         Relationships: [
           {
@@ -25739,6 +26337,50 @@ export type Database = {
           },
         ]
       }
+      tender_provisional_sums: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string
+          id: string
+          item_code: string
+          notes: string | null
+          sort_order: number
+          tender_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          description: string
+          id?: string
+          item_code: string
+          notes?: string | null
+          sort_order?: number
+          tender_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string
+          id?: string
+          item_code?: string
+          notes?: string | null
+          sort_order?: number
+          tender_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_provisional_sums_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tender_queries: {
         Row: {
           answer: string | null
@@ -25798,6 +26440,8 @@ export type Database = {
       }
       tender_register: {
         Row: {
+          budget_converted_at: string | null
+          budget_converted_by: string | null
           budget_range: number | null
           client_name: string | null
           contractor_name: string | null
@@ -25826,6 +26470,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          budget_converted_at?: string | null
+          budget_converted_by?: string | null
           budget_range?: number | null
           client_name?: string | null
           contractor_name?: string | null
@@ -25854,6 +26500,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          budget_converted_at?: string | null
+          budget_converted_by?: string | null
           budget_range?: number | null
           client_name?: string | null
           contractor_name?: string | null
@@ -25909,6 +26557,53 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_plan_client_programme"
             referencedColumns: ["project_id"]
+          },
+        ]
+      }
+      tender_returnables: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_mandatory: boolean
+          is_ready: boolean
+          item: string
+          notes: string | null
+          sort_order: number
+          tender_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_mandatory?: boolean
+          is_ready?: boolean
+          item: string
+          notes?: string | null
+          sort_order?: number
+          tender_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_mandatory?: boolean
+          is_ready?: boolean
+          item?: string
+          notes?: string | null
+          sort_order?: number
+          tender_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_returnables_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -27381,8 +28076,12 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          is_current: boolean
           metric_code: string
           project_id: string
+          revised_at: string | null
+          revised_by: string | null
+          revised_reason: string | null
           revision_reason: string | null
           source: string | null
           source_ref: string | null
@@ -27396,8 +28095,12 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_current?: boolean
           metric_code: string
           project_id: string
+          revised_at?: string | null
+          revised_by?: string | null
+          revised_reason?: string | null
           revision_reason?: string | null
           source?: string | null
           source_ref?: string | null
@@ -27411,8 +28114,12 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_current?: boolean
           metric_code?: string
           project_id?: string
+          revised_at?: string | null
+          revised_by?: string | null
+          revised_reason?: string | null
           revision_reason?: string | null
           source?: string | null
           source_ref?: string | null
@@ -27461,6 +28168,7 @@ export type Database = {
           discipline: string | null
           full_path: string | null
           id: string
+          is_basement: boolean
           is_below_ground: boolean
           is_external_works: boolean
           is_locked: boolean
@@ -27486,6 +28194,7 @@ export type Database = {
           discipline?: string | null
           full_path?: string | null
           id?: string
+          is_basement?: boolean
           is_below_ground?: boolean
           is_external_works?: boolean
           is_locked?: boolean
@@ -27511,6 +28220,7 @@ export type Database = {
           discipline?: string | null
           full_path?: string | null
           id?: string
+          is_basement?: boolean
           is_below_ground?: boolean
           is_external_works?: boolean
           is_locked?: boolean
@@ -29830,6 +30540,41 @@ export type Database = {
       }
     }
     Functions: {
+      _qs_lib_clean_description: {
+        Args: { p_description: string }
+        Returns: string
+      }
+      _qs_lib_element_description_text: {
+        Args: { p_description_id: string }
+        Returns: {
+          search_text: string
+          subtitle: string
+          tenant_id: string
+          title: string
+        }[]
+      }
+      _qs_lib_element_text: {
+        Args: { p_element_id: string }
+        Returns: {
+          search_text: string
+          subtitle: string
+          tenant_id: string
+          title: string
+        }[]
+      }
+      _qs_lib_join: {
+        Args: { p_parts: string[]; p_sep?: string }
+        Returns: string
+      }
+      _qs_lib_resource_text: {
+        Args: { p_resource_id: string }
+        Returns: {
+          search_text: string
+          subtitle: string
+          tenant_id: string
+          title: string
+        }[]
+      }
       accept_baseline_by_client: {
         Args: { p_baseline_id: string }
         Returns: undefined
@@ -30237,6 +30982,10 @@ export type Database = {
           status: string
         }[]
       }
+      qs_library_search_refresh: {
+        Args: { p_id: string; p_type: string }
+        Returns: undefined
+      }
       qto_next_no: { Args: { p_tender_id: string }; Returns: string }
       recalculate_wbs_progress: {
         Args: { p_project_id: string }
@@ -30251,6 +31000,22 @@ export type Database = {
         Returns: undefined
       }
       run_task_escalation: { Args: never; Returns: number }
+      search_qs_library: {
+        Args: {
+          p_embedding?: string
+          p_limit?: number
+          p_query: string
+          p_types?: string[]
+        }
+        Returns: {
+          match_kinds: string[]
+          score: number
+          source_id: string
+          source_type: string
+          subtitle: string
+          title: string
+        }[]
+      }
       set_baseline: {
         Args: {
           p_name?: string

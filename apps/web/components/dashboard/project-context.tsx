@@ -10,6 +10,7 @@ interface Project {
   project_type: string;
   project_status: string;
   progress_percentage: number;
+  contract_type?: string | null;
   company_code?: string | null;
   location?: string | null;
 }
@@ -54,7 +55,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   function fetchProjects() {
     const supabase = createClient();
     setLoading(true);
-    supabase.from("projects").select("id, project_code, project_name, project_type, project_status, progress_percentage").order("project_name", { ascending: true }).then(({ data }) => {
+    supabase.from("projects").select("id, project_code, project_name, project_type, project_status, progress_percentage, contract_type").order("project_name", { ascending: true }).then(({ data }) => {
       if (data) setProjects(data as Project[]);
       setLoading(false);
     });
