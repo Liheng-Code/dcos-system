@@ -919,6 +919,9 @@
     }
   },
   "components/site/site-progress-photos.tsx": {
+    "react-hooks/purity": {
+      "count": 2
+    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,6 +12,7 @@ import type { InvStore, LocationRow } from "./inv-types"
 import { StoreForm } from "./store-form"
 import { LocationForm } from "./location-form"
 import { LabelPrintButton } from "./label-print-button"
+import { getInvStoreById, getProjectById, listInvLocationsByStoreId } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -39,18 +39,13 @@ export function StoreDetailPage({ id }: { id: string }) {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
-      const { data: storeData, error: storeErr } = await supabase
-        .from("inv_stores")
-        .select("*")
-        .eq("id", id)
-        .single()
+      const { data: storeData, error: storeErr } = await getInvStoreById(id)
       if (storeErr || !storeData) throw new Error("Store not found")
       setStore(storeData as InvStore)
 
       const [projRes, locRes] = await Promise.all([
-        supabase.from("projects").select("id, project_code, project_name").eq("id", (storeData as InvStore).project_id).single(),
-        supabase.from("inv_locations").select("*").eq("store_id", id).order("code"),
+        getProjectById((storeData as InvStore).project_id),
+        listInvLocationsByStoreId(id),
       ])
       setProject((projRes.data ?? null) as ProjectOption | null)
       setLocations((locRes.data ?? []) as LocationRow[])

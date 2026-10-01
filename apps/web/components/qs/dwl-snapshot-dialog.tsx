@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Lock } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlProjectSnapshot } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +48,6 @@ export function DwlSnapshotDialog({
   payload,
   onIssued,
 }: DwlSnapshotDialogProps) {
-  const supabase = createClient();
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -75,7 +74,7 @@ export function DwlSnapshotDialog({
     }
 
     setSubmitting(true);
-    const { error } = await supabase.from("dwl_project_snapshots").insert({
+    const { error } = await insertDwlProjectSnapshot({
       tenant_id: tenantId,
       project_id: project.id,
       label: values.label.trim(),

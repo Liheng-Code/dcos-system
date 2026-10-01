@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteContractEmployerInstructionById, getContractEmployerInstructionById, updateContractEmployerInstructionById } from "@/lib/qs/qs-queries";
 import { Loader2, Save, ScrollText, DollarSign, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 export default function EmployerInstructionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [instruction, setInstruction] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,28 +20,28 @@ export default function EmployerInstructionDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("contract_employer_instructions").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data, error }) => {
+    getContractEmployerInstructionById(id).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/employer-instructions"); return; }
       setInstruction(data);
       setForm({ ...data, instruction_date: data.instruction_date?.slice(0, 10) || "", response_date: data.response_date?.slice(0, 10) || "" });
       setLoading(false);
     });
-  }, [id, supabase, router]);
+  }, [id, router]);
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("contract_employer_instructions").update({
+    const { error } = await updateContractEmployerInstructionById({
       instruction_no: form.instruction_no, title: form.title, description: form.description,
       type: form.type, instruction_date: form.instruction_date, response_date: form.response_date || null,
       time_extension_days: parseInt(form.time_extension_days) || 0,
       cost_impact: parseFloat(form.cost_impact) || 0, status: form.status,
       assigned_to: form.assigned_to || null, notes: form.notes || null,
       updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Instruction updated");
     setEditMode(false);
-    supabase.from("contract_employer_instructions").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data }) => {
+    getContractEmployerInstructionById(id).then(({ data }) => {
       if (data) { setInstruction(data); setForm({ ...data, instruction_date: data.instruction_date?.slice(0, 10) || "", response_date: data.response_date?.slice(0, 10) || "" }); }
     });
     setSaving(false);
@@ -51,7 +50,7 @@ export default function EmployerInstructionDetailPage() {
   async function handleDelete() {
     if (!confirm("Delete this instruction?")) return;
     setDeleting(true);
-    const { error } = await supabase.from("contract_employer_instructions").delete().eq("id", id);
+    const { error } = await deleteContractEmployerInstructionById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Instruction deleted");
     router.push("/dashboard/contracts/employer-instructions");

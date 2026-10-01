@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { insertSubcontractPerformanceNotice, listSubcontractPerformanceNotices, listSubcontracts, updateSubcontractPerformanceNoticeById } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, FileWarning, CheckCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,6 @@ interface PerfNotice {
 }
 
 export default function PerformanceNoticesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<PerfNotice[]>([]);
   const [subcontracts, setSubcontracts] = useState<{id:string,subcontract_no:string}[]>([]);
@@ -32,13 +31,13 @@ export default function PerformanceNoticesPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("subcontract_performance_notices").select("*, subcontracts!inner(project_id)").order("created_at", { ascending: false });
+    let q = listSubcontractPerformanceNotices();
     if (selectedProjectId) q = q.eq("subcontracts.project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    let sq = supabase.from("subcontracts").select("id,subcontract_no");
+    let sq = listSubcontracts();
     if (selectedProjectId) sq = sq.eq("project_id", selectedProjectId);
     sq.then(({ data }) => {
       if (data) setSubcontracts(data);
@@ -47,11 +46,11 @@ export default function PerformanceNoticesPage() {
       if (data) setItems(data as PerfNotice[]);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId, itemsQuery]);
+  }, [selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("subcontract_performance_notices").insert({
+    const { error } = await insertSubcontractPerformanceNotice({
       subcontract_id: form.subcontract_id,
       notice_no: form.notice_no,
       notice_type: form.notice_type,
@@ -71,7 +70,7 @@ export default function PerformanceNoticesPage() {
   }
 
   async function handleStatusUpdate(id: string, status: string) {
-    const { error } = await supabase.from("subcontract_performance_notices").update({ status }).eq("id", id);
+    const { error } = await updateSubcontractPerformanceNoticeById({ status }, id);
     if (error) { toast.error(error.message); return; }
     toast.success(`Notice ${status}`);
     itemsQuery().then(({ data }) => {

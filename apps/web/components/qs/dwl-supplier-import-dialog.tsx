@@ -22,6 +22,7 @@ import { downloadCsv } from "@/lib/csv-export";
 import {
   parseSimpleSupplierSheet, type SimpleSupplierRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { deleteDwlSupplierById, insertDwlSupplierProfile, insertDwlSupplierReturning, listDwlSupplierProfiles } from "@/lib/qs/qs-queries";
 
 const TEMPLATE_COLUMNS = [
   "Supplier Code", "Company Name", "Trading Name", "Type", "Contact Person", "Phone", "Email",
@@ -64,7 +65,7 @@ async function importSimpleSuppliers(
   tenantId: string,
   userId: string | null
 ): Promise<ImportResult> {
-  const { data: exData } = await supabase.from("dwl_supplier_profiles").select("supplier_code");
+  const { data: exData } = await listDwlSupplierProfiles("supplier_code");
   const existingCodes = new Set(((exData ?? []) as { supplier_code: string | null }[]).map((p) => p.supplier_code?.toUpperCase()).filter(Boolean));
 
   const result: ImportResult = { suppliersInserted: 0, suppliersSkipped: 0, failed: 0, errors: [] };
@@ -75,13 +76,13 @@ async function importSimpleSuppliers(
     const rating = row.rating;
     const ratingBand = rating != null ? (rating >= 4.5 ? "A" : rating >= 3.5 ? "B" : "C") : "B";
 
-    const { data: supplier, error: supErr } = await supabase.from("dwl_suppliers").insert({
+    const { data: supplier, error: supErr } = await insertDwlSupplierReturning({
       tenant_id: tenantId, name: row.company_name, contact: row.contact_person,
       rating: ratingBand, is_active: row.is_active, created_by: userId,
-    }).select("id").single();
+    });
     if (supErr || !supplier) { result.failed++; result.errors.push(`${row.supplier_code}: ${supErr?.message ?? "supplier insert failed"}`); continue; }
 
-    const { error: profErr } = await supabase.from("dwl_supplier_profiles").insert({
+    const { error: profErr } = await insertDwlSupplierProfile({
       supplier_id: supplier.id, tenant_id: tenantId, supplier_code: row.supplier_code,
       trading_name: row.trading_name, supplier_type: row.supplier_type, contact_person: row.contact_person,
       phone: row.phone, email: row.email, country: row.country, province_city: row.city,
@@ -92,7 +93,7 @@ async function importSimpleSuppliers(
     });
     if (profErr) {
       // Two-step spine+companion insert — never leave an orphaned dwl_suppliers row.
-      await supabase.from("dwl_suppliers").delete().eq("id", supplier.id as string);
+      await deleteDwlSupplierById(supplier.id as string);
       result.failed++; result.errors.push(`${row.supplier_code}: ${profErr.message}`);
       continue;
     }

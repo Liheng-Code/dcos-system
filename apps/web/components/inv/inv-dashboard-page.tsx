@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,6 +14,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { MovementRow } from "./inv-types"
 import { MOVEMENT_TYPE_LABELS } from "./inv-types"
+import { countInvGrnsWithStatusDraft, countInvMaterialRequisitionsWithStatusSubmitted, countInvReturnsWithStatusDraftSubmittedInspected, countInvToolsWithStatusAvailable, countInvToolsWithStatusIssued, countInvTransfersWithStatusSubmittedApproved, getInvStocktakeWithStatusOpenCountingPendingApproval, listInvItemsWithIsActiveWithInvStock, listInvMovements, listInvStockWithIsActive, listInvToolIssuesWithStatusIssuedOverdue } from "@/lib/inv/inventory-queries";
 
 interface DashboardStats {
   totalStockValue: number
@@ -70,70 +70,33 @@ export function InvDashboardPage() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
       const [stockRes, lowStockRes, grnRes, mrRes, transferRes, stocktakeRes, movRes, returnsRes, toolsAvailRes, toolsIssuedRes, toolIssuesRes] = await Promise.all([
-        supabase
-          .from("inv_stock")
-          .select("quantity_available, unit_cost_fifo, inv_items!inner(is_active)")
-          .eq("inv_items.is_active", true),
+        listInvStockWithIsActive(),
 
         // Low-stock aggregation: start from inv_items (not inv_stock) and left-join
         // stock, the same shape used by the rewired procurement/auto-reorder.tsx —
         // this also catches items that have never received a delivery (zero stock
         // rows), which an inner join on inv_stock would silently miss.
-        supabase
-          .from("inv_items")
-          .select("id, min_stock_level, inv_stock(quantity_available)")
-          .eq("is_active", true)
-          .not("min_stock_level", "is", null),
+        listInvItemsWithIsActiveWithInvStock(),
 
-        supabase
-          .from("inv_grns")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "draft"),
+        countInvGrnsWithStatusDraft(),
 
-        supabase
-          .from("inv_material_requisitions")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["submitted"]),
+        countInvMaterialRequisitionsWithStatusSubmitted(),
 
-        supabase
-          .from("inv_transfers")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["submitted", "approved"]),
+        countInvTransfersWithStatusSubmittedApproved(),
 
-        supabase
-          .from("inv_stocktakes")
-          .select("id")
-          .in("status", ["open", "counting", "pending_approval"])
-          .maybeSingle(),
+        getInvStocktakeWithStatusOpenCountingPendingApproval(),
 
-        supabase
-          .from("inv_movements")
-          .select("*, inv_items!inner(item_code, name, unit_of_measure)")
-          .order("created_at", { ascending: false })
-          .limit(20),
+        listInvMovements(),
 
-        supabase
-          .from("inv_returns")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["draft", "submitted", "inspected"]),
+        countInvReturnsWithStatusDraftSubmittedInspected(),
 
-        supabase
-          .from("inv_tools")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "available"),
+        countInvToolsWithStatusAvailable(),
 
-        supabase
-          .from("inv_tools")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "issued"),
+        countInvToolsWithStatusIssued(),
 
-        supabase
-          .from("inv_tool_issues")
-          .select("due_date")
-          .in("status", ["issued", "overdue"]),
+        listInvToolIssuesWithStatusIssuedOverdue("due_date"),
       ])
 
       type StockSummary = { quantity_available: number; unit_cost_fifo: number }

@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlAssemblyItems, listDwlWorkItemsWithIsActive, updateDwlAssemblyItemById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,7 +67,6 @@ export function DwlAssemblyItemFormDialog({
   nextSortOrder,
   onSaved,
 }: DwlAssemblyItemFormDialogProps) {
-  const supabase = createClient();
   const isEditing = editingItem !== null;
 
   const [workItems, setWorkItems] = useState<DwlWorkItem[]>([]);
@@ -108,16 +107,12 @@ export function DwlAssemblyItemFormDialog({
       reset({ work_item_id: "", qty_per_unit: "", basis_note: "", sort_order: String(nextSortOrder) });
     }
     setLoadingWorkItems(true);
-    supabase
-      .from("dwl_work_items")
-      .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
-      .eq("is_active", true)
-      .order("code")
+    listDwlWorkItemsWithIsActive()
       .then(({ data, error }) => {
         if (!error && data) setWorkItems(data as DwlWorkItem[]);
         setLoadingWorkItems(false);
       });
-  }, [open, editingItem, nextSortOrder, reset, supabase]);
+  }, [open, editingItem, nextSortOrder, reset]);
 
   const filteredWorkItems = useMemo(() => {
     if (!workItemSearch.trim()) return workItems.slice(0, 50);
@@ -144,21 +139,18 @@ export function DwlAssemblyItemFormDialog({
     };
 
     if (isEditing && editingItem) {
-      const { error } = await supabase
-        .from("dwl_assembly_items")
-        .update({
+      const { error } = await updateDwlAssemblyItemById({
           qty_per_unit: payload.qty_per_unit,
           basis_note: payload.basis_note,
           sort_order: payload.sort_order,
-        })
-        .eq("id", editingItem.id);
+        }, editingItem.id);
       if (error) {
         toast.error(error.message);
         return;
       }
       toast.success("Assembly item updated");
     } else {
-      const { error } = await supabase.from("dwl_assembly_items").insert(payload);
+      const { error } = await insertDwlAssemblyItems(payload);
       if (error) {
         if (error.code === "23505" || /unique/i.test(error.message ?? "")) {
           toast.error("This work item is already a line on this assembly — edit the existing line instead");

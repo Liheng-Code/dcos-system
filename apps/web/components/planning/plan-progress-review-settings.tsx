@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { getPlanScheduleSettingByProjectId, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 
 /**
@@ -12,7 +12,6 @@ import { useProject } from "@/components/dashboard/project-context";
  * settings widgets on this tab (PlanCalendarList, PlanCalendarExceptions).
  */
 export function PlanProgressReviewSettings() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
@@ -26,30 +25,23 @@ export function PlanProgressReviewSettings() {
       return;
     }
     setLoading(true);
-    supabase
-      .from("plan_schedule_settings")
-      .select("progress_review_enabled, lock_on_complete")
-      .eq("project_id", selectedProjectId)
-      .maybeSingle()
+    getPlanScheduleSettingByProjectId(selectedProjectId, "progress_review_enabled, lock_on_complete")
       .then(({ data }) => {
         setEnabled(data?.progress_review_enabled ?? false);
         setLockOnComplete(data?.lock_on_complete ?? true);
         setLoading(false);
       });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   async function save(next: { enabled: boolean; lockOnComplete: boolean }) {
     if (!selectedProjectId) return;
     setSaving(true);
-    const { error } = await supabase.from("plan_schedule_settings").upsert(
-      {
+    const { error } = await upsertPlanScheduleSetting({
         project_id: selectedProjectId,
         progress_review_enabled: next.enabled,
         lock_on_complete: next.lockOnComplete,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "project_id" },
-    );
+      });
     if (error) toast.error(error.message);
     setSaving(false);
   }

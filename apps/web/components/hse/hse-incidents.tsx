@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertHseIncident, listHseIncidents, updateHseIncidentById } from "@/lib/construction/construction-queries";
 import { Plus, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,6 @@ export function HseIncidents() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [incidentNumber, setIncidentNumber] = useState("");
   const [incidentType, setIncidentType] = useState("near_miss");
@@ -49,7 +48,7 @@ export function HseIncidents() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase.from("hse_incidents").select("*").order("incident_date", { ascending: false }).limit(200);
+    const { data, error } = await listHseIncidents();
     if (error) toast.error(error.message); else setRows(data || []);
     setLoading(false);
   }
@@ -84,8 +83,8 @@ export function HseIncidents() {
       preventive_action: preventiveAction || null,
     };
     const { error } = editing
-      ? await supabase.from("hse_incidents").update(payload).eq("id", editing.id)
-      : await supabase.from("hse_incidents").insert([{ ...payload, project_id: crypto.randomUUID() }]);
+      ? await updateHseIncidentById(payload, editing.id)
+      : await insertHseIncident({ ...payload, project_id: crypto.randomUUID() });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);

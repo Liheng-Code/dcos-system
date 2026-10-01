@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Timer, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { listDelayRegisterByProjectIdOrderedByCreatedAt, listWbsTasksByProjectIdOrderedByTaskCode } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,10 +61,9 @@ export function PlanTiaAnalysis() {
   async function load() {
     if (!selectedProjectId) { setLoading(false); return; }
     setLoading(true);
-    const supabase = createClient();
     const [taskRes, delayRes, scenarioRows] = await Promise.all([
-      supabase.from("wbs_tasks").select("id, task_code, task_name").eq("project_id", selectedProjectId).order("task_code").limit(500),
-      supabase.from("delay_register").select("id, delay_code, description").eq("project_id", selectedProjectId).order("created_at", { ascending: false }),
+      listWbsTasksByProjectIdOrderedByTaskCode(selectedProjectId),
+      listDelayRegisterByProjectIdOrderedByCreatedAt(selectedProjectId, "id, delay_code, description"),
       listTiaScenarios(selectedProjectId).catch(() => [] as TiaScenarioRow[]),
     ]);
     if (taskRes.data) setTaskOptions(taskRes.data as TaskOption[]);

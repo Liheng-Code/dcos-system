@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlLaborRateAttribute, insertDwlResourcePrice, insertDwlResourceReturning, updateDwlResourceById, upsertDwlLaborRateAttribute } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,7 +89,6 @@ interface DwlLaborRateFormDialogProps {
 export function DwlLaborRateFormDialog({
   open, onOpenChange, tenantId, userId, editRow, onSaved,
 }: DwlLaborRateFormDialogProps) {
-  const supabase = createClient();
   const isEdit = editRow != null;
 
   const {
@@ -160,23 +159,17 @@ export function DwlLaborRateFormDialog({
     const productivityNote = values.standard_productivity_note?.trim() || null;
 
     if (isEdit && editRow) {
-      const { error: resErr } = await supabase
-        .from("dwl_resources")
-        .update({ description: values.description.trim(), unit: values.unit, updated_at: new Date().toISOString() })
-        .eq("id", editRow.resource_id);
+      const { error: resErr } = await updateDwlResourceById({ description: values.description.trim(), unit: values.unit, updated_at: new Date().toISOString() }, editRow.resource_id);
       if (resErr) { toast.error(resErr.message); return; }
 
-      const { error: attrErr } = await supabase.from("dwl_labor_rate_attributes").upsert(
-        {
+      const { error: attrErr } = await upsertDwlLaborRateAttribute({
           resource_id: editRow.resource_id,
           tenant_id: tenantId,
           skill_level: values.skill_level,
           standard_productivity_note: productivityNote,
           ...buildUpPayload(values),
           updated_by: userId,
-        },
-        { onConflict: "resource_id" }
-      );
+        });
       if (attrErr) { toast.error(attrErr.message); return; }
 
       // Rates are append-only: only write a new price row when the rate
@@ -184,7 +177,7 @@ export function DwlLaborRateFormDialog({
       const rateChanged = Math.abs((editRow.daily_basic_rate ?? 0) - dailyRate) > 0.001
         || Math.abs((editRow.overtime_rate_per_hr ?? 0) - otRate) > 0.001;
       if (rateChanged) {
-        const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+        const { error: priceErr } = await insertDwlResourcePrice({
           tenant_id: tenantId,
           resource_id: editRow.resource_id,
           unit_price: dailyRate,
@@ -200,18 +193,14 @@ export function DwlLaborRateFormDialog({
 
       toast.success(`Labor rate ${editRow.code} updated`);
     } else {
-      const { data: resourceRow, error: resErr } = await supabase
-        .from("dwl_resources")
-        .insert({
+      const { data: resourceRow, error: resErr } = await insertDwlResourceReturning({
           tenant_id: tenantId,
           category: "labor",
           code: values.code,
           description: values.description.trim(),
           unit: values.unit,
           created_by: userId,
-        })
-        .select("id")
-        .single();
+        });
       if (resErr || !resourceRow) {
         if (resErr?.code === "23505" || /unique/i.test(resErr?.message ?? "")) {
           setError("code", { message: "A resource with this code already exists" });
@@ -222,7 +211,7 @@ export function DwlLaborRateFormDialog({
       }
       const resourceId = resourceRow.id as string;
 
-      const { error: attrErr } = await supabase.from("dwl_labor_rate_attributes").insert({
+      const { error: attrErr } = await insertDwlLaborRateAttribute({
         resource_id: resourceId,
         tenant_id: tenantId,
         skill_level: values.skill_level,
@@ -232,7 +221,7 @@ export function DwlLaborRateFormDialog({
       });
       if (attrErr) { toast.error(attrErr.message); return; }
 
-      const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+      const { error: priceErr } = await insertDwlResourcePrice({
         tenant_id: tenantId,
         resource_id: resourceId,
         unit_price: dailyRate,

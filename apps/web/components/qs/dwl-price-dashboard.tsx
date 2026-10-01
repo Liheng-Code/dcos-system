@@ -44,6 +44,7 @@ import {
   type DwlPriceStatus,
   type DwlSourceType,
 } from "@/components/qs/dwl-types";
+import { getProfileById, listDwlResourcePricesOrderedByValidFrom, listDwlResourcesWithCategoryMaterial, listDwlSuppliers, listDwlVCurrentPrices } from "@/lib/qs/qs-queries";
 
 const PRICE_COLUMNS =
   "id, tenant_id, resource_id, supplier_id, unit_price, currency, valid_from, quote_valid_until, source_type, location, " +
@@ -148,7 +149,7 @@ export default function DwlPriceDashboard() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile } = await getProfileById(uid, "company_id");
       if (profile?.company_id) setTenantId(profile.company_id as string);
     })();
   }, [supabase]);
@@ -157,16 +158,10 @@ export default function DwlPriceDashboard() {
     setLoading(true);
     setErrorMsg(null);
     const [currentResult, historyResult, supplierResult, resourceResult] = await Promise.all([
-      supabase
-        .from("dwl_v_current_prices")
-        .select("resource_id, code, description, unit, unit_price, currency, valid_from, quote_valid_until, source_type, supplier_name, is_expired")
-        .order("code"),
-      supabase
-        .from("dwl_resource_prices")
-        .select(PRICE_COLUMNS)
-        .order("valid_from", { ascending: true }),
-      supabase.from("dwl_suppliers").select("id, name"),
-      supabase.from("dwl_resources").select("id, code, description, unit").eq("category", "material"),
+      listDwlVCurrentPrices(),
+      listDwlResourcePricesOrderedByValidFrom(PRICE_COLUMNS),
+      listDwlSuppliers(),
+      listDwlResourcesWithCategoryMaterial(),
     ]);
 
     if (currentResult.error) {

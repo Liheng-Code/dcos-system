@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listWbsTasksForDelayReviewByProjectId } from "@/lib/planning/planning-queries";
 import { Loader2 } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +24,6 @@ interface TaskSummary {
 }
 
 export function PlanScheduleReports() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
   const searchParams = useSearchParams();
   const subParam = searchParams.get("sub") as ReportType | null;
@@ -38,14 +37,12 @@ export function PlanScheduleReports() {
     if (!selectedProjectId || reportType === "delay") { setTasks([]); setLoading(false); return; }
     setLoading(true);
     /* eslint-enable react-hooks/set-state-in-effect */
-    supabase.from("wbs_tasks").select(
-      "id, task_code, task_name, status, discipline, delay_status, delay_reason, priority, start_date, end_date, progress, is_milestone, owner_name, baseline_finish_date"
-    ).eq("project_id", selectedProjectId).limit(500).then(({ data, error }) => {
+    listWbsTasksForDelayReviewByProjectId(selectedProjectId).then(({ data, error }) => {
       if (error) toast.error(error.message);
       else setTasks((data || []) as TaskSummary[]);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId, reportType]);
+  }, [selectedProjectId, reportType]);
 
   const milestoneTasks = useMemo(() =>
     tasks.filter(t => t.is_milestone),

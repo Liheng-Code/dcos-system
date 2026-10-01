@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteDwlAssemblySpecsByAssemblyIdAndSection, insertDwlAssemblySpecs, updateDwlAssemblyById, upsertDwlAssemblyCosting } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,7 +123,6 @@ export function EditableList({
 export function DwlCostItemGeneralEditDialog({
   open, onOpenChange, tenantId, userId, assemblyId, elementGroup, summary, specs, isStandalone, onSaved,
 }: DwlCostItemGeneralEditDialogProps) {
-  const supabase = createClient();
 
   const [exclusions, setExclusions] = useState<string[]>([]);
   const [assumptions, setAssumptions] = useState<string[]>([]);
@@ -163,11 +162,7 @@ export function DwlCostItemGeneralEditDialog({
 
   async function replaceSection(section: DwlAssemblySpecSection, rows: string[], introText?: string) {
     const cleaned = rows.map((r) => r.trim()).filter(Boolean);
-    const { error: delErr } = await supabase
-      .from("dwl_assembly_specs")
-      .delete()
-      .eq("assembly_id", assemblyId)
-      .eq("section", section);
+    const { error: delErr } = await deleteDwlAssemblySpecsByAssemblyIdAndSection(assemblyId, section);
     if (delErr) throw delErr;
 
     const inserts: { tenant_id: string; assembly_id: string; section: string; sort_order: number; spec_label: string; spec_value: string }[] = [];
@@ -178,7 +173,7 @@ export function DwlCostItemGeneralEditDialog({
       inserts.push({ tenant_id: tenantId, assembly_id: assemblyId, section, sort_order: i + 1, spec_label: "", spec_value: text });
     });
     if (inserts.length > 0) {
-      const { error: insErr } = await supabase.from("dwl_assembly_specs").insert(inserts);
+      const { error: insErr } = await insertDwlAssemblySpecs(inserts);
       if (insErr) throw insErr;
     }
   }
@@ -189,10 +184,7 @@ export function DwlCostItemGeneralEditDialog({
       return;
     }
 
-    const { error: costErr } = await supabase
-      .from("dwl_assembly_costing")
-      .upsert(
-        {
+    const { error: costErr } = await upsertDwlAssemblyCosting({
           assembly_id: assemblyId,
           tenant_id: tenantId,
           discipline: values.discipline || null,
@@ -202,19 +194,14 @@ export function DwlCostItemGeneralEditDialog({
           status: values.status,
           manual_direct_cost_per_unit: isStandalone ? Number(values.manual_direct_cost) || 0 : null,
           created_by: summary?.created_by ?? userId,
-        },
-        { onConflict: "assembly_id" }
-      );
+        });
     if (costErr) {
       toast.error(costErr.message);
       return;
     }
 
     if (values.element_group.trim() && values.element_group.trim() !== elementGroup) {
-      const { error: catErr } = await supabase
-        .from("dwl_assemblies")
-        .update({ element_group: values.element_group.trim() })
-        .eq("id", assemblyId);
+      const { error: catErr } = await updateDwlAssemblyById({ element_group: values.element_group.trim() }, assemblyId);
       if (catErr) {
         toast.error(catErr.message);
         return;

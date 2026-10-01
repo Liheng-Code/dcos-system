@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { listWbsNodesByProjectIdOrderedByFullPath, listWbsTasksByProjectIdWithPlanTaskWork } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
 import { LEGEND_STYLE, TICK, TOOLTIP_STYLE } from "@/components/planning/planning-dashboard-charts";
@@ -38,11 +38,10 @@ export function PlanCostRollup() {
     if (!selectedProjectId) { setNodes([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const supabase = createClient();
       const [nodesRes, rollupRows, tasksRes, calRow] = await Promise.all([
-        supabase.from("wbs_nodes").select("id, wbs_code, wbs_name, full_path, node_type").eq("project_id", selectedProjectId).order("full_path"),
+        listWbsNodesByProjectIdOrderedByFullPath(selectedProjectId),
         getWbsCostRollup(selectedProjectId),
-        supabase.from("wbs_tasks").select("id, start_date, end_date, is_milestone, plan_task_work(planned_cost)").eq("project_id", selectedProjectId).limit(1000),
+        listWbsTasksByProjectIdWithPlanTaskWork(selectedProjectId, "id, start_date, end_date, is_milestone, plan_task_work(planned_cost)"),
         getProjectCalendarRow(selectedProjectId),
       ]);
       if (nodesRes.error) throw new Error(nodesRes.error.message);

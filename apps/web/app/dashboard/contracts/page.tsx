@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { countContractRegister, countContractRegisterWithStatusActive, countContractualNotices, countContractualNoticesByDeadlineDateBeforeWithStatusPending, listContractRegister, listTimeBarAlerts } from "@/lib/qs/qs-queries";
 import { Loader2, FileSignature, ScrollText, AlertTriangle, MessageSquare, Shield, Clock } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,20 +23,18 @@ const QUICK_LINKS = [
 ];
 
 export default function ContractsDashboardPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [stats, setStats] = useState({ contracts: 0, notices: 0, overdue: 0, activeContracts: 0, totalValue: 0 });
   const [alerts, setAlerts] = useState<TimeBarAlert[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      supabase.from("contract_register").select("id", { count: "exact", head: true }),
-      supabase.from("contractual_notices").select("id", { count: "exact", head: true }),
-      supabase.from("contractual_notices").select("id", { count: "exact", head: true })
-        .eq("status", "pending").lt("deadline_date", new Date().toISOString()),
-      supabase.from("contract_register").select("id", { count: "exact", head: true }).eq("status", "active"),
-      supabase.from("contract_register").select("contract_value"),
-      supabase.from("time_bar_alerts").select("*").order("deadline_date"),
+      countContractRegister(),
+      countContractualNotices(),
+      countContractualNoticesByDeadlineDateBeforeWithStatusPending(new Date().toISOString()),
+      countContractRegisterWithStatusActive(),
+      listContractRegister("contract_value"),
+      listTimeBarAlerts(),
     ]).then(([c, n, o, a, v, al]) => {
       const totalValue = (v.data ?? []).reduce((s: number, r: any) => s + Number(r.contract_value), 0);
       setStats({
@@ -49,7 +47,7 @@ export default function ContractsDashboardPage() {
       setAlerts((al.data ?? []) as TimeBarAlert[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;

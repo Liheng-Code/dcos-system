@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertHseToolboxTalk, listHseToolboxTalks, updateHseToolboxTalkById } from "@/lib/construction/construction-queries";
 import { Plus, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ export function HseToolboxTalks() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [talkDate, setTalkDate] = useState("");
   const [topic, setTopic] = useState("");
@@ -28,7 +27,7 @@ export function HseToolboxTalks() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase.from("hse_toolbox_talks").select("*").order("talk_date", { ascending: false }).limit(200);
+    const { data, error } = await listHseToolboxTalks();
     if (error) toast.error(error.message); else setRows(data || []);
     setLoading(false);
   }
@@ -55,8 +54,8 @@ export function HseToolboxTalks() {
       notes: notes || null, duration_minutes: parseInt(duration) || 15,
     };
     const { error } = editing
-      ? await supabase.from("hse_toolbox_talks").update(payload).eq("id", editing.id)
-      : await supabase.from("hse_toolbox_talks").insert([{ ...payload, project_id: crypto.randomUUID() }]);
+      ? await updateHseToolboxTalkById(payload, editing.id)
+      : await insertHseToolboxTalk({ ...payload, project_id: crypto.randomUUID() });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);

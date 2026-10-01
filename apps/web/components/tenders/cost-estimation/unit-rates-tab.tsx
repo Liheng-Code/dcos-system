@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteUnitRateLibraryById, insertUnitRateLibrary, listUnitRateLibrary } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,10 @@ export function UnitRatesTab() {
   const [showRateForm, setShowRateForm] = useState(false);
   const [rateForm, setRateForm] = useState({ code: "", description: "", category: "material", trade: "", unit: "ea", base_rate: "0", wastage_pct: "0", productivity_factor: "1", notes: "" });
 
-  const supabase = createClient();
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase.from("unit_rate_library").select("*").order("category");
+    const { data } = await listUnitRateLibrary();
     if (data) setUnitRates(data);
     setLoading(false);
   }
@@ -32,7 +31,7 @@ export function UnitRatesTab() {
 
   async function handleCreateRate() {
     setSaving(true);
-    const { error } = await supabase.from("unit_rate_library").insert({
+    const { error } = await insertUnitRateLibrary({
       code: rateForm.code, description: rateForm.description, category: rateForm.category,
       trade: rateForm.trade || null, unit: rateForm.unit, base_rate: parseFloat(rateForm.base_rate) || 0,
       wastage_pct: parseFloat(rateForm.wastage_pct) || 0,
@@ -49,7 +48,7 @@ export function UnitRatesTab() {
 
   async function handleDeleteRate(id: string) {
     setDeletingId(id);
-    const { error } = await supabase.from("unit_rate_library").delete().eq("id", id);
+    const { error } = await deleteUnitRateLibraryById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Rate deleted");
     setUnitRates(unitRates.filter((r: UnitRate) => r.id !== id));

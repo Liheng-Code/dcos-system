@@ -24,7 +24,7 @@ import {
   X,
   ShieldAlert,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { checkTaskQualityHoldpoints } from "@/lib/construction/construction-queries";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,8 +134,7 @@ export function DailyReportEditor({
   const loadHoldpoints = useCallback(async (taskIds: string[]) => {
     if (!taskIds || taskIds.length === 0) return;
     try {
-      const supabase = createClient();
-      const { data } = await supabase.rpc("check_task_quality_holdpoints", {
+      const { data } = await checkTaskQualityHoldpoints({
         p_task_ids: taskIds,
       });
       if (data) {

@@ -18,6 +18,7 @@ import { DwlCostItemImportDialog } from "@/components/qs/dwl-cost-item-import-di
 import type { DwlAssemblyCostingSummaryRow } from "@/components/qs/dwl-types";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { AssignLibraryToBoqDialog } from "@/components/tenders/cost-estimation/assign-library-to-boq-dialog";
+import { getProfileById, listDwlVAssemblyCostingSummary } from "@/lib/qs/qs-queries";
 
 const V_COLUMNS =
   "assembly_id, code, element_group, description, unit, daily_output, overhead_pct, risk_pct, profit_pct, vat_pct, " +
@@ -54,7 +55,7 @@ export default function DwlCostItemLibraryListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile } = await getProfileById(uid, "company_id");
       if (profile?.company_id) setTenantId(profile.company_id as string);
     })();
   }, [supabase]);
@@ -62,10 +63,7 @@ export default function DwlCostItemLibraryListPage() {
   const loadList = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_assembly_costing_summary")
-      .select(V_COLUMNS)
-      .order("code");
+    const { data, error } = await listDwlVAssemblyCostingSummary(V_COLUMNS);
     if (error) {
       setErrorMsg(error.message);
       setLoading(false);

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { insertSubcontractBackCharge, listSubcontractBackCharges, listSubcontracts } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, AlertTriangle, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ interface BackCharge {
 }
 
 export default function BackChargesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<BackCharge[]>([]);
   const [subcontracts, setSubcontracts] = useState<{id:string,subcontract_no:string}[]>([]);
@@ -37,13 +36,13 @@ export default function BackChargesPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("subcontract_back_charges").select("*, ncrs(ncr_number), subcontracts!inner(project_id)").order("raised_date", { ascending: false });
+    let q = listSubcontractBackCharges();
     if (selectedProjectId) q = q.eq("subcontracts.project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    let sq = supabase.from("subcontracts").select("id,subcontract_no");
+    let sq = listSubcontracts();
     if (selectedProjectId) sq = sq.eq("project_id", selectedProjectId);
     sq.then(({ data }) => {
       if (data) setSubcontracts(data);
@@ -52,11 +51,11 @@ export default function BackChargesPage() {
       if (data) setItems(data as BackCharge[]);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId, itemsQuery]);
+  }, [selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("subcontract_back_charges").insert({
+    const { error } = await insertSubcontractBackCharge({
       subcontract_id: form.subcontract_id,
       charge_no: form.charge_no,
       description: form.description,

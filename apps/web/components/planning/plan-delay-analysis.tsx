@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getPlanCalendarByProjectId, getProjectById, insertDelayRegister, listDelayRegisterByProjectId, listPlanCalendarExceptionsByCalendarIdOfExceptionDateAndIsWorking, listWbsTaskColumnsByProjectId } from "@/lib/planning/planning-queries";
 import { AlertTriangle, GitBranch, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
@@ -84,7 +84,6 @@ function slipClass(n: number): string {
 }
 
 export function PlanDelayAnalysis() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
 
   const [rows, setRows] = useState<TaskRow[]>([]);
@@ -111,29 +110,17 @@ export function PlanDelayAnalysis() {
     setLoading(true);
     try {
       const [taskRes, calRes, projRes, regRes] = await Promise.all([
-        supabase.from("wbs_tasks").select(TASK_COLS).eq("project_id", selectedProjectId).limit(1000),
-        supabase
-          .from("plan_calendars")
-          .select("id, name, monday, tuesday, wednesday, thursday, friday, saturday, sunday")
-          .eq("project_id", selectedProjectId)
-          .order("is_default", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from("projects").select("data_date").eq("id", selectedProjectId).maybeSingle(),
-        supabase
-          .from("delay_register")
-          .select("id, wbs_task_id, delay_code, delay_type, impact_days, status")
-          .eq("project_id", selectedProjectId),
+        listWbsTaskColumnsByProjectId(TASK_COLS, selectedProjectId),
+        getPlanCalendarByProjectId(selectedProjectId),
+        getProjectById(selectedProjectId, "data_date"),
+        listDelayRegisterByProjectId(selectedProjectId),
       ]);
       if (taskRes.error) throw new Error(taskRes.error.message);
 
       const calRow = (calRes.data ?? null) as PlanCalendarRow | null;
       let exceptions: PlanCalendarExceptionRow[] = [];
       if (calRow) {
-        const exRes = await supabase
-          .from("plan_calendar_exceptions")
-          .select("exception_date, is_working")
-          .eq("calendar_id", calRow.id);
+        const exRes = await listPlanCalendarExceptionsByCalendarIdOfExceptionDateAndIsWorking(calRow.id);
         exceptions = (exRes.data ?? []) as PlanCalendarExceptionRow[];
       }
       setCal(buildWorkCalendar(calRow, exceptions));
@@ -270,8 +257,7 @@ export function PlanDelayAnalysis() {
     const causeText = rootHop
       ? `Driven by ${rootHop.task_code} ${rootHop.task_name} — ${rootHop.rootReason ?? "delay"}`
       : null;
-    const { error } = await supabase.from("delay_register").insert([
-      {
+    const { error } = await insertDelayRegister({
         project_id: selectedProjectId,
         wbs_task_id: selectedRow.id,
         delay_code: "",
@@ -281,8 +267,7 @@ export function PlanDelayAnalysis() {
         start_date: selectedRow.baselineFinish,
         finish_date: selectedRow.liveFinish,
         status: "open",
-      },
-    ]);
+      });
     if (error) {
       toast.error(error.message);
       return;

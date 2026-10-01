@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Flag, GitBranch, AlertTriangle, Trash2, Loader2, Plus, Pencil, Users } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { listProfiles, updateWbsTaskById } from "@/lib/planning/planning-queries";
 import type { GanttTask } from "./gantt-types";
 import { ACTIVITY_TYPE_OPTIONS } from "./gantt-types";
 import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-utils";
@@ -67,7 +67,6 @@ export function GanttTaskDetailDrawer({
   onRefresh,
   onEditLink,
 }: GanttTaskDetailDrawerProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<TabKey>("properties");
 
   // Form state is seeded once from the task. The parent mounts this component
@@ -132,7 +131,7 @@ export function GanttTaskDetailDrawer({
   useEffect(() => {
     if (!showTeamPicker || teamProfilesLoaded) return;
     Promise.resolve(
-      supabase.from("profiles").select("id, full_name, role, avatar_url, department").order("full_name"),
+      listProfiles("id, full_name, role, avatar_url, department"),
     ).then(({ data, error }) => {
       if (error) {
         toast.error(error.message);
@@ -141,7 +140,7 @@ export function GanttTaskDetailDrawer({
       }
       setTeamProfilesLoaded(true);
     });
-  }, [showTeamPicker, teamProfilesLoaded, supabase]);
+  }, [showTeamPicker, teamProfilesLoaded]);
 
   const predecessors = useMemo(() => {
     if (!task) return [];
@@ -186,16 +185,13 @@ export function GanttTaskDetailDrawer({
       return;
     }
     setSavingProps(true);
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({
+    const { error } = await updateWbsTaskById({
         task_name: name.trim(),
         start_date: plannedStart || null,
         end_date: plannedFinish || null,
         owner_name: responsible.trim() || null,
         activity_type: activityType,
-      })
-      .eq("id", task.id);
+      }, task.id);
     setSavingProps(false);
     if (error) {
       toast.error("Failed to save: " + error.message);
@@ -225,14 +221,11 @@ export function GanttTaskDetailDrawer({
       return;
     }
     setSavingLink(true);
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({
+    const { error } = await updateWbsTaskById({
         dependency_task_ids: [...(task.dependency_task_ids ?? []), newPredId],
         dependency_types: [...(task.dependency_types ?? []), newLinkType],
         dependency_lag_days: [...(task.dependency_lag_days ?? []), lagNum],
-      })
-      .eq("id", task.id);
+      }, task.id);
     setSavingLink(false);
     if (error) {
       toast.error("Failed to add link: " + error.message);
@@ -253,14 +246,11 @@ export function GanttTaskDetailDrawer({
     ids.splice(index, 1);
     types.splice(index, 1);
     lags.splice(index, 1);
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({
+    const { error } = await updateWbsTaskById({
         dependency_task_ids: ids,
         dependency_types: types,
         dependency_lag_days: lags,
-      })
-      .eq("id", task.id);
+      }, task.id);
     if (error) {
       toast.error("Failed to remove link: " + error.message);
       return;
@@ -293,7 +283,7 @@ export function GanttTaskDetailDrawer({
     }
 
     setSavingProgress(true);
-    const { error } = await supabase.from("wbs_tasks").update(patch).eq("id", task.id);
+    const { error } = await updateWbsTaskById(patch, task.id);
     setSavingProgress(false);
     if (error) {
       toast.error("Failed to submit update: " + error.message);

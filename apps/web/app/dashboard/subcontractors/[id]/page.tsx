@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteSubcontractItemById, getSubcontractById, insertSubcontractItem, listSubcontractBackChargesBySubcontractId, listSubcontractIpcsBySubcontractId, listSubcontractItemsBySubcontractId, listSubcontractPerformanceNoticesBySubcontractId, listSubcontractVariationsBySubcontractId, updateSubcontractById } from "@/lib/qs/qs-queries";
 import {
   Loader2, Save, FileText, AlertTriangle, DollarSign,
   ClipboardList, Tag, Percent, FileWarning, Plus, Trash2,
@@ -68,7 +68,6 @@ const tabs: { key: Tab; label: string; icon: typeof FileText }[] = [
 export default function SubcontractDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const supabase = useMemo(() => createClient(), []);
 
   const [sub, setSub] = useState<Subcontract | null>(null);
   const [items, setItems] = useState<SubItem[]>([]);
@@ -95,12 +94,12 @@ export default function SubcontractDetailPage() {
   useEffect(() => {
     if (!id) return;
     Promise.all([
-      supabase.from("subcontracts").select("*").eq("id", id).single(),
-      supabase.from("subcontract_items").select("*").eq("subcontract_id", id).order("sort_order"),
-      supabase.from("subcontract_ipcs").select("*").eq("subcontract_id", id).order("created_at", { ascending: false }),
-      supabase.from("subcontract_back_charges").select("*").eq("subcontract_id", id).order("raised_date", { ascending: false }),
-      supabase.from("subcontract_performance_notices").select("*").eq("subcontract_id", id).order("created_at", { ascending: false }),
-      supabase.from("subcontract_variations").select("*").eq("subcontract_id", id).order("created_at", { ascending: false }),
+      getSubcontractById(id),
+      listSubcontractItemsBySubcontractId(id),
+      listSubcontractIpcsBySubcontractId(id),
+      listSubcontractBackChargesBySubcontractId(id),
+      listSubcontractPerformanceNoticesBySubcontractId(id),
+      listSubcontractVariationsBySubcontractId(id),
     ]).then(([sRes, iRes, ipcRes, bcRes, pnRes, vRes]) => {
       if (sRes.data) {
         const d = sRes.data as Subcontract;
@@ -126,11 +125,11 @@ export default function SubcontractDetailPage() {
       if (vRes.data) setVariations(vRes.data as Variation[]);
       setLoading(false);
     });
-  }, [id, supabase]);
+  }, [id]);
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("subcontracts").update({
+    const { error } = await updateSubcontractById({
       subcontract_no: editForm.subcontract_no,
       scope_of_work: editForm.scope_of_work || null,
       contract_type: editForm.contract_type,
@@ -142,19 +141,19 @@ export default function SubcontractDetailPage() {
       start_date: editForm.start_date || null,
       end_date: editForm.end_date || null,
       notes: editForm.notes || null,
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Subcontract updated");
     setEditing(false);
     setSaving(false);
-    supabase.from("subcontracts").select("*").eq("id", id).single().then(({ data }) => {
+    getSubcontractById(id).then(({ data }) => {
       if (data) { setSub(data as Subcontract); }
     });
   }
 
   async function handleCreateItem() {
     setSavingItem(true);
-    const { error } = await supabase.from("subcontract_items").insert({
+    const { error } = await insertSubcontractItem({
       subcontract_id: id,
       item_code: itemForm.item_code,
       description: itemForm.description || null,
@@ -167,17 +166,17 @@ export default function SubcontractDetailPage() {
     toast.success("Item added");
     setShowItemForm(false);
     setItemForm({ item_code: "", description: "", unit: "ea", quantity: "0", unit_rate: "0", sort_order: "0" });
-    supabase.from("subcontract_items").select("*").eq("subcontract_id", id).order("sort_order").then(({ data }) => {
+    listSubcontractItemsBySubcontractId(id).then(({ data }) => {
       if (data) setItems(data as SubItem[]);
     });
     setSavingItem(false);
   }
 
   async function handleDeleteItem(itemId: string) {
-    const { error } = await supabase.from("subcontract_items").delete().eq("id", itemId);
+    const { error } = await deleteSubcontractItemById(itemId);
     if (error) { toast.error(error.message); return; }
     toast.success("Item deleted");
-    supabase.from("subcontract_items").select("*").eq("subcontract_id", id).order("sort_order").then(({ data }) => {
+    listSubcontractItemsBySubcontractId(id).then(({ data }) => {
       if (data) setItems(data as SubItem[]);
     });
   }

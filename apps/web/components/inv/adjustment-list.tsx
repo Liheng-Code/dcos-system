@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,6 +11,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import { REASON_CODE_LABELS } from "./inv-types"
 import type { AdjustmentRow } from "./inv-types"
+import { listInvAdjustments } from "@/lib/inv/inventory-queries";
 
 export function AdjustmentList() {
   const router = useRouter()
@@ -31,13 +31,8 @@ export function AdjustmentList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
-      let query = supabase
-        .from("inv_adjustments")
-        .select("*, inv_adjustment_lines(count)", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1)
+      let query = listInvAdjustments((page - 1) * limit, page * limit - 1)
 
       if (status) query = query.eq("status", status)
       if (search) query = query.ilike("adjustment_number", `%${search}%`)

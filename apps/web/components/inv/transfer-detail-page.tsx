@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +25,7 @@ import {
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { TransferRow, TransferLineRow } from "./inv-types"
+import { getInvTransferById, listInvAuditLogByRecordIdWithTableNameInvTransfers } from "@/lib/inv/inventory-queries";
 
 interface TransferDetailData extends Omit<TransferRow, "inv_transfer_lines"> {
   transfer_number: string
@@ -78,7 +78,6 @@ const AUDIT_LABELS: Record<string, string> = {
 
 export function TransferDetailPage({ id }: { id: string }) {
   const router = useRouter()
-  const supabase = createClient()
 
   const [transfer, setTransfer] = useState<TransferDetailData | null>(null)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
@@ -99,23 +98,7 @@ export function TransferDetailPage({ id }: { id: string }) {
       setLoading(true)
       setError(null)
       try {
-        const { data: tfData, error: tfErr } = await supabase
-          .from("inv_transfers")
-          .select(`
-            *,
-            inv_transfer_lines(*, inv_items(item_code, name, unit_of_measure)),
-            source_store:source_store_id(name, store_code),
-            destination_store:destination_store_id(name, store_code),
-            source_project:source_project_id(project_name, project_code),
-            destination_project:destination_project_id(project_name, project_code),
-            profiles!requested_by(full_name, email),
-            source_approver:profiles!source_approved_by(full_name, email),
-            dest_approver:profiles!dest_approved_by(full_name, email),
-            dispatcher:profiles!dispatched_by(full_name, email),
-            receiver:profiles!received_by(full_name, email)
-          `)
-          .eq("id", id)
-          .single()
+        const { data: tfData, error: tfErr } = await getInvTransferById(id)
 
         if (cancelled) return
         if (tfErr || !tfData) { setError("Transfer not found"); setLoading(false); return }
@@ -132,12 +115,7 @@ export function TransferDetailPage({ id }: { id: string }) {
         setDispatchQtys(dqty)
         setReceiveQtys(rqty)
 
-        const { data: auditData } = await supabase
-          .from("inv_audit_log")
-          .select("*, profiles!performed_by(full_name, email)")
-          .eq("table_name", "inv_transfers")
-          .eq("record_id", id)
-          .order("created_at", { ascending: true })
+        const { data: auditData } = await listInvAuditLogByRecordIdWithTableNameInvTransfers(id)
 
         if (cancelled) return
         setAuditLog((auditData ?? []) as AuditEntry[])
@@ -149,7 +127,7 @@ export function TransferDetailPage({ id }: { id: string }) {
     }
     load()
     return () => { cancelled = true }
-  }, [id, supabase])
+  }, [id])
 
   async function handleApproveSource() {
     setSubmitting(true)

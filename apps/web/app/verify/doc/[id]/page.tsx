@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getDocumentVerificationPayload, listDocumentRevisionsByDocumentIdOrderedByCreatedAt } from "@/lib/documents/documents-queries";
 import {
   CheckCircle2,
   AlertOctagon,
@@ -61,15 +61,10 @@ export default function DocumentVerificationPage({ params }: { params: Promise<{
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     Promise.all([
-      supabase.rpc("get_document_verification_payload", { p_doc_id: docId }),
-      supabase
-        .from("document_revisions")
-        .select("id, revision_code, suitability_code, sheet_size, status, file_url, file_name, created_at, is_latest")
-        .eq("document_id", docId)
-        .order("created_at", { ascending: false }),
+      getDocumentVerificationPayload({ p_doc_id: docId }),
+      listDocumentRevisionsByDocumentIdOrderedByCreatedAt(docId),
     ]).then(([rpcRes, revRes]) => {
       if (rpcRes.data && !rpcRes.error) {
         setData(rpcRes.data as VerificationPayload);

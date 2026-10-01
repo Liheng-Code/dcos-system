@@ -6,6 +6,7 @@ import { X, Loader2, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { getProjectById, insertSubmittalPackages, listSubmittalPackagesByProjectId, listWbsNodesByProjectIdOrderedByFullPath } from "@/lib/documents/documents-queries";
 
 interface SubmittalCreateDialogProps {
   projectId: string;
@@ -65,9 +66,9 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
     if (!projectId) return;
 
     Promise.all([
-      supabase.from("projects").select("project_code").eq("id", projectId).single(),
-      supabase.from("wbs_nodes").select("id, wbs_code, wbs_name, full_path").eq("project_id", projectId).order("full_path", { ascending: true }),
-      supabase.from("submittal_packages").select("submittal_number").eq("project_id", projectId),
+      getProjectById(projectId),
+      listWbsNodesByProjectIdOrderedByFullPath(projectId),
+      listSubmittalPackagesByProjectId(projectId),
     ]).then(([projRes, wbsRes, subRes]) => {
       if (projRes.data) setProjectCode(projRes.data.project_code);
       if (wbsRes.data) setWbsNodes(wbsRes.data as WbsNode[]);
@@ -133,7 +134,7 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
       created_by: userId,
     };
 
-    const { error } = await supabase.from("submittal_packages").insert(payload);
+    const { error } = await insertSubmittalPackages(payload);
 
     if (error) {
       toast.error("Failed to create submittal: " + error.message);

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ExternalLink, HardHat, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { decideProgressReview, listWbsTaskProgressReviewsByProjectIdWithStatusPending } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,6 @@ interface ReviewRow {
 
 /** Completion Plan 2.2 — the planner's queue for pending progress-review requests. */
 export function PlanProgressReviewQueue() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,17 +36,7 @@ export function PlanProgressReviewQueue() {
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await supabase
-      .from("wbs_task_progress_reviews")
-      .select(`
-        id, wbs_task_id, proposed_progress, previous_progress, proposed_by, proposed_at, comment, daily_report_id,
-        wbs_tasks (task_code, task_name),
-        site_daily_reports (report_date, weather_conditions),
-        profiles!wbs_task_progress_reviews_proposed_by_fkey (full_name)
-      `)
-      .eq("project_id", selectedProjectId)
-      .eq("status", "pending")
-      .order("proposed_at", { ascending: true });
+    const { data, error } = await listWbsTaskProgressReviewsByProjectIdWithStatusPending(selectedProjectId);
     if (error) {
       toast.error(error.message);
       setLoading(false);
@@ -81,7 +70,7 @@ export function PlanProgressReviewQueue() {
   async function decide(reviewId: string, decision: "confirmed" | "rejected", comment?: string) {
     setBusyId(reviewId);
     try {
-      const { error } = await supabase.rpc("decide_progress_review", {
+      const { error } = await decideProgressReview({
         p_review_id: reviewId,
         p_decision: decision,
         p_comment: comment ?? null,

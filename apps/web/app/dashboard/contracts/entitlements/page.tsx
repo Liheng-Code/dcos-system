@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { deleteEntitlementRegisterById, insertEntitlementRegister, listContractRegister, listEntitlementRegister } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, Shield, Clock, DollarSign, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
 
 export default function EntitlementsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [contracts, setContracts] = useState<{id:string,contract_no:string}[]>([]);
@@ -27,13 +26,13 @@ export default function EntitlementsPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("entitlement_register").select("*, contract_register!inner(project_id)").order("created_at", { ascending: false });
+    let q = listEntitlementRegister();
     if (selectedProjectId) q = q.eq("contract_register.project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    let cq = supabase.from("contract_register").select("id,contract_no");
+    let cq = listContractRegister("id,contract_no");
     if (selectedProjectId) cq = cq.eq("project_id", selectedProjectId);
     cq.then(({ data }) => {
       if (data) setContracts(data);
@@ -42,11 +41,11 @@ export default function EntitlementsPage() {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId, itemsQuery]);
+  }, [selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("entitlement_register").insert({
+    const { error } = await insertEntitlementRegister({
       contract_id: form.contract_id,
       entitlement_no: form.entitlement_no,
       title: form.title,
@@ -174,7 +173,7 @@ export default function EntitlementsPage() {
                 <button onClick={async () => {
                   if (!confirm("Delete this entitlement?")) return;
                   setDeletingId(ent.id);
-                  const { error } = await supabase.from("entitlement_register").delete().eq("id", ent.id);
+                  const { error } = await deleteEntitlementRegisterById(ent.id);
                   if (error) { toast.error(error.message); setDeletingId(null); return; }
                   toast.success("Entitlement deleted");
                   setItems(items.filter((i: any) => i.id !== ent.id));

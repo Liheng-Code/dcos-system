@@ -22,6 +22,7 @@ import type {
   DwlWorkItemResource,
   DwlWorkItemRow,
 } from "@/components/qs/dwl-types";
+import { deleteDwlWorkItemByIdReturning, deleteDwlWorkItemResourceById, getProfileById, listDwlVWorkItemExplosionByWorkItemCode, listDwlVWorkItemRates, listDwlWorkItemResourcesByWorkItemId, listDwlWorkItemsOrderedByCode } from "@/lib/qs/qs-queries";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -80,11 +81,7 @@ export default function DwlWorkItemsListPage() {
         setTenantLoaded(true);
         return;
       }
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", uid)
-        .single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
       setTenantLoaded(true);
     });
@@ -94,13 +91,8 @@ export default function DwlWorkItemsListPage() {
     setLoading(true);
     setErrorMsg(null);
     const [wiResult, rateResult] = await Promise.all([
-      supabase
-        .from("dwl_work_items")
-        .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
-        .order("code"),
-      supabase
-        .from("dwl_v_work_item_rates")
-        .select("work_item_id, code, boq_section, description, unit, net_direct_rate, has_expired_price, recipe_lines"),
+      listDwlWorkItemsOrderedByCode(),
+      listDwlVWorkItemRates(),
     ]);
 
     if (wiResult.error) {
@@ -153,15 +145,8 @@ export default function DwlWorkItemsListPage() {
       setDetailLoading(true);
       setDetailError(null);
       const [explosionResult, rawResult] = await Promise.all([
-        supabase
-          .from("dwl_v_work_item_explosion")
-          .select("work_item_code, sort_order, resource_code, resource_desc, resource_unit, consumption, waste_pct, unit_price, line_cost, source_type, is_expired, basis_note")
-          .eq("work_item_code", workItem.code)
-          .order("sort_order"),
-        supabase
-          .from("dwl_work_item_resources")
-          .select("id, tenant_id, work_item_id, resource_id, consumption, waste_pct, basis_note, sort_order, dwl_resources!inner(code)")
-          .eq("work_item_id", workItem.id),
+        listDwlVWorkItemExplosionByWorkItemCode(workItem.code),
+        listDwlWorkItemResourcesByWorkItemId(workItem.id),
       ]);
 
       if (explosionResult.error) {
@@ -225,7 +210,7 @@ export default function DwlWorkItemsListPage() {
     if (!line.raw) return;
     if (!confirm(`Delete the recipe line for ${line.explosion.resource_code}?`)) return;
     setDeletingLineId(line.raw.id);
-    const { error } = await supabase.from("dwl_work_item_resources").delete().eq("id", line.raw.id);
+    const { error } = await deleteDwlWorkItemResourceById(line.raw.id);
     setDeletingLineId(null);
     if (error) {
       toast.error(error.message);
@@ -238,7 +223,7 @@ export default function DwlWorkItemsListPage() {
 
   async function handleDeleteWorkItem(id: string) {
     setDeletingWorkItemId(id);
-    const { data, error } = await supabase.from("dwl_work_items").delete().eq("id", id).select("id");
+    const { data, error } = await deleteDwlWorkItemByIdReturning(id);
     setDeletingWorkItemId(null);
     if (error) {
       toast.error(error.message);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countHseIncidents, countHseObservations, countHsePermits, countHseRiskAssessments, countHseToolboxTalks } from "@/lib/construction/construction-queries";
 import { HsePageShell } from "@/components/hse/hse-page-shell";
 import {
   ShieldCheck, FileText, MessageSquare, AlertTriangle, ClipboardList, Eye, Loader2
@@ -20,15 +20,14 @@ const MODULES = [
 export default function HsePage() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     Promise.all([
-      supabase.from("hse_permits").select("*", { count: "exact", head: true }),
-      supabase.from("hse_toolbox_talks").select("*", { count: "exact", head: true }),
-      supabase.from("hse_incidents").select("*", { count: "exact", head: true }),
-      supabase.from("hse_risk_assessments").select("*", { count: "exact", head: true }),
-      supabase.from("hse_observations").select("*", { count: "exact", head: true }),
+      countHsePermits(),
+      countHseToolboxTalks(),
+      countHseIncidents(),
+      countHseRiskAssessments(),
+      countHseObservations(),
     ]).then(([pm, tb, ic, ra, ob]) => {
       setCounts({
         permits: pm.count ?? 0, toolbox: tb.count ?? 0, incidents: ic.count ?? 0,
@@ -36,7 +35,7 @@ export default function HsePage() {
       });
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   return (
     <HsePageShell title="HSE" description="Health, Safety & Environment management" icon={ShieldCheck}>

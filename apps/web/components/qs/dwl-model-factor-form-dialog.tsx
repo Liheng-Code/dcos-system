@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlModelFactors, listDwlAssembliesWithIsActive, updateDwlModelFactorById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +58,6 @@ export function DwlModelFactorFormDialog({
   editingFactorAssembly,
   onSaved,
 }: DwlModelFactorFormDialogProps) {
-  const supabase = createClient();
   const isEditing = editingFactor !== null;
 
   const [assemblies, setAssemblies] = useState<DwlAssembly[]>([]);
@@ -99,16 +98,12 @@ export function DwlModelFactorFormDialog({
       reset({ assembly_id: "", driver: "gfa", factor: "", basis_note: "" });
     }
     setLoadingAssemblies(true);
-    supabase
-      .from("dwl_assemblies")
-      .select("id, tenant_id, code, element_group, description, unit, measurement_rule, is_active, created_by, created_at")
-      .eq("is_active", true)
-      .order("code")
+    listDwlAssembliesWithIsActive()
       .then(({ data, error }) => {
         if (!error && data) setAssemblies(data as DwlAssembly[]);
         setLoadingAssemblies(false);
       });
-  }, [open, editingFactor, reset, supabase]);
+  }, [open, editingFactor, reset]);
 
   const filteredAssemblies = useMemo(() => {
     if (!assemblySearch.trim()) return assemblies.slice(0, 50);
@@ -135,21 +130,18 @@ export function DwlModelFactorFormDialog({
     };
 
     if (isEditing && editingFactor) {
-      const { error } = await supabase
-        .from("dwl_model_factors")
-        .update({
+      const { error } = await updateDwlModelFactorById({
           driver: payload.driver,
           factor: payload.factor,
           basis_note: payload.basis_note,
-        })
-        .eq("id", editingFactor.id);
+        }, editingFactor.id);
       if (error) {
         toast.error(error.message);
         return;
       }
       toast.success("Factor updated");
     } else {
-      const { error } = await supabase.from("dwl_model_factors").insert(payload);
+      const { error } = await insertDwlModelFactors(payload);
       if (error) {
         if (error.code === "23505" || /unique/i.test(error.message ?? "")) {
           toast.error("This assembly already has a factor on this model — edit the existing line instead");

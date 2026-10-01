@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Search, Plus, Trash2, Loader2, ClipboardList, AlertTriangle } from "lucide-react"
 import type { InvStore, InvItem } from "./inv-types"
+import { listInvItemsByFilterWithIsActive, listInvStockByStoreIdAndItemIds, listInvStoresWithStatusActive, listWbsNodesByProjectId, listWbsTasksByWbsNodeId } from "@/lib/inv/inventory-queries";
 
 interface WbsNode {
   id: string
@@ -43,7 +43,6 @@ interface MrLine {
 
 export function MrCreatePage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [submitting, setSubmitting] = useState(false)
   const [stores, setStores] = useState<InvStore[]>([])
@@ -65,11 +64,7 @@ export function MrCreatePage() {
 
   // Load stores
   useEffect(() => {
-    supabase
-      .from("inv_stores")
-      .select("id, store_code, name, project_id, status")
-      .eq("status", "active")
-      .order("name")
+    listInvStoresWithStatusActive("id, store_code, name, project_id, status")
       .then(({ data }) => setStores((data ?? []) as InvStore[]))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -84,13 +79,9 @@ export function MrCreatePage() {
     if (!store) { setProjectId(""); setWbsNodes([]); return }
     setProjectId(store.project_id)
 
-    const { data } = await supabase
-      .from("wbs_nodes")
-      .select("id, wbs_code, wbs_name, full_path")
-      .eq("project_id", store.project_id)
-      .order("wbs_code")
+    const { data } = await listWbsNodesByProjectId(store.project_id, "id, wbs_code, wbs_name, full_path")
     setWbsNodes((data ?? []) as WbsNode[])
-  }, [stores, supabase])
+  }, [stores])
 
   // When WBS node changes, load tasks
   const onWbsChange = useCallback(async (nid: string) => {
@@ -100,13 +91,9 @@ export function MrCreatePage() {
     setWbsTasks([])
     if (!nid) return
 
-    const { data } = await supabase
-      .from("wbs_tasks")
-      .select("id, task_code, task_name, cost_code")
-      .eq("wbs_node_id", nid)
-      .order("task_code")
+    const { data } = await listWbsTasksByWbsNodeId(nid)
     setWbsTasks((data ?? []) as WbsTask[])
-  }, [supabase])
+  }, [])
 
   // When task changes, auto-populate cost code
   function onTaskChange(tid: string) {
@@ -119,11 +106,7 @@ export function MrCreatePage() {
   useEffect(() => {
     if (!storeId || lines.length === 0) return
     const itemIds = lines.map(l => l.item_id)
-    supabase
-      .from("inv_stock")
-      .select("item_id, quantity_available")
-      .eq("store_id", storeId)
-      .in("item_id", itemIds)
+    listInvStockByStoreIdAndItemIds(storeId, itemIds)
       .then(({ data }) => {
         const m = new Map((data ?? []).map((s: { item_id: string; quantity_available: number }) => [s.item_id, s.quantity_available]))
         setStockMap(m)
@@ -136,15 +119,10 @@ export function MrCreatePage() {
   const searchItems = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults([]); return }
     setSearchLoading(true)
-    const { data } = await supabase
-      .from("inv_items")
-      .select("id, item_code, name, category, unit_of_measure, is_active")
-      .eq("is_active", true)
-      .or(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
-      .limit(20)
+    const { data } = await listInvItemsByFilterWithIsActive(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
     setSearchResults((data ?? []) as InvItem[])
     setSearchLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => searchItems(itemSearch), 300)

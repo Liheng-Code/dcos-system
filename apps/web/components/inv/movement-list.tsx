@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,6 +12,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { MOVEMENT_TYPE_LABELS, MOVEMENT_TYPES } from "./inv-types"
 import type { MovementRow } from "./inv-types"
+import { listInvMovementsOrderedByCreatedAt } from "@/lib/inv/inventory-queries";
 
 export function MovementList() {
   const searchParams = useSearchParams()
@@ -35,13 +35,8 @@ export function MovementList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
-      let query = supabase
-        .from("inv_movements")
-        .select("*, inv_items!inner(item_code, name, unit_of_measure)", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1)
+      let query = listInvMovementsOrderedByCreatedAt((page - 1) * limit, page * limit - 1)
 
       if (movementType) query = query.eq("movement_type", movementType)
       if (itemId) query = query.eq("item_id", itemId)

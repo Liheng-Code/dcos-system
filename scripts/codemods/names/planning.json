@@ -1,0 +1,6 @@
+{
+  "listWbsTasksByProjectId2": "listWbsTaskColumnsByProjectId",
+  "listWbsTasksByProjectId3": "listWbsTasksForDelayReviewByProjectId",
+  "listWbsTasksByProjectId4": "listWbsTaskMilestoneFlagsByProjectId",
+  "listPlanCalendarExceptionsByCalendarId2": "listPlanCalendarExceptionsByCalendarIdLimited"
+}

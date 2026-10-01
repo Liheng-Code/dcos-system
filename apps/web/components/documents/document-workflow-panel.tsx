@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { insertDocumentAuditLog, insertDocumentViewer, listDocumentAuditLogByDocumentId, listDocumentRevisionTaskLinksByRevisionId, listDocumentRevisionsByDocumentId, listDocumentViewersByDocumentId, updateDocumentByIdReturning } from "@/lib/documents/documents-queries";
 import { X, Loader2, Send, CheckCircle, XCircle, FileUp, Eye, Clock, History, Users, Link2, Edit3, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: WorkflowPanelProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [viewers, setViewers] = useState<ViewerEntry[]>([]);
   const [taskLinks, setTaskLinks] = useState<TaskLink[]>([]);
@@ -96,43 +95,32 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
 
   useEffect(() => {
     Promise.all([
-      supabase.from("document_audit_log")
-        .select("*, profiles:user_id(full_name)")
-        .eq("document_id", document.id)
-        .order("created_at", { ascending: false }),
-      supabase.from("document_viewers")
-        .select("*, profiles:user_id(full_name)")
-        .eq("document_id", document.id)
-        .order("transmitted_at", { ascending: false }),
-      supabase.from("document_revisions")
-        .select("id")
-        .eq("document_id", document.id)
-        .order("revision_number", { ascending: false }),
+      listDocumentAuditLogByDocumentId(document.id),
+      listDocumentViewersByDocumentId(document.id),
+      listDocumentRevisionsByDocumentId(document.id, "id"),
     ]).then(([auditRes, viewerRes, revRes]) => {
       if (auditRes.data) setAuditLog(auditRes.data as AuditEntry[]);
       if (viewerRes.data) setViewers(viewerRes.data as ViewerEntry[]);
       if (revRes.data && revRes.data.length > 0) {
-        supabase.from("document_revision_task_links")
-          .select("*, wbs_tasks:task_id(task_code, task_name)")
-          .eq("revision_id", revRes.data[0].id)
+        listDocumentRevisionTaskLinksByRevisionId(revRes.data[0].id)
           .then(({ data }) => {
             if (data) setTaskLinks(data as TaskLink[]);
           });
       }
       setLoading(false);
     });
-  }, [supabase, document.id]);
+  }, [document.id]);
 
   async function handleAction(nextStatus: string) {
     setActionLoading(true);
-    const { error } = await supabase.from("documents").update({ status: nextStatus }).eq("id", document.id).select().single();
+    const { error } = await updateDocumentByIdReturning({ status: nextStatus }, document.id);
     if (error) {
       toast.error(error.message);
       setActionLoading(false);
       return;
     }
     if (comment.trim()) {
-      await supabase.from("document_audit_log").insert({
+      await insertDocumentAuditLog({
         document_id: document.id,
         action: "commented",
         comment: comment.trim(),
@@ -146,7 +134,7 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
 
   async function handleAddViewer() {
     if (!newViewerEmail.trim()) return;
-    const { error } = await supabase.from("document_viewers").insert({
+    const { error } = await insertDocumentViewer({
       document_id: document.id,
       email: newViewerEmail.trim(),
       purpose: newViewerPurpose,
@@ -156,10 +144,7 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
     toast.success("Viewer added");
     setNewViewerEmail("");
     setShowAddViewer(false);
-    const { data } = await supabase.from("document_viewers")
-      .select("*, profiles:user_id(full_name)")
-      .eq("document_id", document.id)
-      .order("transmitted_at", { ascending: false });
+    const { data } = await listDocumentViewersByDocumentId(document.id);
     if (data) setViewers(data as ViewerEntry[]);
   }
 

@@ -38,6 +38,7 @@ import type {
   DwlWorkItem,
   DwlWorkItemResource,
 } from "@/components/qs/dwl-types";
+import { deleteDwlAssemblyCrewById, deleteDwlAssemblyEquipmentById, deleteDwlAssemblyLayerById, deleteDwlWorkItemResourceById, getDwlVAssemblyCostingSummaryByAssemblyId, getProfileById, insertDwlAssemblyItem, insertDwlWorkItemReturning, listDwlAssemblyCrewByAssemblyId, listDwlAssemblyEquipmentByAssemblyId, listDwlAssemblyItemsByAssemblyId, listDwlAssemblyLayerMaterialsByLayerIds, listDwlAssemblyLayerSpecsByLayerIds, listDwlAssemblyLayersByAssemblyId, listDwlAssemblySpecsByAssemblyId, listDwlResourcePricesByResourceIds, listDwlVAssemblyLayerMaterialsByLayerIds, listDwlVAssemblyMaterialExplosionByAssemblyId, listDwlVResourceCostingRatesByResourceIds, listDwlVSupplierMaterialsByResourceIdsWithIsActive, listDwlWorkItemResourcesByWorkItemIds, listDwlWorkItemsByIds, updateDwlAssemblyCostingByAssemblyId } from "@/lib/qs/qs-queries";
 
 const SUMMARY_COLUMNS =
   "assembly_id, code, element_group, description, unit, daily_output, overhead_pct, risk_pct, profit_pct, " +
@@ -161,8 +162,8 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
     setTab("general");
 
     const [sumRes, specRes] = await Promise.all([
-      supabase.from("dwl_v_assembly_costing_summary").select(SUMMARY_COLUMNS).eq("assembly_id", assemblyId).maybeSingle(),
-      supabase.from("dwl_assembly_specs").select("id, assembly_id, section, sort_order, spec_label, spec_value").eq("assembly_id", assemblyId).order("sort_order"),
+      getDwlVAssemblyCostingSummaryByAssemblyId(SUMMARY_COLUMNS, assemblyId),
+      listDwlAssemblySpecsByAssemblyId(assemblyId),
     ]);
 
     if (sumRes.error) { setErrorMsg(sumRes.error.message); setLoading(false); return; }
@@ -194,11 +195,11 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
     setTrendResourceId("");
 
     const [matRes, crewRes, equipRes, layerRes, assemblyItemsRes] = await Promise.all([
-      supabase.from("dwl_v_assembly_material_explosion").select(MATERIAL_COLUMNS).eq("assembly_id", assemblyId).order("sort_order"),
-      supabase.from("dwl_assembly_crew").select("id, assembly_id, resource_id, role_label, quantity, sort_order, description, benchmark_note").eq("assembly_id", assemblyId).order("sort_order"),
-      supabase.from("dwl_assembly_equipment").select("id, assembly_id, resource_id, role_label, quantity, sort_order, description").eq("assembly_id", assemblyId).order("sort_order"),
-      supabase.from("dwl_assembly_layers").select("id, assembly_id, sort_order, layer_name, material_label, thickness_mm, color_hex").eq("assembly_id", assemblyId).order("sort_order"),
-      supabase.from("dwl_assembly_items").select("id, assembly_id, work_item_id, qty_per_unit, basis_note, sort_order").eq("assembly_id", assemblyId).order("sort_order"),
+      listDwlVAssemblyMaterialExplosionByAssemblyId(MATERIAL_COLUMNS, assemblyId),
+      listDwlAssemblyCrewByAssemblyId(assemblyId),
+      listDwlAssemblyEquipmentByAssemblyId(assemblyId),
+      listDwlAssemblyLayersByAssemblyId(assemblyId),
+      listDwlAssemblyItemsByAssemblyId(assemblyId, "id, assembly_id, work_item_id, qty_per_unit, basis_note, sort_order"),
     ]);
 
     const matRows = (matRes.data ?? []) as unknown as DwlAssemblyMaterialExplosionRow[];
@@ -222,31 +223,31 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
     const [priceRes, supRes, workItemsRes, rawLinesRes, layerMatRes, layerMatViewRes, layerSpecRes, priceHistRes] = await Promise.all([
       laborEquipIds.length > 0
         // Same rate the costing summary uses: labour all-in day rate when enabled, else the current price.
-        ? supabase.from("dwl_v_resource_costing_rates").select("resource_id, code, unit_price:costing_rate, currency").in("resource_id", laborEquipIds)
+        ? listDwlVResourceCostingRatesByResourceIds(laborEquipIds)
         : Promise.resolve({ data: [] as { resource_id: string; code: string; unit_price: number; currency: string }[] }),
       resourceIds.length > 0
-        ? supabase.from("dwl_v_supplier_materials").select("id, tenant_id, supplier_id, supplier_name, supplier_code, resource_id, material_code, material_name, material_unit, supplier_product_code, supplier_product_name, brand, manufacturer, specification, standard, package_size, moq, lead_time_days, is_active, notes, created_at, updated_at").in("resource_id", resourceIds).eq("is_active", true)
+        ? listDwlVSupplierMaterialsByResourceIdsWithIsActive(resourceIds)
         : Promise.resolve({ data: [] as DwlSupplierMaterialRow[] }),
       workItemIds.length > 0
-        ? supabase.from("dwl_work_items").select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at").in("id", workItemIds)
+        ? listDwlWorkItemsByIds(workItemIds)
         : Promise.resolve({ data: [] as DwlWorkItem[] }),
       workItemIds.length > 0
-        ? supabase.from("dwl_work_item_resources").select("id, tenant_id, work_item_id, resource_id, consumption, waste_pct, basis_note, sort_order").in("work_item_id", workItemIds)
+        ? listDwlWorkItemResourcesByWorkItemIds(workItemIds)
         : Promise.resolve({ data: [] as DwlWorkItemResource[] }),
       layerIds.length > 0
-        ? supabase.from("dwl_assembly_layer_materials").select("id, layer_id, resource_id, sort_order").in("layer_id", layerIds)
+        ? listDwlAssemblyLayerMaterialsByLayerIds(layerIds)
         : Promise.resolve({ data: [] as DwlAssemblyLayerMaterial[] }),
       layerIds.length > 0
-        ? supabase.from("dwl_v_assembly_layer_materials").select("layer_id, assembly_id, material_codes, material_names, total_cost_contribution").in("layer_id", layerIds)
+        ? listDwlVAssemblyLayerMaterialsByLayerIds(layerIds)
         : Promise.resolve({ data: [] as DwlAssemblyLayerMaterialRow[] }),
       layerIds.length > 0
-        ? supabase.from("dwl_assembly_layer_specs").select("id, layer_id, sort_order, spec_label, spec_value").in("layer_id", layerIds).order("sort_order")
+        ? listDwlAssemblyLayerSpecsByLayerIds(layerIds)
         : Promise.resolve({ data: [] as DwlAssemblyLayerSpec[] }),
       // Only depends on resourceIds (known after wave 1), same as the other
       // queries above — run it alongside them instead of as its own extra
       // sequential round trip after this Promise.all resolves.
       resourceIds.length > 0
-        ? supabase.from("dwl_resource_prices").select("resource_id, unit_price, valid_from").in("resource_id", resourceIds).order("valid_from")
+        ? listDwlResourcePricesByResourceIds(resourceIds)
         : Promise.resolve({ data: [] as { resource_id: string; unit_price: number; valid_from: string }[] }),
     ]);
     setLayerMaterialLinks((layerMatRes.data ?? []) as DwlAssemblyLayerMaterial[]);
@@ -306,7 +307,7 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile } = await getProfileById(uid, "company_id");
       if (profile?.company_id) setTenantId(profile.company_id as string);
     })();
   }, [supabase]);
@@ -346,13 +347,13 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
   }, [resetSimulator]);
 
   async function handleApplyToItem() {
-    const { error } = await supabase.from("dwl_assembly_costing").update({
+    const { error } = await updateDwlAssemblyCostingByAssemblyId({
       material_base_cost_override: calcMaterialBase,
       material_waste_pct_override: calcWastePct,
       labor_cost_override_per_unit: calcLabor,
       equipment_cost_override_per_unit: calcEquipment,
       tuned_at: new Date().toISOString(),
-    }).eq("assembly_id", assemblyId);
+    }, assemblyId);
     if (error) {
       toast.error(error.message);
       return;
@@ -366,13 +367,13 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
 
   async function handleRevertTuning() {
     if (!confirm("Revert to the bottom-up computed values? The manually tuned figures for this Cost Item will be discarded.")) return;
-    const { error } = await supabase.from("dwl_assembly_costing").update({
+    const { error } = await updateDwlAssemblyCostingByAssemblyId({
       material_base_cost_override: null,
       material_waste_pct_override: null,
       labor_cost_override_per_unit: null,
       equipment_cost_override_per_unit: null,
       tuned_at: null,
-    }).eq("assembly_id", assemblyId);
+    }, assemblyId);
     if (error) {
       toast.error(error.message);
       return;
@@ -392,24 +393,20 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
     if (assemblyWorkItems.length > 0) return assemblyWorkItems[0];
     if (!summary || !tenantId) return null;
 
-    const { data: wi, error: wiErr } = await supabase
-      .from("dwl_work_items")
-      .insert({
+    const { data: wi, error: wiErr } = await insertDwlWorkItemReturning({
         tenant_id: tenantId,
         code: summary.code,
         boq_section: summary.element_group || "GEN",
         description: summary.description,
         unit: summary.unit,
         created_by: userId,
-      })
-      .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
-      .single();
+      });
     if (wiErr || !wi) {
       toast.error(wiErr?.message ?? "Failed to set up this item's Bill of Quantities");
       return null;
     }
 
-    const { error: linkErr } = await supabase.from("dwl_assembly_items").insert({
+    const { error: linkErr } = await insertDwlAssemblyItem({
       tenant_id: tenantId,
       assembly_id: assemblyId,
       work_item_id: wi.id,
@@ -439,7 +436,7 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
     const raw = rawLineByResourceId.get(m.resource_id);
     if (!raw) return;
     if (!confirm(`Delete "${m.material_description}" from this Bill of Quantities?`)) return;
-    const { error } = await supabase.from("dwl_work_item_resources").delete().eq("id", raw.id);
+    const { error } = await deleteDwlWorkItemResourceById(raw.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -450,7 +447,7 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
 
   async function handleDeleteCrewLine(c: DwlAssemblyCrewRow) {
     if (!confirm(`Remove "${c.role_label}" from the crew?`)) return;
-    const { error } = await supabase.from("dwl_assembly_crew").delete().eq("id", c.id);
+    const { error } = await deleteDwlAssemblyCrewById(c.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -461,7 +458,7 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
 
   async function handleDeleteEquipmentLine(e: DwlAssemblyEquipmentRow) {
     if (!confirm(`Remove "${e.role_label}" from the equipment list?`)) return;
-    const { error } = await supabase.from("dwl_assembly_equipment").delete().eq("id", e.id);
+    const { error } = await deleteDwlAssemblyEquipmentById(e.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -472,7 +469,7 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
 
   async function handleDeleteLayer(l: DwlAssemblyLayer) {
     if (!confirm(`Delete the "${l.layer_name}" layer? Its linked materials and specs will also be removed.`)) return;
-    const { error } = await supabase.from("dwl_assembly_layers").delete().eq("id", l.id);
+    const { error } = await deleteDwlAssemblyLayerById(l.id);
     if (error) {
       toast.error(error.message);
       return;

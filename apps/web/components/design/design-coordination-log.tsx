@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDesignCoordinationLog, listDesignCoordinationLog } from "@/lib/design/design-queries";
 import { Search, Plus, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,6 @@ interface CoordItem {
 const statusColors: Record<string, string> = { open: "bg-blue-100 text-blue-700", in_progress: "bg-yellow-100 text-yellow-700", resolved: "bg-green-100 text-green-700", closed: "bg-gray-100 text-gray-500", cancelled: "bg-red-100 text-red-700" };
 
 export function DesignCoordinationLog() {
-  const supabase = createClient();
   const [items, setItems] = useState<CoordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,7 +26,7 @@ export function DesignCoordinationLog() {
 
   function load() {
     setLoading(true);
-    supabase.from("design_coordination_log").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listDesignCoordinationLog().then(({ data }) => {
       if (data) setItems(data as CoordItem[]);
       setLoading(false);
     });
@@ -81,7 +80,6 @@ export function DesignCoordinationLog() {
 }
 
 function CoordinationForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const [disciplineFrom, setDisciplineFrom] = useState("arc");
   const [disciplineTo, setDisciplineTo] = useState("str");
   const [subject, setSubject] = useState("");
@@ -93,11 +91,11 @@ function CoordinationForm({ onSaved, onCancel }: { onSaved: () => void; onCancel
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("design_coordination_log").insert([{
+    const { error } = await insertDesignCoordinationLog({
       project_id: crypto.randomUUID(), discipline_from: disciplineFrom,
       discipline_to: disciplineTo, subject, description: description.trim() || null,
       priority, due_date: dueDate || null, status: "open",
-    }]);
+    });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Coordination item created");
     setSaving(false);

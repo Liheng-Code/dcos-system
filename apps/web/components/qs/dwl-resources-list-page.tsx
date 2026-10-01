@@ -31,6 +31,7 @@ import {
   type DwlResource,
   type DwlResourceRow,
 } from "@/components/qs/dwl-types";
+import { deleteDwlResourceByIdReturning, getProfileById, listDwlResourcesWithOptions, listDwlVCurrentPricesByResourceIds } from "@/lib/qs/qs-queries";
 
 type ActiveFilter = "active" | "inactive" | "all";
 type CategoryFilter = DwlCategory | "all";
@@ -114,11 +115,7 @@ export default function DwlResourcesListPage() {
         setTenantLoaded(true);
         return;
       }
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", uid)
-        .single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) {
         setTenantId(profile.company_id as string);
       }
@@ -136,7 +133,7 @@ export default function DwlResourcesListPage() {
 
   // Filters, search and paging run in the database; prices are fetched for the visible page only.
   const buildQuery = useCallback((columns: string, opts?: { count?: boolean }) => {
-    let q = supabase.from("dwl_resources").select(columns, opts?.count ? { count: "exact" } : undefined);
+    let q = listDwlResourcesWithOptions(columns, opts?.count ? { count: "exact" } : undefined);
     if (categoryFilter !== "all") q = q.eq("category", categoryFilter);
     if (activeFilter === "active") q = q.eq("is_active", true);
     if (activeFilter === "inactive") q = q.eq("is_active", false);
@@ -149,10 +146,7 @@ export default function DwlResourcesListPage() {
     const ids = resources.map((r) => r.id);
     const priceByResource = new Map<string, DwlCurrentPrice>();
     for (let i = 0; i < ids.length; i += 200) {
-      const { data, error } = await supabase
-        .from("dwl_v_current_prices")
-        .select("resource_id, code, description, unit, unit_price, currency, valid_from, quote_valid_until, source_type, supplier_name, is_expired")
-        .in("resource_id", ids.slice(i, i + 200));
+      const { data, error } = await listDwlVCurrentPricesByResourceIds(ids.slice(i, i + 200));
       if (error) throw new Error(error.message);
       for (const p of (data ?? []) as DwlCurrentPrice[]) priceByResource.set(p.resource_id, p);
     }
@@ -236,7 +230,7 @@ export default function DwlResourcesListPage() {
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
-      const { data, error } = await supabase.from("dwl_resources").delete().eq("id", id).select("id");
+      const { data, error } = await deleteDwlResourceByIdReturning(id);
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) {
         throw new Error("Delete was blocked by row-level security. Contact your administrator.");

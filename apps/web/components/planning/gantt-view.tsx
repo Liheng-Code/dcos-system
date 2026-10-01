@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getCriticalPathTasks, getProjectById, listWbsNodesByProjectId, listWbsTasksByProjectId, updateWbsTaskById } from "@/lib/planning/planning-queries";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
@@ -104,7 +104,6 @@ export function GanttView({
   mode = "full",
   tasks: propTasks,
 }: GanttViewProps) {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, selectedProject, loading: projectLoading } = useProject();
   const projectId = propProjectId || selectedProjectId;
 
@@ -206,26 +205,10 @@ export function GanttView({
     setLoading(true);
 
     Promise.all([
-      supabase
-        .from("wbs_tasks")
-        .select(`
-          id, task_code, task_name, discipline, wbs_node_id, owner_name,
-          start_date, end_date, progress, status, delay_status, priority,
-          dependency_task_ids, dependency_types, dependency_lag_days,
-          is_milestone, constraint_type,
-          baseline_start_date, baseline_finish_date,
-          activity_type, actual_start_date, actual_finish_date, field_observation_notes
-        `)
-        .eq("project_id", projectId)
-        .order("sort_order", { ascending: true })
-        .order("start_date", { ascending: true })
-        .limit(500),
-      supabase.from("wbs_nodes")
-        .select("id, parent_id, wbs_code, wbs_name")
-        .eq("project_id", projectId)
-        .order("wbs_code", { ascending: true }),
-      supabase.rpc("get_critical_path_tasks", { p_project_id: projectId }).then((r) => r.data),
-      supabase.from("projects").select("data_date").eq("id", projectId).maybeSingle(),
+      listWbsTasksByProjectId(projectId),
+      listWbsNodesByProjectId(projectId),
+      getCriticalPathTasks({ p_project_id: projectId }).then((r) => r.data),
+      getProjectById(projectId, "data_date"),
     ]).then(([tRes, wRes, cpData, projRes]) => {
       if (tRes.error) toast.error(tRes.error.message);
       else setFetchedTasks((tRes.data || []) as unknown as GanttTask[]);
@@ -254,7 +237,7 @@ export function GanttView({
       if (projRes.data?.data_date) setDataDate(projRes.data.data_date);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [supabase, projectId, mode, propTasks]);
+  }, [projectId, mode, propTasks]);
 
   useEffect(() => {
     // Data-loading effect: loadData drives loading/error/data state for the chart.
@@ -607,10 +590,7 @@ export function GanttView({
   }, [handleFitToScreen]);
 
   const handleReschedule = useCallback(async (taskId: string, newStart: string, newEnd: string) => {
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({ start_date: newStart, end_date: newEnd })
-      .eq("id", taskId);
+    const { error } = await updateWbsTaskById({ start_date: newStart, end_date: newEnd }, taskId);
     if (error) toast.error("Failed to reschedule: " + error.message);
     else {
       toast.success("Task rescheduled");
@@ -618,7 +598,7 @@ export function GanttView({
         prev.map((t) => (t.id === taskId ? { ...t, start_date: newStart, end_date: newEnd } : t)),
       );
     }
-  }, [supabase]);
+  }, []);
 
   // -----------------------------------------------------------------------
   // Dependency links — drag a bar's link handle onto another task
@@ -646,14 +626,11 @@ export function GanttView({
       toast.error("That link would create a circular dependency");
       return;
     }
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({
+    const { error } = await updateWbsTaskById({
         dependency_task_ids: [...(succ.dependency_task_ids ?? []), predId],
         dependency_types: [...(succ.dependency_types ?? []), "fs"],
         dependency_lag_days: [...(succ.dependency_lag_days ?? []), 0],
-      })
-      .eq("id", succId);
+      }, succId);
     if (error) {
       toast.error("Failed to link: " + error.message);
       return;
@@ -661,7 +638,7 @@ export function GanttView({
     toast.success("Dependency added (Finish-to-Start)");
     setShowDependencies(true); // so the new arrow is actually visible
     loadData();
-  }, [tasks, supabase, loadData]);
+  }, [tasks, loadData]);
 
   useEffect(() => {
     if (!linkDrag) return;
@@ -715,10 +692,7 @@ export function GanttView({
     types[editLink.index] = type;
     lags[editLink.index] = lag;
     setSavingLink(true);
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({ dependency_types: types, dependency_lag_days: lags })
-      .eq("id", succ.id);
+    const { error } = await updateWbsTaskById({ dependency_types: types, dependency_lag_days: lags }, succ.id);
     setSavingLink(false);
     if (error) {
       toast.error("Failed to save: " + error.message);
@@ -727,7 +701,7 @@ export function GanttView({
     toast.success("Relation updated");
     setEditLink(null);
     loadData();
-  }, [editLink, tasks, supabase, loadData]);
+  }, [editLink, tasks, loadData]);
 
   const handleRemoveLink = useCallback(async () => {
     if (!editLink) return;
@@ -740,10 +714,7 @@ export function GanttView({
     types.splice(editLink.index, 1);
     lags.splice(editLink.index, 1);
     setSavingLink(true);
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({ dependency_task_ids: ids, dependency_types: types, dependency_lag_days: lags })
-      .eq("id", succ.id);
+    const { error } = await updateWbsTaskById({ dependency_task_ids: ids, dependency_types: types, dependency_lag_days: lags }, succ.id);
     setSavingLink(false);
     if (error) {
       toast.error("Failed to remove: " + error.message);
@@ -752,7 +723,7 @@ export function GanttView({
     toast.success("Link removed");
     setEditLink(null);
     loadData();
-  }, [editLink, tasks, supabase, loadData]);
+  }, [editLink, tasks, loadData]);
 
   const now = new Date();
   const todayX =

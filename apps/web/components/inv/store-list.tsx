@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,6 +11,7 @@ import { Search, Warehouse, Plus, ChevronRight } from "lucide-react"
 import { STORE_TYPE_LABELS } from "./inv-types"
 import type { InvStore } from "./inv-types"
 import { StoreForm } from "./store-form"
+import { listInvStores, listProjectsOfIdAndProjectCodeAndProjectName } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -45,11 +45,10 @@ export function StoreList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
       const [storesRes, projectsRes] = await Promise.all([
-        supabase.from("inv_stores").select("*").order("name"),
-        supabase.from("projects").select("id, project_code, project_name"),
+        listInvStores(),
+        listProjectsOfIdAndProjectCodeAndProjectName(),
       ])
       if (storesRes.error) throw storesRes.error
 

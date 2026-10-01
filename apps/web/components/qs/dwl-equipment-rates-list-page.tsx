@@ -22,6 +22,7 @@ import { DwlEquipmentRateImportDialog } from "@/components/qs/dwl-equipment-rate
 import {
   DWL_EQUIPMENT_RATE_BASES, DWL_EQUIPMENT_RATE_BASIS_LABEL, dwlDisplayResourceDescription, type DwlEquipmentRateRow,
 } from "@/components/qs/dwl-types";
+import { deleteDwlResourceByIdReturning, getProfileById, listDwlVEquipmentRatesWithIsActive } from "@/lib/qs/qs-queries";
 
 const V_COLUMNS =
   "resource_id, code, description, unit, spec_reference, is_active, created_at, updated_at, ownership, rate_basis, " +
@@ -64,7 +65,7 @@ export default function DwlEquipmentRatesListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile, error } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -72,7 +73,7 @@ export default function DwlEquipmentRatesListPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase.from("dwl_v_equipment_rates").select(V_COLUMNS).eq("is_active", true).order("code");
+    const { data, error } = await listDwlVEquipmentRatesWithIsActive(V_COLUMNS);
     if (error) { setErrorMsg(error.message); setLoading(false); return; }
     setRows((data ?? []) as unknown as DwlEquipmentRateRow[]);
     setLoading(false);
@@ -106,7 +107,7 @@ export default function DwlEquipmentRatesListPage() {
   async function handleDelete(r: DwlEquipmentRateRow) {
     if (!window.confirm(`Delete ${r.code} — ${dwlDisplayResourceDescription(r.description)}? Its price history is deleted too.`)) return;
     setDeletingId(r.resource_id);
-    const { data, error } = await supabase.from("dwl_resources").delete().eq("id", r.resource_id).select("id");
+    const { data, error } = await deleteDwlResourceByIdReturning(r.resource_id);
     setDeletingId(null);
     if (error) {
       toast.error(/foreign key|violates/i.test(error.message)

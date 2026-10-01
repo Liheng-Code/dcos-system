@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTenderSubQuoteById, insertTenderSubQuote, listTenderSubQuotesByTenderId } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, Trash2, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,10 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
 
   const { can } = useTenderPermissions();
 
-  const supabase = createClient();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("tender_sub_quotes").select("*").eq("tender_id", tenderId);
+    const { data } = await listTenderSubQuotesByTenderId(tenderId);
     if (data) setSubQuotes(data);
     setLoading(false);
   }, [tenderId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -34,7 +33,7 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
 
   async function handleCreateQuote() {
     setSaving(true);
-    const { error } = await supabase.from("tender_sub_quotes").insert({
+    const { error } = await insertTenderSubQuote({
       tender_id: tenderId, company_name: quoteForm.company_name, trade: quoteForm.trade,
       quote_amount: parseFloat(quoteForm.quote_amount) || 0, currency: quoteForm.currency,
       scope_of_work: quoteForm.scope_of_work || null,
@@ -51,7 +50,7 @@ export function SubQuotesTab({ tenderId }: { tenderId: string }) {
 
   async function handleDeleteQuote(id: string) {
     setDeletingId(id);
-    const { error } = await supabase.from("tender_sub_quotes").delete().eq("id", id);
+    const { error } = await deleteTenderSubQuoteById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Quote deleted");
     setSubQuotes(subQuotes.filter((q: SubQuote) => q.id !== id));

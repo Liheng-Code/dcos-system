@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countPlanCalendarsByProjectId, countWbsTasksByProjectId } from "@/lib/planning/planning-queries";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import {
   GanttChartSquare, Loader2, Camera, AlertTriangle, CalendarClock, Gauge, ArrowRight, CheckCircle2, RefreshCw,
@@ -91,7 +91,6 @@ export default function PlanningPage() {
   const [capturing, setCapturing] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [headerData, setHeaderData] = useState<{ counts: Record<string, number>; progress: DashboardSnapshot["progress"] } | null>(null);
-  const supabase = createClient();
   // This page drives its own fetch timing (see the effects below) instead of
   // auto-fetching on every mount like Gantt/Sheet do — that's the whole point
   // of the cache: clicking into Dashboard shows the last-refreshed snapshot
@@ -101,8 +100,8 @@ export default function PlanningPage() {
 
   async function fetchHeader(projectId: string) {
     const [tk, ca, snaps] = await Promise.all([
-      supabase.from("wbs_tasks").select("*", { count: "exact", head: true }).eq("project_id", projectId),
-      supabase.from("plan_calendars").select("*", { count: "exact", head: true }).eq("project_id", projectId),
+      countWbsTasksByProjectId(projectId),
+      countPlanCalendarsByProjectId(projectId),
       getProgressSnapshots(projectId),
     ]);
     const latest = snaps.length > 0 ? snaps[snaps.length - 1] : null;

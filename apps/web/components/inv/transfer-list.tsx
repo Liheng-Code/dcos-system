@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,6 +10,7 @@ import { Search, Plus, ArrowLeftRight, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { TransferRow } from "./inv-types"
+import { listInvTransfers } from "@/lib/inv/inventory-queries";
 
 export function TransferList() {
   const router = useRouter()
@@ -30,13 +30,8 @@ export function TransferList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
-      let query = supabase
-        .from("inv_transfers")
-        .select("*, source_store:source_store_id(name, store_code), destination_store:destination_store_id(name, store_code), source_project:source_project_id(project_name, project_code), destination_project:destination_project_id(project_name, project_code)", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1)
+      let query = listInvTransfers((page - 1) * limit, page * limit - 1)
 
       if (status) query = query.eq("status", status)
       if (search) query = query.ilike("transfer_number", `%${search}%`)

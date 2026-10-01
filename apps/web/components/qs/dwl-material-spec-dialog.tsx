@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlMaterialSpecReturning, insertDwlMaterialSpecRevision } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +46,6 @@ export function DwlMaterialSpecDialog({
   existingRevisionCount,
   onSaved,
 }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const isNewSpec = spec === null;
   const [saving, setSaving] = useState(false);
 
@@ -110,25 +109,21 @@ export function DwlMaterialSpecDialog({
       let specId = spec?.id;
 
       if (isNewSpec) {
-        const { data, error } = await supabase
-          .from("dwl_material_specs")
-          .insert({
+        const { data, error } = await insertDwlMaterialSpecReturning({
             tenant_id: tenantId,
             spec_code: form.spec_code.trim(),
             resource_id: resourceId,
             spec_name: form.spec_name.trim(),
             discipline: form.discipline.trim() || null,
             created_by: userId,
-          })
-          .select("id")
-          .single();
+          });
         if (error || !data) {
           throw new Error(error?.message ?? "Failed to create specification");
         }
         specId = data.id as string;
       }
 
-      const { error: revError } = await supabase.from("dwl_material_spec_revisions").insert({
+      const { error: revError } = await insertDwlMaterialSpecRevision({
         tenant_id: tenantId,
         spec_id: specId,
         revision_no: form.revision_no.trim(),

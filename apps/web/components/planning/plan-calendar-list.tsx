@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deletePlanCalendarById, insertPlanCalendar, listPlanCalendarsByProjectId, updatePlanCalendarById } from "@/lib/planning/planning-queries";
 import { Plus, Loader2, Pencil, Trash2, Search } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ export function PlanCalendarList() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -35,7 +34,7 @@ export function PlanCalendarList() {
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await supabase.from("plan_calendars").select("*").eq("project_id", selectedProjectId).order("name");
+    const { data, error } = await listPlanCalendarsByProjectId(selectedProjectId, "*");
     if (error) toast.error(error.message);
     else setRows(data || []);
     setLoading(false);
@@ -69,15 +68,15 @@ export function PlanCalendarList() {
     const payload: Record<string, any> = { name, description: desc || null, is_default: isDefault, hours_per_day: hours };
     for (const d of DAYS) payload[d] = dayFlags[d];
     const { error } = editing
-      ? await supabase.from("plan_calendars").update(payload).eq("id", editing.id)
-      : await supabase.from("plan_calendars").insert([{ ...payload, project_id: selectedProjectId }]);
+      ? await updatePlanCalendarById(payload, editing.id)
+      : await insertPlanCalendar({ ...payload, project_id: selectedProjectId });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("plan_calendars").delete().eq("id", id);
+    const { error } = await deletePlanCalendarById(id);
     if (error) toast.error(error.message);
     else { toast.success("Deleted"); load(); }
   }

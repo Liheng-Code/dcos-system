@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Sparkles } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteDwlSupplierById, insertDwlSupplierProfile, insertDwlSupplierReturning, listDwlSupplierProfilesByVendorKind, updateDwlSupplierById, updateDwlSupplierProfilesBySupplierId } from "@/lib/qs/qs-queries";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,7 +84,6 @@ export function DwlSupplierFormDialog({
   editRow,
   vendorKind = "material_supplier",
 }: DwlSupplierFormDialogProps) {
-  const supabase = useMemo(() => createClient(), []);
   const isEdit = editRow !== null && editRow !== undefined;
   const isSubcon = vendorKind === "subcontractor";
   const codePrefix = isSubcon ? "SUB-" : "SUP-";
@@ -148,10 +147,7 @@ export function DwlSupplierFormDialog({
 
   async function suggestNextCode() {
     setSuggesting(true);
-    const { data, error } = await supabase
-      .from("dwl_supplier_profiles")
-      .select("supplier_code")
-      .eq("vendor_kind", vendorKind);
+    const { data, error } = await listDwlSupplierProfilesByVendorKind(vendorKind);
     setSuggesting(false);
     if (error) return;
     let max = 0;
@@ -190,23 +186,17 @@ export function DwlSupplierFormDialog({
     };
 
     if (isEdit && editRow) {
-      const { error: supErr } = await supabase
-        .from("dwl_suppliers")
-        .update({
+      const { error: supErr } = await updateDwlSupplierById({
           name: values.name.trim(),
           contact: values.contact_person?.trim() || null,
           rating: overallRating != null ? ratingBand(overallRating) : editRow.rating,
           is_active: isActive,
-        })
-        .eq("id", editRow.supplier_id);
+        }, editRow.supplier_id);
       if (supErr) {
         toast.error(supErr.message);
         return;
       }
-      const { error: profErr } = await supabase
-        .from("dwl_supplier_profiles")
-        .update({ ...profilePayload, updated_at: new Date().toISOString() })
-        .eq("supplier_id", editRow.supplier_id);
+      const { error: profErr } = await updateDwlSupplierProfilesBySupplierId({ ...profilePayload, updated_at: new Date().toISOString() }, editRow.supplier_id);
       if (profErr) {
         toast.error(profErr.message);
         return;
@@ -217,25 +207,21 @@ export function DwlSupplierFormDialog({
       return;
     }
 
-    const { data: supplier, error: supErr } = await supabase
-      .from("dwl_suppliers")
-      .insert({
+    const { data: supplier, error: supErr } = await insertDwlSupplierReturning({
         tenant_id: tenantId,
         name: values.name.trim(),
         contact: values.contact_person?.trim() || null,
         rating: overallRating != null ? ratingBand(overallRating) : "B",
         is_active: isActive,
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (supErr || !supplier) {
       toast.error(supErr?.message ?? "Failed to create supplier");
       return;
     }
 
     const supplierId = supplier.id as string;
-    const { error: profErr } = await supabase.from("dwl_supplier_profiles").insert({
+    const { error: profErr } = await insertDwlSupplierProfile({
       supplier_id: supplierId,
       tenant_id: tenantId,
       vendor_kind: vendorKind,
@@ -244,7 +230,7 @@ export function DwlSupplierFormDialog({
     });
     if (profErr) {
       // Two-step spine+companion insert — never leave an orphaned dwl_suppliers row.
-      await supabase.from("dwl_suppliers").delete().eq("id", supplierId);
+      await deleteDwlSupplierById(supplierId);
       if (profErr.code === "23505" || /unique/i.test(profErr.message)) {
         setError("supplier_code", { message: `A ${noun.toLowerCase()} with this code already exists` });
       } else {

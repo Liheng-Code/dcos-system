@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import type { DwlPriceSubmissionRow, DwlSubmissionStatus } from "@/components/qs/dwl-types";
+import { listDwlVPriceSubmissions } from "@/lib/qs/qs-queries";
 
 type QueueFilter = "open" | "submitted" | "verified" | "rejected" | "all";
 
@@ -45,10 +46,7 @@ export default function DwlPriceApprovalsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_price_submissions")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await listDwlVPriceSubmissions();
     if (error) { setErrorMsg(error.message); setLoading(false); return; }
     setRows((data ?? []) as unknown as DwlPriceSubmissionRow[]);
     setLoading(false);

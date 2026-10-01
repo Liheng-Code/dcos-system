@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { deletePlanCalendarExceptionById, insertPlanCalendarReturning, listPlanCalendarExceptionsByCalendarIdOrderedByExceptionDate, listPlanCalendarsByProjectIdOrderedByIsDefaultAndName, updatePlanCalendarById, upsertPlanCalendarExceptionReturning } from "@/lib/planning/planning-queries";
 import {
   buildWorkCalendar,
   toISO,
@@ -32,7 +32,6 @@ type CalRow = PlanCalendarRow & { is_default?: boolean };
 type ExcRow = PlanCalendarExceptionRow & { id: string; reason: string | null };
 
 export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [cals, setCals] = useState<CalRow[]>([]);
   const [calId, setCalId] = useState("");
@@ -45,31 +44,22 @@ export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("plan_calendars")
-        .select("id, name, monday, tuesday, wednesday, thursday, friday, saturday, sunday, is_default")
-        .eq("project_id", projectId)
-        .order("is_default", { ascending: false })
-        .order("name");
+      const { data } = await listPlanCalendarsByProjectIdOrderedByIsDefaultAndName(projectId);
       const rows = (data ?? []) as CalRow[];
       setCals(rows);
       setCalId(rows[0]?.id ?? "");
       setLoading(false);
     })();
-  }, [supabase, projectId]);
+  }, [projectId]);
 
   useEffect(() => {
     const cal = cals.find((c) => c.id === calId);
     if (!cal) return;
     /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setDays(Object.fromEntries(DAYS.map((d) => [d.key, Boolean(cal[d.key])])));
-    supabase
-      .from("plan_calendar_exceptions")
-      .select("id, exception_date, is_working, reason")
-      .eq("calendar_id", calId)
-      .order("exception_date")
+    listPlanCalendarExceptionsByCalendarIdOrderedByExceptionDate(calId)
       .then(({ data }) => setExceptions((data ?? []) as ExcRow[]));
-  }, [calId, cals, supabase]);
+  }, [calId, cals]);
 
   const preview = useMemo(() => {
     const cal = cals.find((c) => c.id === calId);
@@ -86,11 +76,7 @@ export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
 
   async function createCalendar() {
     setBusy(true);
-    const { data, error } = await supabase
-      .from("plan_calendars")
-      .insert({ project_id: projectId, name: "Project calendar", is_default: true })
-      .select("id, name, monday, tuesday, wednesday, thursday, friday, saturday, sunday, is_default")
-      .single();
+    const { data, error } = await insertPlanCalendarReturning({ project_id: projectId, name: "Project calendar", is_default: true });
     setBusy(false);
     if (error || !data) {
       toast.error(error?.message ?? "Failed to create calendar");
@@ -103,7 +89,7 @@ export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
   async function saveWorkWeek() {
     if (!calId) return;
     setBusy(true);
-    const { error } = await supabase.from("plan_calendars").update(days).eq("id", calId);
+    const { error } = await updatePlanCalendarById(days, calId);
     setBusy(false);
     if (error) {
       toast.error(error.message);
@@ -117,14 +103,7 @@ export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
   async function addException() {
     if (!calId || !exDate) return;
     setBusy(true);
-    const { data, error } = await supabase
-      .from("plan_calendar_exceptions")
-      .upsert(
-        { calendar_id: calId, exception_date: exDate, is_working: exWorking, reason: exReason || null },
-        { onConflict: "calendar_id,exception_date" },
-      )
-      .select("id, exception_date, is_working, reason")
-      .single();
+    const { data, error } = await upsertPlanCalendarExceptionReturning({ calendar_id: calId, exception_date: exDate, is_working: exWorking, reason: exReason || null });
     setBusy(false);
     if (error || !data) {
       toast.error(error?.message ?? "Failed to add exception");
@@ -140,7 +119,7 @@ export function PlanWorkingTimeDialog({ projectId, onClose, onSaved }: Props) {
   }
 
   async function delException(id: string) {
-    await supabase.from("plan_calendar_exceptions").delete().eq("id", id);
+    await deletePlanCalendarExceptionById(id);
     setExceptions((p) => p.filter((e) => e.id !== id));
     onSaved();
   }

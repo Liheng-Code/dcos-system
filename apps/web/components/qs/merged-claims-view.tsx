@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { insertSubcontractIpc, listSubcontractIpcsByProjectId, listSubcontractsByProjectId } from "@/lib/qs/qs-queries";
 import { CreditCard, DollarSign, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -59,7 +59,6 @@ const SUB_IPC_AMOUNT_FIELDS: { key: keyof typeof EMPTY_SUB_IPC_FORM; label: stri
 ];
 
 function SubIpcList({ projectId }: { projectId: string }) {
-  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<SubIpc[]>([]);
   const [subcontracts, setSubcontracts] = useState<{ id: string; subcontract_no: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,19 +70,12 @@ function SubIpcList({ projectId }: { projectId: string }) {
 
   const itemsQuery = useCallback(
     () =>
-      supabase
-        .from("subcontract_ipcs")
-        .select(SUB_IPC_COLUMNS)
-        .eq("subcontracts.project_id", projectId)
-        .order("created_at", { ascending: false }),
-    [supabase, projectId],
+      listSubcontractIpcsByProjectId(SUB_IPC_COLUMNS, projectId),
+    [projectId],
   );
 
   useEffect(() => {
-    supabase
-      .from("subcontracts")
-      .select("id,subcontract_no")
-      .eq("project_id", projectId)
+    listSubcontractsByProjectId(projectId)
       .then(({ data }) => {
         if (data) setSubcontracts(data);
       });
@@ -91,11 +83,11 @@ function SubIpcList({ projectId }: { projectId: string }) {
       if (data) setItems(data as unknown as SubIpc[]);
       setLoading(false);
     });
-  }, [supabase, projectId, itemsQuery]);
+  }, [projectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("subcontract_ipcs").insert({
+    const { error } = await insertSubcontractIpc({
       subcontract_id: form.subcontract_id,
       ipc_no: form.ipc_no.trim(),
       period_start: form.period_start,

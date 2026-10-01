@@ -15,6 +15,7 @@ import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import {
   parseWorkbook, summarize, type ParsedImport, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { getProfileById, insertDwlMaterialAttribute, insertDwlMaterialSpecReturning, insertDwlMaterialSpecRevision, insertDwlPriceSubmission, insertDwlQuotationItem, insertDwlQuotationReturning, insertDwlResourcePrice, insertDwlResourceReturning, insertDwlSupplierMaterial, insertDwlSupplierProfile, insertDwlSupplierReturning, listDwlMaterialAttributes, listDwlMaterialSpecRevisions, listDwlMaterialSpecs, listDwlPriceSubmissions, listDwlQuotationItems, listDwlQuotations, listDwlResourcePrices, listDwlResources, listDwlSupplierMaterials, listDwlSupplierProfiles, listDwlSuppliers } from "@/lib/qs/qs-queries";
 
 type Phase = "idle" | "parsed" | "importing" | "done";
 
@@ -62,7 +63,7 @@ export default function DwlMaterialImportPage() {
       const userId = userRes.user?.id ?? null;
       let tenantId = "";
       if (userId) {
-        const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", userId).single();
+        const { data: profile } = await getProfileById(userId, "company_id");
         tenantId = (profile?.company_id as string) ?? "";
       }
       if (!tenantId) { setFatal("No tenant assigned to your profile — cannot import."); setPhase("parsed"); return; }
@@ -254,16 +255,16 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
 
   // prefetch existing state (RLS-scoped to the caller's tenant)
   const [exRes, exSup, exSpec, exRev, exAttr, exSM, exQ, exQI, exPrice, exSub] = await Promise.all([
-    supabase.from("dwl_resources").select("id, code"),
-    supabase.from("dwl_suppliers").select("id, name"),
-    supabase.from("dwl_material_specs").select("id, spec_code"),
-    supabase.from("dwl_material_spec_revisions").select("spec_id, revision_no"),
-    supabase.from("dwl_material_attributes").select("resource_id"),
-    supabase.from("dwl_supplier_materials").select("supplier_id, resource_id"),
-    supabase.from("dwl_quotations").select("id, quote_no"),
-    supabase.from("dwl_quotation_items").select("quotation_id, line_no"),
-    supabase.from("dwl_resource_prices").select("resource_id, valid_from, unit_price, notes"),
-    supabase.from("dwl_price_submissions").select("resource_id, valid_from, unit_price, notes"),
+    listDwlResources(),
+    listDwlSuppliers(),
+    listDwlMaterialSpecs(),
+    listDwlMaterialSpecRevisions(),
+    listDwlMaterialAttributes("resource_id"),
+    listDwlSupplierMaterials(),
+    listDwlQuotations(),
+    listDwlQuotationItems(),
+    listDwlResourcePrices(),
+    listDwlPriceSubmissions(),
   ]);
 
   const codeToId = new Map<string, string>();
@@ -294,16 +295,16 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
   for (const m of p.materials) {
     if (codeToId.has(m.code)) { rMat.skipped++; }
     else {
-      const { data, error } = await supabase.from("dwl_resources").insert({
+      const { data, error } = await insertDwlResourceReturning({
         tenant_id: tenantId, code: m.code, category: m.category, description: m.description,
         unit: m.unit, spec_reference: m.attrs.standard ?? null, created_by: userId,
-      }).select("id").single();
+      });
       if (error || !data) { rMat.failed++; rMat.errors.push(`${m.code}: ${error?.message ?? "insert failed"}`); continue; }
       codeToId.set(m.code, data.id as string); rMat.inserted++;
     }
     const rid = codeToId.get(m.code)!;
     if (!attrSet.has(rid)) {
-      const { error } = await supabase.from("dwl_material_attributes").insert({
+      const { error } = await insertDwlMaterialAttribute({
         resource_id: rid, tenant_id: tenantId, material_name: m.material_name,
         subcategory: m.attrs.subcategory, discipline: m.attrs.discipline, material_type: m.attrs.material_type,
         tech_spec_summary: m.attrs.tech_spec_summary, standard: m.attrs.standard, grade: m.attrs.grade,
@@ -325,15 +326,15 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
     if (!rid) { rSpec.failed++; rSpec.errors.push(`${s.spec_code}: material ${s.material_code} not imported`); continue; }
     let sid = specCodeToId.get(s.spec_code);
     if (!sid) {
-      const { data, error } = await supabase.from("dwl_material_specs").insert({
+      const { data, error } = await insertDwlMaterialSpecReturning({
         tenant_id: tenantId, spec_code: s.spec_code, resource_id: rid, spec_name: s.spec_name,
         discipline: s.rev.standard ? null : null, created_by: userId,
-      }).select("id").single();
+      });
       if (error || !data) { rSpec.failed++; rSpec.errors.push(`${s.spec_code}: ${error?.message ?? "insert failed"}`); continue; }
       sid = data.id as string; specCodeToId.set(s.spec_code, sid); rSpec.inserted++;
     } else rSpec.skipped++;
     if (!revSet.has(`${sid}|${s.revision_no}`)) {
-      const { error } = await supabase.from("dwl_material_spec_revisions").insert({
+      const { error } = await insertDwlMaterialSpecRevision({
         tenant_id: tenantId, spec_id: sid, revision_no: s.revision_no,
         standard: s.rev.standard, grade: s.rev.grade, strength_performance: s.rev.strength_performance,
         dimension: s.rev.dimension, thickness: s.rev.thickness, density: s.rev.density, unit: s.rev.unit,
@@ -351,20 +352,20 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
   // 3. suppliers + profiles ---------------------------------------
   const existingProfiles = new Set<string>();
   {
-    const { data } = await supabase.from("dwl_supplier_profiles").select("supplier_id");
+    const { data } = await listDwlSupplierProfiles("supplier_id");
     for (const x of (data ?? []) as { supplier_id: string }[]) existingProfiles.add(x.supplier_id);
   }
   for (const s of p.suppliers) {
     let sid = nameToSup.get(s.name.toLowerCase());
     if (!sid) {
-      const { data, error } = await supabase.from("dwl_suppliers").insert({
+      const { data, error } = await insertDwlSupplierReturning({
         tenant_id: tenantId, name: s.name, contact: s.contact, rating: s.rating, is_active: true, created_by: userId,
-      }).select("id").single();
+      });
       if (error || !data) { rSup.failed++; rSup.errors.push(`${s.name}: ${error?.message ?? "insert failed"}`); continue; }
       sid = data.id as string; nameToSup.set(s.name.toLowerCase(), sid); rSup.inserted++;
     } else rSup.skipped++;
     if (!existingProfiles.has(sid)) {
-      const { error } = await supabase.from("dwl_supplier_profiles").insert({
+      const { error } = await insertDwlSupplierProfile({
         supplier_id: sid, tenant_id: tenantId, ...s.profile, lifecycle_status: "active", created_by: userId,
       });
       if (error) { rProf.failed++; rProf.errors.push(`${s.name}: ${error.message}`); }
@@ -378,7 +379,7 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
     const sid = sm.supplier_name ? nameToSup.get(sm.supplier_name.toLowerCase()) : undefined;
     if (!rid || !sid) { rSM.failed++; rSM.errors.push(`row ${sm._row}: ${!rid ? "material" : "supplier"} not resolved`); continue; }
     if (smSet.has(`${sid}|${rid}`)) { rSM.skipped++; continue; }
-    const { error } = await supabase.from("dwl_supplier_materials").insert({
+    const { error } = await insertDwlSupplierMaterial({
       tenant_id: tenantId, supplier_id: sid, resource_id: rid,
       supplier_product_code: sm.supplier_product_code, supplier_product_name: sm.supplier_product_name,
       brand: sm.brand, manufacturer: sm.manufacturer, specification: sm.specification,
@@ -393,12 +394,12 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
   for (const q of p.quotations) {
     if (quoteNoToId.has(q.quote_no)) { rQ.skipped++; continue; }
     const sid = q.supplier_name ? nameToSup.get(q.supplier_name.toLowerCase()) : null;
-    const { data, error } = await supabase.from("dwl_quotations").insert({
+    const { data, error } = await insertDwlQuotationReturning({
       tenant_id: tenantId, quote_no: q.quote_no, supplier_id: sid ?? null, project_code: q.project_code,
       rfq_ref: q.rfq_ref, quote_date: q.quote_date, valid_until: q.valid_until, currency: q.currency,
       payment_terms: q.payment_terms, delivery_terms: q.delivery_terms, contact_person: q.contact_person,
       source_document: q.source_document, status: q.status, notes: q.notes, created_by: userId,
-    }).select("id").single();
+    });
     if (error || !data) { rQ.failed++; rQ.errors.push(`${q.quote_no}: ${error?.message ?? "insert failed"}`); continue; }
     quoteNoToId.set(q.quote_no, data.id as string); rQ.inserted++;
   }
@@ -407,7 +408,7 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
     const rid = codeToId.get(qi.material_code);
     if (!qid || !rid) { rQI.failed++; rQI.errors.push(`row ${qi._row}: ${!qid ? "quotation" : "material"} not resolved`); continue; }
     if (qiSet.has(`${qid}|${qi.line_no}`)) { rQI.skipped++; continue; }
-    const { error } = await supabase.from("dwl_quotation_items").insert({
+    const { error } = await insertDwlQuotationItem({
       tenant_id: tenantId, quotation_id: qid, line_no: qi.line_no, resource_id: rid,
       supplier_product_code: qi.supplier_product_code, description: qi.description, spec_ref: qi.spec_ref,
       quantity: qi.quantity, unit: qi.unit, unit_price: qi.unit_price, discount: qi.discount,
@@ -435,11 +436,11 @@ async function importAll(supabase: SB, p: ParsedImport, tenantId: string, userId
       project_code: pr.project_code, notes: pr.notes, created_by: userId,
     };
     if (pr.approved) {
-      const { error } = await supabase.from("dwl_resource_prices").insert({ ...common, price_status: "approved" });
+      const { error } = await insertDwlResourcePrice({ ...common, price_status: "approved" });
       if (error) { rPrice.failed++; rPrice.errors.push(`${marker}: ${error.message}`); }
       else { priceMarkers.add(marker); priceKeys.add(natKey); rPrice.inserted++; }
     } else {
-      const { error } = await supabase.from("dwl_price_submissions").insert({ ...common, status: "submitted", submitted_at: new Date().toISOString() });
+      const { error } = await insertDwlPriceSubmission({ ...common, status: "submitted", submitted_at: new Date().toISOString() });
       if (error) { rSubm.failed++; rSubm.errors.push(`${marker}: ${error.message}`); }
       else { priceMarkers.add(marker); priceKeys.add(natKey); rSubm.inserted++; }
     }

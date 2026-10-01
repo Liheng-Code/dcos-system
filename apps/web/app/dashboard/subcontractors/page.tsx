@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { insertSubcontract, listProjects, listSubcontractsOrderedByCreatedAt } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, FileText, AlertTriangle, DollarSign, Eye } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -25,7 +25,6 @@ interface Subcontract {
 }
 
 export default function SubcontractorsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<Subcontract[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,24 +39,24 @@ export default function SubcontractorsPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("subcontracts").select("*").order("created_at", { ascending: false });
+    let q = listSubcontractsOrderedByCreatedAt();
     if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    supabase.from("projects").select("id,name:project_name").then(({ data }) => {
+    listProjects().then(({ data }) => {
       if (data) setProjects(data);
     });
     itemsQuery().then(({ data }) => {
       if (data) setItems(data as Subcontract[]);
       setLoading(false);
     });
-  }, [supabase, itemsQuery]);
+  }, [itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("subcontracts").insert({
+    const { error } = await insertSubcontract({
       project_id: form.project_id,
       subcontract_no: form.subcontract_no,
       scope_of_work: form.scope_of_work || null,

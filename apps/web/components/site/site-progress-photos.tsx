@@ -26,6 +26,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { todayISO } from "@/lib/planning/work-calendar";
+import { deleteSiteProgressPhotoById, insertSiteProgressPhoto, listSiteProgressPhotosByProjectId, listWbsTasksByProjectId } from "@/lib/construction/construction-queries";
 
 interface PhotoRow {
   id: string;
@@ -82,23 +83,13 @@ export function SiteProgressPhotos() {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("site_progress_photos")
-        .select("*, wbs_tasks(task_code, task_name)")
-        .eq("project_id", selectedProjectId)
-        .order("taken_at", { ascending: false })
-        .limit(300);
+      const { data, error } = await listSiteProgressPhotosByProjectId(selectedProjectId);
 
       if (error) throw error;
       setRows((data || []) as PhotoRow[]);
 
       // Load active WBS tasks for picker
-      const { data: taskData } = await supabase
-        .from("wbs_tasks")
-        .select("id, task_code, task_name")
-        .eq("project_id", selectedProjectId)
-        .order("task_code", { ascending: true })
-        .limit(200);
+      const { data: taskData } = await listWbsTasksByProjectId(selectedProjectId);
 
       setTasks(taskData || []);
     } catch (e) {
@@ -195,9 +186,7 @@ export function SiteProgressPhotos() {
         mime_type: mimeType,
       };
 
-      const { error: insertError } = await supabase
-        .from("site_progress_photos")
-        .insert([payload]);
+      const { error: insertError } = await insertSiteProgressPhoto(payload);
 
       if (insertError) throw insertError;
 
@@ -223,10 +212,7 @@ export function SiteProgressPhotos() {
           .remove([photo.storage_path]);
       }
 
-      const { error } = await supabase
-        .from("site_progress_photos")
-        .delete()
-        .eq("id", photo.id);
+      const { error } = await deleteSiteProgressPhotoById(photo.id);
 
       if (error) throw error;
       toast.success("Photo deleted");

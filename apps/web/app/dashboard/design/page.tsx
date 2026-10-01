@@ -8,6 +8,7 @@ import { Loader2, PenTool, Building2, Wind, GitBranch } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { DESIGN_GROUPS } from "@/lib/design/design-nav";
+import { countDesignDrawingsWithDisciplineArc, countDesignDrawingsWithDisciplineMep, countDesignDrawingsWithDisciplineStr, countDesignRfiWithStatusOpen } from "@/lib/design/design-queries";
 
 const CORRESPONDENCE_ITEMS = DESIGN_GROUPS.find((g) => g.key === "correspondence")!.items;
 
@@ -30,10 +31,10 @@ export default function DesignPage() {
       setChecking(false);
     });
     Promise.all([
-      supabase.from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "arc"),
-      supabase.from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "str"),
-      supabase.from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "mep"),
-      supabase.from("design_rfi").select("id", { count: "exact", head: true }).eq("status", "open"),
+      countDesignDrawingsWithDisciplineArc(),
+      countDesignDrawingsWithDisciplineStr(),
+      countDesignDrawingsWithDisciplineMep(),
+      countDesignRfiWithStatusOpen(),
     ]).then(([arc, str, mep, openRfi]) => {
       setCounts({ arc: arc.count ?? 0, str: str.count ?? 0, mep: mep.count ?? 0, openRfi: openRfi.count ?? 0 });
     });

@@ -9,6 +9,7 @@ import { daysBetweenDates, toX, getZoomDayWidth } from "./gantt-utils";
 import type { ScheduleLevel } from "./gantt-types";
 import { GanttHeader } from "./gantt-header";
 import { GanttMilestone } from "./gantt-milestone";
+import { getPortfolioSchedule } from "@/lib/planning/planning-queries";
 
 interface PortfolioProject {
   project_id: string;
@@ -40,8 +41,7 @@ export function PortfolioGantt({ scheduleLevel }: PortfolioGanttProps) {
   useEffect(() => {
     setLoading(true);
     setFetchError(null);
-    supabase
-      .rpc("get_portfolio_schedule")
+    getPortfolioSchedule()
       .then(({ data, error }) => {
         if (error) {
           setFetchError(error.message || "Failed to load portfolio data — run `supabase migration up` to apply the schedule levels migration.");

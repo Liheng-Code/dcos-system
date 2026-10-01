@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { stampPdfDocument, generateQrPngDataUrl } from "@/lib/documents/document-stamping";
 import type { DocumentRecord } from "./document-edit-sheet";
+import { getDocumentRevisionByDocumentId, insertDocumentPrintLog, listDocumentPrintLogsByDocumentRevisionId, updateDocumentPrintLogById } from "@/lib/documents/documents-queries";
 
 interface PrintLog {
   id: string;
@@ -65,21 +66,11 @@ export function DocumentStampModal({
 
   function fetchRevisionAndLogs() {
     setLoading(true);
-    supabase
-      .from("document_revisions")
-      .select("id, revision_code, file_url, file_name, is_latest")
-      .eq("document_id", document.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    getDocumentRevisionByDocumentId(document.id)
       .then(async ({ data: revData }) => {
         if (revData) {
           setLatestRevision(revData);
-          const { data: logsData } = await supabase
-            .from("document_print_logs")
-            .select("*, profiles:printed_by(full_name)")
-            .eq("document_revision_id", revData.id)
-            .order("copy_number", { ascending: true });
+          const { data: logsData } = await listDocumentPrintLogsByDocumentRevisionId(revData.id);
 
           if (logsData) {
             setPrintLogs(logsData as PrintLog[]);
@@ -127,7 +118,7 @@ export function DocumentStampModal({
 
       // 3. Log controlled copy print in database
       const { data: userData } = await supabase.auth.getUser();
-      await supabase.from("document_print_logs").insert({
+      await insertDocumentPrintLog({
         document_revision_id: latestRevision.id,
         printed_by: userData.user?.id,
         copy_number: copyNumber,
@@ -161,13 +152,10 @@ export function DocumentStampModal({
       return;
     }
 
-    const { error } = await supabase
-      .from("document_print_logs")
-      .update({
+    const { error } = await updateDocumentPrintLogById({
         recalled_at: new Date().toISOString(),
         recall_reason: recallReason.trim(),
-      })
-      .eq("id", logId);
+      }, logId);
 
     if (error) {
       toast.error("Failed to recall copy: " + error.message);

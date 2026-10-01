@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listBudgetCodesWithIsActiveOrderedBySortOrder, listQsDescriptionLibrary, listQsElementLibrary } from "@/lib/qs/qs-queries";
 import { ChevronsUpDown, Loader2, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@
 
 export default function QsElementLibraryPage() {
   const { can } = useQsPermissions();
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<QsElementRow[]>([]);
   const [descriptions, setDescriptions] = useState<DescriptionRow[]>([]);
@@ -30,9 +29,9 @@ export default function QsElementLibraryPage() {
   useEffect(() => {
     async function load() {
       const [libRes, codesRes, descRes] = await Promise.all([
-        supabase.from("qs_element_library").select("*").order("sort_order"),
-        supabase.from("budget_codes").select("id, code, description").eq("is_active", true).order("sort_order"),
-        supabase.from("qs_description_library").select("*").order("sort_order"),
+        listQsElementLibrary(),
+        listBudgetCodesWithIsActiveOrderedBySortOrder(),
+        listQsDescriptionLibrary(),
       ]);
       if (libRes.error) toast.error("Failed to load QS element library");
       else setItems((libRes.data ?? []) as QsElementRow[]);
@@ -43,7 +42,7 @@ export default function QsElementLibraryPage() {
       setLoading(false);
     }
     load();
-  }, [supabase]);
+  }, []);
 
   const disciplines = useMemo(() => {
     const seen = new Set<string>();

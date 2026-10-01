@@ -20,6 +20,7 @@ import { downloadCsv } from "@/lib/csv-export";
 import {
   parseSimpleResourceSheet, type SimpleResourceRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { insertDwlResourcePrice, insertDwlResourceReturning, listDwlResources, listDwlSuppliers } from "@/lib/qs/qs-queries";
 
 const TEMPLATE_COLUMNS = [
   "Category", "Code", "Description", "Unit", "Spec Reference", "Active",
@@ -73,8 +74,8 @@ async function importResources(
   userId: string | null
 ): Promise<ImportResult> {
   const [exRes, exSup] = await Promise.all([
-    supabase.from("dwl_resources").select("id, code"),
-    supabase.from("dwl_suppliers").select("id, name"),
+    listDwlResources(),
+    listDwlSuppliers(),
   ]);
   const existingCodes = new Set(((exRes.data ?? []) as { id: string; code: string }[]).map((r) => r.code.toUpperCase()));
   const supplierByName = new Map<string, string>();
@@ -85,9 +86,7 @@ async function importResources(
   for (const row of rows) {
     if (existingCodes.has(row.code)) { result.skippedExisting++; continue; }
 
-    const { data: resourceRow, error: resErr } = await supabase
-      .from("dwl_resources")
-      .insert({
+    const { data: resourceRow, error: resErr } = await insertDwlResourceReturning({
         tenant_id: tenantId,
         code: row.code,
         category: row.category,
@@ -96,9 +95,7 @@ async function importResources(
         spec_reference: row.spec_reference,
         is_active: row.is_active,
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (resErr || !resourceRow) {
       result.failed++;
       result.errors.push(`${row.code}: ${resErr?.message ?? "resource insert failed"}`);
@@ -114,7 +111,7 @@ async function importResources(
         supplierId = supplierByName.get(row.supplier_text.toLowerCase()) ?? null;
         if (!supplierId) result.errors.push(`${row.code}: supplier "${row.supplier_text}" not found — price recorded without a supplier link.`);
       }
-      const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+      const { error: priceErr } = await insertDwlResourcePrice({
         tenant_id: tenantId,
         resource_id: resourceId,
         supplier_id: supplierId,

@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlEquipmentAttribute, insertDwlResourcePrice, insertDwlResourceReturning, updateDwlResourceById, upsertDwlEquipmentAttribute } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,7 +70,6 @@ interface Props {
 }
 
 export function DwlEquipmentRateFormDialog({ open, onOpenChange, tenantId, userId, editRow, onSaved }: Props) {
-  const supabase = createClient();
   const isEdit = editRow != null;
 
   const {
@@ -126,36 +125,25 @@ export function DwlEquipmentRateFormDialog({ open, onOpenChange, tenantId, userI
     let resourceId: string;
     if (isEdit && editRow) {
       resourceId = editRow.resource_id;
-      const { error: resErr } = await supabase
-        .from("dwl_resources")
-        .update({ description: values.description.trim(), unit, updated_at: new Date().toISOString() })
-        .eq("id", resourceId);
+      const { error: resErr } = await updateDwlResourceById({ description: values.description.trim(), unit, updated_at: new Date().toISOString() }, resourceId);
       if (resErr) { toast.error(resErr.message); return; }
-      const { error: attrErr } = await supabase
-        .from("dwl_equipment_attributes")
-        .upsert({ resource_id: resourceId, ...attrs, updated_by: userId }, { onConflict: "resource_id" });
+      const { error: attrErr } = await upsertDwlEquipmentAttribute({ resource_id: resourceId, ...attrs, updated_by: userId });
       if (attrErr) { toast.error(attrErr.message); return; }
     } else {
-      const { data: resourceRow, error: resErr } = await supabase
-        .from("dwl_resources")
-        .insert({ tenant_id: tenantId, category: "equipment", code: values.code, description: values.description.trim(), unit, created_by: userId })
-        .select("id")
-        .single();
+      const { data: resourceRow, error: resErr } = await insertDwlResourceReturning({ tenant_id: tenantId, category: "equipment", code: values.code, description: values.description.trim(), unit, created_by: userId });
       if (resErr || !resourceRow) {
         if (resErr?.code === "23505" || /unique/i.test(resErr?.message ?? "")) setError("code", { message: "A resource with this code already exists" });
         else toast.error(resErr?.message ?? "Failed to create the equipment");
         return;
       }
       resourceId = resourceRow.id as string;
-      const { error: attrErr } = await supabase
-        .from("dwl_equipment_attributes")
-        .insert({ resource_id: resourceId, ...attrs, created_by: userId });
+      const { error: attrErr } = await insertDwlEquipmentAttribute({ resource_id: resourceId, ...attrs, created_by: userId });
       if (attrErr) { toast.error(attrErr.message); return; }
     }
 
     // Rates are append-only: record a new price only when the rate changed.
     if (!isEdit || Math.abs((editRow?.rate ?? -1) - rate) > 0.0001) {
-      const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+      const { error: priceErr } = await insertDwlResourcePrice({
         tenant_id: tenantId,
         resource_id: resourceId,
         unit_price: rate,

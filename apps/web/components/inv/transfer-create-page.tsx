@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Search, Plus, Trash2, Loader2, ArrowLeftRight, AlertTriangle } from "lucide-react"
 import type { InvStore, InvItem } from "./inv-types"
+import { listInvItemsByFilterWithIsActive, listInvStockByStoreIdAndItemIds, listInvStoresWithStatusActive, listProjects } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -32,7 +32,6 @@ interface StockBalance {
 
 export function TransferCreatePage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [submitting, setSubmitting] = useState(false)
 
@@ -54,8 +53,8 @@ export function TransferCreatePage() {
   // Load projects and stores
   useEffect(() => {
     Promise.all([
-      supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("id, store_code, name, project_id, status").eq("status", "active").order("name"),
+      listProjects(),
+      listInvStoresWithStatusActive("id, store_code, name, project_id, status"),
     ]).then(([projRes, storeRes]) => {
       setProjects((projRes.data ?? []) as ProjectOption[])
       setStores((storeRes.data ?? []) as InvStore[])
@@ -89,11 +88,7 @@ export function TransferCreatePage() {
   useEffect(() => {
     if (!sourceStoreId || lines.length === 0) return
     const itemIds = lines.map(l => l.item_id)
-    supabase
-      .from("inv_stock")
-      .select("item_id, quantity_available")
-      .eq("store_id", sourceStoreId)
-      .in("item_id", itemIds)
+    listInvStockByStoreIdAndItemIds(sourceStoreId, itemIds)
       .then(({ data }) => {
         const m = new Map((data ?? []).map((s: StockBalance) => [s.item_id, s.quantity_available]))
         setStockMap(m)
@@ -104,15 +99,10 @@ export function TransferCreatePage() {
   const searchItems = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults([]); return }
     setSearchLoading(true)
-    const { data } = await supabase
-      .from("inv_items")
-      .select("id, item_code, name, category, unit_of_measure, is_active")
-      .eq("is_active", true)
-      .or(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
-      .limit(20)
+    const { data } = await listInvItemsByFilterWithIsActive(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
     setSearchResults((data ?? []) as InvItem[])
     setSearchLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => searchItems(itemSearch), 300)

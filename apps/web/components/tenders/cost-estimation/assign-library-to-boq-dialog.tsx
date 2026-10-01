@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Lock, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { listTenderBoqItemsByTenderId } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +57,6 @@ export function AssignLibraryToBoqDialog(props: AssignLibraryToBoqDialogProps) {
 }
 
 function AssignLibraryToBoqBody({ open, onOpenChange, tenderId: fixedTenderId, preselectedIds, onAssigned }: AssignLibraryToBoqDialogProps) {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProject } = useProject();
   const pushMode = !!preselectedIds;
 
@@ -105,7 +104,7 @@ function AssignLibraryToBoqBody({ open, onOpenChange, tenderId: fixedTenderId, p
         const [nodes, margins, { data: boq }] = await Promise.all([
           getWbsProjectNodes(tenderId),
           getTenderMargins(tenderId),
-          supabase.from("tender_boq_items").select("dwl_assembly_id, level, building_code").eq("tender_id", tenderId).not("dwl_assembly_id", "is", null),
+          listTenderBoqItemsByTenderId(tenderId),
         ]);
         setLevels(nodes.levels);
         setBuildings(nodes.buildings);
@@ -121,7 +120,7 @@ function AssignLibraryToBoqBody({ open, onOpenChange, tenderId: fixedTenderId, p
         toast.error(e instanceof Error ? e.message : "Failed to load tender settings");
       }
     })();
-  }, [tenderId, supabase]);
+  }, [tenderId]);
 
   const groups = useMemo(() => [...new Set(library.map((r) => r.element_group))].sort(), [library]);
   const visible = useMemo(() => {

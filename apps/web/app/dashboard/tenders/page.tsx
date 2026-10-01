@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { countTenderAwardRecords, countTenderRegister, countTenderRegisterWithStatusPublishedInvitationSubmission, countTenderSubmissions } from "@/lib/qs/qs-queries";
 import { Loader2, FileSearch, Award, Calculator, DollarSign, TrendingUp, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,16 +15,15 @@ const QUICK_LINKS = [
 ];
 
 export default function TendersDashboardPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [stats, setStats] = useState({ total: 0, active: 0, submissions: 0, awarded: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      supabase.from("tender_register").select("id", { count: "exact", head: true }),
-      supabase.from("tender_register").select("id", { count: "exact", head: true }).in("status", ["published","invitation","submission"]),
-      supabase.from("tender_submissions").select("id", { count: "exact", head: true }),
-      supabase.from("tender_award_records").select("id", { count: "exact", head: true }),
+      countTenderRegister(),
+      countTenderRegisterWithStatusPublishedInvitationSubmission(),
+      countTenderSubmissions(),
+      countTenderAwardRecords(),
     ]).then(([t, a, s, aw]) => {
       setStats({
         total: t.count ?? 0,
@@ -34,7 +33,7 @@ export default function TendersDashboardPage() {
       });
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 

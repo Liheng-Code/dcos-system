@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { CalendarRange, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { upsertPlanTimescale } from "@/lib/planning/planning-queries";
 import { cn } from "@/lib/utils";
 import {
   activeTierKeys,
@@ -79,12 +79,7 @@ export function PlanTimescaleDialog({ projectId, config, onClose, onSaved }: Pro
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await createClient()
-      .from("plan_timescale")
-      .upsert(
-        { project_id: projectId, config: draft, updated_at: new Date().toISOString() },
-        { onConflict: "project_id" },
-      );
+    const { error } = await upsertPlanTimescale({ project_id: projectId, config: draft, updated_at: new Date().toISOString() });
     if (error) {
       setSaving(false);
       toast.error("Failed to save timescale: " + error.message);

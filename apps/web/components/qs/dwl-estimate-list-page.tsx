@@ -44,6 +44,7 @@ import type {
   DwlQuantityModelRow,
   DwlSnapshotPayload,
 } from "@/components/qs/dwl-types";
+import { deleteDwlModelFactorById, getProfileById, listDwlModelFactors, listDwlModelFactorsByModelId, listDwlProjectSnapshotsByProjectId, listDwlProjects, listDwlQuantityModels, listDwlVAssemblyRatesByAssemblyIds, listDwlVProjectEstimateByProjectId, updateDwlProjectById } from "@/lib/qs/qs-queries";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -118,11 +119,7 @@ export default function DwlEstimateListPage() {
         setTenantLoaded(true);
         return;
       }
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", uid)
-        .single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
       setTenantLoaded(true);
     });
@@ -133,11 +130,8 @@ export default function DwlEstimateListPage() {
     setModelsLoading(true);
     setModelsError(null);
     const [modelResult, factorResult] = await Promise.all([
-      supabase
-        .from("dwl_quantity_models")
-        .select("id, tenant_id, code, building_type, description, basis_note, is_active, created_at")
-        .order("code"),
-      supabase.from("dwl_model_factors").select("model_id"),
+      listDwlQuantityModels(),
+      listDwlModelFactors(),
     ]);
 
     if (modelResult.error) {
@@ -183,13 +177,7 @@ export default function DwlEstimateListPage() {
       setFactorLoading(true);
       setFactorNote(null);
 
-      const factorResult = await supabase
-        .from("dwl_model_factors")
-        .select(
-          "id, tenant_id, model_id, assembly_id, driver, factor, basis_note, dwl_assemblies!inner(code, element_group, description, unit)"
-        )
-        .eq("model_id", model.id)
-        .order("basis_note");
+      const factorResult = await listDwlModelFactorsByModelId(model.id);
 
       if (factorResult.error) {
         setFactorNote(factorResult.error.message);
@@ -204,10 +192,7 @@ export default function DwlEstimateListPage() {
       const assemblyIds = rawFactors.map((r) => r.assembly_id);
 
       const rateResult = assemblyIds.length
-        ? await supabase
-            .from("dwl_v_assembly_rates")
-            .select("assembly_id, net_direct_rate, has_expired_price")
-            .in("assembly_id", assemblyIds)
+        ? await listDwlVAssemblyRatesByAssemblyIds(assemblyIds)
         : { data: [], error: null };
 
       if (rateResult.error) {
@@ -270,7 +255,7 @@ export default function DwlEstimateListPage() {
   async function handleDeleteFactor(row: DwlModelFactorRow) {
     if (!confirm(`Remove the factor for ${row.assembly.code}?`)) return;
     setDeletingFactorId(row.factor.id);
-    const { error } = await supabase.from("dwl_model_factors").delete().eq("id", row.factor.id);
+    const { error } = await deleteDwlModelFactorById(row.factor.id);
     setDeletingFactorId(null);
     if (error) {
       toast.error(error.message);
@@ -291,10 +276,7 @@ export default function DwlEstimateListPage() {
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true);
     setProjectsError(null);
-    const { data, error } = await supabase
-      .from("dwl_projects")
-      .select("id, tenant_id, name, model_id, gfa, footprint, storeys, status, created_at")
-      .order("created_at", { ascending: false });
+    const { data, error } = await listDwlProjects();
     if (error) {
       setProjectsError(error.message);
       setProjectsLoading(false);
@@ -327,11 +309,7 @@ export default function DwlEstimateListPage() {
     async (project: DwlProject) => {
       setEstimateLoading(true);
       setEstimateError(null);
-      const { data, error } = await supabase
-        .from("dwl_v_project_estimate")
-        .select("project_id, name, element_group, assembly_code, description, unit, quantity, net_direct_rate, amount")
-        .eq("project_id", project.id)
-        .order("element_group");
+      const { data, error } = await listDwlVProjectEstimateByProjectId(project.id);
       if (error) {
         setEstimateError(error.message);
         setEstimateLoading(false);
@@ -346,11 +324,7 @@ export default function DwlEstimateListPage() {
   const loadSnapshots = useCallback(
     async (project: DwlProject) => {
       setSnapshotsLoading(true);
-      const { data, error } = await supabase
-        .from("dwl_project_snapshots")
-        .select("id, tenant_id, project_id, label, snapped_at, snapped_by, payload")
-        .eq("project_id", project.id)
-        .order("snapped_at", { ascending: false });
+      const { data, error } = await listDwlProjectSnapshotsByProjectId(project.id);
       if (!error && data) setSnapshots(data as unknown as DwlProjectSnapshot[]);
       setSnapshotsLoading(false);
     },
@@ -381,14 +355,11 @@ export default function DwlEstimateListPage() {
       return;
     }
     setSavingParams(true);
-    const { error } = await supabase
-      .from("dwl_projects")
-      .update({
+    const { error } = await updateDwlProjectById({
         gfa: Number(gfaInput),
         footprint: footprintInput.trim() ? Number(footprintInput) : null,
         storeys: storeysInput.trim() ? Number(storeysInput) : null,
-      })
-      .eq("id", selectedProject.id);
+      }, selectedProject.id);
     setSavingParams(false);
     if (error) {
       toast.error(error.message);

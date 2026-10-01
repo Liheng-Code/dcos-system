@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Loader2, Printer, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { getTenderRegisterById } from "@/lib/qs/qs-queries";
 import { getTenderCoverSummary, getBidSummaries, getTenderSubmissionData, type TenderCoverSummary, type TenderBidSummary } from "@/lib/qs/tender-cost-service";
 import { printTenderCoverSummary, printTenderSubmission } from "@/lib/print-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
@@ -32,9 +32,8 @@ export function CoverSummaryTab({ tenderId }: { tenderId: string }) {
   const load = useCallback(async (bidSummaryId?: string) => {
     setLoading(true);
     try {
-      const supabase = createClient();
       const [{ data: t }, revs, s] = await Promise.all([
-        supabase.from("tender_register").select("tender_no, title, project_location, client_name, contractor_name").eq("id", tenderId).single(),
+        getTenderRegisterById(tenderId, "tender_no, title, project_location, client_name, contractor_name"),
         getBidSummaries(tenderId),
         getTenderCoverSummary(tenderId, bidSummaryId),
       ]);

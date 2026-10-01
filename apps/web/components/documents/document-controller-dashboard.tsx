@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { listDocumentAuditLog, listDocuments, listSubmittalPackages } from "@/lib/documents/documents-queries";
 import { FileText, Send, CheckCircle, XCircle, Clock, AlertTriangle, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -32,7 +32,6 @@ interface RecentActivity {
 }
 
 export function DocumentControllerDashboard() {
-  const supabase = useMemo(() => createClient(), []);
   const [counts, setCounts] = useState<DocCounts>({ draft: 0, submitted: 0, under_review: 0, approved: 0, rejected: 0, ifc: 0 });
   const [subStats, setSubStats] = useState<SubmittalStats>({ total: 0, underReview: 0, overdue: 0, resubmit: 0 });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
@@ -41,12 +40,9 @@ export function DocumentControllerDashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("documents").select("status"),
-      supabase.from("submittal_packages").select("consultant_status, consultant_due_date, consultant_returned_at"),
-      supabase.from("document_audit_log")
-        .select("id, document_id, action, created_at, documents:document_id(document_number, title)")
-        .order("created_at", { ascending: false })
-        .limit(20),
+      listDocuments(),
+      listSubmittalPackages(),
+      listDocumentAuditLog(),
     ]).then(([docsRes, subsRes, auditRes]) => {
       if (docsRes.data) {
         const acc: DocCounts = { draft: 0, submitted: 0, under_review: 0, approved: 0, rejected: 0, ifc: 0 };
@@ -77,7 +73,7 @@ export function DocumentControllerDashboard() {
       if (auditRes.data) setRecentActivity(auditRes.data as RecentActivity[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   const KPI_CARDS = [
     { label: "Total Documents", value: total, icon: FileText, color: "bg-blue-50 text-blue-600" },

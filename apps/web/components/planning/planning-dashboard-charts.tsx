@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LabelList,
 } from "recharts";
-import { createClient } from "@/lib/supabase/client";
+import { listDelayRegisterByProjectIdOfCauseAndImpactDaysAndStatus } from "@/lib/planning/planning-queries";
 import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
 import { useCachedFetch } from "@/hooks/use-cached-fetch";
 import { getTaskStatus } from "@/components/planning/task-status";
@@ -287,11 +287,7 @@ export function DelaysByCauseCard({
   const { data: rawRows, loading, error } = useCachedFetch<DelayRow[]>(
     projectId ? `dcos.planning.dashboard.delays.${projectId}` : null,
     async () => {
-      const { data, error: err } = await createClient()
-        .from("delay_register")
-        .select("cause, impact_days, status")
-        .eq("project_id", projectId)
-        .limit(2000);
+      const { data, error: err } = await listDelayRegisterByProjectIdOfCauseAndImpactDaysAndStatus(projectId);
       if (err) throw new Error(err.message);
       return (data ?? []) as DelayRow[];
     },

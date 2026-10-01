@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +15,7 @@ import {
 import { Loader2, Save } from "lucide-react"
 import { STORE_TYPE_LABELS } from "./inv-types"
 import type { InvStore } from "./inv-types"
+import { listProfiles, listProjects } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -54,10 +54,9 @@ export function StoreForm({ store, open, onOpenChange, onSaved }: StoreFormProps
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const supabase = createClient()
     Promise.all([
-      supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("profiles").select("id, full_name, email").order("full_name"),
+      listProjects(),
+      listProfiles(),
     ]).then(([pRes, uRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])
       if (uRes.data) setUsers(uRes.data as UserOption[])

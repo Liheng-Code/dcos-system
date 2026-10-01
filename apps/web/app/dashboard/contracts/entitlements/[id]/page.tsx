@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteEntitlementRegisterById, getEntitlementRegisterById, updateEntitlementRegisterById } from "@/lib/qs/qs-queries";
 import { Loader2, Save, Shield, Clock, DollarSign, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 export default function EntitlementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [ent, setEnt] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,17 +20,17 @@ export default function EntitlementDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("entitlement_register").select("*, contract_register(contract_no, title), contractual_notices(notice_no, title)").eq("id", id).single().then(({ data, error }) => {
+    getEntitlementRegisterById(id).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/entitlements"); return; }
       setEnt(data);
       setForm({ ...data });
       setLoading(false);
     });
-  }, [id, supabase, router]);
+  }, [id, router]);
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("entitlement_register").update({
+    const { error } = await updateEntitlementRegisterById({
       entitlement_no: form.entitlement_no, title: form.title, description: form.description,
       category: form.category, trigger_event: form.trigger_event || null,
       contract_clause: form.contract_clause || null,
@@ -40,11 +39,11 @@ export default function EntitlementDetailPage() {
       approved_time_days: parseInt(form.approved_time_days) || 0,
       approved_cost: parseFloat(form.approved_cost) || 0,
       status: form.status, updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Entitlement updated");
     setEditMode(false);
-    supabase.from("entitlement_register").select("*, contract_register(contract_no, title), contractual_notices(notice_no, title)").eq("id", id).single().then(({ data }) => {
+    getEntitlementRegisterById(id).then(({ data }) => {
       if (data) setEnt(data);
     });
     setSaving(false);
@@ -53,7 +52,7 @@ export default function EntitlementDetailPage() {
   async function handleDelete() {
     if (!confirm("Delete this entitlement?")) return;
     setDeleting(true);
-    const { error } = await supabase.from("entitlement_register").delete().eq("id", id);
+    const { error } = await deleteEntitlementRegisterById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Entitlement deleted");
     router.push("/dashboard/contracts/entitlements");

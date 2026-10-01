@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listDocumentPrintLogsWithRecalledAt, listDocumentRevisionsByDocumentIdsWithIsLatest, listDocumentsByProjectId, updateDocumentById } from "@/lib/documents/documents-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import {
   FileSpreadsheet,
@@ -51,7 +51,6 @@ interface MdrRow {
 }
 
 export function MasterDocumentRegisterPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
 
   const [loading, setLoading] = useState(true);
@@ -83,27 +82,7 @@ export function MasterDocumentRegisterPage() {
 
     try {
       // 1. Fetch documents
-      const { data: docsData, error: docsError } = await supabase
-        .from("documents")
-        .select(`
-          id,
-          project_id,
-          document_number,
-          title,
-          discipline,
-          package_code,
-          status,
-          current_revision,
-          current_revision_code,
-          review_code,
-          planned_submission_date,
-          actual_submission_date,
-          consultant_due_date,
-          consultant_returned_at,
-          created_at
-        `)
-        .eq("project_id", selectedProjectId)
-        .order("document_number", { ascending: true });
+      const { data: docsData, error: docsError } = await listDocumentsByProjectId(selectedProjectId);
 
       if (docsError) throw docsError;
 
@@ -114,15 +93,8 @@ export function MasterDocumentRegisterPage() {
 
       if (docIds.length > 0) {
         const [{ data: revsData }, { data: printLogsData }] = await Promise.all([
-          supabase
-            .from("document_revisions")
-            .select("document_id, suitability_code, sheet_size")
-            .in("document_id", docIds)
-            .eq("is_latest", true),
-          supabase
-            .from("document_print_logs")
-            .select("id, document_revision_id, document_revisions!inner(document_id)")
-            .is("recalled_at", null),
+          listDocumentRevisionsByDocumentIdsWithIsLatest(docIds),
+          listDocumentPrintLogsWithRecalledAt(),
         ]);
 
         if (revsData) {
@@ -157,7 +129,7 @@ export function MasterDocumentRegisterPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProjectId, supabase]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     fetchMdr();
@@ -335,13 +307,10 @@ export function MasterDocumentRegisterPage() {
   async function handleSaveQuickDate(id: string) {
     setSavingDate(true);
     try {
-      const { error } = await supabase
-        .from("documents")
-        .update({
+      const { error } = await updateDocumentById({
           planned_submission_date: editPlannedDate || null,
           actual_submission_date: editActualDate || null,
-        })
-        .eq("id", id);
+        }, id);
 
       if (error) throw error;
       toast.success("Milestone dates updated.");

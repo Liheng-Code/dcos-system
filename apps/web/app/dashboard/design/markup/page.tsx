@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { insertDrawingMarkup, listDesignDrawingsOfIdAndDrawingNo, listDrawingMarkups } from "@/lib/design/design-queries";
 import { Loader2, PenTool, Plus, Eye, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ interface DrawingMarkup {
 }
 
 export default function DrawingMarkupPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [markups, setMarkups] = useState<DrawingMarkup[]>([]);
   const [drawings, setDrawings] = useState<{id:string,drawing_no:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,18 +30,18 @@ export default function DrawingMarkupPage() {
   });
 
   useEffect(() => {
-    supabase.from("design_drawings").select("id,drawing_no").then(({ data }) => {
+    listDesignDrawingsOfIdAndDrawingNo().then(({ data }) => {
       if (data) setDrawings(data);
     });
-    supabase.from("drawing_markups").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listDrawingMarkups().then(({ data }) => {
       if (data) setMarkups(data as DrawingMarkup[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("drawing_markups").insert({
+    const { error } = await insertDrawingMarkup({
       drawing_id: form.drawing_id,
       title: form.title,
       description: form.description || null,
@@ -52,7 +51,7 @@ export default function DrawingMarkupPage() {
     toast.success("Markup created");
     setShowForm(false);
     setForm({ drawing_id: "", title: "", description: "", markup_type: "markup" });
-    supabase.from("drawing_markups").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listDrawingMarkups().then(({ data }) => {
       if (data) setMarkups(data as DrawingMarkup[]);
     });
     setSaving(false);

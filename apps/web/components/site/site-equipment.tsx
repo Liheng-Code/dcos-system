@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertSiteEquipment, listSiteEquipmentByProjectId, listWbsTasksByProjectId, pushEquipmentStandbyToDelay, updateSiteEquipmentById } from "@/lib/construction/construction-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import {
   Plus,
@@ -87,7 +87,6 @@ export function SiteEquipment() {
   const [saving, setSaving] = useState(false);
   const [pushingDelayId, setPushingDelayId] = useState<string | null>(null);
 
-  const supabase = createClient();
 
   // Form states
   const [date, setDate] = useState(todayISO());
@@ -116,23 +115,13 @@ export function SiteEquipment() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("site_equipment")
-        .select("*, wbs_tasks(task_code, task_name)")
-        .eq("project_id", selectedProjectId)
-        .order("date", { ascending: false })
-        .limit(300);
+      const { data, error } = await listSiteEquipmentByProjectId(selectedProjectId);
 
       if (error) throw error;
       setRows((data || []) as EquipmentRow[]);
 
       // Load tasks
-      const { data: taskData } = await supabase
-        .from("wbs_tasks")
-        .select("id, task_code, task_name")
-        .eq("project_id", selectedProjectId)
-        .order("task_code", { ascending: true })
-        .limit(200);
+      const { data: taskData } = await listWbsTasksByProjectId(selectedProjectId);
 
       setTasks(taskData || []);
     } catch (e) {
@@ -217,14 +206,11 @@ export function SiteEquipment() {
       };
 
       if (editing) {
-        const { error } = await supabase
-          .from("site_equipment")
-          .update(payload)
-          .eq("id", editing.id);
+        const { error } = await updateSiteEquipmentById(payload, editing.id);
         if (error) throw error;
         toast.success("Equipment log updated");
       } else {
-        const { error } = await supabase.from("site_equipment").insert([payload]);
+        const { error } = await insertSiteEquipment(payload);
         if (error) throw error;
         toast.success("Equipment entry recorded");
       }
@@ -242,7 +228,7 @@ export function SiteEquipment() {
   async function handlePushToDelay(equipmentId: string) {
     setPushingDelayId(equipmentId);
     try {
-      const { data, error } = await supabase.rpc("push_equipment_standby_to_delay", {
+      const { data, error } = await pushEquipmentStandbyToDelay({
         p_equipment_id: equipmentId,
       });
 

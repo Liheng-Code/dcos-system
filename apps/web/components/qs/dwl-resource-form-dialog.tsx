@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlResources, updateDwlResourceById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,7 +71,6 @@ export function DwlResourceFormDialog({
   onCreated,
   editResource,
 }: DwlResourceFormDialogProps) {
-  const supabase = createClient();
   const isEdit = editResource !== null && editResource !== undefined;
 
   const {
@@ -129,17 +128,14 @@ export function DwlResourceFormDialog({
     const codeUpper = values.code.trim().toUpperCase();
 
     if (isEdit && editResource) {
-      const { error } = await supabase
-        .from("dwl_resources")
-        .update({
+      const { error } = await updateDwlResourceById({
           category: values.category,
           description: values.description.trim(),
           unit: values.unit,
           spec_reference: values.spec_reference?.trim() || null,
           is_active: values.is_active,
           updated_at: new Date().toISOString(),
-        })
-        .eq("id", editResource.id);
+        }, editResource.id);
       if (error) {
         toast.error(error.message);
         return;
@@ -156,7 +152,7 @@ export function DwlResourceFormDialog({
         is_active: values.is_active,
         created_by: userId,
       };
-      const { error } = await supabase.from("dwl_resources").insert(payload);
+      const { error } = await insertDwlResources(payload);
       if (error) {
         if (error.code === "23505" || /unique/i.test(error.message)) {
           setError("code", { message: "A resource with this code already exists" });

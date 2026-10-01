@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import { RETURN_CONDITION_LABELS } from "./inv-types"
 import type { ReturnRow, ReturnLineRow } from "./inv-types"
+import { getInvReturnById } from "@/lib/inv/inventory-queries";
 
 interface ReturnDetail extends ReturnRow {
   inv_return_lines: ReturnLineRow[]
@@ -52,17 +52,7 @@ export function ReturnDetailPage({ id }: { id: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const supabase = createClient()
-    const { data, error: e } = await supabase
-      .from("inv_returns")
-      .select(`
-        *,
-        inv_return_lines(id, return_id, item_id, quantity, condition, unit_cost, remarks, inv_items(item_code, name, unit_of_measure)),
-        inv_stores(name, store_code),
-        profiles!returned_by(full_name, email)
-      `)
-      .eq("id", id)
-      .single()
+    const { data, error: e } = await getInvReturnById(id)
     if (e || !data) {
       setError("Return not found")
     } else {

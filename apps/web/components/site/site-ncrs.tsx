@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { todayISO } from "@/lib/planning/work-calendar";
 import { cn } from "@/lib/utils";
+import { insertNcr, insertSubcontractBackCharge, listNcrsByProjectId, listSubcontractsByProjectId, updateNcrById } from "@/lib/construction/construction-queries";
 
 const SEVERITY_CONFIG: Record<
   string,
@@ -129,22 +130,13 @@ export function SiteNcrs() {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("ncrs")
-        .select("*")
-        .eq("project_id", selectedProjectId)
-        .order("created_at", { ascending: false })
-        .limit(200);
+      const { data, error } = await listNcrsByProjectId(selectedProjectId);
 
       if (error) throw error;
       setRows((data || []) as NcrRow[]);
 
       // Load subcontracts for back-charge linking
-      const { data: scData } = await supabase
-        .from("subcontracts")
-        .select("id, subcontract_no, scope_of_work")
-        .eq("project_id", selectedProjectId)
-        .order("subcontract_no", { ascending: true });
+      const { data: scData } = await listSubcontractsByProjectId(selectedProjectId);
 
       setSubcontracts(scData || []);
     } catch (e) {
@@ -235,9 +227,7 @@ export function SiteNcrs() {
         created_by: authData.user?.id ?? null,
       };
 
-      const { error } = await supabase
-        .from("subcontract_back_charges")
-        .insert([payload]);
+      const { error } = await insertSubcontractBackCharge(payload);
 
       if (error) throw error;
 
@@ -279,20 +269,15 @@ export function SiteNcrs() {
       };
 
       if (editing) {
-        const { error } = await supabase
-          .from("ncrs")
-          .update(payload)
-          .eq("id", editing.id);
+        const { error } = await updateNcrById(payload, editing.id);
         if (error) throw error;
         toast.success("NCR updated");
       } else {
-        const { error } = await supabase.from("ncrs").insert([
-          {
+        const { error } = await insertNcr({
             ...payload,
             raised_by: authData.user?.id ?? null,
             raised_at: new Date().toISOString(),
-          },
-        ]);
+          });
         if (error) throw error;
         toast.success("Non-Conformance Report (NCR) created");
       }

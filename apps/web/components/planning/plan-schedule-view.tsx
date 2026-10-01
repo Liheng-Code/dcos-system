@@ -29,7 +29,7 @@ import {
   tierRowHeights,
   type TimescaleConfig,
 } from "@/lib/planning/timescale";
-import { createClient } from "@/lib/supabase/client";
+import { getPlanTimescaleByProjectId } from "@/lib/planning/planning-queries";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { GanttDependencyEditor } from "./gantt-dependency-editor";
@@ -451,11 +451,7 @@ export function PlanScheduleView({
     hasSavedTimescaleRef.current = false;
     (async () => {
       try {
-        const { data: row } = await createClient()
-          .from("plan_timescale")
-          .select("config")
-          .eq("project_id", selectedProjectId)
-          .maybeSingle();
+        const { data: row } = await getPlanTimescaleByProjectId(selectedProjectId);
         if (!alive) return;
         if (row) hasSavedTimescaleRef.current = true;
         setTimescaleConfig(parseTimescaleConfig(row));

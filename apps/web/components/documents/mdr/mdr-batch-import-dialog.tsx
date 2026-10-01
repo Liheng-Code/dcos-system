@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { insertDocumentReturning, insertDocumentRevision, listDocumentTypesOfIdAndCode } from "@/lib/documents/documents-queries";
 
 interface BatchImportDialogProps {
   projectId: string;
@@ -141,7 +142,7 @@ export function MdrBatchImportDialog({
     try {
       // 1. Get default document type & current user
       const [{ data: docTypes }, { data: userData }] = await Promise.all([
-        supabase.from("document_types").select("id, code").limit(5),
+        listDocumentTypesOfIdAndCode(),
         supabase.auth.getUser(),
       ]);
 
@@ -157,9 +158,7 @@ export function MdrBatchImportDialog({
 
       for (const row of validRows) {
         // Insert into documents table
-        const { data: newDoc, error: docError } = await supabase
-          .from("documents")
-          .insert({
+        const { data: newDoc, error: docError } = await insertDocumentReturning({
             project_id: projectId,
             document_number: row.document_number,
             title: row.title,
@@ -172,9 +171,7 @@ export function MdrBatchImportDialog({
             current_revision_code: "R00",
             current_revision: 0,
             created_by: userId,
-          })
-          .select("id")
-          .single();
+          });
 
         if (docError) {
           errorCount++;
@@ -182,7 +179,7 @@ export function MdrBatchImportDialog({
         }
 
         // Insert initial document_revision record
-        await supabase.from("document_revisions").insert({
+        await insertDocumentRevision({
           document_id: newDoc.id,
           revision_code: "R00",
           revision_number: 0,

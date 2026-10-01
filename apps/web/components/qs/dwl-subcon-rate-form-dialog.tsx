@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteDwlResourceById, insertDwlResourcePrice, insertDwlResourceReturning, insertDwlSubconAttribute, listDwlSubconAttributes, listDwlSubconAttributesByTrade, listDwlSupplierProfilesWithVendorKindSubcontractorAndIsActive } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +54,6 @@ interface DwlSubconRateFormDialogProps {
 }
 
 export function DwlSubconRateFormDialog({ open, onOpenChange, tenantId, userId, onSaved }: DwlSubconRateFormDialogProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [subcontractors, setSubcontractors] = useState<SubcontractorOption[]>([]);
   const [trades, setTrades] = useState<string[]>([]);
   const [showNewSubcontractor, setShowNewSubcontractor] = useState(false);
@@ -76,12 +75,8 @@ export function DwlSubconRateFormDialog({ open, onOpenChange, tenantId, userId, 
   const loadLookups = useMemo(
     () => async () => {
       const [subRes, tradeRes] = await Promise.all([
-        supabase
-          .from("dwl_supplier_profiles")
-          .select("supplier_id, supplier_code, dwl_suppliers!inner(id, name, is_active)")
-          .eq("vendor_kind", "subcontractor")
-          .eq("dwl_suppliers.is_active", true),
-        supabase.from("dwl_subcon_attributes").select("trade"),
+        listDwlSupplierProfilesWithVendorKindSubcontractorAndIsActive(),
+        listDwlSubconAttributes("trade"),
       ]);
       const subs = ((subRes.data ?? []) as unknown as { supplier_id: string; supplier_code: string | null; dwl_suppliers: { id: string; name: string } }[])
         .map((r) => ({ id: r.supplier_id, name: r.dwl_suppliers.name, supplier_code: r.supplier_code }))
@@ -91,7 +86,7 @@ export function DwlSubconRateFormDialog({ open, onOpenChange, tenantId, userId, 
       for (const row of (tradeRes.data ?? []) as { trade: string | null }[]) if (row.trade) tradeSet.add(row.trade);
       setTrades(Array.from(tradeSet).sort());
     },
-    [supabase]
+    []
   );
 
   useEffect(() => {
@@ -122,10 +117,7 @@ export function DwlSubconRateFormDialog({ open, onOpenChange, tenantId, userId, 
     // SAME item appends a new price row rather than duplicating the item,
     // matching the append-only price-history principle already used by
     // Material Master.
-    const { data: existingAttrs } = await supabase
-      .from("dwl_subcon_attributes")
-      .select("resource_id, dwl_resources!inner(id, description)")
-      .eq("trade", values.trade.trim());
+    const { data: existingAttrs } = await listDwlSubconAttributesByTrade(values.trade.trim());
     const match = ((existingAttrs ?? []) as unknown as { resource_id: string; dwl_resources: { description: string } }[])
       .find((r) => r.dwl_resources.description.trim().toLowerCase() === values.item_description.trim().toLowerCase());
 
@@ -133,31 +125,27 @@ export function DwlSubconRateFormDialog({ open, onOpenChange, tenantId, userId, 
     if (!resourceId) {
       const codeSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
       const tradeGroup = values.trade.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X") || "GEN";
-      const { data: resource, error: resErr } = await supabase
-        .from("dwl_resources")
-        .insert({
+      const { data: resource, error: resErr } = await insertDwlResourceReturning({
           tenant_id: tenantId, code: `S-${tradeGroup}-${codeSuffix}`, category: "subcon",
           description: values.item_description.trim(), unit: values.unit, created_by: userId,
-        })
-        .select("id")
-        .single();
+        });
       if (resErr || !resource) {
         toast.error(resErr?.message ?? "Failed to create the trade item");
         return;
       }
       resourceId = resource.id as string;
-      const { error: attrErr } = await supabase.from("dwl_subcon_attributes").insert({
+      const { error: attrErr } = await insertDwlSubconAttribute({
         resource_id: resourceId, tenant_id: tenantId, trade: values.trade.trim(), created_by: userId,
       });
       if (attrErr) {
         // Two-step spine+companion insert — never leave an orphaned dwl_resources row.
-        await supabase.from("dwl_resources").delete().eq("id", resourceId);
+        await deleteDwlResourceById(resourceId);
         toast.error(attrErr.message);
         return;
       }
     }
 
-    const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+    const { error: priceErr } = await insertDwlResourcePrice({
       tenant_id: tenantId, resource_id: resourceId, supplier_id: values.supplier_id,
       unit_price: rate, currency: values.currency.trim().toUpperCase(), valid_from: values.effective_date,
       source_type: "quotation", rate_type: values.rate_type, notes: values.scope_notes?.trim() || null,

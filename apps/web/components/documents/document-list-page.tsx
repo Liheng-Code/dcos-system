@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listDocumentRevisionsByDocumentId, listDocumentTypes, listDocumentsOrderedByCreatedAt, listProjectsOfIdAndProjectCodeAndProjectName } from "@/lib/documents/documents-queries";
 import React from "react";
 import { Search, Loader2, Filter, X, Plus, FileText, ChevronDown, ChevronRight, Download, Clock, Edit3, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -71,7 +71,6 @@ const DISCIPLINES = [
 ];
 
 export function DocumentListPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [documents, setDocuments] = useState<DocWithRelations[]>([]);
   const [docTypes, setDocTypes] = useState<Map<string, DocumentType>>(new Map());
   const [projects, setProjects] = useState<Map<string, Project>>(new Map());
@@ -89,12 +88,12 @@ export function DocumentListPage() {
   const [revisions, setRevisions] = useState<Map<string, Revision[]>>(new Map());
 
   function fetchDocuments() {
-    supabase.from("documents").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listDocumentsOrderedByCreatedAt().then(({ data }) => {
       if (data) setDocuments(data as DocWithRelations[]);
       setLoading(false);
     });
 
-    supabase.from("document_types").select("*").then(({ data }) => {
+    listDocumentTypes().then(({ data }) => {
       if (data) {
         const map = new Map<string, DocumentType>();
         for (const t of data) map.set(t.id, t);
@@ -102,7 +101,7 @@ export function DocumentListPage() {
       }
     });
 
-    supabase.from("projects").select("id, project_code, project_name").then(({ data }) => {
+    listProjectsOfIdAndProjectCodeAndProjectName().then(({ data }) => {
       if (data) {
         const map = new Map<string, Project>();
         for (const p of data) map.set(p.id, p);
@@ -113,7 +112,7 @@ export function DocumentListPage() {
 
   useEffect(() => {
     fetchDocuments();
-  }, [supabase]);
+  }, []);
 
   const docsWithMeta = useMemo(() => {
     return documents.map((d) => ({
@@ -172,7 +171,7 @@ export function DocumentListPage() {
     }
     setExpandedDoc(docId);
     if (!revisions.has(docId)) {
-      const { data } = await supabase.from("document_revisions").select("*").eq("document_id", docId).order("revision_number", { ascending: false });
+      const { data } = await listDocumentRevisionsByDocumentId(docId, "*");
       if (data) {
         setRevisions((prev) => new Map(prev).set(docId, data as Revision[]));
       }

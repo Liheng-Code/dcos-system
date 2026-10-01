@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDesignReviewComment, listDesignReviewCommentsByEntityTypeAndEntityId, updateDesignReviewCommentById } from "@/lib/design/design-queries";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ interface Comment {
 }
 
 export function DesignReviewComments({ entityType, entityId, discipline }: { entityType: string; entityId: string; discipline: string }) {
-  const supabase = createClient();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
@@ -24,7 +23,7 @@ export function DesignReviewComments({ entityType, entityId, discipline }: { ent
   const [projectId, setProjectId] = useState("");
 
   function load() {
-    supabase.from("design_review_comments").select("*").eq("entity_type", entityType).eq("entity_id", entityId).order("created_at").then(({ data }) => {
+    listDesignReviewCommentsByEntityTypeAndEntityId(entityType, entityId).then(({ data }) => {
       if (data) setComments(data as Comment[]);
       setLoading(false);
     });
@@ -34,11 +33,11 @@ export function DesignReviewComments({ entityType, entityId, discipline }: { ent
 
   async function handleAdd() {
     if (!newComment.trim()) return;
-    const { error } = await supabase.from("design_review_comments").insert([{
+    const { error } = await insertDesignReviewComment({
       project_id: projectId || crypto.randomUUID(),
       discipline, entity_type: entityType, entity_id: entityId,
       comment: newComment.trim(), comment_type: commentType,
-    }]);
+    });
     if (error) { toast.error(error.message); return; }
     setNewComment("");
     toast.success("Comment added");
@@ -46,7 +45,7 @@ export function DesignReviewComments({ entityType, entityId, discipline }: { ent
   }
 
   async function handleResolve(id: string) {
-    await supabase.from("design_review_comments").update({ resolved: true }).eq("id", id);
+    await updateDesignReviewCommentById({ resolved: true }, id);
     load();
   }
 

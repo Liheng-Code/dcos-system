@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,6 +10,7 @@ import { Search, Plus, CheckSquare, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { StocktakeRow } from "./inv-types"
+import { listInvStocktakes } from "@/lib/inv/inventory-queries";
 
 export function StocktakeList() {
   const router = useRouter()
@@ -30,13 +30,8 @@ export function StocktakeList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
-      let query = supabase
-        .from("inv_stocktakes")
-        .select("*, inv_stocktake_lines(count)", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1)
+      let query = listInvStocktakes((page - 1) * limit, page * limit - 1)
 
       if (status) query = query.eq("status", status)
       if (search) query = query.ilike("stocktake_number", `%${search}%`)

@@ -20,6 +20,7 @@ import type {
   DwlCurrentMaterialSpec, DwlMaterialRow, DwlMaterialSpec, DwlMaterialSpecRevision,
   DwlPriceHistoryRow, DwlPriceSubmissionRow, DwlSupplierMaterialRow,
 } from "@/components/qs/dwl-types";
+import { getDwlVCurrentMaterialSpecByResourceId, getDwlVMaterialByResourceId, getProfileById, listDwlMaterialSpecRevisionsBySpecIds, listDwlMaterialSpecsByResourceId, listDwlResourcePricesByResourceId, listDwlSuppliers, listDwlVPriceSubmissionsByResourceIdWithStatusApproved, listDwlVSupplierMaterialsByResourceId } from "@/lib/qs/qs-queries";
 
 const V_MATERIAL_COLUMNS =
   "resource_id, code, category, material_name, description, unit, spec_reference, is_active, created_at, updated_at, " +
@@ -91,7 +92,7 @@ export default function DwlMaterialDetailPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile } = await getProfileById(uid, "company_id");
       if (profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -102,15 +103,13 @@ export default function DwlMaterialDetailPage() {
     setErrorMsg(null);
 
     const [matRes, specRes, curSpecRes, linkRes, priceRes, subRes, supRes] = await Promise.all([
-      supabase.from("dwl_v_materials").select(V_MATERIAL_COLUMNS).eq("resource_id", id).maybeSingle(),
-      supabase.from("dwl_material_specs").select("*").eq("resource_id", id).order("spec_code"),
-      supabase.from("dwl_v_current_material_spec").select("*").eq("resource_id", id).maybeSingle(),
-      supabase.from("dwl_v_supplier_materials").select("*").eq("resource_id", id).order("supplier_name"),
-      supabase.from("dwl_resource_prices").select(PRICE_COLUMNS).eq("resource_id", id)
-        .order("valid_from", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("dwl_v_price_submissions").select("*").eq("resource_id", id)
-        .neq("status", "approved").order("created_at", { ascending: false }),
-      supabase.from("dwl_suppliers").select("id, name"),
+      getDwlVMaterialByResourceId(V_MATERIAL_COLUMNS, id),
+      listDwlMaterialSpecsByResourceId(id),
+      getDwlVCurrentMaterialSpecByResourceId(id),
+      listDwlVSupplierMaterialsByResourceId(id),
+      listDwlResourcePricesByResourceId(PRICE_COLUMNS, id),
+      listDwlVPriceSubmissionsByResourceIdWithStatusApproved(id),
+      listDwlSuppliers(),
     ]);
 
     if (matRes.error) { setErrorMsg(matRes.error.message); setLoading(false); return; }
@@ -126,12 +125,7 @@ export default function DwlMaterialDetailPage() {
     setSupplierNames(new Map(((supRes.data ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name])));
 
     if (specRows.length > 0) {
-      const { data: revData } = await supabase
-        .from("dwl_material_spec_revisions")
-        .select("*")
-        .in("spec_id", specRows.map((s) => s.id))
-        .order("effective_date", { ascending: false })
-        .order("created_at", { ascending: false });
+      const { data: revData } = await listDwlMaterialSpecRevisionsBySpecIds(specRows.map((s) => s.id));
       setRevisions((revData ?? []) as unknown as DwlMaterialSpecRevision[]);
     } else {
       setRevisions([]);

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Loader2, PackageCheck } from "lucide-react"
+import { listProfiles, listProjects, listWbsNodesByProjectId } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -61,10 +61,9 @@ export function ToolIssueForm({ toolId, toolCode, open, onOpenChange, onIssued }
 
   useEffect(() => {
     if (!open) return
-    const supabase = createClient()
     Promise.all([
-      supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("profiles").select("id, full_name, email").order("full_name"),
+      listProjects(),
+      listProfiles(),
     ]).then(([pRes, uRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])
       if (uRes.data) setUsers(uRes.data as UserOption[])
@@ -76,12 +75,7 @@ export function ToolIssueForm({ toolId, toolCode, open, onOpenChange, onIssued }
     setWbsNodeId("")
     setWbsNodes([])
     if (!pid) return
-    const supabase = createClient()
-    const { data } = await supabase
-      .from("wbs_nodes")
-      .select("id, wbs_code, wbs_name")
-      .eq("project_id", pid)
-      .order("wbs_code")
+    const { data } = await listWbsNodesByProjectId(pid, "id, wbs_code, wbs_name")
     setWbsNodes((data ?? []) as WbsNode[])
   }, [])
 

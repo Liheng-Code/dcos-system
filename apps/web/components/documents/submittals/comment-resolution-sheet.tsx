@@ -6,6 +6,7 @@ import { Plus, Check, MessageSquare, Loader2, User, Clock, Trash2, CheckCircle2 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { insertSubmittalComment, listSubmittalCommentsBySubmittalId, updateSubmittalCommentById } from "@/lib/documents/documents-queries";
 
 export interface CommentRow {
   id: string;
@@ -45,11 +46,7 @@ export function CommentResolutionSheet({ submittalId, revisionCode }: CommentRes
   const [editResponse, setEditResponse] = useState("");
 
   function fetchComments() {
-    supabase
-      .from("submittal_comments")
-      .select("*, commenter:commented_by(full_name), responder:responded_by(full_name)")
-      .eq("submittal_id", submittalId)
-      .order("commented_at", { ascending: true })
+    listSubmittalCommentsBySubmittalId(submittalId)
       .then(({ data, error }) => {
         if (!error && data) {
           setComments(data as CommentRow[]);
@@ -70,7 +67,7 @@ export function CommentResolutionSheet({ submittalId, revisionCode }: CommentRes
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
 
-    const { error } = await supabase.from("submittal_comments").insert({
+    const { error } = await insertSubmittalComment({
       submittal_id: submittalId,
       revision_code: revisionCode,
       item_reference: newRef.trim() || null,
@@ -97,15 +94,12 @@ export function CommentResolutionSheet({ submittalId, revisionCode }: CommentRes
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
 
-    const { error } = await supabase
-      .from("submittal_comments")
-      .update({
+    const { error } = await updateSubmittalCommentById({
         contractor_response: editResponse.trim(),
         responded_by: userId,
         responded_at: new Date().toISOString(),
         resolved: true,
-      })
-      .eq("id", commentId);
+      }, commentId);
 
     if (error) {
       toast.error("Failed to save response: " + error.message);
@@ -119,10 +113,7 @@ export function CommentResolutionSheet({ submittalId, revisionCode }: CommentRes
 
   async function toggleResolved(comment: CommentRow) {
     const nextVal = !comment.resolved;
-    const { error } = await supabase
-      .from("submittal_comments")
-      .update({ resolved: nextVal })
-      .eq("id", comment.id);
+    const { error } = await updateSubmittalCommentById({ resolved: nextVal }, comment.id);
 
     if (error) {
       toast.error(error.message);

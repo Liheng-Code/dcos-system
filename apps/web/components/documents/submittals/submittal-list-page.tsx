@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listSubmittalPackagesByProjectIdOrderedByCreatedAt } from "@/lib/documents/documents-queries";
 import {
   Search,
   Filter,
@@ -45,7 +45,6 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export function SubmittalListPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [submittals, setSubmittals] = useState<SubmittalRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,11 +67,7 @@ export function SubmittalListPage() {
     }
     setLoading(true);
 
-    supabase
-      .from("submittal_packages")
-      .select("*, originator:originator_id(full_name), reviewer:consultant_reviewer_id(full_name)")
-      .eq("project_id", selectedProjectId)
-      .order("created_at", { ascending: false })
+    listSubmittalPackagesByProjectIdOrderedByCreatedAt(selectedProjectId)
       .then(({ data, error }) => {
         if (!error && data) {
           setSubmittals(data as SubmittalRecord[]);
@@ -83,7 +78,7 @@ export function SubmittalListPage() {
 
   useEffect(() => {
     fetchSubmittals();
-  }, [selectedProjectId, supabase]);
+  }, [selectedProjectId]);
 
   // KPI Calculations
   const stats = useMemo(() => {

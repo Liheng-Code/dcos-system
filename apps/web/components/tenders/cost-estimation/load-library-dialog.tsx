@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, ChevronDown, ChevronRight, Check, Minus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { insertTenderPreliminariesItems, listTenderPreliminariesItemsByTenderId } from "@/lib/qs/qs-queries";
 import {
   listCases,
   getCalculatedItemsForCase,
@@ -113,7 +113,6 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
     if (!tree || selectedCodes.size === 0) return;
     setSaving(true);
     try {
-      const supabase = createClient();
       const rows: Array<{
         tender_id: string;
         code: string;
@@ -144,17 +143,14 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
 
       // tender_preliminaries_items has no unique (tender_id, code), so loading the same case twice
       // would silently duplicate every line. Only add codes this tender does not already have.
-      const { data: existing, error: existingError } = await supabase
-        .from("tender_preliminaries_items")
-        .select("code")
-        .eq("tender_id", tenderId);
+      const { data: existing, error: existingError } = await listTenderPreliminariesItemsByTenderId(tenderId);
       if (existingError) throw new Error(existingError.message);
       const existingCodes = new Set((existing ?? []).map((r) => r.code));
       const newRows = rows.filter((r) => !existingCodes.has(r.code));
       const skipped = rows.length - newRows.length;
 
       if (newRows.length > 0) {
-        const { error } = await supabase.from("tender_preliminaries_items").insert(newRows);
+        const { error } = await insertTenderPreliminariesItems(newRows);
         if (error) throw new Error(error.message);
       }
       toast.success(

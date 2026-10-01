@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { deleteContractualNoticeById, insertContractualNotice, listContractRegister, listContractualNotices } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, AlertTriangle, Clock, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
 
 export default function NoticesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [contracts, setContracts] = useState<{id:string,contract_no:string}[]>([]);
@@ -27,13 +26,13 @@ export default function NoticesPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("contractual_notices").select("*, contract_register!inner(project_id)").order("deadline_date", { ascending: true });
+    let q = listContractualNotices();
     if (selectedProjectId) q = q.eq("contract_register.project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    let cq = supabase.from("contract_register").select("id,contract_no");
+    let cq = listContractRegister("id,contract_no");
     if (selectedProjectId) cq = cq.eq("project_id", selectedProjectId);
     cq.then(({ data }) => {
       if (data) setContracts(data);
@@ -42,14 +41,14 @@ export default function NoticesPage() {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId, itemsQuery]);
+  }, [selectedProjectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
     const days = parseInt(form.days_from_event) || 0;
     const deadline = new Date();
     deadline.setDate(deadline.getDate() + days);
-    const { error } = await supabase.from("contractual_notices").insert({
+    const { error } = await insertContractualNotice({
       contract_id: form.contract_id,
       notice_no: form.notice_no,
       notice_type: form.notice_type,
@@ -192,7 +191,7 @@ export default function NoticesPage() {
                   <button onClick={async () => {
                     if (!confirm("Delete this notice?")) return;
                     setDeletingId(n.id);
-                    const { error } = await supabase.from("contractual_notices").delete().eq("id", n.id);
+                    const { error } = await deleteContractualNoticeById(n.id);
                     if (error) { toast.error(error.message); setDeletingId(null); return; }
                     toast.success("Notice deleted");
                     setItems(items.filter((i: any) => i.id !== n.id));

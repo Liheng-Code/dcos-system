@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { deleteTenderAwardRecordById, getBidEvaluationScoreByEvaluationIdAndSubmissionIdAndCriterionName, getTenderWinLossByTenderId, insertBidEvaluation, insertBidEvaluationScore, insertTenderAwardRecord, insertTenderWinLoss, listBidEvaluationScoresByEvaluationId, listBidEvaluationsByTenderId, listTenderAwardRecordsByTenderId, listTenderRegister, listTenderSubmissionsByTenderId, updateBidEvaluationById, updateBidEvaluationScoreById, updateTenderAwardRecordById, updateTenderWinLossById } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Award, Plus, Star, Trash2, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default function BidEvaluationPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [tenders, setTenders] = useState<{id:string,tender_no:string,title:string}[]>([]);
   const [selectedTenderId, setSelectedTenderId] = useState("");
@@ -37,13 +36,13 @@ export default function BidEvaluationPage() {
   const [wlForm, setWlForm] = useState({ our_bid_amount: "0", winning_bid_amount: "", awardee_name: "", reason_won: "", reason_lost: "", lesson_learned: "", competitor_count: "0" });
 
   useEffect(() => {
-    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    let query = listTenderRegister("id,tender_no,title");
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
     query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
@@ -59,10 +58,10 @@ export default function BidEvaluationPage() {
     setSelectedTenderId(tenderId);
     if (!tenderId) return;
     Promise.all([
-      supabase.from("bid_evaluations").select("*").eq("tender_id", tenderId).order("created_at", { ascending: false }),
-      supabase.from("tender_submissions").select("*").eq("tender_id", tenderId),
-      supabase.from("tender_award_records").select("*").eq("tender_id", tenderId),
-      supabase.from("tender_win_loss").select("*").eq("tender_id", tenderId).maybeSingle(),
+      listBidEvaluationsByTenderId(tenderId),
+      listTenderSubmissionsByTenderId(tenderId),
+      listTenderAwardRecordsByTenderId(tenderId),
+      getTenderWinLossByTenderId(tenderId),
     ]).then(([e, s, a, w]) => {
       if (e.data) setEvals(e.data);
       if (s.data) setSubmissions(s.data);
@@ -80,7 +79,7 @@ export default function BidEvaluationPage() {
   async function handleLoadScores(evaluationId: string) {
     if (expandedEvalId === evaluationId) { setExpandedEvalId(null); return; }
     setExpandedEvalId(evaluationId);
-    const { data } = await supabase.from("bid_evaluation_scores").select("*").eq("evaluation_id", evaluationId);
+    const { data } = await listBidEvaluationScoresByEvaluationId(evaluationId);
     if (data) {
       const map: Record<string, string> = {};
       const comments: Record<string, string> = {};
@@ -102,15 +101,14 @@ export default function BidEvaluationPage() {
     const criterion = ev?.criteria?.find((c: any) => c.name === criterionName);
     const weight = criterion?.weight ?? 0;
 
-    const existing = await supabase.from("bid_evaluation_scores").select("id")
-      .eq("evaluation_id", evaluationId).eq("submission_id", submissionId).eq("criterion_name", criterionName).maybeSingle();
+    const existing = await getBidEvaluationScoreByEvaluationIdAndSubmissionIdAndCriterionName(evaluationId, submissionId, criterionName);
 
     if (existing.data) {
-      await supabase.from("bid_evaluation_scores").update({
+      await updateBidEvaluationScoreById({
         score: scoreVal, comments: scoreComments[key] || null, updated_at: new Date().toISOString(),
-      }).eq("id", existing.data.id);
+      }, existing.data.id);
     } else {
-      await supabase.from("bid_evaluation_scores").insert({
+      await insertBidEvaluationScore({
         evaluation_id: evaluationId, submission_id: submissionId,
         criterion_name: criterionName, score: scoreVal, weight,
         comments: scoreComments[key] || null,
@@ -136,7 +134,7 @@ export default function BidEvaluationPage() {
   async function handleCreateAward() {
     if (!selectedTenderId) return;
     setSaving(true);
-    const { error } = await supabase.from("tender_award_records").insert({
+    const { error } = await insertTenderAwardRecord({
       tender_id: selectedTenderId, submission_id: awardForm.submission_id,
       award_no: awardForm.award_no, award_date: awardForm.award_date,
       award_amount: parseFloat(awardForm.award_amount) || 0,
@@ -153,7 +151,7 @@ export default function BidEvaluationPage() {
   async function handleDeleteAward(id: string) {
     if (!confirm("Delete this award record?")) return;
     setDeletingId(id);
-    const { error } = await supabase.from("tender_award_records").delete().eq("id", id);
+    const { error } = await deleteTenderAwardRecordById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Award deleted");
     setAwards(awards.filter((a: any) => a.id !== id));
@@ -161,7 +159,7 @@ export default function BidEvaluationPage() {
   }
 
   async function handleUpdateAwardStatus(id: string, status: string) {
-    const { error } = await supabase.from("tender_award_records").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+    const { error } = await updateTenderAwardRecordById({ status, updated_at: new Date().toISOString() }, id);
     if (error) { toast.error(error.message); return; }
     toast.success(`Award status: ${status}`);
     loadData(selectedTenderId);
@@ -184,10 +182,10 @@ export default function BidEvaluationPage() {
     };
 
     if (winLoss?.id) {
-      const { error } = await supabase.from("tender_win_loss").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", winLoss.id);
+      const { error } = await updateTenderWinLossById({ ...payload, updated_at: new Date().toISOString() }, winLoss.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
     } else {
-      const { error } = await supabase.from("tender_win_loss").insert(payload);
+      const { error } = await insertTenderWinLoss(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
     }
     toast.success("Win/Loss analysis saved");
@@ -234,7 +232,7 @@ export default function BidEvaluationPage() {
                 <p className="text-sm font-semibold text-muted-foreground">Evaluations</p>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const evalNo = `EV-${(evals.length + 1).toString().padStart(3, "0")}`;
-                  const { error } = await supabase.from("bid_evaluations").insert({
+                  const { error } = await insertBidEvaluation({
                     tender_id: selectedTenderId, evaluation_no: evalNo, method: "weighted_score",
                   });
                   if (error) { toast.error(error.message); return; }
@@ -263,12 +261,12 @@ export default function BidEvaluationPage() {
                           </div>
                           <div className="flex gap-2">
                             {ev.status === "draft" && (
-                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); supabase.from("bid_evaluations").update({ status: "in_progress", updated_at: new Date().toISOString() }).eq("id", ev.id).then(() => loadData(selectedTenderId)); }}>
+                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateBidEvaluationById({ status: "in_progress", updated_at: new Date().toISOString() }, ev.id).then(() => loadData(selectedTenderId)); }}>
                                 Start Review
                               </Button>
                             )}
                             {ev.status === "in_progress" && (
-                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); supabase.from("bid_evaluations").update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ev.id).then(() => loadData(selectedTenderId)); }}>
+                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateBidEvaluationById({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }, ev.id).then(() => loadData(selectedTenderId)); }}>
                                 <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Complete
                               </Button>
                             )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getSiteManpowerVariance, insertSiteManpower, listSiteManpowerByProjectId, listSubcontractsByProjectId, listWbsTasksByProjectId, updateSiteManpowerById } from "@/lib/construction/construction-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import {
   Plus,
@@ -89,7 +89,6 @@ export function SiteManpower() {
   const [editing, setEditing] = useState<ManpowerRow | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const supabase = createClient();
 
   // Form states
   const [reportDate, setReportDate] = useState(todayISO());
@@ -117,31 +116,17 @@ export function SiteManpower() {
     setLoading(true);
     try {
       // 1. Load actual manpower records
-      const { data, error } = await supabase
-        .from("site_manpower")
-        .select("*, wbs_tasks(task_code, task_name), subcontracts(subcontract_no, scope_of_work)")
-        .eq("project_id", selectedProjectId)
-        .order("report_date", { ascending: false })
-        .limit(300);
+      const { data, error } = await listSiteManpowerByProjectId(selectedProjectId);
 
       if (error) throw error;
       setRows((data || []) as ManpowerRow[]);
 
       // 2. Load subcontracts
-      const { data: scData } = await supabase
-        .from("subcontracts")
-        .select("id, subcontract_no, scope_of_work")
-        .eq("project_id", selectedProjectId)
-        .order("subcontract_no", { ascending: true });
+      const { data: scData } = await listSubcontractsByProjectId(selectedProjectId);
       setSubcontracts(scData || []);
 
       // 3. Load active tasks
-      const { data: taskData } = await supabase
-        .from("wbs_tasks")
-        .select("id, task_code, task_name")
-        .eq("project_id", selectedProjectId)
-        .order("task_code", { ascending: true })
-        .limit(200);
+      const { data: taskData } = await listWbsTasksByProjectId(selectedProjectId);
       setTasks(taskData || []);
 
       // 4. Load variance for selectedDate
@@ -157,7 +142,7 @@ export function SiteManpower() {
     if (!selectedProjectId) return;
     setLoadingVariance(true);
     try {
-      const { data, error } = await supabase.rpc("get_site_manpower_variance", {
+      const { data, error } = await getSiteManpowerVariance({
         p_project_id: selectedProjectId,
         p_date: date,
       });
@@ -242,14 +227,11 @@ export function SiteManpower() {
       };
 
       if (editing) {
-        const { error } = await supabase
-          .from("site_manpower")
-          .update(payload)
-          .eq("id", editing.id);
+        const { error } = await updateSiteManpowerById(payload, editing.id);
         if (error) throw error;
         toast.success("Manpower record updated");
       } else {
-        const { error } = await supabase.from("site_manpower").insert([payload]);
+        const { error } = await insertSiteManpower(payload);
         if (error) throw error;
         toast.success("Manpower record added");
       }

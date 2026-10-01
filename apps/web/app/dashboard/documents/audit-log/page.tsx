@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { listDocumentAuditLogOrderedByCreatedAt } from "@/lib/documents/documents-queries";
 import { Loader2, Clock, FileText, AlertTriangle, Filter, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,22 +31,18 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function DocumentAuditLogPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
   useEffect(() => {
-    supabase.from("document_audit_log")
-      .select("*, profiles:user_id(full_name), documents:document_id(document_number, title)")
-      .order("created_at", { ascending: false })
-      .limit(200)
+    listDocumentAuditLogOrderedByCreatedAt()
       .then(({ data }) => {
         if (data) setEntries(data as AuditEntry[]);
         setLoading(false);
       });
-  }, [supabase]);
+  }, []);
 
   const filtered = entries.filter((e) => {
     if (search && !e.documents?.[0]?.document_number?.toLowerCase().includes(search.toLowerCase())) return false;

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Search, Trash2, Loader2 } from "lucide-react"
 import { REASON_CODE_LABELS } from "./inv-types"
 import type { InvStore, InvItem } from "./inv-types"
+import { listInvItemsWithIsActive, listInvStoresWithStatusActive, listProjects } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -50,11 +50,10 @@ export function AdjustmentCreatePage() {
 
   // Load initial data
   useEffect(() => {
-    const supabase = createClient()
     Promise.all([
-      supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("*").eq("status", "active").order("name"),
-      supabase.from("inv_items").select("*").eq("is_active", true).order("name"),
+      listProjects(),
+      listInvStoresWithStatusActive("*"),
+      listInvItemsWithIsActive(),
     ]).then(([pRes, sRes, iRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])
       if (sRes.data) setStores(sRes.data as InvStore[])

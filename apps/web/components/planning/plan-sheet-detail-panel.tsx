@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ExternalLink, Loader2, Table2, UserPlus, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { listProfiles } from "@/lib/planning/planning-queries";
 import { cn } from "@/lib/utils";
 import { PRIORITY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS, type SheetField, type SheetTask } from "./sheet-types";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
@@ -51,7 +51,6 @@ const selectCls =
   "mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary";
 
 export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }: PlanSheetDetailPanelProps) {
-  const supabase = useMemo(() => createClient(), []);
   // Non-null only while the slider/input is actively being dragged/typed —
   // otherwise the displayed value always tracks `task.progress` directly, so
   // there is no state to resync when the selected task changes (no effect
@@ -67,16 +66,13 @@ export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }:
 
   useEffect(() => {
     if (!showPicker || profilesLoaded) return;
-    supabase
-      .from("profiles")
-      .select("id, full_name, role, department")
-      .order("full_name")
+    listProfiles("id, full_name, role, department")
       .then(({ data, error }) => {
         if (error) toast.error(error.message);
         else setProfiles((data ?? []) as StaffProfile[]);
         setProfilesLoaded(true);
       });
-  }, [showPicker, profilesLoaded, supabase]);
+  }, [showPicker, profilesLoaded]);
 
   if (!task) {
     return (

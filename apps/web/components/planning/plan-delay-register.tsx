@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { Fragment, useEffect, useState } from "react";
+import { createEotNoticeFromDelay, deleteDelayRegisterById, deleteDelayRegisterTasksByDelayId, insertDelayRegisterReturning, insertDelayRegisterTasks, listContractRegisterByProjectId, listDelayRegisterByProjectIdOrderedByCreatedAt, listDelayRegisterTasksByDelayIds, listWbsTasksByProjectIdOrderedByTaskCode, updateDelayRegisterByIdReturning } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Plus, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,6 @@ const EMPTY_FORM: DelayForm = {
 type FilterStatus = "all" | "open" | "resolved" | "disputed";
 
 export function PlanDelayRegister() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
   const [rows, setRows] = useState<DelayRow[]>([]);
   const [taskOptions, setTaskOptions] = useState<TaskOption[]>([]);
@@ -125,14 +124,14 @@ export function PlanDelayRegister() {
     // delay_register_tasks has no project_id column of its own, so it can only be
     // scoped by delay_id — fetch delay_register first, then filter the link table
     // to just this project's delay ids instead of pulling every project's rows.
-    const delaysRes = await supabase.from("delay_register").select("*").eq("project_id", selectedProjectId).order("created_at", { ascending: false });
+    const delaysRes = await listDelayRegisterByProjectIdOrderedByCreatedAt(selectedProjectId, "*");
     const delayIds = (delaysRes.data ?? []).map((r) => (r as { id: string }).id);
     const [tasksRes, linksRes, contractsRes] = await Promise.all([
-      supabase.from("wbs_tasks").select("id, task_code, task_name").eq("project_id", selectedProjectId).order("task_code").limit(500),
+      listWbsTasksByProjectIdOrderedByTaskCode(selectedProjectId),
       delayIds.length > 0
-        ? supabase.from("delay_register_tasks").select("delay_id, wbs_task_id").in("delay_id", delayIds)
+        ? listDelayRegisterTasksByDelayIds(delayIds)
         : Promise.resolve({ data: [] as { delay_id: string; wbs_task_id: string }[] }),
-      supabase.from("contract_register").select("id, contract_no, title").eq("project_id", selectedProjectId).order("contract_no"),
+      listContractRegisterByProjectId(selectedProjectId),
     ]);
     if (delaysRes.error) {
       toast.error(delaysRes.error.message);
@@ -197,16 +196,14 @@ export function PlanDelayRegister() {
       wbs_task_id: form.task_ids[0] ?? null,
     };
     const { data: savedRow, error } = editing
-      ? await supabase.from("delay_register").update(payload).eq("id", editing.id).select("id").single()
-      : await supabase.from("delay_register").insert([{ ...payload, delay_code: "" }]).select("id").single();
+      ? await updateDelayRegisterByIdReturning(payload, editing.id)
+      : await insertDelayRegisterReturning({ ...payload, delay_code: "" });
     if (error) { toast.error(error.message); setSaving(false); return; }
     const delayId = savedRow.id as string;
-    const { error: delLinksError } = await supabase.from("delay_register_tasks").delete().eq("delay_id", delayId);
+    const { error: delLinksError } = await deleteDelayRegisterTasksByDelayId(delayId);
     if (delLinksError) { toast.error(delLinksError.message); setSaving(false); return; }
     if (form.task_ids.length > 0) {
-      const { error: linkError } = await supabase
-        .from("delay_register_tasks")
-        .insert(form.task_ids.map((taskId) => ({ delay_id: delayId, wbs_task_id: taskId })));
+      const { error: linkError } = await insertDelayRegisterTasks(form.task_ids.map((taskId) => ({ delay_id: delayId, wbs_task_id: taskId })));
       if (linkError) { toast.error(linkError.message); setSaving(false); return; }
     }
     toast.success(editing ? "Delay updated" : "Delay logged");
@@ -219,7 +216,7 @@ export function PlanDelayRegister() {
   async function raiseEotNotice(delayId: string) {
     if (!eotContractId) { toast.error("Select a contract first"); return; }
     setEotBusy(true);
-    const { error } = await supabase.rpc("create_eot_notice_from_delay", {
+    const { error } = await createEotNoticeFromDelay({
       p_delay_id: delayId,
       p_contract_id: eotContractId,
       p_deadline: null,
@@ -233,7 +230,7 @@ export function PlanDelayRegister() {
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("delay_register").delete().eq("id", id);
+    const { error } = await deleteDelayRegisterById(id);
     if (error) toast.error(error.message);
     else { toast.success("Deleted"); setRows(prev => prev.filter(r => r.id !== id)); }
   }

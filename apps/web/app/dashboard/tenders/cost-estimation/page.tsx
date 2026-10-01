@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getProjectPrecontractDetailByProjectId, getTenderRegisterById, listTenderRegister, tenderIsLocked } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { Loader2, Calculator } from "lucide-react";
@@ -44,7 +44,6 @@ export default function CostEstimationPage() {
 }
 
 function CostEstimationContent() {
-  const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
   const tenderParam = searchParams.get("tender");
   const { selectedProjectId } = useProject();
@@ -60,13 +59,13 @@ function CostEstimationContent() {
   }, [permsLoaded, can]);
 
   useEffect(() => {
-    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    let query = listTenderRegister("id,tender_no,title");
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
     query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (tenderParam) setSelectedTenderId(tenderParam);
@@ -79,21 +78,17 @@ function CostEstimationContent() {
     if (!selectedTenderId) return;
     void (async () => {
       const [{ data }, { data: tender }] = await Promise.all([
-        supabase.rpc("tender_is_locked", { p_tender_id: selectedTenderId }),
-        supabase.from("tender_register").select("project_id").eq("id", selectedTenderId).single(),
+        tenderIsLocked({ p_tender_id: selectedTenderId }),
+        getTenderRegisterById(selectedTenderId, "project_id"),
       ]);
       let stage: string | null = null;
       if (tender?.project_id) {
-        const { data: pd } = await supabase
-          .from("project_precontract_details")
-          .select("tender_stage")
-          .eq("project_id", tender.project_id)
-          .maybeSingle();
+        const { data: pd } = await getProjectPrecontractDetailByProjectId(tender.project_id);
         stage = pd?.tender_stage ?? null;
       }
       setLocked({ tenderId: selectedTenderId, locked: data === true, stage });
     })();
-  }, [supabase, selectedTenderId]);
+  }, [selectedTenderId]);
   const isLocked = locked?.tenderId === selectedTenderId && locked.locked;
   const lockedStage = isLocked ? locked?.stage ?? null : null;
   const isClosedOut = lockedStage === "awarded" || lockedStage === "unsuccessful" || lockedStage === "closed";

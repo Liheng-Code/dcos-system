@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ import { ArrowLeft, Loader2, PlayCircle, CheckCircle2, XCircle, SendHorizontal, 
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { StocktakeRow, StocktakeLineRow } from "./inv-types"
+import { getInvStocktakeById, listInvStocktakeLinesByStocktakeId } from "@/lib/inv/inventory-queries";
 
 interface Props {
   id: string
@@ -42,18 +42,9 @@ export function StocktakeDetailPage({ id }: Props) {
   function load() {
     setLoading(true)
     setError(null)
-    const supabase = createClient()
     Promise.all([
-      supabase
-        .from("inv_stocktakes")
-        .select("*, profiles!inv_stocktakes_initiated_by_fkey(full_name, email)")
-        .eq("id", id)
-        .single(),
-      supabase
-        .from("inv_stocktake_lines")
-        .select("*, inv_items(item_code, name, unit_of_measure)")
-        .eq("stocktake_id", id)
-        .order("created_at"),
+      getInvStocktakeById(id),
+      listInvStocktakeLinesByStocktakeId(id),
     ]).then(([stRes, linesRes]) => {
       if (stRes.error || !stRes.data) { setError("Stocktake not found"); return }
       setSt(stRes.data as unknown as StocktakeRow)

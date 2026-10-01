@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDesignArcRoomData, listDesignArcRoomData, updateDesignArcRoomDataById } from "@/lib/design/design-queries";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ interface RoomData {
 }
 
 export function ArcRoomDataSheet() {
-  const supabase = createClient();
   const [items, setItems] = useState<RoomData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -25,7 +24,7 @@ export function ArcRoomDataSheet() {
 
   function load() {
     setLoading(true);
-    supabase.from("design_arc_room_data").select("*").order("room_no").then(({ data }) => { if (data) setItems(data as RoomData[]); setLoading(false); });
+    listDesignArcRoomData().then(({ data }) => { if (data) setItems(data as RoomData[]); setLoading(false); });
   }
   useEffect(() => { load(); }, []);
 
@@ -67,7 +66,6 @@ export function ArcRoomDataSheet() {
 }
 
 function ArcRoomDataForm({ item, onSaved, onCancel }: { item: RoomData | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !item?.id;
   const [roomNo, setRoomNo] = useState(item?.room_no ?? "");
   const [roomName, setRoomName] = useState(item?.room_name ?? "");
@@ -82,7 +80,7 @@ function ArcRoomDataForm({ item, onSaved, onCancel }: { item: RoomData | null; o
     e.preventDefault();
     setSaving(true);
     const payload = { room_no: roomNo, room_name: roomName, level: level || null, area_sqm: areaSqm || null, floor_finish: floorFinish || null, wall_finish: wallFinish || null, ceiling_finish: ceilingFinish || null };
-    const { error } = isNew ? await supabase.from("design_arc_room_data").insert([{ ...payload, project_id: crypto.randomUUID() }]) : await supabase.from("design_arc_room_data").update(payload).eq("id", item!.id);
+    const { error } = isNew ? await insertDesignArcRoomData({ ...payload, project_id: crypto.randomUUID() }) : await updateDesignArcRoomDataById(payload, item!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "Room data created" : "Updated");
     setSaving(false); onSaved();

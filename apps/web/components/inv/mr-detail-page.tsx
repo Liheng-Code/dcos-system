@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +25,7 @@ import {
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { MrRow, MrLineRow } from "./inv-types"
+import { getInvMaterialRequisitionById, listInvAuditLogByRecordIdWithTableNameInvMaterialRequisitions } from "@/lib/inv/inventory-queries";
 
 interface AuditEntry {
   id: string
@@ -69,7 +69,6 @@ const MR_ACTION_LABELS: Record<string, string> = {
 
 export function MrDetailPage({ id }: { id: string }) {
   const router = useRouter()
-  const supabase = createClient()
 
   const [mr, setMr] = useState<MrDetailData | null>(null)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
@@ -87,22 +86,7 @@ export function MrDetailPage({ id }: { id: string }) {
     setLoading(true)
     setError(null)
     try {
-      const { data: mrData, error: mrErr } = await supabase
-        .from("inv_material_requisitions")
-        .select(`
-          *,
-          inv_mr_lines(
-            id, item_id, quantity_requested, quantity_approved, quantity_issued,
-            unit_cost_at_issue, remarks,
-            inv_items(item_code, name, unit_of_measure)
-          ),
-          wbs_nodes!wbs_node_id(wbs_code, wbs_name, full_path),
-          inv_stores!store_id(name, store_code),
-          profiles!requested_by(full_name, email),
-          approver:profiles!approved_by(full_name, email)
-        `)
-        .eq("id", id)
-        .single()
+      const { data: mrData, error: mrErr } = await getInvMaterialRequisitionById(id)
 
       if (mrErr || !mrData) { setError("MR not found"); setLoading(false); return }
 
@@ -116,12 +100,7 @@ export function MrDetailPage({ id }: { id: string }) {
       }
       setIssueQtys(qtyMap)
 
-      const { data: auditData } = await supabase
-        .from("inv_audit_log")
-        .select("*, profiles!performed_by(full_name, email)")
-        .eq("table_name", "inv_material_requisitions")
-        .eq("record_id", id)
-        .order("created_at", { ascending: true })
+      const { data: auditData } = await listInvAuditLogByRecordIdWithTableNameInvMaterialRequisitions(id)
 
       setAuditLog((auditData ?? []) as AuditEntry[])
     } catch {
@@ -129,7 +108,7 @@ export function MrDetailPage({ id }: { id: string }) {
     } finally {
       setLoading(false)
     }
-  }, [id, supabase])
+  }, [id])
 
   useEffect(() => { load() }, [load])
 

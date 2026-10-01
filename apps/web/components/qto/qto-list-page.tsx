@@ -55,6 +55,7 @@ import {
   type QtoSummaryRow,
   type RiskItem,
 } from "@/lib/qs/qto-service";
+import { listTenderRegister, updateQtoDrawingRevisionById } from "@/lib/qs/qs-queries";
 
 type Tab = "takeoff" | "drawings" | "documents";
 
@@ -79,7 +80,7 @@ export default function QtoListPage() {
   }, [urlTab]);
 
   useEffect(() => {
-    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    let query = listTenderRegister("id,tender_no,title");
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
     query.then(({ data }) => {
       if (data) setTenders(data);
@@ -586,7 +587,7 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
     const supabase = createClient();
     const currentId = drawing.current_revision?.id;
     if (currentId) {
-      await supabase.from("qto_drawing_revisions").update({ status: "superseded" }).eq("id", currentId);
+      await updateQtoDrawingRevisionById({ status: "superseded" }, currentId);
     }
     const res = await setCurrentRevision(drawing.id, revId);
     if (res.error) toast.error(res.error);

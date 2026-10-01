@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Hash, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { upsertPlanWbsCodeMask } from "@/lib/planning/planning-queries";
 import { cn } from "@/lib/utils";
 import {
   computeWbsCode,
@@ -44,10 +44,7 @@ export function PlanWbsCodeDialog({ projectId, mask, sampleRows, onClose, onRenu
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await createClient()
-      .from("plan_wbs_code_mask")
-      .upsert(
-        {
+    const { error } = await upsertPlanWbsCodeMask({
           project_id: projectId,
           code_prefix: prefix,
           levels: levels.map((l) => ({
@@ -58,9 +55,7 @@ export function PlanWbsCodeDialog({ projectId, mask, sampleRows, onClose, onRenu
           generate_for_new: generateForNew,
           verify_unique: verifyUnique,
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "project_id" },
-      );
+        });
     if (error) {
       setSaving(false);
       toast.error("Failed to save WBS code definition: " + error.message);

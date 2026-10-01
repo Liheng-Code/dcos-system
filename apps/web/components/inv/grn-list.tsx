@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,6 +10,7 @@ import { Search, Plus, Truck, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { GrnRow, InvStore } from "./inv-types"
+import { listInvGrns, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
 
 export function GrnList() {
   const router = useRouter()
@@ -32,22 +32,13 @@ export function GrnList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
       if (stores.length === 0) {
-        const { data: storeData } = await supabase
-          .from("inv_stores")
-          .select("id, store_code, name, project_id, status")
-          .eq("status", "active")
-          .order("name")
+        const { data: storeData } = await listInvStoresWithStatusActive("id, store_code, name, project_id, status")
         setStores((storeData ?? []) as InvStore[])
       }
 
-      let query = supabase
-        .from("inv_grns")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1)
+      let query = listInvGrns((page - 1) * limit, page * limit - 1)
 
       if (status) query = query.eq("status", status)
       if (storeId) query = query.eq("store_id", storeId)

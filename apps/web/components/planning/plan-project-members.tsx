@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { deleteProjectMembersByProjectIdAndUserId, insertProjectMember, listProfilesOrderedByFullName, listProjectMembersByProjectId, listRoles } from "@/lib/planning/planning-queries";
 
 interface ProjectMemberRow {
   user_id: string;
@@ -49,12 +50,8 @@ export function PlanProjectMembers() {
     setLoading(true);
     // Independent queries — run concurrently instead of one after the other.
     const [{ data }, { data: roles }] = await Promise.all([
-      supabase
-        .from("project_members")
-        .select("user_id, role_code, added_by, created_at, profiles(full_name, email)")
-        .eq("project_id", selectedProjectId)
-        .order("created_at", { ascending: true }),
-      supabase.from("roles").select("code, name, type, level").order("level", { ascending: true }),
+      listProjectMembersByProjectId(selectedProjectId),
+      listRoles(),
     ]);
     if (roles) setRoleOptions(roles as RoleOption[]);
     if (!data) { setLoading(false); return; }
@@ -80,10 +77,7 @@ export function PlanProjectMembers() {
 
   useEffect(() => {
     if (!showAdd) return;
-    supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .order("full_name", { ascending: true })
+    listProfilesOrderedByFullName()
       .then(({ data, error }) => {
         if (error) { toast.error(error.message); return; }
         setProfileOptions((data as { id: string; full_name: string; email: string }[]) ?? []);
@@ -100,9 +94,7 @@ export function PlanProjectMembers() {
     if (!selectedProjectId || !selectedUserId || !selectedRole) return;
     const { data: { user } } = await supabase.auth.getUser();
     setSaving(true);
-    const { error } = await supabase.from("project_members").insert([
-      { project_id: selectedProjectId, user_id: selectedUserId, role_code: selectedRole, added_by: user?.id ?? null },
-    ]);
+    const { error } = await insertProjectMember({ project_id: selectedProjectId, user_id: selectedUserId, role_code: selectedRole, added_by: user?.id ?? null });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Member added");
@@ -112,11 +104,7 @@ export function PlanProjectMembers() {
 
   async function handleRemove(member: ProjectMemberRow) {
     if (!selectedProjectId) return;
-    const { error } = await supabase
-      .from("project_members")
-      .delete()
-      .eq("project_id", selectedProjectId)
-      .eq("user_id", member.user_id);
+    const { error } = await deleteProjectMembersByProjectIdAndUserId(selectedProjectId, member.user_id);
     if (error) toast.error(error.message);
     else { toast.success("Member removed"); setRows(prev => prev.filter(r => r.user_id !== member.user_id)); }
   }

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import { REASON_CODE_LABELS } from "./inv-types"
 import type { AdjustmentRow, AdjustmentLineRow } from "./inv-types"
+import { getInvAdjustmentById, listInvAdjustmentLinesByAdjustmentId, listInvAuditLogByRecordIdWithTableNameInvAdjustments } from "@/lib/inv/inventory-queries";
 
 interface Props {
   id: string
@@ -47,24 +47,10 @@ export function AdjustmentDetailPage({ id }: Props) {
   function load() {
     setLoading(true)
     setError(null)
-    const supabase = createClient()
     Promise.all([
-      supabase
-        .from("inv_adjustments")
-        .select("*, profiles!inv_adjustments_requested_by_fkey(full_name, email)")
-        .eq("id", id)
-        .single(),
-      supabase
-        .from("inv_adjustment_lines")
-        .select("*, inv_items(item_code, name, unit_of_measure)")
-        .eq("adjustment_id", id)
-        .order("created_at"),
-      supabase
-        .from("inv_audit_log")
-        .select("action, performed_by, created_at, old_status, new_status")
-        .eq("record_id", id)
-        .eq("table_name", "inv_adjustments")
-        .order("created_at", { ascending: true }),
+      getInvAdjustmentById(id),
+      listInvAdjustmentLinesByAdjustmentId(id),
+      listInvAuditLogByRecordIdWithTableNameInvAdjustments(id),
     ]).then(([adjRes, linesRes, auditRes]) => {
       if (adjRes.error || !adjRes.data) { setError("Adjustment not found"); return }
       setAdj(adjRes.data as unknown as AdjustmentRow)

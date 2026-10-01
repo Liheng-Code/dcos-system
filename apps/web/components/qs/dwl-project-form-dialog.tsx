@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlProjectsReturning } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +53,6 @@ interface DwlProjectFormDialogProps {
 }
 
 export function DwlProjectFormDialog({ open, onOpenChange, tenantId, models, onCreated }: DwlProjectFormDialogProps) {
-  const supabase = createClient();
 
   const {
     register,
@@ -87,7 +86,7 @@ export function DwlProjectFormDialog({ open, onOpenChange, tenantId, models, onC
       status: "draft",
     };
 
-    const { data, error } = await supabase.from("dwl_projects").insert(payload).select("id").single();
+    const { data, error } = await insertDwlProjectsReturning(payload);
     if (error || !data) {
       toast.error(error?.message ?? "Failed to create project");
       return;

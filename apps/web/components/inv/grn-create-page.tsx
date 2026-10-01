@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Loader2, AlertTriangle, Truck } from "lucide-react"
 import type { InvStore, InvItem } from "./inv-types"
+import { listActiveInvItemsForInspection, listInvStoresWithStatusActive, listProcurementPoItemsByPoId, listProcurementPosByProjectIdWithStatusApprovedIssuedPartiallyDelivered } from "@/lib/inv/inventory-queries";
 
 interface PoOption {
   id: string
@@ -48,7 +48,6 @@ interface GrnLine {
 
 export function GrnCreatePage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [submitting, setSubmitting] = useState(false)
   const [loadingPos, setLoadingPos] = useState(false)
@@ -74,11 +73,7 @@ export function GrnCreatePage() {
 
   // Load stores on mount
   useEffect(() => {
-    supabase
-      .from("inv_stores")
-      .select("id, store_code, name, project_id, status")
-      .eq("status", "active")
-      .order("name")
+    listInvStoresWithStatusActive("id, store_code, name, project_id, status")
       .then(({ data }) => setStores((data ?? []) as InvStore[]))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -95,15 +90,10 @@ export function GrnCreatePage() {
     setProjectId(store.project_id)
 
     setLoadingPos(true)
-    const { data } = await supabase
-      .from("procurement_pos")
-      .select("id, po_number, status, project_id, procurement_suppliers(supplier_name)")
-      .eq("project_id", store.project_id)
-      .in("status", ["approved", "issued", "partially_delivered"])
-      .order("po_number")
+    const { data } = await listProcurementPosByProjectIdWithStatusApprovedIssuedPartiallyDelivered(store.project_id)
     setPos((data ?? []) as unknown as PoOption[])
     setLoadingPos(false)
-  }, [stores, supabase])
+  }, [stores])
 
   // When PO changes, load its items and match to inv_items
   const onPoChange = useCallback(async (pid: string) => {
@@ -116,15 +106,8 @@ export function GrnCreatePage() {
 
     setLoadingPoItems(true)
     const [poItemsRes, invItemsRes] = await Promise.all([
-      supabase
-        .from("procurement_po_items")
-        .select("id, item_code, item_description, unit, quantity_ordered, quantity_delivered, unit_price")
-        .eq("po_id", pid)
-        .order("line_no"),
-      supabase
-        .from("inv_items")
-        .select("id, item_code, name, unit_of_measure, is_inspection_required")
-        .eq("is_active", true),
+      listProcurementPoItemsByPoId(pid),
+      listActiveInvItemsForInspection(),
     ])
 
     const poItems = (poItemsRes.data ?? []) as PoItem[]
@@ -154,7 +137,7 @@ export function GrnCreatePage() {
     })
     setLines(newLines)
     setLoadingPoItems(false)
-  }, [pos, supabase])
+  }, [pos])
 
   function updateLine(idx: number, field: keyof GrnLine, value: string | boolean) {
     setLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l))

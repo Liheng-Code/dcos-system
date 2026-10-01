@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { dwlDisplayResourceDescription as displayResourceDescription, type DwlAssemblyCrewRow, type DwlAssemblyEquipmentRow, type DwlResource } from "@/components/qs/dwl-types";
+import { listDwlResourcesByCategoryWithIsActive } from "@/lib/qs/qs-queries";
 
 const resourceLineFormSchema = z.object({
   resource_id: z.string().min(1, "Select a resource"),
@@ -106,12 +107,7 @@ export function DwlAssemblyResourceLineFormDialog({
       reset({ resource_id: "", role_label: "", quantity: "1", description: "", benchmark_note: "", sort_order: String(nextSortOrder) });
     }
     setLoadingResources(true);
-    supabase
-      .from("dwl_resources")
-      .select("id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at")
-      .eq("is_active", true)
-      .eq("category", resourceCategory)
-      .order("code")
+    listDwlResourcesByCategoryWithIsActive(resourceCategory)
       .then(({ data, error }) => {
         if (!error && data) setResources(data as DwlResource[]);
         setLoadingResources(false);

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Database, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { countTenderCostDatabasesBySourceTenderId, getProjectPrecontractDetailByProjectId, getTenderRegisterById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -34,14 +34,13 @@ function SaveBody({ open, onOpenChange, tenderId, itemCount, total }: {
 
   // Default name: "<tender no> · <stage> · v<n> · <date>"
   useEffect(() => {
-    const supabase = createClient();
     void (async () => {
-      const { data: t } = await supabase.from("tender_register").select("tender_no, project_id").eq("id", tenderId).single();
+      const { data: t } = await getTenderRegisterById(tenderId, "tender_no, project_id");
       const [{ data: pd }, { count }] = await Promise.all([
         t?.project_id
-          ? supabase.from("project_precontract_details").select("tender_stage").eq("project_id", t.project_id).maybeSingle()
+          ? getProjectPrecontractDetailByProjectId(t.project_id)
           : Promise.resolve({ data: null }),
-        supabase.from("tender_cost_databases").select("id", { count: "exact", head: true }).eq("source_tender_id", tenderId),
+        countTenderCostDatabasesBySourceTenderId(tenderId),
       ]);
       const stage = pd?.tender_stage ? STAGE_LABELS[pd.tender_stage as TenderStage] ?? pd.tender_stage : null;
       const parts = [t?.tender_no ?? "Tender BOQ", stage, `v${(count ?? 0) + 1}`, new Date().toISOString().slice(0, 10)];

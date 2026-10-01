@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { dwlSubmitPriceSubmission, insertDwlPriceSubmissionReturning, insertDwlResourcePrice, insertDwlSupplierReturning, listDwlResourcesWithIsActiveAndCategoryMaterial, listDwlSuppliersWithIsActive } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,7 +83,6 @@ export function DwlMaterialPriceDialog({
   open, onOpenChange, resourceId, resourceCode, resourceUnit,
   tenantId, userId, canSubmit, canRecordDirect, onSaved,
 }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [suppliers, setSuppliers] = useState<DwlSupplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...EMPTY });
@@ -102,26 +101,17 @@ export function DwlMaterialPriceDialog({
     setForm({ ...EMPTY, mode: canSubmit ? "submit" : "direct" });
     setPickedResource(null);
     setMaterialSearch("");
-    supabase
-      .from("dwl_suppliers")
-      .select("id, tenant_id, name, contact, rating, is_active")
-      .eq("is_active", true)
-      .order("name")
+    listDwlSuppliersWithIsActive()
       .then(({ data }) => setSuppliers((data ?? []) as DwlSupplier[]));
     if (resourceId == null) {
       setLoadingMaterials(true);
-      supabase
-        .from("dwl_resources")
-        .select("id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at")
-        .eq("is_active", true)
-        .eq("category", "material")
-        .order("code")
+      listDwlResourcesWithIsActiveAndCategoryMaterial()
         .then(({ data, error }) => {
           if (!error && data) setMaterials(data as DwlResource[]);
           setLoadingMaterials(false);
         });
     }
-  }, [open, supabase, canSubmit, resourceId]);
+  }, [open, canSubmit, resourceId]);
 
   const filteredMaterials = useMemo(() => {
     const q = materialSearch.trim().toLowerCase();
@@ -155,11 +145,7 @@ export function DwlMaterialPriceDialog({
   async function resolveSupplierId(): Promise<string | null> {
     if (!form.supplier_id) return null;
     if (form.supplier_id !== NEW_SUPPLIER_VALUE) return form.supplier_id;
-    const { data, error } = await supabase
-      .from("dwl_suppliers")
-      .insert({ tenant_id: tenantId, name: form.new_supplier_name.trim(), created_by: userId })
-      .select("id")
-      .single();
+    const { data, error } = await insertDwlSupplierReturning({ tenant_id: tenantId, name: form.new_supplier_name.trim(), created_by: userId });
     if (error || !data) throw new Error(error?.message ?? "Failed to create supplier");
     return data.id as string;
   }
@@ -210,19 +196,13 @@ export function DwlMaterialPriceDialog({
       };
 
       if (form.mode === "direct") {
-        const { error } = await supabase
-          .from("dwl_resource_prices")
-          .insert({ ...common, price_status: "approved" });
+        const { error } = await insertDwlResourcePrice({ ...common, price_status: "approved" });
         if (error) throw new Error(error.message);
         toast.success(`Price recorded for ${effectiveResourceCode}`);
       } else {
-        const { data, error } = await supabase
-          .from("dwl_price_submissions")
-          .insert({ ...common, status: "draft" })
-          .select("id")
-          .single();
+        const { data, error } = await insertDwlPriceSubmissionReturning({ ...common, status: "draft" });
         if (error || !data) throw new Error(error?.message ?? "Failed to create submission");
-        const { error: subErr } = await supabase.rpc("dwl_submit_price_submission", {
+        const { error: subErr } = await dwlSubmitPriceSubmission({
           p_submission_id: data.id,
         });
         if (subErr) throw new Error(subErr.message);

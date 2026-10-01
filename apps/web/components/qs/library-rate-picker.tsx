@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { listDwlVAssemblyRatesOrderedByCode, listDwlVWorkItemRatesOrderedByCode } from "@/lib/qs/qs-queries";
 import {
   Dialog,
   DialogContent,
@@ -54,7 +54,6 @@ export interface LibraryRatePickerProps {
 }
 
 export function LibraryRatePicker({ open, onOpenChange, onSelect }: LibraryRatePickerProps) {
-  const supabase = useMemo(() => createClient(), []);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -69,14 +68,8 @@ export function LibraryRatePicker({ open, onOpenChange, onSelect }: LibraryRateP
     setLoading(true);
     setErrorMsg(null);
     const [wiResult, asmResult] = await Promise.all([
-      supabase
-        .from("dwl_v_work_item_rates")
-        .select("work_item_id, code, boq_section, description, unit, net_direct_rate, has_expired_price, recipe_lines")
-        .order("code"),
-      supabase
-        .from("dwl_v_assembly_rates")
-        .select("assembly_id, code, element_group, description, unit, net_direct_rate, has_expired_price")
-        .order("code"),
+      listDwlVWorkItemRatesOrderedByCode(),
+      listDwlVAssemblyRatesOrderedByCode(),
     ]);
 
     if (wiResult.error) {
@@ -93,7 +86,7 @@ export function LibraryRatePicker({ open, onOpenChange, onSelect }: LibraryRateP
     setWorkItems((wiResult.data ?? []) as DwlWorkItemRate[]);
     setAssemblies((asmResult.data ?? []) as DwlAssemblyRate[]);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   // Load a fresh copy every time the dialog is opened — this is a read-only
   // picker over a small, frequently-changing (append-only pricing) library,

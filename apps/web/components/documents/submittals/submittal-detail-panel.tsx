@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CommentResolutionSheet } from "./comment-resolution-sheet";
+import { insertSubmittalItem, insertSubmittalPackagesReturning, listDocumentsByProjectIdOfIdAndDocumentNumberAndTitle, listSubmittalItemsBySubmittalId, updateSubmittalPackageById } from "@/lib/documents/documents-queries";
 
 export interface SubmittalRecord {
   id: string;
@@ -127,11 +128,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
   const [consultantRemarks, setConsultantRemarks] = useState("");
 
   function fetchItems() {
-    supabase
-      .from("submittal_items")
-      .select("*, document:document_id(document_number, title, current_revision_code), revision:document_revision_id(file_url, file_name)")
-      .eq("submittal_id", submittal.id)
-      .order("created_at", { ascending: true })
+    listSubmittalItemsBySubmittalId(submittal.id)
       .then(({ data, error }) => {
         if (!error && data) {
           setItems(data as SubmittalItem[]);
@@ -142,10 +139,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
 
   useEffect(() => {
     fetchItems();
-    supabase
-      .from("documents")
-      .select("id, document_number, title")
-      .eq("project_id", submittal.project_id)
+    listDocumentsByProjectIdOfIdAndDocumentNumberAndTitle(submittal.project_id)
       .then(({ data }) => {
         if (data) setAvailableDocs(data);
       });
@@ -200,10 +194,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
       consultant_due_date: dueStr,
     };
 
-    const { error } = await supabase
-      .from("submittal_packages")
-      .update(updates)
-      .eq("id", submittal.id);
+    const { error } = await updateSubmittalPackageById(updates, submittal.id);
 
     if (error) {
       toast.error(error.message);
@@ -226,10 +217,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
       remarks: consultantRemarks.trim() || submittal.remarks,
     };
 
-    const { error } = await supabase
-      .from("submittal_packages")
-      .update(updates)
-      .eq("id", submittal.id);
+    const { error } = await updateSubmittalPackageById(updates, submittal.id);
 
     if (error) {
       toast.error(error.message);
@@ -273,11 +261,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
       created_by: userId,
     };
 
-    const { data: newSub, error } = await supabase
-      .from("submittal_packages")
-      .insert(payload)
-      .select()
-      .single();
+    const { data: newSub, error } = await insertSubmittalPackagesReturning(payload);
 
     if (error) {
       toast.error("Failed to create resubmission: " + error.message);
@@ -292,7 +276,7 @@ export function SubmittalDetailPanel({ submittal, onClose, onUpdate }: Submittal
     e.preventDefault();
     if (!itemDesc.trim()) return;
 
-    const { error } = await supabase.from("submittal_items").insert({
+    const { error } = await insertSubmittalItem({
       submittal_id: submittal.id,
       document_id: itemType === "document" && selectedDocId ? selectedDocId : null,
       item_type: itemType,

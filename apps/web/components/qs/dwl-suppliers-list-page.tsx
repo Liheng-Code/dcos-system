@@ -19,6 +19,7 @@ import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlSupplierFormDialog } from "@/components/qs/dwl-supplier-form-dialog";
 import { DwlSupplierImportDialog } from "@/components/qs/dwl-supplier-import-dialog";
 import type { DwlSupplierRow } from "@/components/qs/dwl-types";
+import { deleteDwlSupplierByIdReturning, getProfileById, listDwlVSuppliersWithVendorKindMaterialSupplier } from "@/lib/qs/qs-queries";
 
 type StatusFilter = "active" | "inactive" | "all";
 
@@ -63,7 +64,7 @@ export default function DwlSuppliersListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile, error } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -71,11 +72,7 @@ export default function DwlSuppliersListPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_suppliers")
-      .select(V_COLUMNS)
-      .eq("vendor_kind", "material_supplier")
-      .order("name");
+    const { data, error } = await listDwlVSuppliersWithVendorKindMaterialSupplier(V_COLUMNS);
     if (error) {
       setErrorMsg(error.message);
       setLoading(false);
@@ -140,7 +137,7 @@ export default function DwlSuppliersListPage() {
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
-      const { data, error } = await supabase.from("dwl_suppliers").delete().eq("id", id).select("id");
+      const { data, error } = await deleteDwlSupplierByIdReturning(id);
       if (error) {
         if (error.code === "23503") {
           throw new Error("Cannot delete — this supplier has price history or linked materials. Deactivate it instead (set Status to Inactive) to keep it out of active use.");

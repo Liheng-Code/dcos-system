@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTenderSubmissionItemsBySubmissionId, insertTenderSubmissionItems, insertTenderSubmissionsReturning, listTenderInvitationsByTenderId, listTenderSubmissionItemsBySubmissionId, updateTenderInvitationById, updateTenderSubmissionById } from "@/lib/qs/qs-queries";
 import { X, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,6 @@ interface SubmissionItem {
 }
 
 export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, editSubmission }: SubmissionFormDialogProps) {
-  const supabase = createClient();
   const [saving, setSaving] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
 
@@ -62,30 +61,22 @@ export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, edi
   const [loadingItems, setLoadingItems] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("tender_invitations")
-      .select("id, company_name, response, bid_submitted")
-      .eq("tender_id", tenderId)
-      .order("company_name")
+    listTenderInvitationsByTenderId(tenderId)
       .then(({ data }) => {
         if (data) setInvitations(data);
       });
-  }, [tenderId, supabase]);
+  }, [tenderId]);
 
   // Load existing submission items when editing
   useEffect(() => {
     if (!editSubmission?.id) return;
     void (async () => {
       setLoadingItems(true);
-      const { data } = await supabase
-        .from("tender_submission_items")
-        .select("item_code, description, unit, quantity, unit_rate")
-        .eq("submission_id", editSubmission.id)
-        .order("item_code");
+      const { data } = await listTenderSubmissionItemsBySubmissionId(editSubmission.id, "item_code, description, unit, quantity, unit_rate");
       if (data) setItems(data);
       setLoadingItems(false);
     })();
-  }, [editSubmission?.id, supabase]);
+  }, [editSubmission?.id]);
 
   function addItem() {
     setItems((prev) => [...prev, { item_code: "", description: "", unit: "ea", quantity: 0, unit_rate: 0 }]);
@@ -121,10 +112,7 @@ export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, edi
 
     if (editSubmission) {
       // Update existing submission
-      const { error } = await supabase
-        .from("tender_submissions")
-        .update(payload)
-        .eq("id", editSubmission.id);
+      const { error } = await updateTenderSubmissionById(payload, editSubmission.id);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -132,7 +120,7 @@ export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, edi
       }
 
       // Delete old items and re-insert
-      await supabase.from("tender_submission_items").delete().eq("submission_id", editSubmission.id);
+      await deleteTenderSubmissionItemsBySubmissionId(editSubmission.id);
       if (items.length > 0) {
         const itemRows = items.map((item) => ({
           submission_id: editSubmission.id,
@@ -142,23 +130,19 @@ export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, edi
           quantity: item.quantity,
           unit_rate: item.unit_rate,
         }));
-        const { error: itemErr } = await supabase.from("tender_submission_items").insert(itemRows);
+        const { error: itemErr } = await insertTenderSubmissionItems(itemRows);
         if (itemErr) toast.error(`Items save failed: ${itemErr.message}`);
       }
 
       // Mark invitation as bid_submitted if linked
       if (form.invitation_id) {
-        await supabase.from("tender_invitations").update({ bid_submitted: true }).eq("id", form.invitation_id);
+        await updateTenderInvitationById({ bid_submitted: true }, form.invitation_id);
       }
 
       toast.success("Submission updated");
     } else {
       // Create new submission
-      const { data, error } = await supabase
-        .from("tender_submissions")
-        .insert(payload)
-        .select("id")
-        .single();
+      const { data, error } = await insertTenderSubmissionsReturning(payload);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -175,13 +159,13 @@ export function SubmissionFormDialog({ tenderId, tenderNo, onClose, onSaved, edi
           quantity: item.quantity,
           unit_rate: item.unit_rate,
         }));
-        const { error: itemErr } = await supabase.from("tender_submission_items").insert(itemRows);
+        const { error: itemErr } = await insertTenderSubmissionItems(itemRows);
         if (itemErr) toast.error(`Items save failed: ${itemErr.message}`);
       }
 
       // Mark invitation as bid_submitted if linked
       if (form.invitation_id) {
-        await supabase.from("tender_invitations").update({ bid_submitted: true }).eq("id", form.invitation_id);
+        await updateTenderInvitationById({ bid_submitted: true }, form.invitation_id);
       }
 
       toast.success("Submission created");

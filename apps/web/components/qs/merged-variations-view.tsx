@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteSubcontractVariationById, insertSubcontractVariation, listSubcontractVariationsByProjectId, listSubcontractsByProjectId, updateSubcontractVariationById } from "@/lib/qs/qs-queries";
 import { AlertTriangle, CheckCircle, Clock, FileText, GitBranch, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +36,6 @@ const isCounted = (v: SubVariation) => v.status === "approved" || v.status === "
 const isPending = (v: SubVariation) => !isCounted(v) && v.status !== "rejected";
 
 function SubVariationList({ projectId }: { projectId: string }) {
-  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<SubVariation[]>([]);
   const [subcontracts, setSubcontracts] = useState<{ id: string; subcontract_no: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,19 +47,12 @@ function SubVariationList({ projectId }: { projectId: string }) {
 
   const itemsQuery = useCallback(
     () =>
-      supabase
-        .from("subcontract_variations")
-        .select(SUB_VARIATION_COLUMNS)
-        .eq("subcontracts.project_id", projectId)
-        .order("created_at", { ascending: false }),
-    [supabase, projectId],
+      listSubcontractVariationsByProjectId(SUB_VARIATION_COLUMNS, projectId),
+    [projectId],
   );
 
   useEffect(() => {
-    supabase
-      .from("subcontracts")
-      .select("id,subcontract_no")
-      .eq("project_id", projectId)
+    listSubcontractsByProjectId(projectId)
       .then(({ data }) => {
         if (data) setSubcontracts(data);
       });
@@ -68,11 +60,11 @@ function SubVariationList({ projectId }: { projectId: string }) {
       if (data) setItems(data as unknown as SubVariation[]);
       setLoading(false);
     });
-  }, [supabase, projectId, itemsQuery]);
+  }, [projectId, itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("subcontract_variations").insert({
+    const { error } = await insertSubcontractVariation({
       subcontract_id: form.subcontract_id,
       variation_no: form.variation_no.trim(),
       description: form.description.trim(),
@@ -93,7 +85,7 @@ function SubVariationList({ projectId }: { projectId: string }) {
   async function handleStatusUpdate(id: string, status: string) {
     const update: Record<string, string> = { status };
     if (status === "approved") update.approved_date = new Date().toISOString().split("T")[0];
-    const { error } = await supabase.from("subcontract_variations").update(update).eq("id", id);
+    const { error } = await updateSubcontractVariationById(update, id);
     if (error) { toast.error(error.message); return; }
     toast.success(`Variation ${status}`);
     itemsQuery().then(({ data }) => {
@@ -103,7 +95,7 @@ function SubVariationList({ projectId }: { projectId: string }) {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this draft variation?")) return;
-    const { error } = await supabase.from("subcontract_variations").delete().eq("id", id);
+    const { error } = await deleteSubcontractVariationById(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Variation deleted");
     setItems((prev) => prev.filter((i) => i.id !== id));

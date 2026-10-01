@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { insertDocumentRevision, insertDocumentsReturning, listDocumentTypesWithIsActive, listProjects, listWbsNodesByProjectId, updateDocumentById, updateDocumentByIdReturning } from "@/lib/documents/documents-queries";
 
 interface DocumentType {
   id: string;
@@ -97,17 +98,17 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
   const isEditing = !!document;
 
   useEffect(() => {
-    supabase.from("projects").select("id, project_code, project_name").order("project_code", { ascending: true }).then(({ data }) => {
+    listProjects().then(({ data }) => {
       if (data) setProjects(data as Project[]);
     });
-    supabase.from("document_types").select("id, code, name").eq("is_active", true).order("code", { ascending: true }).then(({ data }) => {
+    listDocumentTypesWithIsActive().then(({ data }) => {
       if (data) setDocTypes(data as DocumentType[]);
     });
   }, [supabase]);
 
   useEffect(() => {
     if (form.project_id) {
-      supabase.from("wbs_nodes").select("id, wbs_code, wbs_name, full_path").eq("project_id", form.project_id).order("full_path", { ascending: true, nullsFirst: false }).then(({ data }) => {
+      listWbsNodesByProjectId(form.project_id).then(({ data }) => {
         if (data) setWbsNodes(data as WbsNode[]);
       });
     } else {
@@ -166,7 +167,7 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
     };
 
     if (isEditing) {
-      const { error } = await supabase.from("documents").update(payload).eq("id", document.id).select().single();
+      const { error } = await updateDocumentByIdReturning(payload, document.id);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -177,7 +178,7 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
       if (fileUrl) {
         const nextRevNum = (document.current_revision ?? 0) + 1;
         const nextRevCode = form.current_revision_code || `R${String(nextRevNum).padStart(2, "0")}`;
-        const { error: revErr } = await supabase.from("document_revisions").insert({
+        const { error: revErr } = await insertDocumentRevision({
           document_id: document.id,
           revision_number: nextRevNum,
           revision_code: nextRevCode,
@@ -192,10 +193,10 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
         });
         if (revErr) toast.error("Revision save failed: " + revErr.message);
         else {
-          await supabase.from("documents").update({
+          await updateDocumentById({
             current_revision: nextRevNum,
             current_revision_code: nextRevCode,
-          }).eq("id", document.id);
+          }, document.id);
           payload.current_revision = nextRevNum;
           payload.current_revision_code = nextRevCode;
         }
@@ -203,7 +204,7 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
 
       onSave({ ...document!, ...payload } as DocumentRecord);
     } else {
-      const { data, error } = await supabase.from("documents").insert(payload).select().single();
+      const { data, error } = await insertDocumentsReturning(payload);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -213,7 +214,7 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
 
       if (fileUrl) {
         const initRevCode = form.current_revision_code || "R00";
-        await supabase.from("document_revisions").insert({
+        await insertDocumentRevision({
           document_id: newDoc.id,
           revision_number: 0,
           revision_code: initRevCode,

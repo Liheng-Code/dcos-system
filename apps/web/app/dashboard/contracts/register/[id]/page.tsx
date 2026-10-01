@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteContractRegisterById, getContractRegisterById, updateContractRegisterById } from "@/lib/qs/qs-queries";
 import { Loader2, Save, FileSignature, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [contract, setContract] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,17 +19,17 @@ export default function ContractDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("contract_register").select("*, projects(project_name)").eq("id", id).single().then(({ data, error }) => {
+    getContractRegisterById(id).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/register"); return; }
       setContract(data);
       setForm({ ...data, start_date: data.start_date?.slice(0, 10) || "", end_date: data.end_date?.slice(0, 10) || "", signed_date: data.signed_date?.slice(0, 10) || "", termination_date: data.termination_date?.slice(0, 10) || "" });
       setLoading(false);
     });
-  }, [id, supabase, router]);
+  }, [id, router]);
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("contract_register").update({
+    const { error } = await updateContractRegisterById({
       contract_no: form.contract_no, title: form.title, party_name: form.party_name,
       party_contact: form.party_contact || null, contract_type: form.contract_type,
       contract_value: parseFloat(form.contract_value) || 0, currency: form.currency,
@@ -39,11 +38,11 @@ export default function ContractDetailPage() {
       governing_law: form.governing_law || null, dispute_resolution: form.dispute_resolution || null,
       payment_terms: form.payment_terms || null,
       notes: form.notes || null, updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Contract updated");
     setEditMode(false);
-    supabase.from("contract_register").select("*, projects(project_name)").eq("id", id).single().then(({ data }) => {
+    getContractRegisterById(id).then(({ data }) => {
       if (data) { setContract(data); setForm({ ...data, start_date: data.start_date?.slice(0, 10) || "", end_date: data.end_date?.slice(0, 10) || "", signed_date: data.signed_date?.slice(0, 10) || "", termination_date: data.termination_date?.slice(0, 10) || "" }); }
     });
     setSaving(false);
@@ -52,7 +51,7 @@ export default function ContractDetailPage() {
   async function handleDelete() {
     if (!confirm("Delete this contract and all related records?")) return;
     setDeleting(true);
-    const { error } = await supabase.from("contract_register").delete().eq("id", id);
+    const { error } = await deleteContractRegisterById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Contract deleted");
     router.push("/dashboard/contracts/register");

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Users, X } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { getProfileById, listProfiles } from "@/lib/planning/planning-queries";
 import {
   createResource,
   setResourceActive,
@@ -55,18 +55,13 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
   const loadingProfiles = !alreadyLinked && !profilesLoaded;
 
   useEffect(() => {
-    const supabase = createClient();
     if (alreadyLinked && resource?.profile_id) {
-      supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", resource.profile_id)
-        .maybeSingle()
+      getProfileById(resource.profile_id, "full_name")
         .then(({ data }) => setLinkedProfileName((data?.full_name as string | undefined) ?? null));
       return;
     }
     Promise.resolve(
-      supabase.from("profiles").select("id, full_name, role, avatar_url, department").order("full_name"),
+      listProfiles("id, full_name, role, avatar_url, department"),
     )
       .then(({ data, error }) => {
         if (error) {

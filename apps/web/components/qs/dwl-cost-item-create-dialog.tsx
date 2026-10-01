@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Blocks, Loader2, Search, Sparkles,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlAssemblyItem, insertDwlAssemblyReturning, insertDwlAssemblySpecs, listDwlAssembliesByCode, listDwlMaterialCategoriesWithIsActive, listDwlWorkItemsWithIsActive, upsertDwlAssemblyCosting } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -169,7 +169,6 @@ function formatMoney(v: number) {
 export function DwlCostItemCreateDialog({
   open, onOpenChange, tenantId, userId, onCreated,
 }: DwlCostItemCreateDialogProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<"general" | "commercial" | "specs" | "knowledge">("general");
   const [categories, setCategories] = useState<DwlMaterialCategory[]>([]);
   const [workItems, setWorkItems] = useState<DwlWorkItem[]>([]);
@@ -195,17 +194,13 @@ export function DwlCostItemCreateDialog({
     setAssumptions([]);
     setInclusions([]);
     setExclusions([]);
-    supabase.from("dwl_material_categories").select(
-      "id, group_name, name, code, specific_element, discipline, cost_code_prefix, color_tag, description, sort_order, is_active, created_at, updated_at"
-    ).eq("is_active", true).order("sort_order").then(({ data, error }) => {
+    listDwlMaterialCategoriesWithIsActive().then(({ data, error }) => {
       if (!error && data) setCategories(data as DwlMaterialCategory[]);
     });
-    supabase.from("dwl_work_items").select(
-      "id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at"
-    ).eq("is_active", true).order("code").then(({ data, error }) => {
+    listDwlWorkItemsWithIsActive().then(({ data, error }) => {
       if (!error && data) setWorkItems(data as DwlWorkItem[]);
     });
-  }, [open, reset, supabase]);
+  }, [open, reset]);
 
   const filteredWorkItems = useMemo(() => {
     if (!workItemSearch.trim()) return workItems.slice(0, 50);
@@ -233,7 +228,7 @@ export function DwlCostItemCreateDialog({
   async function suggestCode() {
     setSuggesting(true);
     const grp = groupCodeFor(selectedCategory?.code, discipline);
-    const { data, error } = await supabase.from("dwl_assemblies").select("code").ilike("code", `ASM-${grp}-%`);
+    const { data, error } = await listDwlAssembliesByCode(`ASM-${grp}-%`);
     setSuggesting(false);
     if (error) {
       toast.error(error.message);
@@ -275,9 +270,7 @@ export function DwlCostItemCreateDialog({
       ? `${values.name.trim()} — ${values.short_description.trim()}`
       : values.name.trim();
 
-    const { data: assemblyRow, error: asmErr } = await supabase
-      .from("dwl_assemblies")
-      .insert({
+    const { data: assemblyRow, error: asmErr } = await insertDwlAssemblyReturning({
         tenant_id: tenantId,
         code: values.code.trim().toUpperCase(),
         element_group: selectedCategory?.name ?? (values.discipline || "General"),
@@ -285,9 +278,7 @@ export function DwlCostItemCreateDialog({
         unit: unitLabel,
         measurement_rule: "Net area/quantity as measured, per selected unit",
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (asmErr || !assemblyRow) {
       if (asmErr?.code === "23505" || /unique/i.test(asmErr?.message ?? "")) {
         toast.error("A cost item with this code already exists");
@@ -298,8 +289,7 @@ export function DwlCostItemCreateDialog({
     }
     const assemblyId = assemblyRow.id as string;
 
-    const { error: costErr } = await supabase.from("dwl_assembly_costing").upsert(
-      {
+    const { error: costErr } = await upsertDwlAssemblyCosting({
         assembly_id: assemblyId,
         tenant_id: tenantId,
         category_id: values.category_id || null,
@@ -312,16 +302,14 @@ export function DwlCostItemCreateDialog({
         manual_direct_cost_per_unit: isStandalone ? manualCost : null,
         scope_of_works: values.scope_of_works.trim() || null,
         created_by: userId,
-      },
-      { onConflict: "assembly_id" }
-    );
+      });
     if (costErr) {
       toast.error(costErr.message);
       return;
     }
 
     if (selectedWorkItem) {
-      const { error: linkErr } = await supabase.from("dwl_assembly_items").insert({
+      const { error: linkErr } = await insertDwlAssemblyItem({
         tenant_id: tenantId,
         assembly_id: assemblyId,
         work_item_id: selectedWorkItem.id,
@@ -364,7 +352,7 @@ export function DwlCostItemCreateDialog({
     });
 
     if (specRows.length > 0) {
-      const { error: specErr } = await supabase.from("dwl_assembly_specs").insert(specRows);
+      const { error: specErr } = await insertDwlAssemblySpecs(specRows);
       if (specErr) toast.error(`Cost item created, but saving some detail rows failed: ${specErr.message}`);
     }
 

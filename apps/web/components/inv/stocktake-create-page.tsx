@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import type { InvStore } from "./inv-types"
+import { listInvStoresWithStatusActive, listProjects } from "@/lib/inv/inventory-queries";
 
 interface ProjectOption {
   id: string
@@ -29,10 +29,9 @@ export function StocktakeCreatePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
     Promise.all([
-      supabase.from("projects").select("id, project_code, project_name").order("project_code"),
-      supabase.from("inv_stores").select("*").eq("status", "active").order("name"),
+      listProjects(),
+      listInvStoresWithStatusActive("*"),
     ]).then(([pRes, sRes]) => {
       if (pRes.data) setProjects(pRes.data as ProjectOption[])
       if (sRes.data) setStores(sRes.data as InvStore[])

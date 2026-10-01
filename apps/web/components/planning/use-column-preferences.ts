@@ -20,6 +20,7 @@ import {
   type ColumnVisibility,
   type SheetField,
 } from "./sheet-types";
+import { getUserUiPreferenceByUserIdAndPreferenceKey, upsertUserUiPreference } from "@/lib/planning/planning-queries";
 
 const PREFERENCE_KEY = "schedule_grid_columns";
 /** Width edits fire on every mousemove during a drag — debounce the write so a resize doesn't spam the network. */
@@ -126,12 +127,7 @@ export function useColumnPreferences(): UseColumnPreferences {
         userIdRef.current = userId;
         if (!userId) return;
 
-        const { data, error } = await supabase
-          .from("user_ui_preferences")
-          .select("value")
-          .eq("user_id", userId)
-          .eq("preference_key", PREFERENCE_KEY)
-          .maybeSingle();
+        const { data, error } = await getUserUiPreferenceByUserIdAndPreferenceKey(userId, PREFERENCE_KEY);
         if (!alive || error || !data) return;
 
         const parsed = parsePreferences((data as { value: unknown }).value);
@@ -160,15 +156,12 @@ export function useColumnPreferences(): UseColumnPreferences {
     if (!userId) return;
     try {
       const supabase = createClient();
-      await supabase.from("user_ui_preferences").upsert(
-        {
+      await upsertUserUiPreference({
           user_id: userId,
           preference_key: PREFERENCE_KEY,
           value,
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,preference_key" },
-      );
+        });
     } catch {
       /* best-effort — a failed preference write must never break the grid */
     }

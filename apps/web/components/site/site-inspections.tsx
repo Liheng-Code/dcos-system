@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertInspectionRequest, listInspectionRequestsByProjectId, listWbsTasksByProjectId, updateInspectionRequestById } from "@/lib/construction/construction-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import {
   Plus,
@@ -71,7 +71,6 @@ export function SiteInspections() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<InspectionRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   // Form states
   const [irNumber, setIrNumber] = useState("");
@@ -90,23 +89,13 @@ export function SiteInspections() {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("inspection_requests")
-        .select("*, wbs_tasks(task_code, task_name)")
-        .eq("project_id", selectedProjectId)
-        .order("request_date", { ascending: false })
-        .limit(200);
+      const { data, error } = await listInspectionRequestsByProjectId(selectedProjectId);
 
       if (error) throw error;
       setRows((data || []) as InspectionRow[]);
 
       // Load tasks
-      const { data: taskData } = await supabase
-        .from("wbs_tasks")
-        .select("id, task_code, task_name")
-        .eq("project_id", selectedProjectId)
-        .order("task_code", { ascending: true })
-        .limit(200);
+      const { data: taskData } = await listWbsTasksByProjectId(selectedProjectId);
 
       setTasks(taskData || []);
     } catch (e) {
@@ -164,19 +153,14 @@ export function SiteInspections() {
       };
 
       if (editing) {
-        const { error } = await supabase
-          .from("inspection_requests")
-          .update(payload)
-          .eq("id", editing.id);
+        const { error } = await updateInspectionRequestById(payload, editing.id);
         if (error) throw error;
         toast.success("Inspection request updated");
       } else {
-        const { error } = await supabase.from("inspection_requests").insert([
-          {
+        const { error } = await insertInspectionRequest({
             ...payload,
             request_date: todayISO(),
-          },
-        ]);
+          });
         if (error) throw error;
         toast.success("Inspection request created");
       }

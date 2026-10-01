@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -12,6 +11,7 @@ import { Search, Wrench, Plus, Lock, ChevronRight } from "lucide-react"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { ToolRow } from "./inv-types"
 import { ToolForm } from "./tool-form"
+import { listInvToolIssuesWithStatusIssuedOverdue, listInvTools } from "@/lib/inv/inventory-queries";
 
 interface ActiveIssue {
   tool_id: string
@@ -37,9 +37,8 @@ export function ToolList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
-      let query = supabase.from("inv_tools").select("*").order("tool_code")
+      let query = listInvTools()
       if (status) query = query.eq("status", status)
       if (search) query = query.or(`tool_code.ilike.%${search}%,name.ilike.%${search}%,serial_no.ilike.%${search}%`)
 
@@ -48,10 +47,7 @@ export function ToolList() {
       const tools = (data ?? []) as ToolRow[]
       setRows(tools)
 
-      const { data: issues } = await supabase
-        .from("inv_tool_issues")
-        .select("tool_id, status, profiles!custodian_id(full_name, email)")
-        .in("status", ["issued", "overdue"])
+      const { data: issues } = await listInvToolIssuesWithStatusIssuedOverdue("tool_id, status, profiles!custodian_id(full_name, email)")
       const map: Record<string, ActiveIssue> = {}
       for (const i of (issues ?? []) as unknown as ActiveIssue[]) map[i.tool_id] = i
       setCustodians(map)

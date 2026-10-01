@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertHseRiskAssessment, listHseRiskAssessments, updateHseRiskAssessmentById } from "@/lib/construction/construction-queries";
 import { Plus, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,6 @@ export function HseRiskAssessments() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [assessNumber, setAssessNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -36,7 +35,7 @@ export function HseRiskAssessments() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase.from("hse_risk_assessments").select("*").order("created_at", { ascending: false }).limit(200);
+    const { data, error } = await listHseRiskAssessments();
     if (error) toast.error(error.message); else setRows(data || []);
     setLoading(false);
   }
@@ -63,8 +62,8 @@ export function HseRiskAssessments() {
       review_date: reviewDate || null, status, notes: notes || null,
     };
     const { error } = editing
-      ? await supabase.from("hse_risk_assessments").update(payload).eq("id", editing.id)
-      : await supabase.from("hse_risk_assessments").insert([{ ...payload, project_id: crypto.randomUUID() }]);
+      ? await updateHseRiskAssessmentById(payload, editing.id)
+      : await insertHseRiskAssessment({ ...payload, project_id: crypto.randomUUID() });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);

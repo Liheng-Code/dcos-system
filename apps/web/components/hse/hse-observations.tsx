@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertHseObservation, listHseObservations, updateHseObservationById } from "@/lib/construction/construction-queries";
 import { Plus, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,6 @@ export function HseObservations() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [obsDate, setObsDate] = useState("");
   const [observer, setObserver] = useState("");
@@ -38,7 +37,7 @@ export function HseObservations() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase.from("hse_observations").select("*").order("observation_date", { ascending: false }).limit(200);
+    const { data, error } = await listHseObservations();
     if (error) toast.error(error.message); else setRows(data || []);
     setLoading(false);
   }
@@ -66,8 +65,8 @@ export function HseObservations() {
       category, status,
     };
     const { error } = editing
-      ? await supabase.from("hse_observations").update(payload).eq("id", editing.id)
-      : await supabase.from("hse_observations").insert([{ ...payload, project_id: crypto.randomUUID() }]);
+      ? await updateHseObservationById(payload, editing.id)
+      : await insertHseObservation({ ...payload, project_id: crypto.randomUUID() });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);

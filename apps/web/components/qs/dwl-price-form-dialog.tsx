@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlResourcePrices, insertDwlSupplierReturning, listDwlSuppliersWithIsActive } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,7 +97,6 @@ export function DwlPriceFormDialog({
   userId,
   onCreated,
 }: DwlPriceFormDialogProps) {
-  const supabase = createClient();
   const [suppliers, setSuppliers] = useState<DwlSupplier[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
 
@@ -136,16 +135,12 @@ export function DwlPriceFormDialog({
       notes: "",
     });
     setLoadingSuppliers(true);
-    supabase
-      .from("dwl_suppliers")
-      .select("id, tenant_id, name, contact, rating, is_active")
-      .eq("is_active", true)
-      .order("name")
+    listDwlSuppliersWithIsActive()
       .then(({ data, error }) => {
         if (!error && data) setSuppliers(data as DwlSupplier[]);
         setLoadingSuppliers(false);
       });
-  }, [open, reset, supabase]);
+  }, [open, reset]);
 
   async function onSubmit(values: PriceFormValues) {
     if (!resource) return;
@@ -157,15 +152,11 @@ export function DwlPriceFormDialog({
     let supplierId = values.supplier_id || null;
 
     if (supplierId === NEW_SUPPLIER_VALUE) {
-      const { data: newSupplier, error: supplierError } = await supabase
-        .from("dwl_suppliers")
-        .insert({
+      const { data: newSupplier, error: supplierError } = await insertDwlSupplierReturning({
           tenant_id: tenantId,
           name: values.new_supplier_name!.trim(),
           created_by: userId,
-        })
-        .select("id")
-        .single();
+        });
       if (supplierError || !newSupplier) {
         toast.error(supplierError?.message ?? "Failed to create supplier");
         return;
@@ -186,7 +177,7 @@ export function DwlPriceFormDialog({
       created_by: userId,
     };
 
-    const { error } = await supabase.from("dwl_resource_prices").insert(payload);
+    const { error } = await insertDwlResourcePrices(payload);
     if (error) {
       toast.error(error.message);
       return;

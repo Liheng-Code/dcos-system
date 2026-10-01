@@ -28,6 +28,7 @@ import {
   type DwlMaterialRow,
   type DwlUnit,
 } from "@/components/qs/dwl-types";
+import { deleteDwlMaterialPhotoById, deleteDwlResourceById, insertDwlMaterialAttribute, insertDwlMaterialPhoto, insertDwlResourceReturning, listBudgetCodesWithIsActive, listDwlMaterialCategoriesWithIsActiveOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceId, listDwlResourcesByCodeWithCategoryMaterial, listQsElementLibraryWithIsActive, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
 
 // Material Master coding standard — standardized 2026-09-15 (QS Manager
 // decision, supersedes the original SOP §6 D2 "M-GRP3-NNN" lock for
@@ -162,14 +163,9 @@ export function DwlMaterialFormDialog({
   const loadLookups = useMemo(
     () => async () => {
       const [catRes, bcRes, elRes] = await Promise.all([
-        supabase
-          .from("dwl_material_categories")
-          .select("id, group_name, name, code, sort_order, is_active, created_at, updated_at")
-          .eq("is_active", true)
-          .order("sort_order")
-          .order("name"),
-        supabase.from("budget_codes").select("id, code, description").eq("is_active", true).order("code"),
-        supabase.from("qs_element_library").select("sub_element").eq("is_active", true),
+        listDwlMaterialCategoriesWithIsActiveOrderedBySortOrderAndName(),
+        listBudgetCodesWithIsActive(),
+        listQsElementLibraryWithIsActive(),
       ]);
       setCategories((catRes.data ?? []) as DwlMaterialCategory[]);
       setBudgetCodes((bcRes.data ?? []) as BudgetCodeOption[]);
@@ -184,11 +180,7 @@ export function DwlMaterialFormDialog({
 
   async function loadPhotos(resourceId: string) {
     setPhotosLoading(true);
-    const { data, error } = await supabase
-      .from("dwl_material_photos")
-      .select("id, tenant_id, resource_id, storage_path, caption, created_by, created_at")
-      .eq("resource_id", resourceId)
-      .order("created_at");
+    const { data, error } = await listDwlMaterialPhotosByResourceId(resourceId);
     if (error) {
       toast.error(`Failed to load photos: ${error.message}`);
       setPhotosLoading(false);
@@ -255,11 +247,7 @@ export function DwlMaterialFormDialog({
     const cat = categories.find((c) => c.id === categoryId);
     const grp = groupCodeFor(cat?.code, discipline);
     setSuggesting(true);
-    const { data, error } = await supabase
-      .from("dwl_resources")
-      .select("code")
-      .eq("category", "material")
-      .ilike("code", `MAT-${grp}-%`);
+    const { data, error } = await listDwlResourcesByCodeWithCategoryMaterial(`MAT-${grp}-%`);
     setSuggesting(false);
     if (error) {
       toast.error(error.message);
@@ -306,7 +294,7 @@ export function DwlMaterialFormDialog({
         toast.error(`Photo upload failed: ${upErr.message}`);
         continue;
       }
-      const { error: insErr } = await supabase.from("dwl_material_photos").insert({
+      const { error: insErr } = await insertDwlMaterialPhoto({
         tenant_id: tenantId,
         resource_id: resourceId,
         storage_path: path,
@@ -332,7 +320,7 @@ export function DwlMaterialFormDialog({
       toast.error(rmErr.message);
       return;
     }
-    const { error: delErr } = await supabase.from("dwl_material_photos").delete().eq("id", photo.id);
+    const { error: delErr } = await deleteDwlMaterialPhotoById(photo.id);
     if (delErr) {
       toast.error(delErr.message);
       return;
@@ -366,23 +354,17 @@ export function DwlMaterialFormDialog({
     };
 
     if (isEdit && editRow) {
-      const { error: resErr } = await supabase
-        .from("dwl_resources")
-        .update({
+      const { error: resErr } = await updateDwlResourceById({
           unit: values.unit,
           description,
           is_active: isActive,
           updated_at: new Date().toISOString(),
-        })
-        .eq("id", editRow.resource_id);
+        }, editRow.resource_id);
       if (resErr) {
         toast.error(resErr.message);
         return;
       }
-      const { error: attrErr } = await supabase
-        .from("dwl_material_attributes")
-        .update({ ...attributesPayload, updated_by: userId, updated_at: new Date().toISOString() })
-        .eq("resource_id", editRow.resource_id);
+      const { error: attrErr } = await updateDwlMaterialAttributesByResourceId({ ...attributesPayload, updated_by: userId, updated_at: new Date().toISOString() }, editRow.resource_id);
       if (attrErr) {
         toast.error(attrErr.message);
         return;
@@ -393,9 +375,7 @@ export function DwlMaterialFormDialog({
       return;
     }
 
-    const { data: resource, error: resErr } = await supabase
-      .from("dwl_resources")
-      .insert({
+    const { data: resource, error: resErr } = await insertDwlResourceReturning({
         tenant_id: tenantId,
         category: "material",
         code: codeUpper,
@@ -403,9 +383,7 @@ export function DwlMaterialFormDialog({
         unit: values.unit,
         is_active: isActive,
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (resErr || !resource) {
       if (resErr && (resErr.code === "23505" || /unique/i.test(resErr.message))) {
         setError("code", { message: "A material with this code already exists" });
@@ -416,7 +394,7 @@ export function DwlMaterialFormDialog({
     }
 
     const resourceId = resource.id as string;
-    const { error: attrErr } = await supabase.from("dwl_material_attributes").insert({
+    const { error: attrErr } = await insertDwlMaterialAttribute({
       resource_id: resourceId,
       tenant_id: tenantId,
       ...attributesPayload,
@@ -424,7 +402,7 @@ export function DwlMaterialFormDialog({
     });
     if (attrErr) {
       // Two-step spine+companion insert — never leave an orphaned dwl_resources row.
-      await supabase.from("dwl_resources").delete().eq("id", resourceId);
+      await deleteDwlResourceById(resourceId);
       toast.error(attrErr.message);
       return;
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countInspectionRequests, countNcrs, countSiteDailyReports, countSiteEquipment, countSiteManpower, countSiteProgressPhotos } from "@/lib/construction/construction-queries";
 import { SitePageShell } from "@/components/site/site-page-shell";
 import { HardHat, FileText, Users, Wrench, Camera, ClipboardCheck, AlertTriangle, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -19,16 +19,15 @@ const MODULES = [
 export default function SitePage() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     Promise.all([
-      supabase.from("site_daily_reports").select("*", { count: "exact", head: true }),
-      supabase.from("site_manpower").select("*", { count: "exact", head: true }),
-      supabase.from("site_equipment").select("*", { count: "exact", head: true }),
-      supabase.from("site_progress_photos").select("*", { count: "exact", head: true }),
-      supabase.from("inspection_requests").select("*", { count: "exact", head: true }),
-      supabase.from("ncrs").select("*", { count: "exact", head: true }),
+      countSiteDailyReports(),
+      countSiteManpower(),
+      countSiteEquipment(),
+      countSiteProgressPhotos(),
+      countInspectionRequests(),
+      countNcrs(),
     ]).then(([dr, mp, eq, pp, ir, nc]) => {
       setCounts({
         "daily-reports": dr.count ?? 0,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTenderSubmissionById, listTenderRegister, listTenderSubmissionItemsBySubmissionId, listTenderSubmissionsByTenderIdOrderedBySubmittedDate, updateTenderSubmissionById } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import {
   Loader2, Plus, Trash2, DollarSign, Eye, Pencil,
@@ -64,7 +64,6 @@ const STATUS_OPTIONS = ["submitted", "responsive", "non_responsive", "evaluated"
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SubmissionsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
 
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -89,28 +88,24 @@ export default function SubmissionsPage() {
 
   // Fetch tenders for project
   useEffect(() => {
-    let q = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    let q = listTenderRegister("id,tender_no,title");
     if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
     q.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   // Fetch submissions for selected tender
   useEffect(() => {
     if (!selectedTenderId) return;
     void (async () => {
       setLoadingSubs(true);
-      const { data } = await supabase
-        .from("tender_submissions")
-        .select("*, tender_register!inner(tender_no, title)")
-        .eq("tender_id", selectedTenderId)
-        .order("submitted_date", { ascending: false });
+      const { data } = await listTenderSubmissionsByTenderIdOrderedBySubmittedDate(selectedTenderId);
       setSubmissions((data as Submission[]) ?? []);
       setLoadingSubs(false);
     })();
-  }, [selectedTenderId, supabase]);
+  }, [selectedTenderId]);
 
   // Sorted submissions
   const sortedSubs = useMemo(() => {
@@ -139,21 +134,14 @@ export default function SubmissionsPage() {
   async function loadDetail(sub: Submission) {
     setDetailSub(sub);
     setLoadingDetail(true);
-    const { data } = await supabase
-      .from("tender_submission_items")
-      .select("*")
-      .eq("submission_id", sub.id)
-      .order("item_code");
+    const { data } = await listTenderSubmissionItemsBySubmissionId(sub.id, "*");
     setDetailItems((data as SubmissionItem[]) ?? []);
     setLoadingDetail(false);
   }
 
   // Quick status update
   async function updateStatus(subId: string, newStatus: string) {
-    const { error } = await supabase
-      .from("tender_submissions")
-      .update({ submission_status: newStatus })
-      .eq("id", subId);
+    const { error } = await updateTenderSubmissionById({ submission_status: newStatus }, subId);
     if (error) {
       toast.error(error.message);
       return;
@@ -166,7 +154,7 @@ export default function SubmissionsPage() {
   // Delete submission
   async function deleteSubmission(subId: string) {
     setDeletingId(subId);
-    const { error } = await supabase.from("tender_submissions").delete().eq("id", subId);
+    const { error } = await deleteTenderSubmissionById(subId);
     if (error) {
       toast.error(error.message);
       setDeletingId(null);
@@ -183,11 +171,7 @@ export default function SubmissionsPage() {
     setEditSub(null);
     // Re-fetch submissions
     if (selectedTenderId) {
-      supabase
-        .from("tender_submissions")
-        .select("*, tender_register!inner(tender_no, title)")
-        .eq("tender_id", selectedTenderId)
-        .order("submitted_date", { ascending: false })
+      listTenderSubmissionsByTenderIdOrderedBySubmittedDate(selectedTenderId)
         .then(({ data }) => {
           setSubmissions((data as Submission[]) ?? []);
         });

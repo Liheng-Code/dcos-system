@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import type { StockRow, InvStore } from "./inv-types"
 import { CATEGORIES } from "./inv-types"
+import { listInvStock, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
 
 export function StockBalanceList() {
   const router = useRouter()
@@ -32,21 +32,13 @@ export function StockBalanceList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
       if (stores.length === 0) {
-        const { data } = await supabase
-          .from("inv_stores")
-          .select("id, store_code, name, project_id, status")
-          .eq("status", "active")
-          .order("name")
+        const { data } = await listInvStoresWithStatusActive("id, store_code, name, project_id, status")
         setStores((data ?? []) as InvStore[])
       }
 
-      let query = supabase
-        .from("inv_stock")
-        .select("*, inv_items!inner(item_code, name, category, unit_of_measure, min_stock_level, reorder_quantity)")
-        .order("last_movement_at", { ascending: false })
+      let query = listInvStock()
 
       if (storeId) query = query.eq("store_id", storeId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

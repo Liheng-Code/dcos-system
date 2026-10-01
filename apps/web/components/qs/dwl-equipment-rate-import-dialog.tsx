@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import type { WorkBook } from "xlsx";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Package, Upload } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlEquipmentAttribute, insertDwlResourcePrice, insertDwlResourceReturning } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -128,7 +128,6 @@ interface Props {
 }
 
 export function DwlEquipmentRateImportDialog({ open, onOpenChange, tenantId, userId, existing, onImported }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [classified, setClassified] = useState<Classified[]>([]);
@@ -181,12 +180,10 @@ export function DwlEquipmentRateImportDialog({ open, onOpenChange, tenantId, use
       for (const { row, status, existing: ex } of toApply) {
         let resourceId = ex?.resource_id ?? null;
         if (status === "new") {
-          const { data, error } = await supabase.from("dwl_resources")
-            .insert({ tenant_id: tenantId, category: "equipment", code: row.code, description: row.description, unit: row.unit, created_by: userId })
-            .select("id").single();
+          const { data, error } = await insertDwlResourceReturning({ tenant_id: tenantId, category: "equipment", code: row.code, description: row.description, unit: row.unit, created_by: userId });
           if (error || !data) { res.failed++; res.errors.push(`${row.code}: ${error?.message ?? "insert failed"}`); continue; }
           resourceId = data.id as string;
-          const { error: attrErr } = await supabase.from("dwl_equipment_attributes").insert({
+          const { error: attrErr } = await insertDwlEquipmentAttribute({
             resource_id: resourceId, tenant_id: tenantId, ownership: row.ownership, rate_basis: row.rate_basis,
             operator_included: row.operator_included, fuel_included: row.fuel_included,
             fuel_l_per_day: row.fuel_included ? null : row.fuel_l_per_day, min_hire_qty: row.min_hire_qty,
@@ -195,7 +192,7 @@ export function DwlEquipmentRateImportDialog({ open, onOpenChange, tenantId, use
           if (attrErr) res.errors.push(`${row.code}: details — ${attrErr.message}`);
           res.created++;
         }
-        const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+        const { error: priceErr } = await insertDwlResourcePrice({
           tenant_id: tenantId, resource_id: resourceId, unit_price: row.rate, currency: row.currency,
           valid_from: today, source_type: "estimate", price_status: "approved",
           notes: "Imported via Equipment Rates Excel/CSV template.", created_by: userId,

@@ -5,7 +5,7 @@ import { X, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/client";
+import { deleteQsDescriptionLibraryById, deleteQsElementLibraryById, insertQsDescriptionLibraryReturning, updateQsDescriptionLibraryById, updateQsElementLibraryById } from "@/lib/qs/qs-queries";
 import {
   type QsElementRow,
   type DescriptionRow,
@@ -62,7 +62,6 @@ export default function ElementDetailPanel({
   onDeleted,
   onDescriptionsChange,
 }: ElementDetailPanelProps) {
-  const supabase = createClient();
   const [form, setForm] = useState<ElementForm>(() => seedForm(item));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -104,7 +103,7 @@ export default function ElementDetailPanel({
       typical_unit: form.typical_unit.trim() !== "" ? form.typical_unit.trim() : null,
       budget_code_id: form.budget_code_id || null,
     };
-    const { error } = await supabase.from("qs_element_library").update(payload).eq("id", item.id);
+    const { error } = await updateQsElementLibraryById(payload, item.id);
     if (error) {
       toast.error(friendlyError(error));
     } else {
@@ -115,7 +114,7 @@ export default function ElementDetailPanel({
   }
 
   async function handleToggleActive() {
-    const { error } = await supabase.from("qs_element_library").update({ is_active: !item.is_active }).eq("id", item.id);
+    const { error } = await updateQsElementLibraryById({ is_active: !item.is_active }, item.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -126,7 +125,7 @@ export default function ElementDetailPanel({
   async function handleDeleteItem() {
     if (!confirm("Delete this element? BOQ line items that already reference it will keep their frozen values.")) return;
     setDeleting(true);
-    const { error } = await supabase.from("qs_element_library").delete().eq("id", item.id);
+    const { error } = await deleteQsElementLibraryById(item.id);
     if (error) {
       toast.error(error.message);
       setDeleting(false);
@@ -148,7 +147,7 @@ export default function ElementDetailPanel({
     setSaving(true);
     const payload: Partial<DescriptionRow> = { ...changes };
     if (payload.description !== undefined) payload.description = payload.description.trim();
-    const { error } = await supabase.from("qs_description_library").update(payload).eq("id", id);
+    const { error } = await updateQsDescriptionLibraryById(payload, id);
     if (error) {
       toast.error(friendlyDescError(error));
     } else {
@@ -170,18 +169,14 @@ export default function ElementDetailPanel({
     }
     setSaving(true);
     const maxOrder = elementDescriptions.reduce((m, d) => Math.max(m, d.sort_order), 0);
-    const { data, error } = await supabase
-      .from("qs_description_library")
-      .insert({
+    const { data, error } = await insertQsDescriptionLibraryReturning({
         element_library_id: item.id,
         description: newDesc.description.trim(),
         in_price_list: newDesc.in_price_list,
         material_rate: newDesc.material_rate ? parseFloat(newDesc.material_rate) : null,
         labor_rate: newDesc.labor_rate ? parseFloat(newDesc.labor_rate) : null,
         sort_order: maxOrder + 1,
-      })
-      .select()
-      .single();
+      });
     if (error) {
       toast.error(friendlyDescError(error));
     } else if (data) {
@@ -194,7 +189,7 @@ export default function ElementDetailPanel({
 
   async function handleDescDelete(id: string) {
     if (!confirm("Delete this description?")) return;
-    const { error } = await supabase.from("qs_description_library").delete().eq("id", id);
+    const { error } = await deleteQsDescriptionLibraryById(id);
     if (error) {
       toast.error(error.message);
       return;

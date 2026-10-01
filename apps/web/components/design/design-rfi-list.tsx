@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDesignRfi, listDesignRfiByDiscipline, updateDesignRfiById } from "@/lib/design/design-queries";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,6 @@ const statusColors: Record<string, string> = { open: "bg-blue-100 text-blue-700"
 const priorityColors: Record<string, string> = { low: "bg-gray-100 text-gray-500", normal: "bg-blue-100 text-blue-700", high: "bg-orange-100 text-orange-700", critical: "bg-red-100 text-red-700" };
 
 export function DesignRfiList({ discipline }: { discipline: string }) {
-  const supabase = createClient();
   const [items, setItems] = useState<RfiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -29,7 +28,7 @@ export function DesignRfiList({ discipline }: { discipline: string }) {
 
   function load() {
     setLoading(true);
-    supabase.from("design_rfi").select("*").eq("discipline", discipline).order("created_at", { ascending: false }).then(({ data }) => {
+    listDesignRfiByDiscipline(discipline).then(({ data }) => {
       if (data) setItems(data as RfiItem[]);
       setLoading(false);
     });
@@ -86,7 +85,6 @@ export function DesignRfiList({ discipline }: { discipline: string }) {
 }
 
 function DesignRfiForm({ discipline, item, onSaved, onCancel }: { discipline: string; item: RfiItem | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !item?.id;
   const [rfiNo, setRfiNo] = useState(item?.rfi_no ?? `RFI-${Date.now()}`);
   const [title, setTitle] = useState(item?.title ?? "");
@@ -101,8 +99,8 @@ function DesignRfiForm({ discipline, item, onSaved, onCancel }: { discipline: st
     setSaving(true);
     const payload = { discipline: item ? item.discipline : discipline, rfi_no: rfiNo, title, question, priority, status, due_date: dueDate || null };
     const { error } = isNew
-      ? await supabase.from("design_rfi").insert([payload])
-      : await supabase.from("design_rfi").update(payload).eq("id", item!.id);
+      ? await insertDesignRfi(payload)
+      : await updateDesignRfiById(payload, item!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "RFI created" : "RFI updated");
     setSaving(false);

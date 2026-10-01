@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,6 +10,7 @@ import { Search, Plus, Undo2, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { ReturnRow, InvStore } from "./inv-types"
+import { listInvReturns, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
 
 export function ReturnList() {
   const router = useRouter()
@@ -29,22 +29,14 @@ export function ReturnList() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
 
       if (stores.length === 0) {
         // Note: inv_stores has a `status` column ('active'/'closed'), not `is_active`.
-        const { data: storeData } = await supabase
-          .from("inv_stores")
-          .select("id, store_code, name, project_id, status")
-          .eq("status", "active")
-          .order("name")
+        const { data: storeData } = await listInvStoresWithStatusActive("id, store_code, name, project_id, status")
         setStores((storeData ?? []) as InvStore[])
       }
 
-      let query = supabase
-        .from("inv_returns")
-        .select("*, inv_return_lines(count), inv_stores(name, store_code)")
-        .order("created_at", { ascending: false })
+      let query = listInvReturns()
 
       if (status) query = query.eq("status", status)
       if (storeId) query = query.eq("store_id", storeId)

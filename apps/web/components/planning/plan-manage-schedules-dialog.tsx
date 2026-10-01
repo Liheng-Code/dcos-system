@@ -25,6 +25,7 @@ import {
   type ShiftUnit,
 } from "@/lib/planning/schedule-comparison-service";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
+import { getProfileById, getProfileByIdOfCompanyId, listStakeholderAbbreviations } from "@/lib/planning/planning-queries";
 
 const REVISION_STATUS_LABEL: Record<RevisionStatus, string> = {
   draft: "Draft",
@@ -97,7 +98,7 @@ export function PlanManageSchedulesDialog({ projectId, onClose, onChanged }: Pro
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id;
       if (!uid) return;
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
+      const { data: profile } = await getProfileById(uid, "role");
       setIsAdmin((profile as { role?: string } | null)?.role === "admin");
     })();
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -563,7 +564,7 @@ function RevisionRow({
     if (receivers.length > 0) return;
     const supabase = createClient();
     const [{ data: recData }, { data: { user } }] = await Promise.all([
-      supabase.from("stakeholder_abbreviations").select("stakeholder_id, abbreviation, stakeholders!inner(organization_name)"),
+      listStakeholderAbbreviations(),
       supabase.auth.getUser(),
     ]);
     setReceivers(
@@ -574,7 +575,7 @@ function RevisionRow({
       })),
     );
     if (user) {
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single();
+      const { data: profile } = await getProfileByIdOfCompanyId(user.id);
       if (profile?.company_id) setCompanyId(profile.company_id as string);
     }
   }

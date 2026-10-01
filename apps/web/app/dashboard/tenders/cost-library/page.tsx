@@ -20,6 +20,7 @@ import {
   exportPrelimTreeToExcel,
   DEFAULT_SITE_DATA,
 } from "@/lib/qs/prelim-library-service";
+import { getProfileById } from "@/lib/qs/qs-queries";
 
 export default function CostLibraryPage() {
   const { can, loaded: permsLoaded } = useQsPermissions();
@@ -37,7 +38,7 @@ export default function CostLibraryPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      supabase.from("profiles").select("role").eq("id", data.user.id).single().then(({ data: profile }) => {
+      getProfileById(data.user.id, "role").then(({ data: profile }) => {
         if (profile) setIsAdmin(profile.role === "admin");
       });
     });

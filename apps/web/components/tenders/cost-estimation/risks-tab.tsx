@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTenderRiskItemById, insertTenderRiskItem, listTenderRiskItemsByTenderId } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,10 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
 
   const { can } = useTenderPermissions();
 
-  const supabase = createClient();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("tender_risk_items").select("*").eq("tender_id", tenderId);
+    const { data } = await listTenderRiskItemsByTenderId(tenderId);
     if (data) setRisks(data);
     setLoading(false);
   }, [tenderId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -35,7 +34,7 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
 
   async function handleCreateRisk() {
     setSaving(true);
-    const { error } = await supabase.from("tender_risk_items").insert({
+    const { error } = await insertTenderRiskItem({
       tender_id: tenderId, risk_no: riskForm.risk_no, description: riskForm.description,
       category: riskForm.category, likelihood: riskForm.likelihood, impact: riskForm.impact,
       priced_amount: parseFloat(riskForm.priced_amount) || 0,
@@ -51,7 +50,7 @@ export function RisksTab({ tenderId }: { tenderId: string }) {
 
   async function handleDeleteRisk(id: string) {
     setDeletingId(id);
-    const { error } = await supabase.from("tender_risk_items").delete().eq("id", id);
+    const { error } = await deleteTenderRiskItemById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Risk deleted");
     setRisks(risks.filter((r: RiskItem) => r.id !== id));

@@ -21,6 +21,7 @@ import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlLaborRateFormDialog } from "@/components/qs/dwl-labor-rate-form-dialog";
 import { DwlLaborRateImportDialog } from "@/components/qs/dwl-labor-rate-import-dialog";
 import { DWL_LABOR_BUILD_UP_DEFAULTS, dwlDisplayResourceDescription, type DwlLaborRateRow } from "@/components/qs/dwl-types";
+import { getProfileById, listDwlVLaborRatesWithIsActive, upsertDwlLaborRateAttributes } from "@/lib/qs/qs-queries";
 
 const V_COLUMNS =
   "resource_id, code, description, unit, spec_reference, is_active, created_at, updated_at, " +
@@ -74,7 +75,7 @@ export default function DwlLaborRatesListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile, error } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -82,11 +83,7 @@ export default function DwlLaborRatesListPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_labor_rates")
-      .select(V_COLUMNS)
-      .eq("is_active", true)
-      .order("code");
+    const { data, error } = await listDwlVLaborRatesWithIsActive(V_COLUMNS);
     if (error) {
       setErrorMsg(error.message);
       setLoading(false);
@@ -131,8 +128,7 @@ export default function DwlLaborRatesListPage() {
     );
     if (!ok) return;
     setApplyingDefaults(true);
-    const { error } = await supabase.from("dwl_labor_rate_attributes").upsert(
-      pendingDefaults.map((r) => ({
+    const { error } = await upsertDwlLaborRateAttributes(pendingDefaults.map((r) => ({
         resource_id: r.resource_id,
         tenant_id: tenantId,
         skill_level: r.skill_level,
@@ -140,9 +136,7 @@ export default function DwlLaborRatesListPage() {
         all_in_enabled: true,
         ...d,
         updated_by: userId,
-      })),
-      { onConflict: "resource_id" }
-    );
+      })));
     setApplyingDefaults(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`All-in build-up applied to ${pendingDefaults.length} trade(s)`);

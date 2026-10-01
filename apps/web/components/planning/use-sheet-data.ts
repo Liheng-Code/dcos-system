@@ -64,6 +64,7 @@ import {
   todayISO,
   uniqueSiblingCode,
 } from "./sheet-utils";
+import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, deleteWbsNodeByIdReturning, deleteWbsTaskByIdReturning, getPlanCalendarByProjectId, getPlanScheduleSettingByProjectId, getPlanWbsCodeMaskByProjectId, getProjectById, getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS, getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS, getWeeklyPlanByProjectIdWithStatusApproved, insertWbsNodeReturning, insertWbsTasksReturning, listPlanCalendarExceptionsByCalendarIdLimited, listWbsNodesByProjectIdOrderedBySortOrder, listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId, listWbsTasksByProjectIdOfTaskCode, listWbsTasksByProjectIdOrderedBySortOrder, submitProgress, updateWbsNodeById, updateWbsTaskById, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 
 const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
@@ -326,56 +327,14 @@ export function useSheetData(
 
   const fetchAll = useCallback(async () => {
     const [tRes, nRes, pRes, calRes, maskRes, floatRes, pcrRes, pendingReviewRes] = await Promise.all([
-      supabase
-        .from("wbs_tasks")
-        .select(TASK_COLS)
-        .eq("project_id", projectId)
-        .order("sort_order", { ascending: true, nullsFirst: false })
-        .limit(TASK_LIMIT),
-      supabase
-        .from("wbs_nodes")
-        .select(NODE_COLS)
-        .eq("project_id", projectId)
-        .order("sort_order", { ascending: true, nullsFirst: false })
-        .limit(NODE_LIMIT),
-      supabase
-        .from("projects")
-        .select("id, project_code, project_name, progress_percentage, data_date, end_date")
-        .eq("id", projectId)
-        .maybeSingle(),
-      supabase
-        .from("plan_calendars")
-        .select("id, name, monday, tuesday, wednesday, thursday, friday, saturday, sunday")
-        .eq("project_id", projectId)
-        .order("is_default", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("plan_wbs_code_mask")
-        .select("code_prefix, levels, generate_for_new, verify_unique")
-        .eq("project_id", projectId)
-        .maybeSingle(),
-      supabase
-        .from("plan_schedule_settings")
-        .select(
-          "critical_float_threshold_days, near_critical_float_threshold_days, progress_line_date_source, progress_line_custom_date, progress_line_color, progress_line_point_shape, progress_line_point_color, progress_line_show_date, bar_style",
-        )
-        .eq("project_id", projectId)
-        .maybeSingle(),
-      supabase
-        .from("weekly_plans")
-        .select("pcr")
-        .eq("project_id", projectId)
-        .eq("status", "approved")
-        .not("pcr", "is", null)
-        .order("closed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("wbs_task_progress_reviews")
-        .select("wbs_task_id")
-        .eq("project_id", projectId)
-        .eq("status", "pending"),
+      listWbsTasksByProjectIdOrderedBySortOrder(TASK_COLS, projectId, TASK_LIMIT),
+      listWbsNodesByProjectIdOrderedBySortOrder(NODE_COLS, projectId, NODE_LIMIT),
+      getProjectById(projectId, "id, project_code, project_name, progress_percentage, data_date, end_date"),
+      getPlanCalendarByProjectId(projectId),
+      getPlanWbsCodeMaskByProjectId(projectId),
+      getPlanScheduleSettingByProjectId(projectId, "critical_float_threshold_days, near_critical_float_threshold_days, progress_line_date_source, progress_line_custom_date, progress_line_color, progress_line_point_shape, progress_line_point_color, progress_line_show_date, bar_style"),
+      getWeeklyPlanByProjectIdWithStatusApproved(projectId),
+      listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId(projectId),
     ]);
     if (tRes.error) toast.error(tRes.error.message);
     setWbsCodeMask(maskFromRow((maskRes.data as WbsMaskRow | null) ?? null));
@@ -425,11 +384,7 @@ export function useSheetData(
     const calRow = (calRes.data ?? null) as PlanCalendarRow | null;
     let exceptions: PlanCalendarExceptionRow[] = [];
     if (calRow) {
-      const exRes = await supabase
-        .from("plan_calendar_exceptions")
-        .select("exception_date, is_working")
-        .eq("calendar_id", calRow.id)
-        .limit(CALENDAR_EXCEPTION_LIMIT);
+      const exRes = await listPlanCalendarExceptionsByCalendarIdLimited(calRow.id, CALENDAR_EXCEPTION_LIMIT);
       exceptions = (exRes.data ?? []) as PlanCalendarExceptionRow[];
     } else if (warnedNoCalendar.current !== projectId) {
       warnedNoCalendar.current = projectId;
@@ -645,14 +600,7 @@ export function useSheetData(
     }
     if (containerPromise.current) return containerPromise.current;
     containerPromise.current = (async () => {
-      const found = await supabase
-        .from("wbs_nodes")
-        .select(NODE_COLS)
-        .eq("project_id", projectId)
-        .is("parent_id", null)
-        .eq("node_type", "task_group")
-        .eq("wbs_code", "TASKS")
-        .maybeSingle();
+      const found = await getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS(NODE_COLS, projectId);
       if (found.data) {
         const rec = found.data as unknown as SheetNode;
         setNodes((p) => (p.some((n) => n.id === rec.id) ? p : [...p, rec]));
@@ -663,26 +611,16 @@ export function useSheetData(
         0,
         ...nodesRef.current.filter((n) => !n.parent_id).map((n) => n.sort_order ?? 0),
       );
-      const ins = await supabase
-        .from("wbs_nodes")
-        .insert({
+      const ins = await insertWbsNodeReturning({
           project_id: projectId,
           parent_id: null,
           node_type: "task_group",
           wbs_code: "TASKS",
           wbs_name: "Tasks",
           sort_order: maxRootSort + 10,
-        })
-        .select(NODE_COLS)
-        .single();
+        }, NODE_COLS);
       if (ins.error || !ins.data) {
-        const retry = await supabase
-          .from("wbs_nodes")
-          .select("id")
-          .eq("project_id", projectId)
-          .is("parent_id", null)
-          .eq("wbs_code", "TASKS")
-          .maybeSingle();
+        const retry = await getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS(projectId);
         if (retry.data?.id) {
           setContainerId(retry.data.id);
           return retry.data.id;
@@ -763,7 +701,7 @@ export function useSheetData(
 
       // 1. Direct field patches (names, deps, flags, explicit dates).
       for (const { id, patch } of patches) {
-        const { error } = await supabase.from("wbs_tasks").update(patch).eq("id", id);
+        const { error } = await updateWbsTaskById(patch, id);
         if (error) {
           setTasks(snapshot);
           toast.error("Failed to save: " + error.message);
@@ -774,7 +712,7 @@ export function useSheetData(
       // 2. The reschedule ripple, in one round-trip.
       const ripplePayload = rippled.filter((r) => !patchById.has(r.id));
       if (ripplePayload.length > 0) {
-        const { error } = await supabase.rpc("apply_schedule_dates", {
+        const { error } = await applyScheduleDates({
           p_project_id: projectId,
           p_rows: ripplePayload,
         });
@@ -907,7 +845,7 @@ export function useSheetData(
           is_milestone: false,
           manually_scheduled: false,
         };
-        const res = await supabase.from("wbs_tasks").insert(payload).select(TASK_COLS).single();
+        const res = await insertWbsTasksReturning(payload, TASK_COLS);
         if (!res.error && res.data) {
           const created = res.data as unknown as SheetTask;
           setTasks((p) => [...p, created]);
@@ -924,10 +862,7 @@ export function useSheetData(
           return;
         }
         if (res.error && isDuplicateTaskCodeError(res.error.message)) {
-          const codesRes = await supabase
-            .from("wbs_tasks")
-            .select("task_code")
-            .eq("project_id", projectId);
+          const codesRes = await listWbsTasksByProjectIdOfTaskCode(projectId);
           code = nextTaskCode((codesRes.data ?? []) as Pick<SheetTask, "task_code">[]);
           continue;
         }
@@ -1072,7 +1007,7 @@ export function useSheetData(
       // Non-scheduling fields: plain optimistic update + rollback.
       const snapshot = task;
       setTasks((p) => p.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
-      const { error } = await supabase.from("wbs_tasks").update(patch).eq("id", taskId);
+      const { error } = await updateWbsTaskById(patch, taskId);
       if (error) {
         setTasks((p) => p.map((t) => (t.id === taskId ? snapshot : t)));
         toast.error("Failed to save: " + error.message);
@@ -1104,12 +1039,7 @@ export function useSheetData(
       // simply fail its FK check (the parent no longer exists). Log with
       // taskId: null and the identifying text in old_value instead.
       const deleted = tasksRef.current.find((t) => t.id === taskId) ?? null;
-      const res = await supabase
-        .from("wbs_tasks")
-        .delete()
-        .eq("id", taskId)
-        .select("id")
-        .maybeSingle();
+      const res = await deleteWbsTaskByIdReturning(taskId);
       if (res.error) {
         toast.error(res.error.message);
         return;
@@ -1153,7 +1083,7 @@ export function useSheetData(
           t.dependency_types,
           t.dependency_lag_days,
         ).filter((d) => d.predId !== taskId);
-        await supabase.from("wbs_tasks").update(depsToArrays(deps)).eq("id", t.id);
+        await updateWbsTaskById(depsToArrays(deps), t.id);
       }
       toast.success("Task deleted");
     },
@@ -1275,7 +1205,7 @@ export function useSheetData(
           // project has no review flow enabled (the common case); otherwise it
           // parks the change as a pending wbs_task_progress_reviews row and we
           // must roll the optimistic update back until a planner decides it.
-          const { data, error } = await supabase.rpc("submit_progress", { p_task_id: taskId, p_progress: n });
+          const { data, error } = await submitProgress({ p_task_id: taskId, p_progress: n });
           if (error) {
             toast.error("Failed to save % complete: " + error.message);
             reload();
@@ -1399,7 +1329,7 @@ export function useSheetData(
     };
     walk(tree, []);
     if (rows.length === 0) return;
-    const { error } = await supabase.rpc("apply_wbs_codes", {
+    const { error } = await applyWbsCodes({
       p_project_id: projectId,
       p_rows: rows,
     });
@@ -1431,20 +1361,14 @@ export function useSheetData(
 
       if (isTask) {
         setTasks((p) => p.map((t) => (t.id === id ? { ...t, wbs_outline_code: value } : t)));
-        const { error } = await supabase
-          .from("wbs_tasks")
-          .update({ wbs_outline_code: value })
-          .eq("id", id);
+        const { error } = await updateWbsTaskById({ wbs_outline_code: value }, id);
         if (error) {
           toast.error("Failed to save WBS code: " + error.message);
           void reload();
         }
       } else {
         setNodes((p) => p.map((n) => (n.id === id ? { ...n, wbs_outline_code: value } : n)));
-        const { error } = await supabase
-          .from("wbs_nodes")
-          .update({ wbs_outline_code: value })
-          .eq("id", id);
+        const { error } = await updateWbsNodeById({ wbs_outline_code: value }, id);
         if (error) {
           toast.error("Failed to save WBS code: " + error.message);
           void reload();
@@ -1470,18 +1394,14 @@ export function useSheetData(
           .map((n) => n.wbs_code),
       );
       const code = uniqueSiblingCode("G" + (siblingCodes.size + 1), siblingCodes);
-      const res = await supabase
-        .from("wbs_nodes")
-        .insert({
+      const res = await insertWbsNodeReturning({
           project_id: projectId,
           parent_id: parentNodeId,
           node_type: "task_group",
           wbs_code: code,
           wbs_name: name.trim() || "New group",
           sort_order: nextSort(),
-        })
-        .select(NODE_COLS)
-        .single();
+        }, NODE_COLS);
       if (res.error || !res.data) {
         toast.error(res.error?.message ?? "Failed to add summary row");
         return;
@@ -1500,7 +1420,7 @@ export function useSheetData(
       const node = nodesRef.current.find((n) => n.id === nodeId);
       if (!node || !v || v === node.wbs_name) return;
       setNodes((p) => p.map((n) => (n.id === nodeId ? { ...n, wbs_name: v } : n)));
-      const { error } = await supabase.from("wbs_nodes").update({ wbs_name: v }).eq("id", nodeId);
+      const { error } = await updateWbsNodeById({ wbs_name: v }, nodeId);
       if (error) {
         setNodes((p) => p.map((n) => (n.id === nodeId ? node : n)));
         toast.error("Failed to rename: " + error.message);
@@ -1523,12 +1443,7 @@ export function useSheetData(
       if (taskCount) parts.push(`${taskCount} task${taskCount > 1 ? "s" : ""}`);
       if (!confirm(parts.join(", ").replace(/,([^,]*)$/, " and$1") + "? This cannot be undone.")) return;
 
-      const res = await supabase
-        .from("wbs_nodes")
-        .delete()
-        .eq("id", nodeId)
-        .select("id")
-        .maybeSingle();
+      const res = await deleteWbsNodeByIdReturning(nodeId);
       if (res.error) {
         toast.error(res.error.message);
         return;
@@ -1557,10 +1472,7 @@ export function useSheetData(
       setTasks((p) =>
         p.map((t) => (t.id === taskId ? { ...t, wbs_node_id: nodeId, sort_order: so } : t)),
       );
-      const { error } = await supabase
-        .from("wbs_tasks")
-        .update({ wbs_node_id: nodeId, sort_order: so })
-        .eq("id", taskId);
+      const { error } = await updateWbsTaskById({ wbs_node_id: nodeId, sort_order: so }, taskId);
       if (error) {
         setTasks((p) => p.map((t) => (t.id === taskId ? task : t)));
         toast.error("Failed to move task: " + error.message);
@@ -1592,16 +1504,13 @@ export function useSheetData(
           .map((n) => n.wbs_code),
       );
       const code = uniqueSiblingCode(node.wbs_code, targetCodes);
-      const { error } = await supabase
-        .from("wbs_nodes")
-        .update({ parent_id: move.parentId, sort_order: move.sortOrder, wbs_code: code })
-        .eq("id", nodeId);
+      const { error } = await updateWbsNodeById({ parent_id: move.parentId, sort_order: move.sortOrder, wbs_code: code }, nodeId);
       if (error) {
         toast.error("Failed to move: " + error.message);
         return;
       }
       for (const s of move.reorderedSiblings.filter((s) => s.id !== nodeId)) {
-        await supabase.from("wbs_nodes").update({ sort_order: s.sortOrder }).eq("id", s.id);
+        await updateWbsNodeById({ sort_order: s.sortOrder }, s.id);
       }
       await reload();
     },
@@ -1772,15 +1681,12 @@ export function useSheetData(
     async (next: FloatThresholds) => {
       setFloatThresholds(next);
       try {
-        await supabase.from("plan_schedule_settings").upsert(
-          {
+        await upsertPlanScheduleSetting({
             project_id: projectId,
             critical_float_threshold_days: next.critical,
             near_critical_float_threshold_days: next.nearCritical,
             updated_at: new Date().toISOString(),
-          },
-          { onConflict: "project_id" },
-        );
+          });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to save float settings");
       }
@@ -1796,7 +1702,7 @@ export function useSheetData(
    */
   const advanceDataDate = useCallback(
     async (newDate: string, note?: string) => {
-      const { data, error } = await supabase.rpc("advance_data_date", {
+      const { data, error } = await advanceDataDateRpc({
         p_project_id: projectId,
         p_new_date: newDate,
         p_note: note ?? null,
@@ -1823,8 +1729,7 @@ export function useSheetData(
     async (next: ProgressLineStyle) => {
       setProgressLineStyle(next);
       try {
-        await supabase.from("plan_schedule_settings").upsert(
-          {
+        await upsertPlanScheduleSetting({
             project_id: projectId,
             progress_line_date_source: next.dateSource,
             progress_line_custom_date: next.customDate,
@@ -1833,9 +1738,7 @@ export function useSheetData(
             progress_line_point_color: next.pointColor,
             progress_line_show_date: next.showDate,
             updated_at: new Date().toISOString(),
-          },
-          { onConflict: "project_id" },
-        );
+          });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to save progress line settings");
       }
@@ -1847,14 +1750,11 @@ export function useSheetData(
     async (next: GanttBarStyleSettings) => {
       setBarStyle(next);
       try {
-        await supabase.from("plan_schedule_settings").upsert(
-          {
+        await upsertPlanScheduleSetting({
             project_id: projectId,
             bar_style: next,
             updated_at: new Date().toISOString(),
-          },
-          { onConflict: "project_id" },
-        );
+          });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to save bar style");
       }

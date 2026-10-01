@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteContractualNoticeById, getContractualNoticeById, updateContractualNoticeById } from "@/lib/qs/qs-queries";
 import { Loader2, Save, AlertTriangle, Clock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 export default function NoticeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [notice, setNotice] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,13 +20,13 @@ export default function NoticeDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("contractual_notices").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data, error }) => {
+    getContractualNoticeById(id).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/notices"); return; }
       setNotice(data);
       setForm({ ...data, deadline_date: data.deadline_date?.slice(0, 10) || "", served_date: data.served_date?.slice(0, 10) || "", response_date: data.response_date?.slice(0, 10) || "" });
       setLoading(false);
     });
-  }, [id, supabase, router]);
+  }, [id, router]);
 
   function daysUntil(d: string) {
     const diff = new Date(d).getTime() - Date.now();
@@ -36,7 +35,7 @@ export default function NoticeDetailPage() {
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("contractual_notices").update({
+    const { error } = await updateContractualNoticeById({
       notice_no: form.notice_no, notice_type: form.notice_type, title: form.title,
       description: form.description, trigger_event: form.trigger_event || null,
       contract_clause: form.contract_clause || null, days_from_event: parseInt(form.days_from_event) || 0,
@@ -44,11 +43,11 @@ export default function NoticeDetailPage() {
       served_to: form.served_to || null, response_date: form.response_date || null,
       response_summary: form.response_summary || null, status: form.status,
       updated_at: new Date().toISOString(),
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Notice updated");
     setEditMode(false);
-    supabase.from("contractual_notices").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data }) => {
+    getContractualNoticeById(id).then(({ data }) => {
       if (data) { setNotice(data); setForm({ ...data, deadline_date: data.deadline_date?.slice(0, 10) || "", served_date: data.served_date?.slice(0, 10) || "", response_date: data.response_date?.slice(0, 10) || "" }); }
     });
     setSaving(false);
@@ -57,7 +56,7 @@ export default function NoticeDetailPage() {
   async function handleDelete() {
     if (!confirm("Delete this notice?")) return;
     setDeleting(true);
-    const { error } = await supabase.from("contractual_notices").delete().eq("id", id);
+    const { error } = await deleteContractualNoticeById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Notice deleted");
     router.push("/dashboard/contracts/notices");

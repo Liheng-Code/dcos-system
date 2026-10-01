@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTenderRegisterById, insertTenderRegister, listTenderRegister, updateTenderRegisterById } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, FileSearch, Eye, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { useProject } from "@/components/dashboard/project-context";
 
 export default function TenderRegisterPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProject, selectedProjectId, projects: allProjects } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,13 +55,13 @@ export default function TenderRegisterPage() {
   }
 
   useEffect(() => {
-    let query = supabase.from("tender_register").select("*").order("created_at", { ascending: false });
+    let query = listTenderRegister("*");
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
     query.then(({ data }) => {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   async function handleSave() {
     setSaving(true);
@@ -84,13 +83,13 @@ export default function TenderRegisterPage() {
       contractor_name: form.contractor_name || null,
     };
     const { error } = editingId
-      ? await supabase.from("tender_register").update(payload).eq("id", editingId)
-      : await supabase.from("tender_register").insert(payload);
+      ? await updateTenderRegisterById(payload, editingId)
+      : await insertTenderRegister(payload);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editingId ? "Tender updated" : "Tender created");
     setShowForm(false);
     setEditingId(null);
-    let refetch = supabase.from("tender_register").select("*").order("created_at", { ascending: false });
+    let refetch = listTenderRegister("*");
     if (selectedProjectId) refetch = refetch.eq("project_id", selectedProjectId);
     refetch.then(({ data }) => {
       if (data) setItems(data);
@@ -101,7 +100,7 @@ export default function TenderRegisterPage() {
   async function handleDelete(id: string) {
     if (!confirm("Delete this tender? This cannot be undone.")) return;
     setDeletingId(id);
-    const { error } = await supabase.from("tender_register").delete().eq("id", id);
+    const { error } = await deleteTenderRegisterById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Tender deleted");
     setItems((prev) => prev.filter((t) => t.id !== id));

@@ -20,6 +20,7 @@ import { downloadCsv } from "@/lib/csv-export";
 import {
   parseSimpleCostItemSheet, type SimpleCostItemRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { insertDwlAssemblyItem, insertDwlAssemblyReturning, insertDwlAssemblySpecs, listDwlAssembliesOfIdAndCode, listDwlMaterialCategories, listDwlWorkItems, upsertDwlAssemblyCosting } from "@/lib/qs/qs-queries";
 
 const TEMPLATE_COLUMNS = [
   "Code", "Name", "Short Description", "Category", "Discipline", "Unit", "Status", "Scope of Works",
@@ -96,9 +97,9 @@ async function importCostItems(
   userId: string | null
 ): Promise<ImportResult> {
   const [exAsm, exCats, exWorkItems] = await Promise.all([
-    supabase.from("dwl_assemblies").select("id, code"),
-    supabase.from("dwl_material_categories").select("id, code, name"),
-    supabase.from("dwl_work_items").select("id, code"),
+    listDwlAssembliesOfIdAndCode(),
+    listDwlMaterialCategories(),
+    listDwlWorkItems(),
   ]);
   const existingCodes = new Set(((exAsm.data ?? []) as { id: string; code: string }[]).map((r) => r.code.toUpperCase()));
   const catByCode = new Map<string, { id: string; name: string }>();
@@ -123,9 +124,7 @@ async function importCostItems(
     const workItemId = row.work_item_code ? workItemByCode.get(row.work_item_code.toUpperCase()) ?? null : null;
     const isStandalone = !workItemId;
 
-    const { data: assemblyRow, error: asmErr } = await supabase
-      .from("dwl_assemblies")
-      .insert({
+    const { data: assemblyRow, error: asmErr } = await insertDwlAssemblyReturning({
         tenant_id: tenantId,
         code: row.code,
         element_group: elementGroup,
@@ -133,9 +132,7 @@ async function importCostItems(
         unit: row.unit,
         measurement_rule: "Net area/quantity as measured, per selected unit",
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (asmErr || !assemblyRow) {
       result.failed++;
       result.errors.push(`${row.code}: ${asmErr?.message ?? "assembly insert failed"}`);
@@ -144,8 +141,7 @@ async function importCostItems(
     const assemblyId = assemblyRow.id as string;
     existingCodes.add(row.code);
 
-    const { error: costErr } = await supabase.from("dwl_assembly_costing").upsert(
-      {
+    const { error: costErr } = await upsertDwlAssemblyCosting({
         assembly_id: assemblyId,
         tenant_id: tenantId,
         category_id: cat?.id ?? null,
@@ -158,9 +154,7 @@ async function importCostItems(
         manual_direct_cost_per_unit: isStandalone ? (row.manual_direct_cost ?? 0) : null,
         scope_of_works: row.scope_of_works,
         created_by: userId,
-      },
-      { onConflict: "assembly_id" }
-    );
+      });
     if (costErr) {
       result.failed++;
       result.errors.push(`${row.code}: ${costErr.message}`);
@@ -168,7 +162,7 @@ async function importCostItems(
     }
 
     if (workItemId) {
-      const { error: linkErr } = await supabase.from("dwl_assembly_items").insert({
+      const { error: linkErr } = await insertDwlAssemblyItem({
         tenant_id: tenantId,
         assembly_id: assemblyId,
         work_item_id: workItemId,
@@ -203,7 +197,7 @@ async function importCostItems(
     row.field_lessons.forEach((s, i) => specRows.push({ tenant_id: tenantId, assembly_id: assemblyId, section: "field_lesson", sort_order: i + 1, spec_label: "", spec_value: s }));
 
     if (specRows.length > 0) {
-      const { error: specErr } = await supabase.from("dwl_assembly_specs").insert(specRows);
+      const { error: specErr } = await insertDwlAssemblySpecs(specRows);
       if (specErr) result.errors.push(`${row.code}: detail rows — ${specErr.message}`);
     }
 

@@ -22,6 +22,7 @@ import type {
   DwlAssemblyRate,
   DwlAssemblyRow,
 } from "@/components/qs/dwl-types";
+import { deleteDwlAssemblyByIdReturning, deleteDwlAssemblyItemById, getProfileById, listDwlAssemblies, listDwlAssemblyItemsByAssemblyId, listDwlVAssemblyRates, listDwlVWorkItemRatesByWorkItemIds } from "@/lib/qs/qs-queries";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -70,11 +71,7 @@ export default function DwlAssembliesListPage() {
         setTenantLoaded(true);
         return;
       }
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", uid)
-        .single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
       setTenantLoaded(true);
     });
@@ -84,13 +81,8 @@ export default function DwlAssembliesListPage() {
     setLoading(true);
     setErrorMsg(null);
     const [asmResult, rateResult] = await Promise.all([
-      supabase
-        .from("dwl_assemblies")
-        .select("id, tenant_id, code, element_group, description, unit, measurement_rule, is_active, created_by, created_at")
-        .order("code"),
-      supabase
-        .from("dwl_v_assembly_rates")
-        .select("assembly_id, code, element_group, description, unit, net_direct_rate, has_expired_price"),
+      listDwlAssemblies(),
+      listDwlVAssemblyRates(),
     ]);
 
     if (asmResult.error) {
@@ -143,11 +135,7 @@ export default function DwlAssembliesListPage() {
       setDetailLoading(true);
       setDetailNote(null);
 
-      const itemsResult = await supabase
-        .from("dwl_assembly_items")
-        .select("id, tenant_id, assembly_id, work_item_id, qty_per_unit, basis_note, sort_order, dwl_work_items!inner(code, description, unit)")
-        .eq("assembly_id", assembly.id)
-        .order("sort_order");
+      const itemsResult = await listDwlAssemblyItemsByAssemblyId(assembly.id, "id, tenant_id, assembly_id, work_item_id, qty_per_unit, basis_note, sort_order, dwl_work_items!inner(code, description, unit)");
 
       if (itemsResult.error) {
         setDetailNote(itemsResult.error.message);
@@ -160,10 +148,7 @@ export default function DwlAssembliesListPage() {
       const workItemIds = rawItems.map((r) => r.work_item_id);
 
       const rateResult = workItemIds.length
-        ? await supabase
-            .from("dwl_v_work_item_rates")
-            .select("work_item_id, net_direct_rate, has_expired_price")
-            .in("work_item_id", workItemIds)
+        ? await listDwlVWorkItemRatesByWorkItemIds(workItemIds)
         : { data: [], error: null };
 
       if (rateResult.error) {
@@ -230,7 +215,7 @@ export default function DwlAssembliesListPage() {
   async function handleDeleteItem(row: DwlAssemblyItemRow) {
     if (!confirm(`Delete the assembly line for ${row.workItem.code}?`)) return;
     setDeletingItemId(row.item.id);
-    const { error } = await supabase.from("dwl_assembly_items").delete().eq("id", row.item.id);
+    const { error } = await deleteDwlAssemblyItemById(row.item.id);
     setDeletingItemId(null);
     if (error) {
       toast.error(error.message);
@@ -243,7 +228,7 @@ export default function DwlAssembliesListPage() {
 
   async function handleDeleteAssembly(id: string) {
     setDeletingAssemblyId(id);
-    const { data, error } = await supabase.from("dwl_assemblies").delete().eq("id", id).select("id");
+    const { data, error } = await deleteDwlAssemblyByIdReturning(id);
     setDeletingAssemblyId(null);
     if (error) {
       toast.error(error.message);

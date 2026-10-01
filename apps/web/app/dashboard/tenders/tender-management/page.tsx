@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { deleteTenderAddendaById, deleteTenderInvitationById, insertTenderAddenda, insertTenderInvitation, listTenderAddendaByTenderId, listTenderInvitationsByTenderIdOrderedByInvitedDate, listTenderRegister, updateTenderInvitationById } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Plus, Trash2, Send, FileWarning, Check, X, Clock } from "lucide-react";
 import { ClarificationsRegister } from "@/components/projects/precontract-bid-prep";
@@ -19,7 +19,6 @@ const RESPONSE_OPTIONS = [
 ];
 
 export default function TenderManagementPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [tenders, setTenders] = useState<{id:string,tender_no:string,title:string}[]>([]);
   const [tab, setTab] = useState<Tab>("invitations");
@@ -48,13 +47,13 @@ export default function TenderManagementPage() {
   });
 
   useEffect(() => {
-    let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
+    let query = listTenderRegister("id,tender_no,title");
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
     query.then(({ data }) => {
       if (data) setTenders(data);
       setLoading(false);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
@@ -68,8 +67,8 @@ export default function TenderManagementPage() {
     setSelectedTenderId(tenderId);
     if (!tenderId) return;
     Promise.all([
-      supabase.from("tender_invitations").select("*").eq("tender_id", tenderId).order("invited_date", { ascending: false }),
-      supabase.from("tender_addenda").select("*").eq("tender_id", tenderId).order("issue_date", { ascending: false }),
+      listTenderInvitationsByTenderIdOrderedByInvitedDate(tenderId),
+      listTenderAddendaByTenderId(tenderId),
     ]).then(([inv, add]) => {
       if (inv.data) setInvitations(inv.data);
       if (add.data) setAddenda(add.data);
@@ -81,7 +80,7 @@ export default function TenderManagementPage() {
   async function handleCreateInvitation() {
     if (!selectedTenderId) return;
     setSaving(true);
-    const { error } = await supabase.from("tender_invitations").insert({
+    const { error } = await insertTenderInvitation({
       tender_id: selectedTenderId,
       company_name: invForm.company_name,
       contact_person: invForm.contact_person || null,
@@ -102,7 +101,7 @@ export default function TenderManagementPage() {
   async function handleDeleteInvitation(id: string) {
     if (!confirm("Delete this invitation?")) return;
     setDeletingId(id);
-    const { error } = await supabase.from("tender_invitations").delete().eq("id", id);
+    const { error } = await deleteTenderInvitationById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Invitation deleted");
     setInvitations(invitations.filter((i: any) => i.id !== id));
@@ -110,7 +109,7 @@ export default function TenderManagementPage() {
   }
 
   async function handleUpdateInvitationResponse(id: string, response: string) {
-    const { error } = await supabase.from("tender_invitations").update({ response }).eq("id", id);
+    const { error } = await updateTenderInvitationById({ response }, id);
     if (error) { toast.error(error.message); return; }
     toast.success("Response updated");
     loadData(selectedTenderId);
@@ -121,7 +120,7 @@ export default function TenderManagementPage() {
   async function handleCreateAddendum() {
     if (!selectedTenderId) return;
     setSaving(true);
-    const { error } = await supabase.from("tender_addenda").insert({
+    const { error } = await insertTenderAddenda({
       tender_id: selectedTenderId,
       addendum_no: addForm.addendum_no,
       title: addForm.title,
@@ -140,7 +139,7 @@ export default function TenderManagementPage() {
   async function handleDeleteAddendum(id: string) {
     if (!confirm("Delete this addendum?")) return;
     setDeletingId(id);
-    const { error } = await supabase.from("tender_addenda").delete().eq("id", id);
+    const { error } = await deleteTenderAddendaById(id);
     if (error) { toast.error(error.message); setDeletingId(null); return; }
     toast.success("Addendum deleted");
     setAddenda(addenda.filter((a: any) => a.id !== id));

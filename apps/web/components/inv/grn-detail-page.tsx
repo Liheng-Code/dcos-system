@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +21,7 @@ import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Package } from "lucide
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { GrnRow, GrnLineRow } from "./inv-types"
+import { getInvGrnById } from "@/lib/inv/inventory-queries";
 
 interface GrnDetail extends Omit<GrnRow, "inv_grn_lines"> {
   supplier_delivery_note: string | null
@@ -35,7 +35,6 @@ interface GrnDetail extends Omit<GrnRow, "inv_grn_lines"> {
 
 export function GrnDetailPage({ id }: { id: string }) {
   const router = useRouter()
-  const supabase = createClient()
 
   const [grn, setGrn] = useState<GrnDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,26 +45,14 @@ export function GrnDetailPage({ id }: { id: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data, error: e } = await supabase
-      .from("inv_grns")
-      .select(`
-        *,
-        inv_grn_lines(
-          id, item_id, po_item_id, quantity_ordered, quantity_received,
-          unit_cost, total_cost, batch_number, inspection_required,
-          inspection_status, condition_notes,
-          inv_items(item_code, name, unit_of_measure)
-        )
-      `)
-      .eq("id", id)
-      .single()
+    const { data, error: e } = await getInvGrnById(id)
     if (e || !data) {
       setError("GRN not found")
     } else {
       setGrn(data as unknown as GrnDetail)
     }
     setLoading(false)
-  }, [id, supabase])
+  }, [id])
 
   useEffect(() => { load() }, [load])
 

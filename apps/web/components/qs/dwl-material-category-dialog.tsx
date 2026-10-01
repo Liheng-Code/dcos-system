@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Boxes, CheckSquare, Layers, Loader2, Pencil, Plus, RotateCcw, Sparkles, X,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { countDwlResourcesWithCategoryMaterial, insertDwlMaterialCategories, insertDwlMaterialCategory, listDwlMaterialAttributes, listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlVMaterials, listQsElementLibraryWithIsActive, updateDwlMaterialAttributesByResourceIds, updateDwlMaterialCategoryById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,7 +94,6 @@ const EMPTY_FORM = {
 };
 
 export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: DwlMaterialCategoryDialogProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<DialogTab>("list");
 
   const [categories, setCategories] = useState<DwlMaterialCategory[]>([]);
@@ -123,13 +122,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
   const loadCategories = useMemo(
     () => async () => {
       setCategoriesLoading(true);
-      const { data, error } = await supabase
-        .from("dwl_material_categories")
-        .select(
-          "id, group_name, name, code, specific_element, discipline, cost_code_prefix, color_tag, description, sort_order, is_active, created_at, updated_at"
-        )
-        .order("sort_order")
-        .order("name");
+      const { data, error } = await listDwlMaterialCategoriesOrderedBySortOrderAndName("id, group_name, name, code, specific_element, discipline, cost_code_prefix, color_tag, description, sort_order, is_active, created_at, updated_at");
       if (error) {
         toast.error(`Failed to load categories: ${error.message}`);
       } else {
@@ -137,15 +130,15 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       }
       setCategoriesLoading(false);
     },
-    [supabase]
+    []
   );
 
   const loadCounts = useMemo(
     () => async () => {
       const [attrRes, totalRes, elRes] = await Promise.all([
-        supabase.from("dwl_material_attributes").select("category_id"),
-        supabase.from("dwl_resources").select("id", { count: "exact", head: true }).eq("category", "material"),
-        supabase.from("qs_element_library").select("sub_element").eq("is_active", true),
+        listDwlMaterialAttributes("category_id"),
+        countDwlResourcesWithCategoryMaterial(),
+        listQsElementLibraryWithIsActive(),
       ]);
       const counts: Record<string, number> = {};
       for (const row of (attrRes.data ?? []) as { category_id: string | null }[]) {
@@ -160,16 +153,13 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       }
       setElementOptions(Array.from(els).sort());
     },
-    [supabase]
+    []
   );
 
   const loadMaterials = useMemo(
     () => async () => {
       setMaterialsLoading(true);
-      const { data, error } = await supabase
-        .from("dwl_v_materials")
-        .select("resource_id, code, material_name, category_id, category_name, application_element, discipline, is_active")
-        .order("code");
+      const { data, error } = await listDwlVMaterials();
       if (error) {
         toast.error(`Failed to load materials: ${error.message}`);
       } else {
@@ -177,7 +167,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       }
       setMaterialsLoading(false);
     },
-    [supabase]
+    []
   );
 
   useEffect(() => {
@@ -237,7 +227,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
     };
 
     if (editingId) {
-      const { error } = await supabase.from("dwl_material_categories").update(payload).eq("id", editingId);
+      const { error } = await updateDwlMaterialCategoryById(payload, editingId);
       setSaving(false);
       if (error) {
         toast.error(error.code === "23505" || /unique/i.test(error.message) ? "A category with this code already exists" : error.message);
@@ -246,9 +236,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       toast.success(`Category "${name}" updated`);
     } else {
       const nextSort = categories.reduce((max, c) => Math.max(max, c.sort_order), 0) + 10;
-      const { error } = await supabase
-        .from("dwl_material_categories")
-        .insert({ ...payload, sort_order: nextSort, is_active: true });
+      const { error } = await insertDwlMaterialCategory({ ...payload, sort_order: nextSort, is_active: true });
       setSaving(false);
       if (error) {
         toast.error(error.code === "23505" || /unique/i.test(error.message) ? "A category with this code already exists" : error.message);
@@ -265,7 +253,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
   }
 
   async function handleToggleActive(cat: DwlMaterialCategory) {
-    const { error } = await supabase.from("dwl_material_categories").update({ is_active: !cat.is_active }).eq("id", cat.id);
+    const { error } = await updateDwlMaterialCategoryById({ is_active: !cat.is_active }, cat.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -310,9 +298,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       return;
     }
     const nextSort = categories.reduce((max, c) => Math.max(max, c.sort_order), 0) + 10;
-    const { error } = await supabase
-      .from("dwl_material_categories")
-      .insert(missing.map((d, i) => ({ ...d, sort_order: nextSort + i * 10, is_active: true })));
+    const { error } = await insertDwlMaterialCategories(missing.map((d, i) => ({ ...d, sort_order: nextSort + i * 10, is_active: true })));
     if (error) {
       toast.error(error.message);
       return;
@@ -332,10 +318,7 @@ export function DwlMaterialCategoryDialog({ open, onOpenChange, onChanged }: Dwl
       return;
     }
     setApplying(true);
-    const { error } = await supabase
-      .from("dwl_material_attributes")
-      .update({ category_id: batchCategoryId })
-      .in("resource_id", Array.from(selected));
+    const { error } = await updateDwlMaterialAttributesByResourceIds({ category_id: batchCategoryId }, Array.from(selected));
     setApplying(false);
     if (error) {
       toast.error(error.message);

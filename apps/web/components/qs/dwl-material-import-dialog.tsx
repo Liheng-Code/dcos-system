@@ -27,6 +27,7 @@ import {
   isRowSelectedByDefault, loadMaterialCatalogSnapshot, resolveBudgetCodeId, resolveCategory,
   type CellChange, type ClassifiedMaterialRow, type MaterialRowStatus,
 } from "@/components/qs/dwl-material-import-compare";
+import { insertDwlMaterialAttribute, insertDwlResourcePrice, insertDwlResourceReturning, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
 
 const STATUS_CLASS: Record<MaterialRowStatus, string> = {
   new: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -137,11 +138,11 @@ async function importSimpleMaterials(
   for (const row of rows) {
     let rid = codeToId.get(row.code) ?? legacyToId.get(row.code) ?? (row.legacy_code ? legacyToId.get(row.legacy_code) : undefined);
     if (!rid) {
-      const { data, error } = await supabase.from("dwl_resources").insert({
+      const { data, error } = await insertDwlResourceReturning({
         tenant_id: tenantId, code: row.code, category: "material",
         description: row.standard ? `${row.material_name} (${row.standard})` : row.material_name,
         unit: row.unit, spec_reference: row.standard, created_by: userId,
-      }).select("id").single();
+      });
       if (error || !data) { result.failed++; result.errors.push(`${row.code}: ${error?.message ?? "resource insert failed"}`); continue; }
       rid = data.id as string; codeToId.set(row.code, rid); result.resourcesInserted++;
     } else {
@@ -153,7 +154,7 @@ async function importSimpleMaterials(
     const cat = resolveCategory(snapshot, row.category_text);
     const budgetCodeId = resolveBudgetCodeId(snapshot, row.cost_code_text);
 
-    const { error: attrErr } = await supabase.from("dwl_material_attributes").insert({
+    const { error: attrErr } = await insertDwlMaterialAttribute({
       resource_id: rid, tenant_id: tenantId, material_name: row.material_name,
       discipline: row.discipline, standard: row.standard, grade: row.grade, brand: row.brand,
       tech_spec_summary: row.tech_spec_summary,
@@ -165,7 +166,7 @@ async function importSimpleMaterials(
     attrSet.add(rid); result.attrsInserted++;
 
     if (row.effective_cost != null && row.effective_cost > 0) {
-      const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+      const { error: priceErr } = await insertDwlResourcePrice({
         tenant_id: tenantId, resource_id: rid, unit_price: row.effective_cost, currency: "USD",
         valid_from: new Date().toISOString().slice(0, 10), source_type: "market_survey", price_status: "approved",
         notes: `Imported via Material Master Excel/CSV template — Effective Cost column.`, created_by: userId,
@@ -212,9 +213,7 @@ export async function applyMaterialUpdates(
       if (bc) patch.budget_code_id = bc;
     }
     if (Object.keys(patch).length > 0) {
-      const { error } = await supabase.from("dwl_material_attributes")
-        .update({ ...patch, updated_by: userId, updated_at: new Date().toISOString() })
-        .eq("resource_id", resourceId);
+      const { error } = await updateDwlMaterialAttributesByResourceId({ ...patch, updated_by: userId, updated_at: new Date().toISOString() }, resourceId);
       if (error) { result.failed++; result.errors.push(`${row.code}: ${error.message}`); continue; }
       result.cellsUpdated += Object.keys(patch).filter((k) => k !== "application_element").length;
       touched = true;
@@ -222,14 +221,12 @@ export async function applyMaterialUpdates(
       if (keys.has("material_name") || keys.has("standard")) {
         const name = keys.has("material_name") ? row.material_name : current.material_name ?? row.material_name;
         const standard = keys.has("standard") ? row.standard : current.standard;
-        await supabase.from("dwl_resources")
-          .update({ description: standard ? `${name} (${standard})` : name, ...(keys.has("standard") ? { spec_reference: standard } : {}) })
-          .eq("id", resourceId);
+        await updateDwlResourceById({ description: standard ? `${name} (${standard})` : name, ...(keys.has("standard") ? { spec_reference: standard } : {}) }, resourceId);
       }
     }
 
     if (keys.has("effective_cost") && row.effective_cost != null && row.effective_cost > 0) {
-      const { error } = await supabase.from("dwl_resource_prices").insert({
+      const { error } = await insertDwlResourcePrice({
         tenant_id: tenantId, resource_id: resourceId, unit_price: row.effective_cost, currency: "USD",
         valid_from: today, source_type: "market_survey", price_status: "approved",
         notes: `Imported via Material Master Excel/CSV template — Effective Cost column (update).`, created_by: userId,

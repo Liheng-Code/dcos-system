@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDesignDrawing, listDesignDrawings, listDesignDrawingsByDiscipline, updateDesignDrawingById } from "@/lib/design/design-queries";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,6 @@ const statusColors: Record<string, string> = {
 };
 
 export function DesignDrawingList({ discipline }: { discipline: string }) {
-  const supabase = createClient();
   const [items, setItems] = useState<Drawing[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -33,7 +32,7 @@ export function DesignDrawingList({ discipline }: { discipline: string }) {
 
   function load() {
     setLoading(true);
-    supabase.from("design_drawings").select("*").eq("discipline", discipline).order("drawing_no").then(({ data }) => {
+    listDesignDrawingsByDiscipline(discipline).then(({ data }) => {
       if (data) setItems(data as Drawing[]);
       setLoading(false);
     });
@@ -88,7 +87,6 @@ export function DesignDrawingList({ discipline }: { discipline: string }) {
 }
 
 function DesignDrawingForm({ discipline, drawing, onSaved, onCancel }: { discipline: string; drawing: Drawing | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !drawing?.id;
   const [drawingNo, setDrawingNo] = useState(drawing?.drawing_no ?? "");
   const [title, setTitle] = useState(drawing?.title ?? "");
@@ -99,10 +97,10 @@ function DesignDrawingForm({ discipline, drawing, onSaved, onCancel }: { discipl
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const payload = { discipline, drawing_no: drawingNo, title, revision, status, project_id: (await supabase.from("design_drawings").select("project_id").limit(1)).data?.[0]?.project_id || "00000000-0000-0000-0000-000000000000" };
+    const payload = { discipline, drawing_no: drawingNo, title, revision, status, project_id: (await listDesignDrawings()).data?.[0]?.project_id || "00000000-0000-0000-0000-000000000000" };
     const { error } = isNew
-      ? await supabase.from("design_drawings").insert([{ ...payload, project_id: crypto.randomUUID() }])
-      : await supabase.from("design_drawings").update({ title, revision, status }).eq("id", drawing!.id);
+      ? await insertDesignDrawing({ ...payload, project_id: crypto.randomUUID() })
+      : await updateDesignDrawingById({ title, revision, status }, drawing!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "Drawing created" : "Drawing updated");
     setSaving(false);

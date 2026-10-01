@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +25,7 @@ import type { ToolRow, ToolIssueRow } from "./inv-types"
 import { ToolForm } from "./tool-form"
 import { ToolIssueForm } from "./tool-issue-form"
 import { LabelPrintButton } from "./label-print-button"
+import { getInvToolById, listInvToolIssuesByToolId } from "@/lib/inv/inventory-queries";
 
 export function ToolDetailPage({ id }: { id: string }) {
   const router = useRouter()
@@ -45,25 +45,11 @@ export function ToolDetailPage({ id }: { id: string }) {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
-      const { data: toolData, error: toolErr } = await supabase
-        .from("inv_tools")
-        .select("*")
-        .eq("id", id)
-        .single()
+      const { data: toolData, error: toolErr } = await getInvToolById(id)
       if (toolErr || !toolData) throw new Error("Tool not found")
       setTool(toolData as ToolRow)
 
-      const { data: historyData } = await supabase
-        .from("inv_tool_issues")
-        .select(`
-          *,
-          profiles!custodian_id(full_name, email),
-          projects!project_id(project_code, project_name),
-          wbs_nodes!wbs_node_id(wbs_code, wbs_name)
-        `)
-        .eq("tool_id", id)
-        .order("issued_at", { ascending: false })
+      const { data: historyData } = await listInvToolIssuesByToolId(id)
       setHistory((historyData ?? []) as unknown as ToolIssueRow[])
     } catch (e) {
       setError((e as Error).message ?? "Failed to load tool")

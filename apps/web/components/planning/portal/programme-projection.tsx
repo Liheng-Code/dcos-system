@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getVPlanClientProgrammeByProjectId, listWbsTaskMilestoneFlagsByProjectId } from "@/lib/planning/planning-queries";
 import { Loader2, CalendarClock, Layers, Wallet, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,6 @@ interface ProgrammeRow {
 }
 
 export function ProgrammeProjection({ projectId }: { projectId: string }) {
-  const supabase = useMemo(() => createClient(), []);
   const [row, setRow] = useState<ProgrammeRow | null>(null);
   const [taskLabels, setTaskLabels] = useState<Record<string, { task_code: string; task_name: string; is_milestone: boolean }>>({});
   const [loading, setLoading] = useState(true);
@@ -34,19 +33,11 @@ export function ProgrammeProjection({ projectId }: { projectId: string }) {
     let active = true;
     async function load() {
       if (!projectId) { setLoading(false); return; }
-      const { data } = await supabase
-        .from("v_plan_client_programme")
-        .select("*")
-        .eq("project_id", projectId)
-        .maybeSingle();
+      const { data } = await getVPlanClientProgrammeByProjectId(projectId);
       if (!active) return;
       if (!data) { setMissing(true); setLoading(false); return; }
       setRow(data as unknown as ProgrammeRow);
-      const { data: tasks } = await supabase
-        .from("wbs_tasks")
-        .select("id, task_code, task_name, is_milestone")
-        .eq("project_id", projectId)
-        .limit(2000);
+      const { data: tasks } = await listWbsTaskMilestoneFlagsByProjectId(projectId);
       if (!active) return;
       const map: Record<string, { task_code: string; task_name: string; is_milestone: boolean }> = {};
       for (const t of (tasks as unknown as { id: string; task_code: string; task_name: string; is_milestone: boolean }[] ?? [])) {
@@ -57,7 +48,7 @@ export function ProgrammeProjection({ projectId }: { projectId: string }) {
     }
     void load();
     return () => { active = false; };
-  }, [projectId, supabase]);
+  }, [projectId]);
 
   const snapshot = useMemo(() => {
     if (!row?.programme?.tasks?.length) return null;

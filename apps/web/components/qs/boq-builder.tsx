@@ -5,7 +5,7 @@ import { BookOpen, ChevronDown, ChevronRight, Loader2, Plus, ShoppingCart, Trash
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { listQsVBoqRequisitionStatusByProjectId } from "@/lib/qs/qs-queries";
 import {
   type QsBoqItem,
   type QsBoqSection,
@@ -64,11 +64,10 @@ export function BoqBuilder({ projectId, boqId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
       const [secs, lib, procRes] = await Promise.all([
         getBoqSections(projectId, boqId),
         getCostItems(),
-        supabase.from("qs_v_boq_requisition_status").select("boq_item_id, requisitioned_quantity, ordered_quantity, delivered_quantity, remaining_quantity, po_ids").eq("project_id", projectId),
+        listQsVBoqRequisitionStatusByProjectId(projectId),
       ]);
       setSections(secs);
       setLibrary(lib);

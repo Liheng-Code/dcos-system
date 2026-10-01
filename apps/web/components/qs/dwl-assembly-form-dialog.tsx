@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlAssembliesReturning, updateDwlAssemblyById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +62,6 @@ export function DwlAssemblyFormDialog({
   onCreated,
   onSaved,
 }: DwlAssemblyFormDialogProps) {
-  const supabase = createClient();
   const isEdit = !!editItem;
 
   const {
@@ -113,7 +112,7 @@ export function DwlAssemblyFormDialog({
     };
 
     if (isEdit) {
-      const { error } = await supabase.from("dwl_assemblies").update(fields).eq("id", editItem.id);
+      const { error } = await updateDwlAssemblyById(fields, editItem.id);
       if (error) {
         if (error.code === "23505" || /unique/i.test(error.message ?? "")) {
           setError("code", { message: "An assembly with this code already exists" });
@@ -134,7 +133,7 @@ export function DwlAssemblyFormDialog({
       created_by: userId,
     };
 
-    const { data, error } = await supabase.from("dwl_assemblies").insert(payload).select("id").single();
+    const { data, error } = await insertDwlAssembliesReturning(payload);
     if (error || !data) {
       if (error?.code === "23505" || /unique/i.test(error?.message ?? "")) {
         setError("code", { message: "An assembly with this code already exists" });

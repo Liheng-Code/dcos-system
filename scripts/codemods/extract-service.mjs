@@ -174,26 +174,28 @@ function analyse(segments) {
 
   const body = segments.map(({ method, args }, idx) => {
     let out = args.slice();
+    const handled = new Set(); // argument positions already turned into a parameter
+    const put = (n, value) => { out[n] = value; handled.add(n); };
     if (idx === 0 && method === "rpc") {
-      if (args[1] !== undefined && !isLiteral(args[1])) out[1] = param("args", "object", args[1]);
+      if (args[1] !== undefined && !isLiteral(args[1])) put(1, param("args", "object", args[1]));
     } else if (method === "insert" || method === "upsert") {
       op = method;
       const a = args[0].trim();
       const inner = a.startsWith("[") && matchClose(a, 0) === a.length ? splitArgs(a.slice(1, -1)) : null;
       // insert(row) and insert([row]) are the same request; both become insert([row]).
-      if (inner && inner.length === 1 && !inner[0].startsWith("...")) { out[0] = `[${param("row", "object", inner[0])}]`; insertOne = true; }
-      else if (a.startsWith("{")) { out[0] = `[${param("row", "object", a)}]`; insertOne = true; }
+      if (inner && inner.length === 1 && !inner[0].startsWith("...")) { put(0, `[${param("row", "object", inner[0])}]`); insertOne = true; }
+      else if (a.startsWith("{")) { put(0, `[${param("row", "object", a)}]`); insertOne = true; }
       // A variable may hold one row or a list of rows; insert accepts both.
-      else out[0] = param("rows", "object | object[]", a);
-      if (args[1] !== undefined && !isLiteral(args[1])) out[1] = param("options", "object", args[1]);
+      else put(0, param("rows", "object | object[]", a));
+      if (args[1] !== undefined && !isLiteral(args[1])) put(1, param("options", "object", args[1]));
     } else if (method === "update") {
       op = "update";
-      out[0] = param("patch", "object", args[0]);
+      put(0, param("patch", "object", args[0]));
     } else if (method === "delete") {
       op = "delete";
     } else if (method === "select") {
-      if (args[0] !== undefined && !isLiteral(args[0])) out[0] = param("columns", "string", args[0]);
-      else if (args[0] !== undefined && columns === null && op === "select") { columns = args[0]; out[0] = "@COLS@"; }
+      if (args[0] !== undefined && !isLiteral(args[0])) put(0, param("columns", "string", args[0]));
+      else if (args[0] !== undefined && columns === null && op === "select") { columns = args[0]; put(0, "@COLS@"); }
       if (args[1] && /head\s*:\s*true/.test(args[1])) head = true;
     } else if (method === "single" || method === "maybeSingle") {
       single = true;
@@ -202,22 +204,33 @@ function analyse(segments) {
       if (isLiteral(args[1])) {
         litFilters.push({ col, value: args[1] });
       } else if (method === "in") {
-        out[1] = param(camel(pluralize(col)), "readonly (string | number)[]", args[1]);
+        put(1, param(camel(pluralize(col)), "readonly (string | number)[]", args[1]));
         dynFilters.push({ word: pascal(pluralize(col)), col, plural: true });
       } else {
         // Ranges and exclusions read better with their direction: dateFrom / dateTo / exceptId.
         const suffix = { gte: "From", lte: "To", gt: "After", lt: "Before" }[method] ?? "";
         const base = method === "neq" ? "except" + pascal(col) : camel(col) + suffix;
-        out[1] = param(base, "string | number | boolean", args[1]);
+        put(1, param(base, method === "like" || method === "ilike" ? "string" : "string | number | boolean", args[1]));
         dynFilters.push({ word: method === "neq" ? "Except" + pascal(col) : pascal(col) + suffix, col, method });
       }
     } else if (method === "or" && !isLiteral(args[0])) {
-      out[0] = param("filter", "string", args[0]);
+      put(0, param("filter", "string", args[0]));
       dynFilters.push({ word: "Filter", col: "" });
     } else if (method === "order") {
       if (STRING.test(args[0] ?? "")) orderCols.push(unquote(args[0]));
-    } else {
-      out = args.map((a, n) => (isLiteral(a) ? a : param(args.length > 1 ? `${method}${n + 1}` : method, "string | number", a)));
+    }
+    // Whatever is still a variable expression becomes a parameter too, so the
+    // function body never refers to a name that only exists at the call site.
+    if (idx > 0 || method === "rpc") {
+      out = out.map((value, n) => {
+        if (handled.has(n) || isLiteral(args[n])) return value;
+        if (method === "select") return param("options", "object | undefined", args[n]);
+        if (method === "order") return n === 0 ? param("orderBy", "string", args[n]) : param("orderOptions", "object", args[n]);
+        if (method === "limit") return param("limit", "number", args[n]);
+        if (method === "range") return param(n === 0 ? "from" : "to", "number", args[n]);
+        if (FILTERS.has(method) || method === "in") return param(n === 0 ? "column" : "value", n === 0 ? "string" : "string | number | boolean", args[n]);
+        return param(args.length > 1 ? `${method}${n + 1}` : method, "string | number", args[n]);
+      });
     }
     return `.${method}(${out.join(", ")})`;
   });
@@ -234,6 +247,8 @@ function analyse(segments) {
   else if (op === "insert" || op === "upsert") name = op + (insertOne ? one : plural);
   else name = op + (byId ? one : plural);
   if (dynFilters.length) name += "By" + dynFilters.map((f) => f.word).join("And");
+  // A write that reads the row back is a different request from one that does not.
+  if (["insert", "upsert", "update", "delete"].includes(op) && segments.some((s) => s.method === "select") && !opt.legacyNames) name += "Returning";
   // Literal filters are part of what the query means, so they go in the name.
   const literalWords = litFilters.map((f) => {
     const values = (f.value.match(/"[^"]*"|'[^']*'/g) ?? []).map((v) => pascal(v.slice(1, -1)));
@@ -337,10 +352,22 @@ const keyOf = (body) =>
 const registry = new Map([...existing].map(([body, fn]) => [keyOf(body), fn])); // normalised body -> fn
 const taken = new Set([...existing.values()].map((f) => f.name));
 const autoNames = [];
+
+// A generated function must not share a name with anything already in a file that
+// will call it: a local function of the same name would end up calling itself.
+const callers = new Map(); // normalised body -> sources of the files that use it
+for (const f of perFile) for (const c of f.calls) callers.set(keyOf(c.body), [...(callers.get(keyOf(c.body)) ?? []), f.src]);
+const clashes = (name, key) => (callers.get(key) ?? []).some((src) => new RegExp(`(?<![\\w$.])${name}(?![\\w$])`).test(src));
+
 for (const f of perFile) {
   for (const c of f.calls) {
     let fn = registry.get(keyOf(c.body));
+    if (fn && clashes(fn.name, keyOf(c.body))) {
+      console.error(`${f.file}: existing function ${fn.name} has the same name as something in this file. Rename one of them, then run again.`);
+      process.exit(1);
+    }
     if (!fn) {
+      if (clashes(c.name, keyOf(c.body))) c.name += c.op === "rpc" ? "Rpc" : "Query";
       // On a clash, try a describing suffix (ordering, columns, joined tables) before a number.
       let name = c.name, n = 2;
       for (const alt of c.alts ?? []) {
@@ -415,6 +442,25 @@ for (const table of [...byTable.keys()].sort()) {
 fs.mkdirSync(path.dirname(opt.service), { recursive: true });
 fs.writeFileSync(opt.service, out.join("\n") + "\n");
 
+/**
+ * Adds an import after the file's last import statement (any quote style, with or
+ * without a semicolon), or failing that after a leading "use client" / "use server"
+ * directive, which must stay the first statement of the file.
+ */
+function insertImport(source, importLine) {
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const imports = [...source.matchAll(/^import\b[\s\S]*?\bfrom\s*["'][^"']+["'];?[ \t]*\r?\n|^import\s*["'][^"']+["'];?[ \t]*\r?\n/gm)];
+  const last = imports[imports.length - 1];
+  let at = 0;
+  if (last) {
+    at = last.index + last[0].length;
+  } else {
+    const directive = /^(?:\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*))*\s*["']use (?:client|server)["'];?[ \t]*\r?\n/.exec(source);
+    if (directive) at = directive[0].length;
+  }
+  return source.slice(0, at) + importLine + eol + source.slice(at);
+}
+
 // ── rewrite call sites ───────────────────────────────────────────────────────
 
 let converted = 0;
@@ -444,17 +490,14 @@ for (const f of perFile) {
 
   const names = [...new Set(f.calls.map((c) => c.fn))].sort();
   const importLine = `import { ${names.join(", ")} } from "${serviceImport}";`;
-  const clientImport = /^import \{ createClient \} from "@\/lib\/supabase\/client";[ \t]*\r?\n/m;
+  const clientImport = /^import \{ createClient \} from ["']@\/lib\/supabase\/client["'];?[ \t]*\r?\n/m;
   const clientUnused = !/createClient\(/.test(s) && clientImport.test(s);
   if (names.length === 0) {
     if (clientUnused) s = s.replace(clientImport, "");
   } else if (clientUnused) {
     s = s.replace(clientImport, importLine + "\n");
   } else {
-    const imports = [...s.matchAll(/^import [\s\S]*?from "[^"]+";[ \t]*\r?\n/gm)];
-    const last = imports[imports.length - 1];
-    const at = last ? last.index + last[0].length : 0;
-    s = s.slice(0, at) + importLine + "\n" + s.slice(at);
+    s = insertImport(s, importLine);
   }
   if (!/\buseMemo\b\s*[(<]/.test(s)) {
     s = s.replace(/^(import \{[^}]*)\buseMemo\b,?\s*([^}]*\} from "react";)/m, (m, a, b) => (a + b).replace(/,\s*\}/, " }").replace(/\{\s*,/, "{"));

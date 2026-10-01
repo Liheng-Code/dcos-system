@@ -20,6 +20,7 @@ import { downloadCsv } from "@/lib/csv-export";
 import {
   parseSimpleLaborRateSheet, type SimpleLaborRateRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { insertDwlLaborRateAttribute, insertDwlResourcePrice, insertDwlResourceReturning, listDwlResourcesWithCategoryLabor } from "@/lib/qs/qs-queries";
 
 const TEMPLATE_COLUMNS = [
   "Code", "Skill Level", "Trade Description", "Rate Basis", "Basic Rate", "Overtime Rate",
@@ -65,7 +66,7 @@ async function importLaborRates(
   tenantId: string,
   userId: string | null
 ): Promise<ImportResult> {
-  const { data: exRes } = await supabase.from("dwl_resources").select("id, code").eq("category", "labor");
+  const { data: exRes } = await listDwlResourcesWithCategoryLabor();
   const existingCodes = new Set(((exRes ?? []) as { id: string; code: string }[]).map((r) => r.code.toUpperCase()));
 
   const result: ImportResult = { inserted: 0, skippedExisting: 0, failed: 0, errors: [] };
@@ -73,9 +74,7 @@ async function importLaborRates(
   for (const row of rows) {
     if (existingCodes.has(row.code)) { result.skippedExisting++; continue; }
 
-    const { data: resourceRow, error: resErr } = await supabase
-      .from("dwl_resources")
-      .insert({
+    const { data: resourceRow, error: resErr } = await insertDwlResourceReturning({
         tenant_id: tenantId,
         category: "labor",
         code: row.code,
@@ -83,9 +82,7 @@ async function importLaborRates(
         unit: row.unit,
         is_active: row.is_active,
         created_by: userId,
-      })
-      .select("id")
-      .single();
+      });
     if (resErr || !resourceRow) {
       result.failed++;
       result.errors.push(`${row.code}: ${resErr?.message ?? "resource insert failed"}`);
@@ -94,7 +91,7 @@ async function importLaborRates(
     const resourceId = resourceRow.id as string;
     existingCodes.add(row.code);
 
-    const { error: attrErr } = await supabase.from("dwl_labor_rate_attributes").insert({
+    const { error: attrErr } = await insertDwlLaborRateAttribute({
       resource_id: resourceId,
       tenant_id: tenantId,
       skill_level: row.skill_level,
@@ -103,7 +100,7 @@ async function importLaborRates(
     });
     if (attrErr) result.errors.push(`${row.code}: attributes — ${attrErr.message}`);
 
-    const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+    const { error: priceErr } = await insertDwlResourcePrice({
       tenant_id: tenantId,
       resource_id: resourceId,
       unit_price: row.daily_basic_rate,

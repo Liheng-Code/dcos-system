@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteDwlAssemblyLayerMaterialsByLayerId, deleteDwlAssemblyLayerSpecsByLayerId, insertDwlAssemblyLayerMaterials, insertDwlAssemblyLayerSpecs, insertDwlAssemblyLayersReturning, updateDwlAssemblyLayerById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +62,6 @@ export function DwlAssemblyLayerFormDialog({
   open, onOpenChange, tenantId, assemblyId, editingLayer, nextSortOrder,
   materials, linkedResourceIds, layerSpecs, onSaved,
 }: DwlAssemblyLayerFormDialogProps) {
-  const supabase = createClient();
   const isEditing = editingLayer !== null;
 
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
@@ -129,22 +128,19 @@ export function DwlAssemblyLayerFormDialog({
     let layerId = editingLayer?.id ?? null;
 
     if (isEditing && editingLayer) {
-      const { error } = await supabase
-        .from("dwl_assembly_layers")
-        .update({
+      const { error } = await updateDwlAssemblyLayerById({
           layer_name: payload.layer_name,
           material_label: payload.material_label,
           thickness_mm: payload.thickness_mm,
           color_hex: payload.color_hex,
           sort_order: payload.sort_order,
-        })
-        .eq("id", editingLayer.id);
+        }, editingLayer.id);
       if (error) {
         toast.error(error.message);
         return;
       }
     } else {
-      const { data, error } = await supabase.from("dwl_assembly_layers").insert(payload).select("id").single();
+      const { data, error } = await insertDwlAssemblyLayersReturning(payload);
       if (error) {
         toast.error(error.message);
         return;
@@ -157,24 +153,24 @@ export function DwlAssemblyLayerFormDialog({
       return;
     }
 
-    const { error: delMatErr } = await supabase.from("dwl_assembly_layer_materials").delete().eq("layer_id", layerId);
+    const { error: delMatErr } = await deleteDwlAssemblyLayerMaterialsByLayerId(layerId);
     if (delMatErr) { toast.error(delMatErr.message); return; }
     if (selectedResourceIds.size > 0) {
       const matInserts = Array.from(selectedResourceIds).map((resource_id, i) => ({
         tenant_id: tenantId, layer_id: layerId, resource_id, sort_order: i + 1,
       }));
-      const { error: insMatErr } = await supabase.from("dwl_assembly_layer_materials").insert(matInserts);
+      const { error: insMatErr } = await insertDwlAssemblyLayerMaterials(matInserts);
       if (insMatErr) { toast.error(insMatErr.message); return; }
     }
 
-    const { error: delSpecErr } = await supabase.from("dwl_assembly_layer_specs").delete().eq("layer_id", layerId);
+    const { error: delSpecErr } = await deleteDwlAssemblyLayerSpecsByLayerId(layerId);
     if (delSpecErr) { toast.error(delSpecErr.message); return; }
     const cleanedSpecs = specRows.filter((s) => s.label.trim() && s.value.trim());
     if (cleanedSpecs.length > 0) {
       const specInserts = cleanedSpecs.map((s, i) => ({
         tenant_id: tenantId, layer_id: layerId, sort_order: i + 1, spec_label: s.label.trim(), spec_value: s.value.trim(),
       }));
-      const { error: insSpecErr } = await supabase.from("dwl_assembly_layer_specs").insert(specInserts);
+      const { error: insSpecErr } = await insertDwlAssemblyLayerSpecs(specInserts);
       if (insSpecErr) { toast.error(insSpecErr.message); return; }
     }
 

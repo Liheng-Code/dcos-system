@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deleteContractCorrespondenceById, getContractCorrespondenceById, updateContractCorrespondenceById } from "@/lib/qs/qs-queries";
 import { Loader2, Save, MessageSquare, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 export default function CorrespondenceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [corr, setCorr] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,27 +20,27 @@ export default function CorrespondenceDetailPage() {
   const [form, setForm] = useState<any>({});
 
   useEffect(() => {
-    supabase.from("contract_correspondence").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data, error }) => {
+    getContractCorrespondenceById(id).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/contracts/correspondence"); return; }
       setCorr(data);
       setForm({ ...data, correspondence_date: data.correspondence_date?.slice(0, 10) || "" });
       setLoading(false);
     });
-  }, [id, supabase, router]);
+  }, [id, router]);
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("contract_correspondence").update({
+    const { error } = await updateContractCorrespondenceById({
       correspondence_no: form.correspondence_no, direction: form.direction,
       subject: form.subject, body: form.body || null,
       correspondence_date: form.correspondence_date,
       from_party: form.from_party, to_party: form.to_party,
       category: form.category,
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Correspondence updated");
     setEditMode(false);
-    supabase.from("contract_correspondence").select("*, contract_register(contract_no, title)").eq("id", id).single().then(({ data }) => {
+    getContractCorrespondenceById(id).then(({ data }) => {
       if (data) { setCorr(data); setForm({ ...data, correspondence_date: data.correspondence_date?.slice(0, 10) || "" }); }
     });
     setSaving(false);
@@ -50,7 +49,7 @@ export default function CorrespondenceDetailPage() {
   async function handleDelete() {
     if (!confirm("Delete this correspondence?")) return;
     setDeleting(true);
-    const { error } = await supabase.from("contract_correspondence").delete().eq("id", id);
+    const { error } = await deleteContractCorrespondenceById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Correspondence deleted");
     router.push("/dashboard/contracts/correspondence");

@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlQuantityModelsReturning } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +49,6 @@ interface DwlModelFormDialogProps {
 }
 
 export function DwlModelFormDialog({ open, onOpenChange, tenantId, onCreated }: DwlModelFormDialogProps) {
-  const supabase = createClient();
 
   const {
     register,
@@ -89,7 +88,7 @@ export function DwlModelFormDialog({ open, onOpenChange, tenantId, onCreated }: 
       is_active: values.is_active,
     };
 
-    const { data, error } = await supabase.from("dwl_quantity_models").insert(payload).select("id").single();
+    const { data, error } = await insertDwlQuantityModelsReturning(payload);
     if (error || !data) {
       if (error?.code === "23505" || /unique/i.test(error?.message ?? "")) {
         setError("code", { message: "A quantity model with this code already exists" });

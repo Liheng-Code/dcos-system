@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Search, Trash2, Loader2, Undo2 } from "lucide-react"
 import { RETURN_CONDITION_LABELS } from "./inv-types"
 import type { InvStore, InvItem } from "./inv-types"
+import { listInvItemsByFilterWithIsActive, listInvMaterialRequisitionsByProjectIdAndStoreIdWithStatusIssuedPartiallyIssued, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
 
 interface MrOption {
   id: string
@@ -32,7 +32,6 @@ interface LineItem {
 
 export function ReturnCreatePage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [stores, setStores] = useState<InvStore[]>([])
   const [mrs, setMrs] = useState<MrOption[]>([])
@@ -51,11 +50,7 @@ export function ReturnCreatePage() {
   useEffect(() => {
     // Note: inv_stores has a `status` column ('active'/'closed'), not `is_active`
     // (that column only exists on inv_items) — filter on status here.
-    supabase
-      .from("inv_stores")
-      .select("id, store_code, name, project_id, status")
-      .eq("status", "active")
-      .order("name")
+    listInvStoresWithStatusActive("id, store_code, name, project_id, status")
       .then(({ data }) => setStores((data ?? []) as InvStore[]))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -68,28 +63,17 @@ export function ReturnCreatePage() {
     if (!store) { setProjectId(""); return }
     setProjectId(store.project_id)
 
-    const { data } = await supabase
-      .from("inv_material_requisitions")
-      .select("id, mr_number, status")
-      .eq("project_id", store.project_id)
-      .eq("store_id", sid)
-      .in("status", ["issued", "partially_issued"])
-      .order("mr_number")
+    const { data } = await listInvMaterialRequisitionsByProjectIdAndStoreIdWithStatusIssuedPartiallyIssued(store.project_id, sid)
     setMrs((data ?? []) as MrOption[])
-  }, [stores, supabase])
+  }, [stores])
 
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults([]); return }
     setSearching(true)
-    const { data } = await supabase
-      .from("inv_items")
-      .select("id, item_code, name, category, unit_of_measure, is_active")
-      .eq("is_active", true)
-      .or(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
-      .limit(20)
+    const { data } = await listInvItemsByFilterWithIsActive(`name.ilike.%${q}%,item_code.ilike.%${q}%`)
     setSearchResults((data ?? []) as InvItem[])
     setSearching(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => doSearch(itemSearch), 250)

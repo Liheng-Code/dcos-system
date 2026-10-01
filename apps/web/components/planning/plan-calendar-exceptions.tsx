@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deletePlanCalendarExceptionById, insertPlanCalendarException, listPlanCalendarExceptionsByCalendarId, listPlanCalendarsByProjectId } from "@/lib/planning/planning-queries";
 import { Plus, Loader2, Trash2, Calendar as CalendarIcon } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ export function PlanCalendarExceptions() {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
 
   const [exceptionDate, setExceptionDate] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -26,20 +25,20 @@ export function PlanCalendarExceptions() {
   useEffect(() => {
     setSelectedCalId("");
     if (!selectedProjectId) { setCalendars([]); return; }
-    supabase.from("plan_calendars").select("id, name").eq("project_id", selectedProjectId).order("name").then(({ data }) => {
+    listPlanCalendarsByProjectId(selectedProjectId, "id, name").then(({ data }) => {
       if (data) setCalendars(data);
     });
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectedCalId) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    supabase.from("plan_calendar_exceptions").select("*").eq("calendar_id", selectedCalId).order("exception_date", { ascending: false }).then(({ data, error }) => {
+    listPlanCalendarExceptionsByCalendarId(selectedCalId).then(({ data, error }) => {
       if (error) toast.error(error.message);
       else setRows(data || []);
       setLoading(false);
     });
-  }, [selectedCalId, supabase]);
+  }, [selectedCalId]);
 
   function resetForm() { setExceptionDate(""); setIsWorking(false); setReason(""); }
 
@@ -47,19 +46,19 @@ export function PlanCalendarExceptions() {
     e.preventDefault();
     if (!selectedCalId) return;
     setSaving(true);
-    const { error } = await supabase.from("plan_calendar_exceptions").insert([{
+    const { error } = await insertPlanCalendarException({
       calendar_id: selectedCalId, exception_date: exceptionDate, is_working: isWorking, reason: reason || null,
-    }]);
+    });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Exception added");
     resetForm();
-    const { data } = await supabase.from("plan_calendar_exceptions").select("*").eq("calendar_id", selectedCalId).order("exception_date", { ascending: false });
+    const { data } = await listPlanCalendarExceptionsByCalendarId(selectedCalId);
     if (data) setRows(data);
     setSaving(false);
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("plan_calendar_exceptions").delete().eq("id", id);
+    const { error } = await deletePlanCalendarExceptionById(id);
     if (error) toast.error(error.message);
     else {
       toast.success("Deleted");

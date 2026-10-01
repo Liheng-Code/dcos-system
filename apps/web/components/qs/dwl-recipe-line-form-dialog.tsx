@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlWorkItemResources, listDwlResourcesWithIsActive, updateDwlWorkItemResourceById } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,7 +74,6 @@ export function DwlRecipeLineFormDialog({
   resourceCategory,
   onSaved,
 }: DwlRecipeLineFormDialogProps) {
-  const supabase = createClient();
   const isEditing = editingLine !== null;
   const isMaterial = resourceCategory === "material";
   const itemNoun = isMaterial ? "Material" : "Recipe Line";
@@ -125,16 +124,13 @@ export function DwlRecipeLineFormDialog({
       });
     }
     setLoadingResources(true);
-    let query = supabase
-      .from("dwl_resources")
-      .select("id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at")
-      .eq("is_active", true);
+    let query = listDwlResourcesWithIsActive();
     if (resourceCategory) query = query.eq("category", resourceCategory);
     query.order("code").then(({ data, error }) => {
       if (!error && data) setResources(data as DwlResource[]);
       setLoadingResources(false);
     });
-  }, [open, editingLine, nextSortOrder, resourceCategory, reset, supabase]);
+  }, [open, editingLine, nextSortOrder, resourceCategory, reset]);
 
   // Hybrid search: ranked (typo-tolerant, meaning-based) hits first, plus the plain substring matches.
   const librarySearch = useQsLibrarySearch(resourceSearch, ["resource"]);
@@ -167,22 +163,19 @@ export function DwlRecipeLineFormDialog({
     };
 
     if (isEditing && editingLine) {
-      const { error } = await supabase
-        .from("dwl_work_item_resources")
-        .update({
+      const { error } = await updateDwlWorkItemResourceById({
           consumption: payload.consumption,
           waste_pct: payload.waste_pct,
           basis_note: payload.basis_note,
           sort_order: payload.sort_order,
-        })
-        .eq("id", editingLine.id);
+        }, editingLine.id);
       if (error) {
         toast.error(error.message);
         return;
       }
       toast.success("Recipe line updated");
     } else {
-      const { error } = await supabase.from("dwl_work_item_resources").insert(payload);
+      const { error } = await insertDwlWorkItemResources(payload);
       if (error) {
         if (error.code === "23505" || /unique/i.test(error.message ?? "")) {
           toast.error("This resource is already a recipe line on this work item — edit the existing line instead");

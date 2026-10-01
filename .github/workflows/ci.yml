@@ -29,6 +29,10 @@ jobs:
       # Migration file names and version uniqueness.
       - run: node ../../scripts/check-migrations.mjs
 
+      # "use client" must be the first statement of its file (a build error that
+      # typecheck and lint do not report).
+      - run: node ../../scripts/check-directives.mjs
+
       - run: pnpm run typecheck
 
       # Existing violations are baselined in apps/web/eslint-suppressions.json;

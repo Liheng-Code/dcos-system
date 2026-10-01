@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { listWbsTasksByProjectIdWithPlanTaskWork } from "@/lib/planning/planning-queries";
 import { Loader2, Pencil, Plus, Sparkles, Users, X } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
@@ -52,7 +52,6 @@ function initials(name: string): string {
 }
 
 export function PlanResourceLoading() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectLoading } = useProject();
   const { can } = usePlanningPermissions();
   const [tasks, setTasks] = useState<ResourceTask[]>([]);
@@ -76,9 +75,7 @@ export function PlanResourceLoading() {
     // loading starts true (see useState above); avoid a synchronous setState(true)
     // here so this can be used directly as an effect callback below.
     Promise.all([
-      supabase.from("wbs_tasks").select(
-        "id, task_code, task_name, owner_name, start_date, end_date, progress, delay_status, priority"
-      ).eq("project_id", selectedProjectId).limit(1000),
+      listWbsTasksByProjectIdWithPlanTaskWork(selectedProjectId, "id, task_code, task_name, owner_name, start_date, end_date, progress, delay_status, priority"),
       listResources(selectedProjectId),
       listProjectAssignments(selectedProjectId),
       getResourceAllocation(selectedProjectId),
@@ -92,7 +89,7 @@ export function PlanResourceLoading() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [supabase, selectedProjectId]);
+  useEffect(load, [selectedProjectId]);
 
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 

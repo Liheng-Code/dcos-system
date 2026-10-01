@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/client";
+import { insertQsElementLibraryReturning } from "@/lib/qs/qs-queries";
 import { type QsElementRow, type BudgetCodeOption, friendlyError } from "@/lib/qs/qs-element-library-shared";
 
 interface AddElementDialogProps {
@@ -17,7 +17,6 @@ interface AddElementDialogProps {
 }
 
 export default function AddElementDialog({ disciplines, budgetCodes, currentMaxSortOrder, onClose, onCreated }: AddElementDialogProps) {
-  const supabase = createClient();
   const [saving, setSaving] = useState(false);
   const [newItem, setNewItem] = useState({
     discipline: "",
@@ -34,9 +33,7 @@ export default function AddElementDialog({ disciplines, budgetCodes, currentMaxS
       return;
     }
     setSaving(true);
-    const { data, error } = await supabase
-      .from("qs_element_library")
-      .insert({
+    const { data, error } = await insertQsElementLibraryReturning({
         discipline: newItem.discipline.trim(),
         section: newItem.section.trim(),
         sub_section: newItem.sub_section.trim(),
@@ -44,9 +41,7 @@ export default function AddElementDialog({ disciplines, budgetCodes, currentMaxS
         typical_unit: newItem.typical_unit.trim() || null,
         budget_code_id: newItem.budget_code_id || null,
         sort_order: currentMaxSortOrder + 1,
-      })
-      .select()
-      .single();
+      });
     if (error) {
       toast.error(friendlyError(error));
     } else if (data) {

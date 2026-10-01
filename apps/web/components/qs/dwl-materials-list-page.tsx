@@ -29,6 +29,7 @@ import { DwlMaterialFormDialog } from "@/components/qs/dwl-material-form-dialog"
 import { DwlMaterialCategoryDialog } from "@/components/qs/dwl-material-category-dialog";
 import { DwlMaterialImportDialog } from "@/components/qs/dwl-material-import-dialog";
 import type { DwlMaterialCategory, DwlMaterialRow } from "@/components/qs/dwl-types";
+import { deleteDwlResourceByIdReturning, getProfileById, listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceIds, listDwlVMaterialsOrderedByCode } from "@/lib/qs/qs-queries";
 
 type StatusFilter = "active" | "inactive" | "all";
 type ViewMode = "cards" | "table";
@@ -129,7 +130,7 @@ export default function DwlMaterialsListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile, error } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -137,10 +138,7 @@ export default function DwlMaterialsListPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_materials")
-      .select(V_COLUMNS)
-      .order("code");
+    const { data, error } = await listDwlVMaterialsOrderedByCode(V_COLUMNS);
     if (error) {
       setErrorMsg(error.message);
       setLoading(false);
@@ -151,11 +149,7 @@ export default function DwlMaterialsListPage() {
   }, [supabase]);
 
   const loadCategories = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("dwl_material_categories")
-      .select("id, group_name, name, sort_order, is_active, created_at, updated_at")
-      .order("sort_order")
-      .order("name");
+    const { data, error } = await listDwlMaterialCategoriesOrderedBySortOrderAndName("id, group_name, name, sort_order, is_active, created_at, updated_at");
     if (!error) setCategories((data ?? []) as DwlMaterialCategory[]);
   }, [supabase]);
 
@@ -173,11 +167,7 @@ export default function DwlMaterialsListPage() {
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("dwl_material_photos")
-        .select("resource_id, storage_path, created_at")
-        .in("resource_id", ids)
-        .order("created_at");
+      const { data } = await listDwlMaterialPhotosByResourceIds(ids);
       if (cancelled || !data) return;
       const firstByResource = new Map<string, string>();
       for (const p of data as { resource_id: string; storage_path: string }[]) {
@@ -265,7 +255,7 @@ export default function DwlMaterialsListPage() {
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
-      const { data, error } = await supabase.from("dwl_resources").delete().eq("id", id).select("id");
+      const { data, error } = await deleteDwlResourceByIdReturning(id);
       if (error) {
         if (error.code === "23503") {
           throw new Error("Cannot delete — this material has price history or other linked records. Deactivate it instead (set Status to Inactive) to keep it out of active use.");
@@ -317,7 +307,7 @@ export default function DwlMaterialsListPage() {
     let blocked = 0;
     let failed = 0;
     for (const id of ids) {
-      const { data, error } = await supabase.from("dwl_resources").delete().eq("id", id).select("id");
+      const { data, error } = await deleteDwlResourceByIdReturning(id);
       if (error) {
         if (error.code === "23503") blocked++;
         else failed++;

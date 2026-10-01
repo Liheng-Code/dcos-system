@@ -20,6 +20,7 @@ import { DwlSubconRateFormDialog } from "@/components/qs/dwl-subcon-rate-form-di
 import { DwlSupplierFormDialog } from "@/components/qs/dwl-supplier-form-dialog";
 import { DwlSubconRateImportDialog } from "@/components/qs/dwl-subcon-rate-import-dialog";
 import type { DwlSubconRateRow } from "@/components/qs/dwl-types";
+import { getProfileById, listDwlVSubconRatesOrderedBySubcontractorNameAndItemDescriptionAndRateYear } from "@/lib/qs/qs-queries";
 
 const V_COLUMNS =
   "price_id, tenant_id, resource_id, resource_code, item_description, unit, trade, " +
@@ -63,7 +64,7 @@ export default function DwlSubcontractorRatesListPage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (!uid) return;
-      const { data: profile, error } = await supabase.from("profiles").select("company_id").eq("id", uid).single();
+      const { data: profile, error } = await getProfileById(uid, "company_id");
       if (!error && profile?.company_id) setTenantId(profile.company_id as string);
     });
   }, [supabase]);
@@ -71,12 +72,7 @@ export default function DwlSubcontractorRatesListPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const { data, error } = await supabase
-      .from("dwl_v_subcon_rates")
-      .select(V_COLUMNS)
-      .order("subcontractor_name")
-      .order("item_description")
-      .order("rate_year", { ascending: false });
+    const { data, error } = await listDwlVSubconRatesOrderedBySubcontractorNameAndItemDescriptionAndRateYear(V_COLUMNS);
     if (error) {
       setErrorMsg(error.message);
       setLoading(false);

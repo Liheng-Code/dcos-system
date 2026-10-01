@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_DATE_FORMAT_ID, formatDisplayDate, isKnownDateFormatId } from "@/lib/date-format";
+import { getCompany, getUserUiPreferenceByUserIdAndPreferenceKey, upsertUserUiPreference } from "@/lib/planning/planning-queries";
 
 const PREFERENCE_KEY = "date_display_format";
 
@@ -44,7 +45,7 @@ export function useDateFormatPreference(): UseDateFormatPreference {
         const supabase = createClient();
         const [{ data: userData }, { data: companyRow }] = await Promise.all([
           supabase.auth.getUser(),
-          supabase.from("companies").select("date_format").limit(1).maybeSingle(),
+          getCompany(),
         ]);
         if (!alive) return;
 
@@ -57,12 +58,7 @@ export function useDateFormatPreference(): UseDateFormatPreference {
         userIdRef.current = userId;
         if (!userId) return;
 
-        const { data, error } = await supabase
-          .from("user_ui_preferences")
-          .select("value")
-          .eq("user_id", userId)
-          .eq("preference_key", PREFERENCE_KEY)
-          .maybeSingle();
+        const { data, error } = await getUserUiPreferenceByUserIdAndPreferenceKey(userId, PREFERENCE_KEY);
         if (!alive || error || !data) return;
 
         const value = (data as { value: unknown }).value as { formatId?: unknown } | null;
@@ -85,15 +81,12 @@ export function useDateFormatPreference(): UseDateFormatPreference {
     if (!userId) return;
     try {
       const supabase = createClient();
-      await supabase.from("user_ui_preferences").upsert(
-        {
+      await upsertUserUiPreference({
           user_id: userId,
           preference_key: PREFERENCE_KEY,
           value: { formatId: value },
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,preference_key" },
-      );
+        });
     } catch {
       /* best-effort — a failed preference write must never break date display */
     }

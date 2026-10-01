@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { deleteContractRegisterById, insertContractRegister, listContractRegisterOrderedByCreatedAt, listProjects } from "@/lib/qs/qs-queries";
 import { Loader2, Plus, FileSignature, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
 
 export default function ContractRegisterPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [items, setItems] = useState<any[]>([]);
   const [projects, setProjects] = useState<{id:string,name:string}[]>([]);
@@ -27,24 +26,24 @@ export default function ContractRegisterPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("contract_register").select("*").order("created_at", { ascending: false });
+    let q = listContractRegisterOrderedByCreatedAt();
     if (selectedProjectId) q = q.eq("project_id", selectedProjectId);
     return q;
-  }, [supabase, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    supabase.from("projects").select("id,name:project_name").then(({ data }) => {
+    listProjects().then(({ data }) => {
       if (data) setProjects(data);
     });
     itemsQuery().then(({ data }) => {
       if (data) setItems(data);
       setLoading(false);
     });
-  }, [supabase, itemsQuery]);
+  }, [itemsQuery]);
 
   async function handleCreate() {
     setSaving(true);
-    const { error } = await supabase.from("contract_register").insert({
+    const { error } = await insertContractRegister({
       project_id: form.project_id,
       contract_no: form.contract_no,
       contract_type: form.contract_type,
@@ -170,7 +169,7 @@ export default function ContractRegisterPage() {
                 <button onClick={async () => {
                   if (!confirm("Delete this contract?")) return;
                   setDeletingId(c.id);
-                  const { error } = await supabase.from("contract_register").delete().eq("id", c.id);
+                  const { error } = await deleteContractRegisterById(c.id);
                   if (error) { toast.error(error.message); setDeletingId(null); return; }
                   toast.success("Contract deleted");
                   setItems(items.filter((i: any) => i.id !== c.id));

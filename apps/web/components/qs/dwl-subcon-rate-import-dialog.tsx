@@ -20,6 +20,7 @@ import { downloadCsv } from "@/lib/csv-export";
 import {
   parseSimpleSubconRateSheet, type SimpleSubconRateRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
+import { deleteDwlResourceById, deleteDwlSupplierById, insertDwlResourcePrice, insertDwlResourceReturning, insertDwlSubconAttribute, insertDwlSupplierProfile, insertDwlSupplierReturning, listDwlSubconAttributes, listDwlSupplierProfilesWithVendorKindSubcontractor, listDwlVSubconRates } from "@/lib/qs/qs-queries";
 
 const TEMPLATE_COLUMNS = [
   "Subcontractor", "Subcontractor Code", "Trade", "Scope Description", "Rate Type", "Unit",
@@ -73,9 +74,9 @@ async function importSubconRates(
   userId: string | null
 ): Promise<ImportResult> {
   const [subRes, attrRes, ratesRes] = await Promise.all([
-    supabase.from("dwl_supplier_profiles").select("supplier_id, supplier_code, dwl_suppliers!inner(id, name, is_active)").eq("vendor_kind", "subcontractor"),
-    supabase.from("dwl_subcon_attributes").select("resource_id, trade, dwl_resources!inner(id, description)"),
-    supabase.from("dwl_v_subcon_rates").select("resource_id, subcontractor_id, effective_date"),
+    listDwlSupplierProfilesWithVendorKindSubcontractor(),
+    listDwlSubconAttributes("resource_id, trade, dwl_resources!inner(id, description)"),
+    listDwlVSubconRates(),
   ]);
 
   const subByName = new Map<string, string>();
@@ -99,18 +100,14 @@ async function importSubconRates(
   for (const row of rows) {
     let supplierId = subByName.get(row.subcontractor_name.trim().toLowerCase());
     if (!supplierId) {
-      const { data: sup, error: supErr } = await supabase
-        .from("dwl_suppliers")
-        .insert({ tenant_id: tenantId, name: row.subcontractor_name.trim(), rating: "B", is_active: true, created_by: userId })
-        .select("id")
-        .single();
+      const { data: sup, error: supErr } = await insertDwlSupplierReturning({ tenant_id: tenantId, name: row.subcontractor_name.trim(), rating: "B", is_active: true, created_by: userId });
       if (supErr || !sup) {
         result.failed++;
         result.errors.push(`${row.subcontractor_name}: ${supErr?.message ?? "subcontractor insert failed"}`);
         continue;
       }
       supplierId = sup.id as string;
-      const { error: profErr } = await supabase.from("dwl_supplier_profiles").insert({
+      const { error: profErr } = await insertDwlSupplierProfile({
         supplier_id: supplierId,
         tenant_id: tenantId,
         vendor_kind: "subcontractor",
@@ -118,7 +115,7 @@ async function importSubconRates(
         created_by: userId,
       });
       if (profErr) {
-        await supabase.from("dwl_suppliers").delete().eq("id", supplierId);
+        await deleteDwlSupplierById(supplierId);
         result.failed++;
         result.errors.push(`${row.subcontractor_name}: ${profErr.message}`);
         continue;
@@ -132,32 +129,28 @@ async function importSubconRates(
     if (!resourceId) {
       const codeSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
       const tradeGroup = row.trade.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X") || "GEN";
-      const { data: resource, error: resErr } = await supabase
-        .from("dwl_resources")
-        .insert({
+      const { data: resource, error: resErr } = await insertDwlResourceReturning({
           tenant_id: tenantId,
           code: `S-${tradeGroup}-${codeSuffix}`,
           category: "subcon",
           description: row.item_description.trim(),
           unit: row.unit,
           created_by: userId,
-        })
-        .select("id")
-        .single();
+        });
       if (resErr || !resource) {
         result.failed++;
         result.errors.push(`${row.trade} / ${row.item_description}: ${resErr?.message ?? "item insert failed"}`);
         continue;
       }
       resourceId = resource.id as string;
-      const { error: attrErr } = await supabase.from("dwl_subcon_attributes").insert({
+      const { error: attrErr } = await insertDwlSubconAttribute({
         resource_id: resourceId,
         tenant_id: tenantId,
         trade: row.trade.trim(),
         created_by: userId,
       });
       if (attrErr) {
-        await supabase.from("dwl_resources").delete().eq("id", resourceId);
+        await deleteDwlResourceById(resourceId);
         result.failed++;
         result.errors.push(`${row.trade}: ${attrErr.message}`);
         continue;
@@ -169,7 +162,7 @@ async function importSubconRates(
     const dupeKey = `${resourceId}|${supplierId}|${row.effective_date}`;
     if (existingRateKeys.has(dupeKey)) { result.skippedDuplicate++; continue; }
 
-    const { error: priceErr } = await supabase.from("dwl_resource_prices").insert({
+    const { error: priceErr } = await insertDwlResourcePrice({
       tenant_id: tenantId,
       resource_id: resourceId,
       supplier_id: supplierId,

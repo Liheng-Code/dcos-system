@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { deleteReportScheduleById, insertReportLog, insertReportSchedule, listReportSchedules, updateReportScheduleById } from "@/lib/reporting/reporting-queries";
 
 interface Schedule {
   id: string;
@@ -44,9 +45,7 @@ export default function SchedulePage() {
   });
 
   function fetchSchedules() {
-    supabase.from("report_schedules")
-      .select("*")
-      .order("created_at", { ascending: false })
+    listReportSchedules()
       .then(({ data }) => {
         if (data) setSchedules(data as Schedule[]);
         setLoading(false);
@@ -60,7 +59,7 @@ export default function SchedulePage() {
     const { data: user } = await supabase.auth.getUser();
     const recipients = form.recipients.split(",").map((s: string) => s.trim()).filter(Boolean);
 
-    const { error } = await supabase.from("report_schedules").insert({
+    const { error } = await insertReportSchedule({
       name: form.name,
       description: form.description || null,
       report_type: form.report_type,
@@ -82,20 +81,20 @@ export default function SchedulePage() {
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("report_schedules").delete().eq("id", id);
+    const { error } = await deleteReportScheduleById(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Schedule deleted");
     fetchSchedules();
   }
 
   async function handleToggle(id: string, enabled: boolean) {
-    const { error } = await supabase.from("report_schedules").update({ enabled: !enabled }).eq("id", id);
+    const { error } = await updateReportScheduleById({ enabled: !enabled }, id);
     if (error) { toast.error(error.message); return; }
     fetchSchedules();
   }
 
   async function handleRunNow(schedule: Schedule) {
-    const { error } = await supabase.from("report_logs").insert({
+    const { error } = await insertReportLog({
       schedule_id: schedule.id,
       report_type: schedule.report_type,
       status: "pending",

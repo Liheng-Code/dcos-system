@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDwlSupplierMaterial, insertDwlSupplierReturning, listDwlSuppliersWithIsActive } from "@/lib/qs/qs-queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +32,6 @@ interface Props {
 export function DwlSupplierMaterialDialog({
   open, onOpenChange, resourceId, resourceCode, tenantId, userId, onSaved,
 }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [suppliers, setSuppliers] = useState<DwlSupplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -59,13 +58,9 @@ export function DwlSupplierMaterialDialog({
       brand: "", manufacturer: "", specification: "", standard: "", package_size: "",
       moq: "", lead_time_days: "", is_active: true, notes: "",
     });
-    supabase
-      .from("dwl_suppliers")
-      .select("id, tenant_id, name, contact, rating, is_active")
-      .eq("is_active", true)
-      .order("name")
+    listDwlSuppliersWithIsActive()
       .then(({ data }) => setSuppliers((data ?? []) as DwlSupplier[]));
-  }, [open, supabase]);
+  }, [open]);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -82,16 +77,12 @@ export function DwlSupplierMaterialDialog({
     try {
       let supplierId = form.supplier_id;
       if (supplierId === NEW_SUPPLIER_VALUE) {
-        const { data, error } = await supabase
-          .from("dwl_suppliers")
-          .insert({ tenant_id: tenantId, name: form.new_supplier_name.trim(), created_by: userId })
-          .select("id")
-          .single();
+        const { data, error } = await insertDwlSupplierReturning({ tenant_id: tenantId, name: form.new_supplier_name.trim(), created_by: userId });
         if (error || !data) throw new Error(error?.message ?? "Failed to create supplier");
         supplierId = data.id as string;
       }
 
-      const { error } = await supabase.from("dwl_supplier_materials").insert({
+      const { error } = await insertDwlSupplierMaterial({
         tenant_id: tenantId,
         supplier_id: supplierId,
         resource_id: resourceId,
