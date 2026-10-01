@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { getInvoiceMatchById, listPoItemsByPoId, listPos, listSuppliers, updateInvoiceMatchById, updatePoById } from "@/lib/procurement/procurement-service";
 
 interface InvoiceMatch {
   id: string;
@@ -63,9 +64,9 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
   const fetchDetail = useCallback(() => {
     const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_invoice_matches").select("*").eq("id", id).single(),
-      supabase.from("procurement_suppliers").select("id, supplier_name"),
-      supabase.from("procurement_pos").select("id, po_number"),
+      getInvoiceMatchById(id),
+      listSuppliers(),
+      listPos("id, po_number"),
     ]).then(([matchRes, supRes, poRes]) => {
       if (matchRes.error) { setLoading(false); return; }
       const m = matchRes.data as InvoiceMatch;
@@ -80,7 +81,7 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
         if (p) setPoNumber(p.po_number);
       }
 
-      supabase.from("procurement_po_items").select("*").eq("po_id", m.po_id).order("line_no").then(({ data }) => {
+      listPoItemsByPoId(m.po_id, "*").then(({ data }) => {
         if (data) setPoItems(data as POItem[]);
       });
 
@@ -109,10 +110,10 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
       approved_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("procurement_invoice_matches").update(update).eq("id", id);
+    const { error } = await updateInvoiceMatchById(update, id);
     if (error) { toast.error(error.message); setActionLoading(""); return; }
 
-    await supabase.from("procurement_pos").update({ status: "closed" }).eq("id", match.po_id);
+    await updatePoById({ status: "closed" }, match.po_id);
 
     toast.success("Invoice approved — PO closed");
     fetchDetail();
@@ -126,10 +127,10 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
 
     setActionLoading("reject");
     const supabase = createClient();
-    const { error } = await supabase.from("procurement_invoice_matches").update({
+    const { error } = await updateInvoiceMatchById({
       status: "rejected",
       variance_reason: reason,
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setActionLoading(""); return; }
 
     toast.success("Invoice rejected");

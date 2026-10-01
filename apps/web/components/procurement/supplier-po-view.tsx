@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listPoItemsByPoId, listPosBySupplierId } from "@/lib/procurement/procurement-service";
 import { Loader2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,8 +46,7 @@ export function SupplierPOView({ supplierId }: { supplierId: string }) {
   useEffect(() => {
     if (!supplierId) return;
     setLoading(true);
-    const supabase = createClient();
-    supabase.from("procurement_pos").select("*").eq("supplier_id", supplierId).order("created_at", { ascending: false }).then(({ data }) => {
+    listPosBySupplierId(supplierId).then(({ data }) => {
       if (data) setPos(data as PO[]);
       setLoading(false);
     });
@@ -57,8 +56,7 @@ export function SupplierPOView({ supplierId }: { supplierId: string }) {
     if (expanded === poId) { setExpanded(null); return; }
     setExpanded(poId);
     if (!items[poId]) {
-      const supabase = createClient();
-      supabase.from("procurement_po_items").select("*").eq("po_id", poId).order("line_no").then(({ data }) => {
+      listPoItemsByPoId(poId, "*").then(({ data }) => {
         if (data) setItems(prev => ({ ...prev, [poId]: data as POItem[] }));
       });
     }

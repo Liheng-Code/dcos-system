@@ -1,0 +1,21 @@
+{
+  "listPos2": "listPosNewestFirst",
+  "listPrs2": "listPrApprovalStatuses",
+  "listSuppliersWithStatusActive": "listActiveSuppliers",
+  "listSuppliersWithStatusActive2": "listActiveSuppliersUnordered",
+  "listDeliveryNotes2": "listDeliveryNoteColumns",
+  "listSuppliers2": "listSuppliersByName",
+  "listQsVBoqRequisitionStatusByProjectIdWithRemainingQuantity": "listOpenBoqRequisitionStatusByProjectId",
+  "listQsVBoqRequisitionStatusByBoqItemIds": "listBoqRequisitionStatusByBoqItemIds",
+  "listPosWithStatusDeliveredPartiallyDeliveredUnderInvoiceMatchClosed": "listPosReadyForInvoiceMatch",
+  "listPosWithStatusIssuedPartiallyDelivered": "listPosAwaitingDelivery",
+  "listPosBySupplierIdWithStatusIssuedPartiallyDelivered": "listPosAwaitingDeliveryBySupplierId",
+  "countSuppliersByPqExpiresAtWithPqStatusApproved": "countApprovedSuppliersExpiringBy",
+  "countPrsWithApprovalStatusSubmittedUnderBudgetReview": "countPrsAwaitingApproval",
+  "countPosWithStatusSubmittedApproved": "countPosInApproval",
+  "countDeliveryNotesWithStatusInTransit": "countDeliveriesInTransit",
+  "listInvItemsWithIsActive": "listReorderableInvItems",
+  "updateQuotationByIdAndRfqId": "updateOtherQuotationsOfRfq",
+  "listPrsByProjectIdWithApprovalStatusApprovedClosed": "listApprovedPrsByProjectId",
+  "listPrsWithApprovalStatusApprovedClosed": "listApprovedPrs"
+}

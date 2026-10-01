@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listNotifications, updateNotificationById, updateNotificationsByIds } from "@/lib/procurement/procurement-service";
 import { Loader2, Bell, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,8 +23,7 @@ export function ProcurementNotifications() {
   const [loading, setLoading] = useState(true);
 
   const fetchNotifications = useCallback(() => {
-    const supabase = createClient();
-    supabase.from("procurement_notifications").select("*").order("created_at", { ascending: false }).limit(50).then(({ data }) => {
+    listNotifications().then(({ data }) => {
       if (data) setNotifications(data as Notification[]);
       setLoading(false);
     });
@@ -35,10 +34,9 @@ export function ProcurementNotifications() {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   async function markAllRead() {
-    const supabase = createClient();
     const ids = notifications.filter(n => !n.is_read).map(n => n.id);
     if (ids.length === 0) return;
-    const { error } = await supabase.from("procurement_notifications").update({ is_read: true }).in("id", ids);
+    const { error } = await updateNotificationsByIds({ is_read: true }, ids);
     if (error) { toast.error(error.message); return; }
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     toast.success("All marked as read");
@@ -47,8 +45,7 @@ export function ProcurementNotifications() {
   async function toggleRead(id: string) {
     const n = notifications.find(x => x.id === id);
     if (!n) return;
-    const supabase = createClient();
-    await supabase.from("procurement_notifications").update({ is_read: !n.is_read }).eq("id", id);
+    await updateNotificationById({ is_read: !n.is_read }, id);
     setNotifications(prev => prev.map(x => x.id === id ? { ...x, is_read: !x.is_read } : x));
   }
 

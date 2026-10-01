@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2, FileText, Package, Building2, CheckSquare, TrendingUp, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
+import { countApprovedSuppliersExpiringBy, countDeliveriesInTransit, countPosInApproval, countPrsAwaitingApproval, countSuppliers } from "@/lib/procurement/procurement-service";
 
 export default function ProcurementDashboardPage() {
   const router = useRouter();
@@ -18,11 +19,11 @@ export default function ProcurementDashboardPage() {
       if (!data.session) { router.push("/"); return; }
       setChecking(false);
 
-      supabase.from("procurement_prs").select("id", { count: "exact", head: true }).in("approval_status", ["submitted", "under_budget_review"]).then(({ count }) => setStats(s => ({ ...s, pendingPR: count ?? 0 })));
-      supabase.from("procurement_pos").select("id", { count: "exact", head: true }).in("status", ["submitted", "approved"]).then(({ count }) => setStats(s => ({ ...s, pendingPO: count ?? 0 })));
-      supabase.from("procurement_suppliers").select("id", { count: "exact", head: true }).then(({ count }) => setStats(s => ({ ...s, supplierCount: count ?? 0 })));
-      supabase.from("procurement_suppliers").select("id", { count: "exact", head: true }).eq("pq_status", "approved").lte("pq_expires_at", new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).then(({ count }) => setStats(s => ({ ...s, pqExpiring: count ?? 0 })));
-      supabase.from("procurement_delivery_notes").select("id", { count: "exact", head: true }).eq("status", "in_transit").then(({ count }) => setStats(s => ({ ...s, overdueDeliveries: count ?? 0 })));
+      countPrsAwaitingApproval().then(({ count }) => setStats(s => ({ ...s, pendingPR: count ?? 0 })));
+      countPosInApproval().then(({ count }) => setStats(s => ({ ...s, pendingPO: count ?? 0 })));
+      countSuppliers().then(({ count }) => setStats(s => ({ ...s, supplierCount: count ?? 0 })));
+      countApprovedSuppliersExpiringBy(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).then(({ count }) => setStats(s => ({ ...s, pqExpiring: count ?? 0 })));
+      countDeliveriesInTransit().then(({ count }) => setStats(s => ({ ...s, overdueDeliveries: count ?? 0 })));
     });
   }, [router]);
 

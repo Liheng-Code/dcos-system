@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { getPrById, getProfileById, getProjectById, insertBudgetConfirmation, insertBudgetConfirmationItems, listBudgetCodeGroups, listBudgetCodesByIds, listBudgetConfirmationsByProjectId, listPrItemsByPrId, listQsBoqItemsByIds, updatePrById } from "@/lib/procurement/procurement-service";
 
 interface PRRecordForBC {
   id: string;
@@ -90,8 +91,8 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
 
     async function load() {
       const [prRes, itemsRes, userRes] = await Promise.all([
-        supabase.from("procurement_prs").select("id, pr_number, project_id, requested_by, preparation_date, notes").eq("id", prId).single(),
-        supabase.from("procurement_pr_items").select("id, budget_code, item_description, estimated_total, boq_item_id").eq("pr_id", prId).order("line_no"),
+        getPrById(prId, "id, pr_number, project_id, requested_by, preparation_date, notes"),
+        listPrItemsByPrId(prId, "id, budget_code, item_description, estimated_total, boq_item_id"),
         supabase.auth.getUser(),
       ]);
 
@@ -100,12 +101,12 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
         setPr(record);
         setForm(prev => ({ ...prev, bc_title: record.notes ?? "" }));
         if (record.project_id) {
-          supabase.from("projects").select("project_name, project_code, company_code").eq("id", record.project_id).single().then(({ data }) => {
+          getProjectById(record.project_id, "project_name, project_code, company_code").then(({ data }) => {
             if (data) setProjectInfo(data);
           });
         }
         if (record.requested_by) {
-          supabase.from("profiles").select("full_name").eq("id", record.requested_by).single().then(({ data }) => {
+          getProfileById(record.requested_by).then(({ data }) => {
             if (data) setPreparedByName(data.full_name);
           });
         }
@@ -119,7 +120,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
       const boqItemIds = prItems.map(i => i.boq_item_id).filter((v): v is string => !!v);
       const boqItemMap = new Map<string, { budget_code_id: string | null; total_amount: number | null; baseline_status: string | null }>();
       if (boqItemIds.length > 0) {
-        const { data } = await supabase.from("qs_boq_items").select("id, budget_code_id, total_amount, baseline_status").in("id", boqItemIds);
+        const { data } = await listQsBoqItemsByIds(boqItemIds);
         for (const row of (data ?? []) as { id: string; budget_code_id: string | null; total_amount: number | null; baseline_status: string | null }[]) {
           boqItemMap.set(row.id, row);
         }
@@ -128,13 +129,13 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
       const budgetCodeIds = Array.from(new Set(Array.from(boqItemMap.values()).map(v => v.budget_code_id).filter((v): v is string => !!v)));
       const codeLetterByBudgetCodeId = new Map<string, string>();
       if (budgetCodeIds.length > 0) {
-        const { data } = await supabase.from("budget_codes").select("id, code_letter").in("id", budgetCodeIds);
+        const { data } = await listBudgetCodesByIds(budgetCodeIds);
         for (const row of (data ?? []) as { id: string; code_letter: string }[]) {
           codeLetterByBudgetCodeId.set(row.id, row.code_letter);
         }
       }
 
-      const { data: groupsData } = await supabase.from("budget_code_groups").select("code_letter, name").order("sort_order");
+      const { data: groupsData } = await listBudgetCodeGroups();
       const groups = (groupsData ?? []) as { code_letter: string; name: string }[];
       setBudgetGroups(groups);
       const groupNameByLetter = new Map(groups.map(g => [g.code_letter, g.name]));
@@ -164,7 +165,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
 
       const user = userRes.data.user;
       if (user) {
-        supabase.from("profiles").select("full_name").eq("id", user.id).single().then(({ data }) => {
+        getProfileById(user.id).then(({ data }) => {
           if (data) setCurrentUserName(data.full_name);
         });
       }
@@ -232,7 +233,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
     if (projectInfo && pr.project_id) {
       const companyCode = projectInfo.company_code ?? "DCOS";
       const prefix = `${projectInfo.project_code}-${companyCode}-BC-`;
-      const { data: existing } = await supabase.from("procurement_budget_confirmations").select("bc_number").eq("project_id", pr.project_id);
+      const { data: existing } = await listBudgetConfirmationsByProjectId(pr.project_id);
       let maxSeq = 0;
       for (const row of (existing ?? []) as { bc_number: string }[]) {
         if (row.bc_number.startsWith(prefix)) {
@@ -245,9 +246,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    const { data: bcData, error: bcError } = await supabase
-      .from("procurement_budget_confirmations")
-      .insert([{
+    const { data: bcData, error: bcError } = await insertBudgetConfirmation({
         bc_number: bcNumber,
         pr_id: prId,
         project_id: pr.project_id,
@@ -282,9 +281,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
         approved_by: user.id,
         approved_by_position: form.signatory_position || null,
         approved_at: today,
-      }])
-      .select("id")
-      .single();
+      });
 
     if (bcError) { toast.error(bcError.message); setSaving(false); return; }
     const bcId = (bcData as { id: string }).id;
@@ -300,10 +297,10 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
       remaining_work_amount: remainingWork(item),
     }));
 
-    const { error: itemsError } = await supabase.from("procurement_budget_confirmation_items").insert(itemInserts);
+    const { error: itemsError } = await insertBudgetConfirmationItems(itemInserts);
     if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
 
-    const { error: prError } = await supabase.from("procurement_prs").update({
+    const { error: prError } = await updatePrById({
       approval_status: "approved",
       approved_by: user.id,
       approved_at: new Date().toISOString(),
@@ -311,7 +308,7 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
       budget_checked_by: user.id,
       budget_check_notes: form.bc_title || null,
       budget_confirmation_id: bcId,
-    }).eq("id", prId);
+    }, prId);
 
     if (prError) { toast.error(prError.message); setSaving(false); return; }
 

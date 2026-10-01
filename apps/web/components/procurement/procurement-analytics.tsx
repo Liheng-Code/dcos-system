@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listPos, listPrApprovalStatuses } from "@/lib/procurement/procurement-service";
 import { Loader2, DollarSign, TrendingUp, Truck, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -35,12 +35,11 @@ export function ProcurementAnalytics() {
   const [overduePOs, setOverduePOs] = useState(0);
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_pos").select("grand_total, status, delivery_date_expected"),
-      supabase.from("procurement_prs").select("approval_status"),
-      supabase.from("procurement_suppliers").select("id, supplier_name, status").eq("status", "active"),
-      supabase.from("procurement_delivery_notes").select("delivery_date, status, po_id, procurement_pos(delivery_date_expected)"),
+      listPos("grand_total, status, delivery_date_expected"),
+      listPrApprovalStatuses(),
+      listActiveSuppliersUnordered("id, supplier_name, status"),
+      listDeliveryNoteColumns("delivery_date, status, po_id, procurement_pos(delivery_date_expected)"),
     ]).then(([poRes, prRes, supRes, dnRes]) => {
       if (poRes.data) {
         const pos = poRes.data as { grand_total: number | null; status: string; delivery_date_expected: string | null }[];
@@ -63,7 +62,7 @@ export function ProcurementAnalytics() {
         setQualifiedSuppliers(supRes.data.length);
         const supList = supRes.data as { id: string; supplier_name: string; status: string }[];
 
-        supabase.from("procurement_pos").select("supplier_id, grand_total").then(({ data }) => {
+        listPos("supplier_id, grand_total").then(({ data }) => {
           if (data) {
             const pos = data as { supplier_id: string; grand_total: number | null }[];
             const map = new Map<string, { total: number; count: number }>();

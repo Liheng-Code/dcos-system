@@ -20,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { deletePrById, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-service";
 
 interface PRRecord {
   id: string;
@@ -122,24 +123,24 @@ export function PRDetail({ id }: PRDetailProps) {
   const fetchDetail = useCallback(() => {
     const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_prs").select("*").eq("id", id).single(),
-      supabase.from("procurement_pr_items").select("*, qs_boq_items(item_no, item_code, description)").eq("pr_id", id).order("line_no"),
+      getPrById(id, "*"),
+      listPrItemsByPrId(id, "*, qs_boq_items(item_no, item_code, description)"),
     ]).then(([prRes, itemsRes]) => {
       if (prRes.data) {
         const record = prRes.data as PRRecord;
         setPr(record);
         if (record.budget_code) {
-          supabase.from("budget_code_groups").select("name").eq("code_letter", record.budget_code).single().then(({ data }) => {
+          getBudgetCodeGroupByCodeLetter(record.budget_code).then(({ data }) => {
             if (data) setBudgetGroupName(data.name);
           });
         }
         if (record.project_id) {
-          supabase.from("projects").select("project_name, project_code").eq("id", record.project_id).single().then(({ data }) => {
+          getProjectById(record.project_id, "project_name, project_code").then(({ data }) => {
             if (data) setProjectInfo(data);
           });
         }
         if (record.budget_confirmation_id) {
-          supabase.from("procurement_budget_confirmations").select("id, bc_number, budget_status").eq("id", record.budget_confirmation_id).single().then(({ data }) => {
+          getBudgetConfirmationById(record.budget_confirmation_id).then(({ data }) => {
             if (data) setBudgetConfirmation(data as BCSummary);
           });
         }
@@ -168,7 +169,7 @@ export function PRDetail({ id }: PRDetailProps) {
       }
     }
 
-    const { error } = await supabase.from("procurement_prs").update(update).eq("id", id);
+    const { error } = await updatePrById(update, id);
     if (error) { toast.error(error.message); return; }
     toast.success(`PR ${nextStatus.replace(/_/g, " ")}`);
     fetchDetail();
@@ -177,7 +178,7 @@ export function PRDetail({ id }: PRDetailProps) {
   async function handleDelete() {
     setDeleting(true);
     const supabase = createClient();
-    const { error } = await supabase.from("procurement_prs").delete().eq("id", id);
+    const { error } = await deletePrById(id);
     if (error) { toast.error(error.message); setDeleting(false); return; }
     toast.success("Purchase requisition deleted");
     router.push("/dashboard/procurement/pr");

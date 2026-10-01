@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertQsBoqSection, updateQsBoqSectionById } from "@/lib/procurement/procurement-service";
 import { Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,15 +21,14 @@ export function BoqSectionForm({ section: rawSection, projectId, onSaved, onCanc
     e.preventDefault();
     if (!code.trim() || !name.trim()) { toast.error("Code and name are required"); return; }
     setSaving(true);
-    const supabase = createClient();
 
     if (section) {
-      const { data, error } = await supabase.from("qs_boq_sections").update({ section_code: code.trim(), title: name.trim(), seq }).eq("id", section.id).select().single();
+      const { data, error } = await updateQsBoqSectionById({ section_code: code.trim(), title: name.trim(), seq }, section.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Section updated");
       onSaved(data);
     } else {
-      const { data, error } = await supabase.from("qs_boq_sections").insert([{ project_id: projectId, section_code: code.trim(), title: name.trim(), seq }]).select().single();
+      const { data, error } = await insertQsBoqSection({ project_id: projectId, section_code: code.trim(), title: name.trim(), seq });
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Section created");
       onSaved(data);

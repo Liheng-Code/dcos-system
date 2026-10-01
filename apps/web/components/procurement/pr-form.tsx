@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, listPrsByProjectId, updatePrById } from "@/lib/procurement/procurement-service";
 import { Loader2, Save, Plus, Trash2, ArrowLeft, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -51,16 +51,15 @@ export function PRForm({ prId }: { prId?: string }) {
       setGeneratedPrNumber("");
       return;
     }
-    const supabase = createClient();
-    supabase.from("budget_code_groups").select("code_letter, name").order("sort_order").then((bgRes) => {
+    listBudgetCodeGroups().then((bgRes) => {
       setBudgetGroups((bgRes.data ?? []) as { code_letter: string; name: string }[]);
     });
 
     if (isEditing && prId) {
       setLoading(true);
       Promise.all([
-        supabase.from("procurement_prs").select("*").eq("id", prId).single(),
-        supabase.from("procurement_pr_items").select("*").eq("pr_id", prId).order("line_no"),
+        getPrById(prId, "*"),
+        listPrItemsByPrId(prId, "*"),
       ]).then(([prRes, itemsRes]) => {
         if (prRes.data) {
           const record = prRes.data as { pr_number: string; preparation_date: string | null; required_date: string | null; ship_to: string | null; priority: string; budget_code: string | null; notes: string | null };
@@ -91,8 +90,8 @@ export function PRForm({ prId }: { prId?: string }) {
         setLoading(false);
       });
     } else {
-      supabase.from("procurement_prs").select("pr_number").eq("project_id", selectedProjectId).then((prRes) => {
-        supabase.from("projects").select("company_code, location").eq("id", selectedProjectId).single().then((projRes) => {
+      listPrsByProjectId(selectedProjectId).then((prRes) => {
+        getProjectById(selectedProjectId, "company_code, location").then((projRes) => {
           const companyCode = projRes.data?.company_code ?? "DCOS";
           const prefix = `${selectedProject.project_code}-${companyCode}-PR-`;
           const existing = (prRes.data ?? []) as { pr_number: string }[];
@@ -172,7 +171,6 @@ export function PRForm({ prId }: { prId?: string }) {
     }
 
     setSaving(true);
-    const supabase = createClient();
 
     const supabaseForm = {
       pr_number: generatedPrNumber,
@@ -189,15 +187,11 @@ export function PRForm({ prId }: { prId?: string }) {
     let targetPrId = prId ?? "";
 
     if (isEditing && prId) {
-      const { error: prError } = await supabase.from("procurement_prs").update(supabaseForm).eq("id", prId);
+      const { error: prError } = await updatePrById(supabaseForm, prId);
       if (prError) { toast.error(prError.message); setSaving(false); return; }
-      await supabase.from("procurement_pr_items").delete().eq("pr_id", prId);
+      await deletePrItemsByPrId(prId);
     } else {
-      const { data: prData, error: prError } = await supabase
-        .from("procurement_prs")
-        .insert([supabaseForm])
-        .select("id")
-        .single();
+      const { data: prData, error: prError } = await insertPr(supabaseForm);
       if (prError) { toast.error(prError.message); setSaving(false); return; }
       targetPrId = (prData as { id: string }).id;
     }
@@ -216,7 +210,7 @@ export function PRForm({ prId }: { prId?: string }) {
       notes: i.notes || null,
     }));
 
-    const { error: itemsError } = await supabase.from("procurement_pr_items").insert(itemInserts);
+    const { error: itemsError } = await insertPrItems(itemInserts);
     if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
 
     toast.success(isEditing ? "Purchase requisition updated" : "Purchase requisition created");

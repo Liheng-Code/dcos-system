@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getPrById, getProjectById, insertPo, insertPoItems, listActiveSuppliers, listApprovedPrsByProjectId, listBoqRequisitionStatusByBoqItemIds, listPosByProjectId, listPrItemsByPrId } from "@/lib/procurement/procurement-service";
 import { AlertTriangle, ArrowLeft, Loader2, Save, Trash2, Plus, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -102,10 +102,9 @@ export function POForm() {
 
   const loadReferenceData = useCallback(() => {
     if (!selectedProjectId) return;
-    const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_suppliers").select("id, supplier_name, address, contact_person, phone, payment_terms, pq_status, pq_expires_at").eq("status", "active").order("supplier_name"),
-      supabase.from("procurement_prs").select("id, pr_number").eq("project_id", selectedProjectId).in("approval_status", ["approved", "closed"]).order("created_at", { ascending: false }),
+      listActiveSuppliers("id, supplier_name, address, contact_person, phone, payment_terms, pq_status, pq_expires_at"),
+      listApprovedPrsByProjectId(selectedProjectId),
     ]).then(([supRes, prRes]) => {
       if (supRes.data) {
         const rows = supRes.data as Supplier[];
@@ -122,9 +121,8 @@ export function POForm() {
       setGeneratedPoNumber("");
       return;
     }
-    const supabase = createClient();
-    supabase.from("procurement_pos").select("po_number").eq("project_id", selectedProjectId).then((poRes) => {
-      supabase.from("projects").select("company_code").eq("id", selectedProjectId).single().then((projRes) => {
+    listPosByProjectId(selectedProjectId).then((poRes) => {
+      getProjectById(selectedProjectId, "company_code").then((projRes) => {
         const companyCode = projRes.data?.company_code ?? "DCOS";
         const prefix = `${selectedProject.project_code}-${companyCode}-PO-`;
         const existing = (poRes.data ?? []) as { po_number: string }[];
@@ -144,11 +142,7 @@ export function POForm() {
     const boqIds = searchParams?.get("boq_item_ids");
     if (!boqIds) return;
     setLoadingBoq(true);
-    const supabase = createClient();
-    supabase
-      .from("qs_v_boq_requisition_status")
-      .select("*")
-      .in("boq_item_id", boqIds.split(","))
+    listBoqRequisitionStatusByBoqItemIds(boqIds.split(","))
       .then(({ data, error }) => {
         if (error) { toast.error(error.message); setLoadingBoq(false); return; }
         if (data && data.length > 0) {
@@ -168,14 +162,9 @@ export function POForm() {
   }, [searchParams]);
 
   async function loadPRItems(prId: string) {
-    const supabase = createClient();
     const [itemsRes, prRes] = await Promise.all([
-      supabase
-        .from("procurement_pr_items")
-        .select("id, boq_item_id, item_code, item_description, unit, quantity, estimated_unit_price")
-        .eq("pr_id", prId)
-        .order("line_no"),
-      supabase.from("procurement_prs").select("wbs_node_id, ship_to").eq("id", prId).single(),
+      listPrItemsByPrId(prId, "id, boq_item_id, item_code, item_description, unit, quantity, estimated_unit_price"),
+      getPrById(prId, "wbs_node_id, ship_to"),
     ]);
 
     if (itemsRes.error) { toast.error(itemsRes.error.message); return; }
@@ -278,7 +267,6 @@ export function POForm() {
     if (lineItems.length === 0) { toast.error("Add at least one item"); return; }
 
     setSaving(true);
-    const supabase = createClient();
 
     const poData = {
       po_number: generatedPoNumber,
@@ -304,7 +292,7 @@ export function POForm() {
       notes: form.notes || null,
     };
 
-    const { data: poResult, error: poError } = await supabase.from("procurement_pos").insert([poData]).select("id").single();
+    const { data: poResult, error: poError } = await insertPo(poData);
     if (poError) { toast.error(poError.message); setSaving(false); return; }
 
     const poId = (poResult as { id: string }).id;
@@ -330,7 +318,7 @@ export function POForm() {
       notes: i.notes || null,
     }));
 
-    const { error: itemsError } = await supabase.from("procurement_po_items").insert(itemInserts);
+    const { error: itemsError } = await insertPoItems(itemInserts);
     if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
 
     toast.success("Purchase order created");

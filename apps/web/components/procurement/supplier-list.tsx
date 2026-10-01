@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteSupplierById, listSuppliersByName } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,8 +61,7 @@ export function SupplierList() {
   const [editing, setEditing] = useState<Supplier | null>(null);
 
   function fetchSuppliers() {
-    const supabase = createClient();
-    supabase.from("procurement_suppliers").select("*").order("supplier_name").then(({ data }) => {
+    listSuppliersByName().then(({ data }) => {
       if (data) setSuppliers(data as Supplier[]);
       setLoading(false);
     });
@@ -77,8 +76,7 @@ export function SupplierList() {
 
   function handleDelete(id: string) {
     if (!confirm("Delete this supplier?")) return;
-    const supabase = createClient();
-    supabase.from("procurement_suppliers").delete().eq("id", id).then(({ error }) => {
+    deleteSupplierById(id).then(({ error }) => {
       if (error) { toast.error(error.message); return; }
       toast.success("Supplier deleted");
       setSuppliers(prev => prev.filter(s => s.id !== id));

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { insertDeliveryNote, insertGoodsReceipts, listPosAwaitingDelivery, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-service";
 
 interface IssuedPO {
   id: string;
@@ -51,11 +52,7 @@ export function GoodsReceiptForm() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase
-      .from("procurement_pos")
-      .select(`id, po_number, supplier_id, procurement_po_items(id, item_type, item_code, item_description, unit, quantity_ordered, quantity_delivered, unit_price)`)
-      .in("status", ["issued", "partially_delivered"])
-      .order("created_at", { ascending: false })
+    listPosAwaitingDelivery()
       .then(({ data }) => {
         if (data) setPos(data as unknown as IssuedPO[]);
       });
@@ -112,9 +109,7 @@ export function GoodsReceiptForm() {
     const po = pos.find(p => p.id === selectedPO) as IssuedPO | undefined;
     if (!po) { toast.error("PO not found"); setSaving(false); return; }
 
-    const { data: dnData, error: dnError } = await supabase
-      .from("procurement_delivery_notes")
-      .insert([{
+    const { data: dnData, error: dnError } = await insertDeliveryNote({
         po_id: selectedPO,
         supplier_id: po.supplier_id,
         delivery_note_ref: deliveryNoteRef || null,
@@ -122,9 +117,7 @@ export function GoodsReceiptForm() {
         received_by: user?.id,
         status: "delivered",
         remarks: remarks || null,
-      }])
-      .select("id")
-      .single();
+      });
 
     if (dnError) { toast.error(dnError.message); setSaving(false); return; }
 
@@ -142,7 +135,7 @@ export function GoodsReceiptForm() {
       inspected_at: new Date().toISOString(),
     }));
 
-    const { error: grError } = await supabase.from("procurement_goods_receipts").insert(grInserts);
+    const { error: grError } = await insertGoodsReceipts(grInserts);
     if (grError) { toast.error(grError.message); setSaving(false); return; }
 
     // Note: this form only records the delivery/inspection result for invoice
@@ -153,7 +146,7 @@ export function GoodsReceiptForm() {
       const poItem = po.procurement_po_items.find(i => i.id === item.po_item_id);
       if (poItem) {
         const newDelivered = (poItem.quantity_delivered || 0) + item.quantity_accepted;
-        await supabase.from("procurement_po_items").update({ quantity_delivered: newDelivered }).eq("id", item.po_item_id);
+        await updatePoItemById({ quantity_delivered: newDelivered }, item.po_item_id);
       }
     }
 
@@ -164,7 +157,7 @@ export function GoodsReceiptForm() {
     }, 0);
 
     const newPOStatus = totalDelivered >= totalOrdered ? "delivered" : "partially_delivered";
-    await supabase.from("procurement_pos").update({ status: newPOStatus }).eq("id", selectedPO);
+    await updatePoById({ status: newPOStatus }, selectedPO);
 
     toast.success("Goods receipt recorded");
     router.push("/dashboard/procurement/goods-receipt");

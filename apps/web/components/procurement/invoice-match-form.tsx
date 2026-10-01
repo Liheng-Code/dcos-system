@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { insertInvoiceMatch, listGoodsReceiptsByPoId, listPosReadyForInvoiceMatch, updatePoById } from "@/lib/procurement/procurement-service";
 import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -38,12 +38,7 @@ export function InvoiceMatchForm() {
   const variance = Math.abs(form.invoice_amount - matchedPoAmount);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("procurement_pos")
-      .select("id, po_number, supplier_id, total_amount, grand_total, status")
-      .in("status", ["delivered", "partially_delivered", "under_invoice_match", "closed"])
-      .order("created_at", { ascending: false })
+    listPosReadyForInvoiceMatch()
       .then(({ data }) => {
         if (data) setPos(data as POSummary[]);
       });
@@ -60,17 +55,13 @@ export function InvoiceMatchForm() {
       return;
     }
 
-    const supabase = createClient();
     const po = pos.find(p => p.id === poId);
     if (po) {
       setSupplierId(po.supplier_id);
       const poAmt = po.grand_total ?? po.total_amount ?? 0;
       setMatchedPoAmount(poAmt);
 
-      const { data: grData } = await supabase
-        .from("procurement_goods_receipts")
-        .select("quantity_accepted, procurement_po_items!inner(unit_price)")
-        .eq("procurement_po_items.po_id", poId);
+      const { data: grData } = await listGoodsReceiptsByPoId(poId);
 
       let grTotal = 0;
       if (grData) {
@@ -94,15 +85,12 @@ export function InvoiceMatchForm() {
     if (form.invoice_amount <= 0) { toast.error("Enter invoice amount"); return; }
 
     setSaving(true);
-    const supabase = createClient();
 
     const threshold = matchedPoAmount * 0.02;
     const hasVariance = Math.abs(form.invoice_amount - matchedPoAmount) > threshold;
     const matchStatus = hasVariance ? "variance_detected" : "matched";
 
-    const { data: result, error } = await supabase
-      .from("procurement_invoice_matches")
-      .insert([{
+    const { data: result, error } = await insertInvoiceMatch({
         po_id: form.po_id,
         supplier_id: supplierId,
         invoice_ref: form.invoice_ref,
@@ -113,13 +101,11 @@ export function InvoiceMatchForm() {
         variance_amount: form.invoice_amount - matchedPoAmount,
         status: matchStatus,
         notes: form.notes || null,
-      }])
-      .select("id")
-      .single();
+      });
 
     if (error) { toast.error(error.message); setSaving(false); return; }
 
-    await supabase.from("procurement_pos").update({ status: "under_invoice_match" }).eq("id", form.po_id);
+    await updatePoById({ status: "under_invoice_match" }, form.po_id);
 
     const matchId = (result as { id: string }).id;
     toast.success(hasVariance ? "Invoice match created — variance detected" : "Invoice matched successfully");

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listRfqs } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,11 +36,7 @@ export function RFQList() {
   const [statusFilter, setStatusFilter] = useState("");
 
   const fetchRFQs = useCallback(() => {
-    const supabase = createClient();
-    let query = supabase
-      .from("procurement_rfqs")
-      .select("*, procurement_prs(pr_number)")
-      .order("created_at", { ascending: false });
+    let query = listRfqs();
 
     if (search) {
       query = query.or(`rfq_number.ilike.%${search}%,procurement_prs.pr_number.ilike.%${search}%`);

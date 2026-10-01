@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listPosNewestFirst, updatePosByIds } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Eye, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,8 +43,7 @@ export function POList() {
   const [bulkLoading, setBulkLoading] = useState("");
 
   function fetchPOs() {
-    const supabase = createClient();
-    supabase.from("procurement_pos").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listPosNewestFirst().then(({ data }) => {
       if (data) setPos(data as PO[]);
       setLoading(false);
     });
@@ -70,8 +69,7 @@ export function POList() {
     const valid = filtered.filter(p => selected.has(p.id) && (p.status === "delivered" || p.status === "under_invoice_match"));
     if (valid.length === 0) { toast.error("Only delivered POs can be closed"); return; }
     setBulkLoading("close");
-    const supabase = createClient();
-    const { error } = await supabase.from("procurement_pos").update({ status: "closed" }).in("id", valid.map(p => p.id));
+    const { error } = await updatePosByIds({ status: "closed" }, valid.map(p => p.id));
     if (error) { toast.error(error.message); setBulkLoading(""); return; }
     toast.success(`${valid.length} POs closed`);
     setSelected(new Set());

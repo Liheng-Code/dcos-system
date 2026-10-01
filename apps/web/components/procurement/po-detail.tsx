@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { printPO } from "@/lib/print-service";
 import { amountInWords } from "@/lib/number-to-words";
+import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, updatePoById } from "@/lib/procurement/procurement-service";
 
 interface PORecord {
   id: string;
@@ -133,21 +134,21 @@ export function PODetail({ id }: PODetailProps) {
   const fetchDetail = useCallback(() => {
     const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_pos").select("*").eq("id", id).single(),
-      supabase.from("procurement_po_items").select("*").eq("po_id", id).order("line_no"),
-      supabase.from("procurement_suppliers").select("id, supplier_name"),
-      supabase.from("procurement_po_revisions").select("id, rev_no, description, rev_date").eq("po_id", id).order("rev_no"),
+      getPoById(id),
+      listPoItemsByPoId(id, "*"),
+      listSuppliers(),
+      listPoRevisionsByPoId(id),
     ]).then(([poRes, itemsRes, supRes, revRes]) => {
       if (poRes.data) {
         const record = poRes.data as PORecord;
         setPo(record);
         if (record.pr_id) {
-          supabase.from("procurement_prs").select("pr_number").eq("id", record.pr_id).single().then(({ data }) => {
+          getPrById(record.pr_id, "pr_number").then(({ data }) => {
             if (data) setPrNumber(data.pr_number);
           });
         }
         if (record.project_id) {
-          supabase.from("projects").select("project_name, project_code").eq("id", record.project_id).single().then(({ data }) => {
+          getProjectById(record.project_id, "project_name, project_code").then(({ data }) => {
             if (data) setProjectName(`${data.project_name} (${data.project_code})`);
           });
         }
@@ -182,7 +183,7 @@ export function PODetail({ id }: PODetailProps) {
       (update as Record<string, string>).issued_date = new Date().toISOString().split("T")[0];
     }
 
-    const { error } = await supabase.from("procurement_pos").update(update).eq("id", id);
+    const { error } = await updatePoById(update, id);
     if (error) { toast.error(error.message); return; }
     toast.success(`PO ${nextStatus.replace(/_/g, " ")}`);
     fetchDetail();
@@ -195,13 +196,13 @@ export function PODetail({ id }: PODetailProps) {
     const { data: { user } } = await supabase.auth.getUser();
     const nextRevNo = revisions.reduce((max, r) => Math.max(max, r.rev_no), 0) + 1;
 
-    const { error } = await supabase.from("procurement_po_revisions").insert([{
+    const { error } = await insertPoRevision({
       po_id: id,
       rev_no: nextRevNo,
       description: revisionForm.description,
       rev_date: revisionForm.rev_date,
       created_by: user?.id ?? null,
-    }]);
+    });
 
     if (error) { toast.error(error.message); setSavingRevision(false); return; }
     toast.success("Revision logged");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listAuditLog } from "@/lib/procurement/procurement-service";
 import { Loader2, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -27,8 +27,7 @@ export function ProcurementAuditLog() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("procurement_audit_log").select("*").order("changed_at", { ascending: false }).limit(100).then(({ data }) => {
+    listAuditLog().then(({ data }) => {
       if (data) setEntries(data as AuditEntry[]);
       setLoading(false);
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listGoodsReceipts, listPos, listRfqSuppliers } from "@/lib/procurement/procurement-service";
 import { Loader2, TrendingUp, Truck, Clock, Star, XCircle, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,14 +25,13 @@ export function SupplierPerformance() {
   const [suppliers, setSuppliers] = useState<SupplierPerf[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
 
     Promise.all([
-      supabase.from("procurement_suppliers").select("id, supplier_name, performance_score").eq("status", "active"),
-      supabase.from("procurement_pos").select("supplier_id, grand_total, status"),
-      supabase.from("procurement_delivery_notes").select("delivery_date, status, po_id, supplier_id, procurement_pos(delivery_date_expected)"),
-      supabase.from("procurement_goods_receipts").select("quantity_accepted, quantity_rejected, procurement_po_items!inner(po_id, procurement_pos!inner(supplier_id))"),
-      supabase.from("procurement_rfq_suppliers").select("supplier_id, responded, procurement_rfqs!inner(status)"),
+      listActiveSuppliersUnordered("id, supplier_name, performance_score"),
+      listPos("supplier_id, grand_total, status"),
+      listDeliveryNoteColumns("delivery_date, status, po_id, supplier_id, procurement_pos(delivery_date_expected)"),
+      listGoodsReceipts(),
+      listRfqSuppliers(),
     ]).then(([supRes, poRes, dnRes, grRes, rfqRes]) => {
       if (!supRes.data) { setLoading(false); return; }
 

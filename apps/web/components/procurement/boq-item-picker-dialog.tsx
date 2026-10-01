@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listOpenBoqRequisitionStatusByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-service";
 import { Loader2, PackageOpen, Search, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -63,19 +63,9 @@ export function BoqItemPickerDialog({ projectId, onPick }: Props) {
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    const supabase = createClient();
     Promise.all([
-      supabase
-        .from("qs_v_boq_requisition_status")
-        .select("*")
-        .eq("project_id", projectId)
-        .gt("remaining_quantity", 0)
-        .order("seq"),
-      supabase
-        .from("qs_boq_sections")
-        .select("id, section_code, title, seq")
-        .eq("project_id", projectId)
-        .order("seq"),
+      listOpenBoqRequisitionStatusByProjectId(projectId),
+      listQsBoqSectionsByProjectId(projectId, "id, section_code, title, seq"),
     ]).then(([itemsRes, secsRes]) => {
       if (itemsRes.error) { toast.error(itemsRes.error.message); return; }
       if (secsRes.error) { toast.error(secsRes.error.message); return; }

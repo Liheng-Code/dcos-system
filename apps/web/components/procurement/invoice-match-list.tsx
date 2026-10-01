@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listInvoiceMatches } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +39,7 @@ export function InvoiceMatchList() {
   const [statusFilter, setStatusFilter] = useState("");
 
   const fetchMatches = useCallback(() => {
-    const supabase = createClient();
-    let query = supabase
-      .from("procurement_invoice_matches")
-      .select("*, procurement_pos(po_number), procurement_suppliers(supplier_name)")
-      .order("created_at", { ascending: false });
+    let query = listInvoiceMatches();
 
     if (search) {
       query = query.or(`invoice_ref.ilike.%${search}%,procurement_pos.po_number.ilike.%${search}%`);

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { insertPr, insertPrItem, listReorderableInvItems } from "@/lib/procurement/procurement-service";
 
 // FR-017 reorder-alert bridge: Inventory (inv_items / inv_stock) -> Procurement (draft PR).
 // This used to read the legacy procurement_inventory stub table directly; that table is
@@ -49,12 +50,7 @@ export function AutoReorder() {
   function fetchLowStock() {
     setLoading(true);
     const supabase = createClient();
-    supabase
-      .from("inv_items")
-      .select("id, item_code, name, unit_of_measure, min_stock_level, reorder_quantity, inv_stock(quantity_available, unit_cost_fifo, store_id)")
-      .eq("is_active", true)
-      .not("min_stock_level", "is", null)
-      .order("item_code")
+    listReorderableInvItems()
       .then(({ data }) => {
         if (data) {
           const rows = data as unknown as InvItemRow[];
@@ -111,24 +107,18 @@ export function AutoReorder() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { toast.error("Not authenticated"); setCreating(false); return; }
 
-    const { data: prData, error: prError } = await supabase
-      .from("procurement_prs")
-      .insert([{
+    const { data: prData, error: prError } = await insertPr({
         priority: "medium",
         approval_status: "draft",
         notes: `Auto-reorder: ${item.item_description} (stock: ${item.quantity_on_hand}, min: ${item.minimum_stock})`,
         total_estimated_cost: reorderQty * (item.unit_cost || 0),
-      }])
-      .select("id")
-      .single();
+      });
 
     if (prError) { toast.error(prError.message); setCreating(false); return; }
 
     const prId = (prData as { id: string }).id;
 
-    const { error: itemError } = await supabase
-      .from("procurement_pr_items")
-      .insert([{
+    const { error: itemError } = await insertPrItem({
         pr_id: prId,
         line_no: 1,
         item_code: item.item_code,
@@ -138,7 +128,7 @@ export function AutoReorder() {
         estimated_unit_price: item.unit_cost,
         estimated_total: reorderQty * (item.unit_cost || 0),
         notes: `Auto-reorder triggered (on hand: ${item.quantity_on_hand}, min: ${item.minimum_stock})`,
-      }]);
+      });
 
     if (itemError) { toast.error(itemError.message); } else {
       toast.success(`Draft PR created for ${item.item_code}`);

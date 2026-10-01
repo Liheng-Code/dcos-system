@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { getPoByQuotationId, getPrById, getRfqById, insertPo, insertPoItems, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, updateOtherQuotationsOfRfq, updateQuotationById, updateRfqById, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-service";
 
 interface RFQRecord {
   id: string;
@@ -112,11 +113,10 @@ export function RFQDetail({ id }: { id: string }) {
   const [quoteItems, setQuoteItems] = useState<(PRItemSummary & { unit_price: number; total: number })[]>([]);
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_rfqs").select("*").eq("id", id).single(),
-      supabase.from("procurement_rfq_suppliers").select("*, procurement_suppliers(supplier_name)").eq("rfq_id", id),
-      supabase.from("procurement_quotations").select("*, procurement_quotation_items(*), procurement_suppliers(supplier_name)").eq("rfq_id", id),
+      getRfqById(id, "*"),
+      listRfqSuppliersByRfqId(id),
+      listQuotationsByRfqId(id),
     ]).then(([rfqRes, supRes, quoRes]) => {
       if (rfqRes.data) setRfq(rfqRes.data as RFQRecord);
       if (supRes.data) setInvitedSuppliers(supRes.data as unknown as RFQSupplier[]);
@@ -127,7 +127,7 @@ export function RFQDetail({ id }: { id: string }) {
       if (rfqRes.data) {
         const prId = (rfqRes.data as RFQRecord).pr_id;
         if (prId) {
-          supabase.from("procurement_pr_items").select("*").eq("pr_id", prId).order("line_no").then(({ data }) => {
+          listPrItemsByPrId(prId, "*").then(({ data }) => {
             if (data) setPrItems(data as PRItemSummary[]);
           });
         }
@@ -141,11 +141,10 @@ export function RFQDetail({ id }: { id: string }) {
 
   async function handleIssue() {
     setActionLoading("issue");
-    const supabase = createClient();
-    const { error } = await supabase.from("procurement_rfqs").update({
+    const { error } = await updateRfqById({
       status: "issued",
       issue_date: new Date().toISOString().slice(0, 10),
-    }).eq("id", id);
+    }, id);
     if (error) { toast.error(error.message); setActionLoading(""); return; }
     toast.success("RFQ issued");
     fetchDetail();
@@ -155,8 +154,7 @@ export function RFQDetail({ id }: { id: string }) {
   async function handleCancel() {
     if (!confirm("Cancel this RFQ?")) return;
     setActionLoading("cancel");
-    const supabase = createClient();
-    const { error } = await supabase.from("procurement_rfqs").update({ status: "cancelled" }).eq("id", id);
+    const { error } = await updateRfqById({ status: "cancelled" }, id);
     if (error) { toast.error(error.message); setActionLoading(""); return; }
     toast.success("RFQ cancelled");
     fetchDetail();
@@ -198,13 +196,10 @@ export function RFQDetail({ id }: { id: string }) {
     }
 
     setActionLoading("saveQuote");
-    const supabase = createClient();
 
     const totalAmount = quoteItems.reduce((s, qi) => s + (qi.unit_price * qi.quantity), 0);
 
-    const { data: quoResult, error: quoError } = await supabase
-      .from("procurement_quotations")
-      .insert([{
+    const { data: quoResult, error: quoError } = await insertQuotation({
         rfq_id: id,
         supplier_id: newQuote.supplier_id,
         quotation_ref: newQuote.quotation_ref || null,
@@ -215,9 +210,7 @@ export function RFQDetail({ id }: { id: string }) {
         delivery_lead_time: newQuote.delivery_lead_time ? parseInt(newQuote.delivery_lead_time) : null,
         total_amount: totalAmount,
         status: "pending",
-      }])
-      .select("id")
-      .single();
+      });
 
     if (quoError) { toast.error(quoError.message); setActionLoading(""); return; }
 
@@ -237,15 +230,15 @@ export function RFQDetail({ id }: { id: string }) {
         total: qi.unit_price * qi.quantity,
       }));
 
-    await supabase.from("procurement_quotation_items").insert(itemInserts);
+    await insertQuotationItems(itemInserts);
 
-    await supabase.from("procurement_rfq_suppliers").update({ responded: true }).eq("rfq_id", id).eq("supplier_id", newQuote.supplier_id);
+    await updateRfqSuppliersByRfqIdAndSupplierId({ responded: true }, id, newQuote.supplier_id);
 
     const quoCount = quotations.length + 1;
     if (quoCount >= 2) {
-      await supabase.from("procurement_rfqs").update({ status: "quotations_received" }).eq("id", id);
+      await updateRfqById({ status: "quotations_received" }, id);
     } else {
-      await supabase.from("procurement_rfqs").update({ status: "quotations_received" }).eq("id", id);
+      await updateRfqById({ status: "quotations_received" }, id);
     }
 
     toast.success("Quotation recorded");
@@ -255,7 +248,6 @@ export function RFQDetail({ id }: { id: string }) {
   }
 
   async function handleEvaluate(quotationId: string, field: string, value: number | null) {
-    const supabase = createClient();
     const update: Record<string, number | null | string> = { [field]: value };
 
     const q = quotations.find(q => q.id === quotationId);
@@ -273,11 +265,11 @@ export function RFQDetail({ id }: { id: string }) {
       update.status = "evaluated";
     }
 
-    const { error } = await supabase.from("procurement_quotations").update(update).eq("id", quotationId);
+    const { error } = await updateQuotationById(update, quotationId);
     if (error) { toast.error(error.message); return; }
 
     if (rfq?.status === "quotations_received") {
-      await supabase.from("procurement_rfqs").update({ status: "under_evaluation" }).eq("id", id);
+      await updateRfqById({ status: "under_evaluation" }, id);
     }
 
     toast.success("Score saved");
@@ -288,32 +280,29 @@ export function RFQDetail({ id }: { id: string }) {
     const reason = prompt("Basis of award / reason:");
     if (reason === null) return;
     setActionLoading("award");
-    const supabase = createClient();
 
     const quotation = quotations.find(q => q.id === quotationId);
     if (!quotation) { setActionLoading(""); return; }
 
-    const { error: rfqError } = await supabase.from("procurement_rfqs").update({
+    const { error: rfqError } = await updateRfqById({
       status: "awarded",
       awarded_supplier_id: quotation.supplier_id,
       award_reason: reason,
       awarded_at: new Date().toISOString(),
-    }).eq("id", id);
+    }, id);
     if (rfqError) { toast.error(rfqError.message); setActionLoading(""); return; }
 
-    await supabase.from("procurement_quotations").update({ is_awarded: true, status: "awarded" }).eq("id", quotationId);
-    await supabase.from("procurement_quotations").update({ is_awarded: false, status: "rejected" }).neq("id", quotationId).eq("rfq_id", id);
+    await updateQuotationById({ is_awarded: true, status: "awarded" }, quotationId);
+    await updateOtherQuotationsOfRfq({ is_awarded: false, status: "rejected" }, quotationId, id);
 
     let projectId: string | null = null;
     let wbsNodeId: string | null = null;
     if (rfq?.pr_id) {
-      const { data: prData } = await supabase.from("procurement_prs").select("project_id, wbs_node_id").eq("id", rfq.pr_id).single();
+      const { data: prData } = await getPrById(rfq.pr_id, "project_id, wbs_node_id");
       if (prData) { projectId = (prData as { project_id: string | null; wbs_node_id: string | null }).project_id; wbsNodeId = (prData as { project_id: string | null; wbs_node_id: string | null }).wbs_node_id; }
     }
 
-    const { data: poResult, error: poError } = await supabase
-      .from("procurement_pos")
-      .insert([{
+    const { data: poResult, error: poError } = await insertPo({
         po_number: `PO-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
         supplier_id: quotation.supplier_id,
         project_id: projectId,
@@ -326,9 +315,7 @@ export function RFQDetail({ id }: { id: string }) {
         grand_total: quotation.total_amount,
         payment_terms: quotation.payment_terms || null,
         status: "draft",
-      }])
-      .select("id")
-      .single();
+      });
 
     if (poError) { toast.error("RFQ awarded but PO creation failed: " + poError.message); setActionLoading(""); fetchDetail(); return; }
 
@@ -346,7 +333,7 @@ export function RFQDetail({ id }: { id: string }) {
       total_price: qi.total,
     }));
 
-    const { error: itemsError } = await supabase.from("procurement_po_items").insert(poItemInserts);
+    const { error: itemsError } = await insertPoItems(poItemInserts);
     if (itemsError) { toast.error("PO created but items failed: " + itemsError.message); }
 
     toast.success("Supplier awarded! PO created.");
@@ -721,7 +708,7 @@ export function RFQDetail({ id }: { id: string }) {
                   const q = quotations.find(q => q.is_awarded);
                   if (q) {
                     const s = createClient();
-                    s.from("procurement_pos").select("id").eq("quotation_id", q.id).single().then(({ data }) => {
+                    getPoByQuotationId(q.id).then(({ data }) => {
                       if (data) router.push(`/dashboard/procurement/po/${(data as { id: string }).id}`);
                     });
                   }

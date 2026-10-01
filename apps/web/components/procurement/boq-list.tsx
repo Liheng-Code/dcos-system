@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteQsBoqItemById, deleteQsBoqSectionById, listQsBoqItemsByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Pencil, Trash2, ChevronDown, ChevronRight, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,6 @@ interface BoqItem {
 }
 
 export function BoqList() {
-  const supabase = createClient();
   const { selectedProjectId, selectedProject } = useProject();
   const [sections, setSections] = useState<Section[]>([]);
   const [items, setItems] = useState<BoqItem[]>([]);
@@ -52,8 +51,8 @@ export function BoqList() {
     if (!selectedProjectId) { setSections([]); setItems([]); setLoading(false); return; }
     setLoading(true);
     Promise.all([
-      supabase.from("qs_boq_sections").select("*").eq("project_id", selectedProjectId).order("seq"),
-      supabase.from("qs_boq_items").select("*").eq("project_id", selectedProjectId).order("seq"),
+      listQsBoqSectionsByProjectId(selectedProjectId, "*"),
+      listQsBoqItemsByProjectId(selectedProjectId),
     ]).then(([sRes, iRes]) => {
       if (sRes.data) setSections(sRes.data as Section[]);
       if (iRes.data) setItems(iRes.data as BoqItem[]);
@@ -91,7 +90,7 @@ export function BoqList() {
 
   async function handleDeleteItem(id: string) {
     if (!confirm("Delete this BOQ item?")) return;
-    const { error } = await supabase.from("qs_boq_items").delete().eq("id", id);
+    const { error } = await deleteQsBoqItemById(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Item deleted");
     setItems(prev => prev.filter(i => i.id !== id));
@@ -101,7 +100,7 @@ export function BoqList() {
     const hasItems = items.some(i => i.boq_section_id === id);
     if (hasItems) { toast.error("Remove all items from this section first"); return; }
     if (!confirm("Delete this section?")) return;
-    const { error } = await supabase.from("qs_boq_sections").delete().eq("id", id);
+    const { error } = await deleteQsBoqSectionById(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Section deleted");
     setSections(prev => prev.filter(s => s.id !== id));

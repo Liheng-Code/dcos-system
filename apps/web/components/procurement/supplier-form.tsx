@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertSupplier, updateSupplierById } from "@/lib/procurement/procurement-service";
 import { X, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -63,14 +63,13 @@ export function SupplierForm({ supplier, onClose, onSave }: SupplierFormProps) {
       return;
     }
     setSaving(true);
-    const supabase = createClient();
 
     if (supplier) {
-      const { error } = await supabase.from("procurement_suppliers").update(form).eq("id", supplier.id);
+      const { error } = await updateSupplierById(form, supplier.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Supplier updated");
     } else {
-      const { error } = await supabase.from("procurement_suppliers").insert([form]);
+      const { error } = await insertSupplier(form);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Supplier created");
     }

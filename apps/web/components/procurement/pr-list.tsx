@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listProjectsByIds, listPrs, updatePrsByIds } from "@/lib/procurement/procurement-service";
 import { Search, Plus, Loader2, Eye, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,13 +50,12 @@ export function PRList() {
   const [bulkLoading, setBulkLoading] = useState("");
 
   function fetchPRs() {
-    const supabase = createClient();
-    supabase.from("procurement_prs").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listPrs().then(({ data }) => {
       const records = (data ?? []) as PR[];
       setPrs(records);
       const projectIds = [...new Set(records.map(r => r.project_id).filter(Boolean))] as string[];
       if (projectIds.length > 0) {
-        supabase.from("projects").select("id, project_code, project_name").in("id", projectIds).then(({ data: projs }) => {
+        listProjectsByIds(projectIds).then(({ data: projs }) => {
           if (projs) {
             const map: Record<string, { project_code: string; project_name: string }> = {};
             projs.forEach(p => { map[p.id] = p; });
@@ -88,9 +87,8 @@ export function PRList() {
     const valid = filtered.filter(p => selected.has(p.id) && (p.approval_status === "submitted" || p.approval_status === "under_budget_review"));
     if (valid.length === 0) { toast.error("None of the selected PRs are ready for approval"); return; }
     setBulkLoading("approve");
-    const supabase = createClient();
     const ids = valid.map(p => p.id);
-    const { error } = await supabase.from("procurement_prs").update({ approval_status: "approved", approved_at: new Date().toISOString() }).in("id", ids);
+    const { error } = await updatePrsByIds({ approval_status: "approved", approved_at: new Date().toISOString() }, ids);
     if (error) { toast.error(error.message); setBulkLoading(""); return; }
     toast.success(`${ids.length} PRs approved`);
     setSelected(new Set());
@@ -103,8 +101,7 @@ export function PRList() {
     const valid = filtered.filter(p => selected.has(p.id) && p.approval_status === "approved");
     if (valid.length === 0) { toast.error("Only approved PRs can be closed"); return; }
     setBulkLoading("close");
-    const supabase = createClient();
-    const { error } = await supabase.from("procurement_prs").update({ approval_status: "closed" }).in("id", valid.map(p => p.id));
+    const { error } = await updatePrsByIds({ approval_status: "closed" }, valid.map(p => p.id));
     if (error) { toast.error(error.message); setBulkLoading(""); return; }
     toast.success(`${valid.length} PRs closed`);
     setSelected(new Set());

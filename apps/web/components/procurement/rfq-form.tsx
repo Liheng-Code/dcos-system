@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { insertRfq, insertRfqSuppliers, listActiveSuppliers, listApprovedPrs, listPrItemsByPrId } from "@/lib/procurement/procurement-service";
 import { AlertTriangle, ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -46,10 +46,9 @@ export function RFQForm() {
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_prs").select("id, pr_number").in("approval_status", ["approved", "closed"]).order("created_at", { ascending: false }),
-      supabase.from("procurement_suppliers").select("id, supplier_name, pq_status, pq_expires_at").eq("status", "active").order("supplier_name"),
+      listApprovedPrs(),
+      listActiveSuppliers("id, supplier_name, pq_status, pq_expires_at"),
     ]).then(([prRes, supRes]) => {
       if (prRes.data) setPrs(prRes.data as PRSummary[]);
       if (supRes.data) {
@@ -60,12 +59,7 @@ export function RFQForm() {
   }, []);
 
   async function loadPRItems(prId: string) {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("procurement_pr_items")
-      .select("id, line_no, item_code, item_description, unit, quantity")
-      .eq("pr_id", prId)
-      .order("line_no");
+    const { data } = await listPrItemsByPrId(prId, "id, line_no, item_code, item_description, unit, quantity");
     if (data) setPrItems(data as PRItem[]);
     else setPrItems([]);
   }
@@ -93,20 +87,15 @@ export function RFQForm() {
     if (selectedSuppliers.length === 0) { toast.error("Select at least one supplier"); return; }
 
     setSaving(true);
-    const supabase = createClient();
 
-    const { data: rfqResult, error: rfqError } = await supabase
-      .from("procurement_rfqs")
-      .insert([{
+    const { data: rfqResult, error: rfqError } = await insertRfq({
         rfq_number: `RFQ-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
         pr_id: form.pr_id,
         response_deadline: form.response_deadline || null,
         evaluation_method: form.evaluation_method,
         status: "draft",
         notes: form.notes || null,
-      }])
-      .select("id")
-      .single();
+      });
 
     if (rfqError) { toast.error(rfqError.message); setSaving(false); return; }
 
@@ -117,7 +106,7 @@ export function RFQForm() {
       supplier_id: supId,
     }));
 
-    const { error: supErr } = await supabase.from("procurement_rfq_suppliers").insert(supplierInserts);
+    const { error: supErr } = await insertRfqSuppliers(supplierInserts);
     if (supErr) { toast.error(supErr.message); setSaving(false); return; }
 
     toast.success("RFQ created");

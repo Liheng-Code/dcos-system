@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listDeliveryNotes } from "@/lib/procurement/procurement-service";
 import { Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +37,7 @@ export function GoodsReceiptList() {
   const [loading, setLoading] = useState(true);
 
   function fetchDeliveryNotes() {
-    const supabase = createClient();
-    supabase.from("procurement_delivery_notes").select("*, procurement_pos!procurement_delivery_notes_po_id_fkey(po_number)").order("created_at", { ascending: false }).then(({ data }) => {
+    listDeliveryNotes().then(({ data }) => {
       if (data) setDns(data as DeliveryNoteWithPO[]);
       setLoading(false);
     });

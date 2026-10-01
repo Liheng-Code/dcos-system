@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDeliveryNote, insertGoodsReceipt, listPoItemsByPoId, listPosAwaitingDeliveryBySupplierId, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-service";
 import { Loader2, Truck, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,7 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
 
   useEffect(() => {
     if (!supplierId) return;
-    const supabase = createClient();
-    supabase.from("procurement_pos").select("id, po_number, delivery_date_expected").eq("supplier_id", supplierId).in("status", ["issued", "partially_delivered"]).order("created_at", { ascending: false }).then(({ data }) => {
+    listPosAwaitingDeliveryBySupplierId(supplierId).then(({ data }) => {
       if (data) setPos(data as IssuedPO[]);
       setLoading(false);
     });
@@ -48,8 +47,7 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
     setSelectedPO(poId);
     setItems([]);
     setDeliverQty({});
-    const supabase = createClient();
-    const { data: poItems } = await supabase.from("procurement_po_items").select("id, line_no, item_description, unit, quantity_ordered, quantity_delivered").eq("po_id", poId).order("line_no");
+    const { data: poItems } = await listPoItemsByPoId(poId, "id, line_no, item_description, unit, quantity_ordered, quantity_delivered");
     if (poItems) {
       const mapped = poItems.map(i => ({
         id: i.id,
@@ -78,16 +76,15 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
     if (!hasQty) { toast.error("Enter delivery quantity for at least one item"); return; }
 
     setSubmitting(true);
-    const supabase = createClient();
 
-    const { data: dn, error: dnError } = await supabase.from("procurement_delivery_notes").insert({
+    const { data: dn, error: dnError } = await insertDeliveryNote({
       po_id: selectedPO,
       supplier_id: supplierId,
       delivery_note_ref: dnRef || null,
       delivery_date: deliveryDate,
       received_by: null,
       status: "delivered",
-    }).select("id").single();
+    });
 
     if (dnError) { toast.error(dnError.message); setSubmitting(false); return; }
 
@@ -95,7 +92,7 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
       const qty = parseFloat(deliverQty[item.id]) || 0;
       if (qty <= 0) continue;
 
-      const { error: grError } = await supabase.from("procurement_goods_receipts").insert({
+      const { error: grError } = await insertGoodsReceipt({
         delivery_note_id: dn.id,
         po_item_id: item.po_item_id,
         quantity_received: qty,
@@ -107,8 +104,8 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
 
       const newDelivered = item.quantity_delivered + qty;
       const newStatus = newDelivered >= item.quantity_ordered ? "delivered" : "partially_delivered";
-      await supabase.from("procurement_po_items").update({ quantity_delivered: newDelivered, quantity_accepted: newDelivered }).eq("id", item.po_item_id);
-      await supabase.from("procurement_pos").update({ status: newStatus }).eq("id", selectedPO);
+      await updatePoItemById({ quantity_delivered: newDelivered, quantity_accepted: newDelivered }, item.po_item_id);
+      await updatePoById({ status: newStatus }, selectedPO);
     }
 
     toast.success("Delivery notice submitted");
@@ -119,7 +116,7 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
     setDeliveryDate(new Date().toISOString().slice(0, 10));
     setSubmitting(false);
 
-    const { data } = await supabase.from("procurement_pos").select("id, po_number, delivery_date_expected").eq("supplier_id", supplierId).in("status", ["issued", "partially_delivered"]).order("created_at", { ascending: false });
+    const { data } = await listPosAwaitingDeliveryBySupplierId(supplierId);
     if (data) setPos(data as IssuedPO[]);
   }
 

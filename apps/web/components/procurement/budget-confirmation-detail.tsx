@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { getBudgetConfirmationByPrId, getPrById, getProjectById, listBudgetConfirmationItemsByBcId, listProfilesByIds } from "@/lib/procurement/procurement-service";
 import { Loader2, ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,15 +81,14 @@ export function BudgetConfirmationDetail({ prId }: { prId: string }) {
   const [names, setNames] = useState({ preparedBy: "", verifiedBy: "", approvedBy: "" });
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("procurement_prs").select("pr_number, project_id").eq("id", prId).single(),
-      supabase.from("procurement_budget_confirmations").select("*").eq("pr_id", prId).single(),
+      getPrById(prId, "pr_number, project_id"),
+      getBudgetConfirmationByPrId(prId),
     ]).then(async ([prRes, bcRes]) => {
       if (prRes.data) {
         setPrNumber(prRes.data.pr_number);
         if (prRes.data.project_id) {
-          const { data: proj } = await supabase.from("projects").select("project_name").eq("id", prRes.data.project_id).single();
+          const { data: proj } = await getProjectById(prRes.data.project_id, "project_name");
           if (proj) setProjectName(proj.project_name);
         }
       }
@@ -97,12 +96,12 @@ export function BudgetConfirmationDetail({ prId }: { prId: string }) {
         const record = bcRes.data as BCRecord;
         setBc(record);
 
-        const { data: itemsData } = await supabase.from("procurement_budget_confirmation_items").select("*").eq("bc_id", record.id).order("line_no");
+        const { data: itemsData } = await listBudgetConfirmationItemsByBcId(record.id);
         if (itemsData) setItems(itemsData as BCItem[]);
 
         const ids = [record.prepared_by, record.verified_by, record.approved_by].filter(Boolean) as string[];
         if (ids.length > 0) {
-          const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", ids);
+          const { data: profiles } = await listProfilesByIds(ids);
           const byId = new Map((profiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name]));
           setNames({
             preparedBy: record.prepared_by ? byId.get(record.prepared_by) ?? "" : "",

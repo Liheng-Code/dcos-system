@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getRfqById, insertQuotation, insertQuotationItems, listPrItemsByPrId, listRfqSuppliersBySupplierId, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-service";
 import { Loader2, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -42,8 +42,7 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
   useEffect(() => {
     if (!supplierId) return;
     setLoading(true);
-    const supabase = createClient();
-    supabase.from("procurement_rfq_suppliers").select("*, procurement_rfqs(rfq_number, issue_date, response_deadline, status)").eq("supplier_id", supplierId).order("invited_at", { ascending: false }).then(({ data }) => {
+    listRfqSuppliersBySupplierId(supplierId).then(({ data }) => {
       if (data) setRfqs(data as unknown as RFQSummary[]);
       setLoading(false);
     });
@@ -51,10 +50,9 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
 
   async function startResponse(rfqId: string) {
     setRespondingTo(rfqId);
-    const supabase = createClient();
-    const { data: rfq } = await supabase.from("procurement_rfqs").select("pr_id").eq("id", rfqId).single();
+    const { data: rfq } = await getRfqById(rfqId, "pr_id");
     if (rfq?.pr_id) {
-      const { data: items } = await supabase.from("procurement_pr_items").select("id, line_no, item_description, unit, quantity").eq("pr_id", rfq.pr_id).order("line_no");
+      const { data: items } = await listPrItemsByPrId(rfq.pr_id, "id, line_no, item_description, unit, quantity");
       if (items) {
         setPrItems(items as PRItem[]);
         const initial: Record<string, { unit_price: string; delivery_date: string }> = {};
@@ -80,7 +78,6 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
     if (missing) { toast.error("Enter unit price for all items"); return; }
 
     setSubmitting(true);
-    const supabase = createClient();
 
     const itemsPayload = prItems.map(item => ({
       pr_item_id: item.id,
@@ -96,7 +93,7 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
 
     const totalAmount = itemsPayload.reduce((s, i) => s + i.total, 0);
 
-    const { data: quote, error } = await supabase.from("procurement_quotations").insert({
+    const { data: quote, error } = await insertQuotation({
       rfq_id: respondingTo,
       supplier_id: supplierId,
       quotation_ref: quoteRef,
@@ -105,21 +102,18 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
       total_amount: totalAmount,
       status: "pending",
       procurement_quotation_items: itemsPayload,
-    }).select("id").single();
+    });
 
     if (error) { toast.error(error.message); setSubmitting(false); return; }
 
-    await supabase.from("procurement_quotation_items").insert(
-      itemsPayload.map(i => ({ ...i, quotation_id: quote.id }))
-    );
+    await insertQuotationItems(itemsPayload.map(i => ({ ...i, quotation_id: quote.id })));
 
-    await supabase.from("procurement_rfq_suppliers").update({ responded: true }).eq("rfq_id", respondingTo).eq("supplier_id", supplierId);
+    await updateRfqSuppliersByRfqIdAndSupplierId({ responded: true }, respondingTo, supplierId);
 
     toast.success("Quotation submitted");
     cancelResponse();
 
-    const supabase2 = createClient();
-    const { data } = await supabase2.from("procurement_rfq_suppliers").select("*, procurement_rfqs(rfq_number, issue_date, response_deadline, status)").eq("supplier_id", supplierId).order("invited_at", { ascending: false });
+    const { data } = await listRfqSuppliersBySupplierId(supplierId);
     if (data) setRfqs(data as unknown as RFQSummary[]);
     setSubmitting(false);
   }

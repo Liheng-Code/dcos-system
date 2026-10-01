@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds, listPrsByProjectId } from "@/lib/procurement/procurement-service";
 import { Loader2, ShoppingCart, Hash, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -71,24 +71,16 @@ export function RaisePrFromBoqDialog({
   }[]>([]);
 
   const generatePrNumber = useCallback(async () => {
-    const supabase = createClient();
     let pc = projectCode ?? "";
     let cc = companyCode ?? "";
     if (!pc || !cc) {
-      const { data: proj } = await supabase
-        .from("projects")
-        .select("project_code, company_code")
-        .eq("id", projectId)
-        .single();
+      const { data: proj } = await getProjectById(projectId, "project_code, company_code");
       if (proj) {
         pc = proj.project_code;
         cc = proj.company_code ?? "";
       }
     }
-    const { data: existingPRs } = await supabase
-      .from("procurement_prs")
-      .select("pr_number")
-      .eq("project_id", projectId);
+    const { data: existingPRs } = await listPrsByProjectId(projectId);
     const prefix = `${pc}-${cc || "DCOS"}-PR-`;
     let maxSeq = 0;
     for (const pr of (existingPRs ?? [])) {
@@ -103,8 +95,7 @@ export function RaisePrFromBoqDialog({
   useEffect(() => {
     if (!open || boqItemIds.length === 0) return;
     setLoading(true);
-    const supabase = createClient();
-    supabase.from("qs_v_boq_requisition_status").select("*").in("boq_item_id", boqItemIds).then((boqRes) => {
+    listBoqRequisitionStatusByBoqItemIds(boqItemIds).then((boqRes) => {
       if (boqRes.error) { toast.error(boqRes.error.message); return; }
       const rows = (boqRes.data ?? []) as BoqItemForPr[];
       setSourceItems(rows);
@@ -127,8 +118,7 @@ export function RaisePrFromBoqDialog({
     if (projectLocation) {
       setForm(prev => ({ ...prev, ship_to: projectLocation }));
     } else {
-      const supabase = createClient();
-      supabase.from("projects").select("location").eq("id", projectId).single().then(({ data }) => {
+      getProjectById(projectId, "location").then(({ data }) => {
         if (data?.location) setForm(prev => ({ ...prev, ship_to: data.location }));
       });
     }
@@ -170,12 +160,8 @@ export function RaisePrFromBoqDialog({
     }
 
     setSaving(true);
-    const supabase = createClient();
 
-    const { data: prData, error: prError } = await supabase
-      .from("procurement_prs")
-      .insert([
-        {
+    const { data: prData, error: prError } = await insertPr({
           pr_number: generatedPrNumber,
           project_id: projectId,
           preparation_date: form.preparation_date || null,
@@ -183,10 +169,7 @@ export function RaisePrFromBoqDialog({
           ship_to: form.ship_to || null,
           priority: form.priority,
           notes: form.purpose || null,
-        },
-      ])
-      .select("id")
-      .single();
+        });
 
     if (prError) {
       toast.error(prError.message);
@@ -210,7 +193,7 @@ export function RaisePrFromBoqDialog({
       notes: item.notes || null,
     }));
 
-    const { error: itemsError } = await supabase.from("procurement_pr_items").insert(itemInserts);
+    const { error: itemsError } = await insertPrItems(itemInserts);
 
     if (itemsError) {
       toast.error(itemsError.message);

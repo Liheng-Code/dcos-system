@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertQsBoqItem, updateQsBoqItemById } from "@/lib/procurement/procurement-service";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,6 @@ export function BoqItemEditor({ item: rawItem, sections, onSaved, onCancel }: { 
     e.preventDefault();
     if (!description.trim()) { toast.error("Description is required"); return; }
     setSaving(true);
-    const supabase = createClient();
 
     const payload: Record<string, unknown> = {
       project_id: (item.project_id as string),
@@ -60,12 +59,12 @@ export function BoqItemEditor({ item: rawItem, sections, onSaved, onCancel }: { 
     };
 
     if (isNew) {
-      const { data, error } = await supabase.from("qs_boq_items").insert([payload]).select().single();
+      const { data, error } = await insertQsBoqItem(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Item created");
       onSaved(data);
     } else {
-      const { data, error } = await supabase.from("qs_boq_items").update(payload).eq("id", item.id).select().single();
+      const { data, error } = await updateQsBoqItemById(payload, item.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Item updated");
       onSaved(data);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listActiveSuppliers } from "@/lib/procurement/procurement-service";
 import { Loader2, Building2 } from "lucide-react";
 import { SupplierPOView } from "./supplier-po-view";
 import { SupplierRFQResponse } from "./supplier-rfq-response";
@@ -28,8 +28,7 @@ export function SupplierPortal() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("procurement_suppliers").select("id, supplier_name, supplier_code").eq("status", "active").order("supplier_name").then(({ data }) => {
+    listActiveSuppliers("id, supplier_name, supplier_code").then(({ data }) => {
       if (data) setSuppliers(data as Supplier[]);
       setLoading(false);
     });
