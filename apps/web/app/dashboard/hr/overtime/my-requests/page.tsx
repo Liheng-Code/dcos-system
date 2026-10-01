@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { OTRequestDetail } from "@/components/hr/overtime/ot-request-detail";
 import { toast } from "sonner";
 import { Plus, Clock, FileText, Eye, Send, XCircle, LogOut, Loader2 } from "lucide-react";
+import { listOvertimeRequestsByEmployeeId } from "@/lib/hr/hr-queries";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -91,11 +92,7 @@ export default function OTMyRequestsPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setLoading(false); return; }
-      supabase
-        .from("overtime_requests")
-        .select("*, approvals:overtime_approvals(approver_level, status, label, approver_id, approver:profiles!overtime_approvals_approver_id_fkey(full_name))")
-        .eq("employee_id", user.id)
-        .order("created_at", { ascending: false })
+      listOvertimeRequestsByEmployeeId(user.id)
         .then(({ data, error }) => {
           if (data) setRequests(data);
           setLoading(false);

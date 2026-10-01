@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listPerformanceReviews, listPerformanceReviewsOrderedByReviewPeriodStart } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +27,9 @@ export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch performance review statistics
-    supabase
-      .from("performance_reviews")
-      .select("status, overall_score")
+    listPerformanceReviews()
       .then(({ data }) => {
         if (data) {
           const completed = data.filter((r) => r.status === "completed").length;
@@ -50,19 +47,7 @@ export default function PerformancePage() {
       });
 
     // Fetch recent reviews
-    supabase
-      .from("performance_reviews")
-      .select(`
-        id,
-        review_period_start,
-        review_period_end,
-        review_type,
-        overall_score,
-        status,
-        profiles!inner(full_name, employee_id)
-      `)
-      .order("review_period_start", { ascending: false })
-      .limit(50)
+    listPerformanceReviewsOrderedByReviewPeriodStart()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setReviews(data as any);

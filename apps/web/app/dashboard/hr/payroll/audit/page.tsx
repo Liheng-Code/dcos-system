@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listPayrollAuditLog } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -74,12 +74,7 @@ export default function PayrollAuditPage() {
   const [actionFilter, setActionFilter] = useState("");
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("payroll_audit_log")
-      .select("id, period_id, user_id, role_at_time, action, record_type, old_value, new_value, reason, ip_address, created_at, profiles!user_id(full_name), payroll_periods!period_id(label, period_year, period_month)")
-      .order("created_at", { ascending: false })
-      .limit(200)
+    listPayrollAuditLog()
       .then(({ data, error }) => {
         if (error) { console.error(error); setLoading(false); return; }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

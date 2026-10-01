@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, User, Award, AlertTriangle, Pencil } from "lucide-react";
+import { getProfileById, listUserRolesByUserIdWithRoleCodeHRManagerAdmin } from "@/lib/hr/hr-queries";
 
 interface ChainStep {
   stepNumber: number;
@@ -36,11 +37,8 @@ export default function OtApprovalChainPage() {
       const uid = userData.user.id;
 
       const [profileRes, managerRoleRes] = await Promise.all([
-        supabase.from("profiles").select("role").eq("id", uid).single(),
-        supabase.from("user_roles")
-          .select("role_code")
-          .eq("user_id", uid)
-          .in("role_code", ["HR_Manager", "admin"]),
+        getProfileById(uid, "role"),
+        listUserRolesByUserIdWithRoleCodeHRManagerAdmin(uid),
       ]);
 
       setCanManage(

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listPosNewestFirst, updatePosByIds } from "@/lib/procurement/procurement-service";
+import { listPosNewestFirst, updatePosByIds } from "@/lib/procurement/procurement-queries";
 import { Search, Plus, Loader2, Eye, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { listProfilesOrderedByFullName } from "@/lib/hr/hr-queries";
 import { STANDARD_POSITION_GROUPS } from "@/lib/hr/standard-positions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,11 +95,7 @@ export default function NewEmployeePage() {
   });
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("id, full_name")
-      .order("full_name")
+    listProfilesOrderedByFullName("id, full_name")
       .then(({ data }) => {
         setAllEmployees((data ?? []) as { id: string; full_name: string }[]);
         setLoading(false);

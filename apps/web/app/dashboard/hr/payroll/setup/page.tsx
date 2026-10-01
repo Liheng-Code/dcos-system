@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listEmployeeSalaryStructuresWithEffectiveTo, listProfilesOrderedByFullName } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,9 @@ export default function SalarySetupPage() {
   const [selected, setSelected] = useState<Employee | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("profiles").select("id, full_name, department, job_title, employment_type").order("full_name"),
-      supabase.from("employee_salary_structures").select("employee_id").is("effective_to", null),
+      listProfilesOrderedByFullName("id, full_name, department, job_title, employment_type"),
+      listEmployeeSalaryStructuresWithEffectiveTo("employee_id"),
     ]).then(([empRes, structRes]) => {
       const empIds = new Set((structRes.data || []).map((r: { employee_id: string }) => r.employee_id));
       const rows = ((empRes.data || []) as Employee[]).map((e) => ({
@@ -117,11 +116,7 @@ export default function SalarySetupPage() {
           onClose={() => {
             setSelected(null);
             // Refresh hasStructure flags
-            const supabase = createClient();
-            supabase
-              .from("employee_salary_structures")
-              .select("employee_id")
-              .is("effective_to", null)
+            listEmployeeSalaryStructuresWithEffectiveTo("employee_id")
               .then(({ data }) => {
                 const ids = new Set((data || []).map((r: { employee_id: string }) => r.employee_id));
                 setEmployees((prev) => prev.map((e) => ({ ...e, hasStructure: ids.has(e.id) })));

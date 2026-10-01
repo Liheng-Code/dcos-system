@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listCandidates, listCandidatesOrderedByCreatedAt, listInterviews, listJobRequisitions, listJobRequisitionsOrderedByCreatedAt } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,12 +56,9 @@ export default function RecruitmentPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch job requisition statistics
-    supabase
-      .from("job_requisitions")
-      .select("status")
+    listJobRequisitions()
       .then(({ data }) => {
         if (data) {
           const openPositions = data.filter((r) => r.status === "open").length;
@@ -73,27 +70,14 @@ export default function RecruitmentPage() {
       });
 
     // Fetch requisitions
-    supabase
-      .from("job_requisitions")
-      .select(`
-        id,
-        job_title,
-        status,
-        created_at,
-        target_hire_date,
-        departments(dept_name)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(20)
+    listJobRequisitionsOrderedByCreatedAt()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setRequisitions(data as any);
       });
 
     // Fetch candidates statistics and records
-    supabase
-      .from("candidates")
-      .select("status")
+    listCandidates()
       .then(({ data }) => {
         if (data) {
           const scheduled = data.filter((c) => c.status === "interview").length;
@@ -106,38 +90,14 @@ export default function RecruitmentPage() {
       });
 
     // Fetch recent candidates
-    supabase
-      .from("candidates")
-      .select(`
-        id,
-        candidate_name,
-        email,
-        current_company,
-        status,
-        created_at,
-        job_requisitions(job_title)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(20)
+    listCandidatesOrderedByCreatedAt()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setCandidates(data as any);
       });
 
     // Fetch interviews
-    supabase
-      .from("interviews")
-      .select(`
-        id,
-        interview_type,
-        interview_date,
-        score,
-        recommendation,
-        status,
-        candidates(candidate_name)
-      `)
-      .order("interview_date", { ascending: false })
-      .limit(20)
+    listInterviews()
       .then(({ data }) => {
         if (data) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

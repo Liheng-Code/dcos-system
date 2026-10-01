@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listPayrollEntries, listPayrollPeriods } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,12 +66,11 @@ export default function PayrollRunsPage() {
   const [statusFilter, setStatusFilter] = useState("");
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch periods + aggregated entry data
     Promise.all([
-      supabase.from("payroll_periods").select("*").order("period_year", { ascending: false }).order("period_month", { ascending: false }),
-      supabase.from("payroll_entries").select("period_id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, net_salary"),
+      listPayrollPeriods("*"),
+      listPayrollEntries(),
     ]).then(([pRes, eRes]) => {
       const periods = (pRes.data ?? []) as Record<string, unknown>[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

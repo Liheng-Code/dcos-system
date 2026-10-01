@@ -35,6 +35,7 @@ import {
   QrCode,
   Settings2,
 } from "lucide-react";
+import { countLeaveRequestsByEmployeeIdWithStatusSubmitted, countOvertimeApprovalsByApproverIdWithStatusPending, countOvertimeNotificationsByRecipientIdWithIsRead, countPayrollNotificationsByRecipientIdWithSentAt, listLeaveRequestsByFilterWithStatusSubmittedPendingCancellation } from "@/lib/hr/hr-queries";
 
 // ── Payroll sub-nav (shown only when inside /hr/payroll) ─────────────────────
 const PAYROLL_ALL_GROUPS = [
@@ -187,11 +188,7 @@ export default function HRLayout({ children }: { children: ReactNode }) {
       if (data.user) {
         const uid = data.user.id;
         checkHrPermissions(supabase, uid).then(setPerms);
-        supabase
-          .from("leave_requests")
-          .select("approver_1_id, approver_1_status, approver_2_id, approver_2_status, status")
-          .or(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`)
-          .in("status", ["submitted", "pending_cancellation"])
+        listLeaveRequestsByFilterWithStatusSubmittedPendingCancellation(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`)
           .then(({ data: rows }) => {
             if (!rows) return;
             const count = (rows as ApprovalNavRow[]).filter((req) => {
@@ -202,37 +199,21 @@ export default function HRLayout({ children }: { children: ReactNode }) {
             }).length;
             setApprovalCount(count);
           });
-        supabase
-          .from("leave_requests")
-          .select("id", { count: "exact", head: true })
-          .eq("employee_id", uid)
-          .eq("status", "submitted")
+        countLeaveRequestsByEmployeeIdWithStatusSubmitted(uid)
           .then(({ count }) => {
             if (count !== null) setMyPendingCount(count);
           });
-        supabase
-          .from("overtime_notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("recipient_id", uid)
-          .eq("is_read", false)
+        countOvertimeNotificationsByRecipientIdWithIsRead(uid)
           .then(({ count }) => {
             if (count !== null) setOtNotifCount(count);
           });
-        supabase
-          .from("overtime_approvals")
-          .select("id", { count: "exact", head: true })
-          .eq("approver_id", uid)
-          .eq("status", "pending")
+        countOvertimeApprovalsByApproverIdWithStatusPending(uid)
           .then(({ count }) => {
             if (count !== null) setOtApprovalCount(count);
           });
         // payroll_notifications has no is_read column — sent_at IS NULL is the unread marker
         // (see supabase/migrations/20260618000004_payroll_enhancements.sql §4).
-        supabase
-          .from("payroll_notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("recipient_id", uid)
-          .is("sent_at", null)
+        countPayrollNotificationsByRecipientIdWithSentAt(uid)
           .then(({ count }) => {
             if (count !== null) setPayrollNotifCount(count);
           });

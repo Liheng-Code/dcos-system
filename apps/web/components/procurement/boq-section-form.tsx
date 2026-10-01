@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { insertQsBoqSection, updateQsBoqSectionById } from "@/lib/procurement/procurement-service";
+import { insertQsBoqSection, updateQsBoqSectionById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

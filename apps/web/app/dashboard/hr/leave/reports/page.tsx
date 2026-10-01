@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listLeaveBalancesByFiscalYear } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ReportRow {
@@ -50,15 +50,7 @@ export default function LeaveReportsPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const supabase = createClient();
-      supabase
-        .from("leave_balances")
-        .select(`
-          allocated_days, used_days, remaining_days, carried_over_days,
-          profiles(full_name, employee_id, departments(name)),
-          leave_types(leave_name)
-        `)
-        .eq("fiscal_year", currentYear)
+      listLeaveBalancesByFiscalYear(currentYear)
         .then(({ data }) => {
           const mappedRows = ((data || []) as LeaveBalanceReportRecord[])
             .map((r) => {

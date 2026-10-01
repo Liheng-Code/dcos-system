@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listLeaveRequestsByStatusesAndStartDateToAndEndDateFrom, listLeaveTypesWithIsActiveOfIdAndLeaveNameAndColor, listProfilesOfDepartment } from "@/lib/hr/hr-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,10 +60,9 @@ export default function WhoIsOnLeavePage() {
 
   // Fetch filter options on mount
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("profiles").select("department").not("department", "is", null),
-      supabase.from("leave_types").select("id, leave_name, color").eq("is_active", true),
+      listProfilesOfDepartment(),
+      listLeaveTypesWithIsActiveOfIdAndLeaveNameAndColor(),
     ]).then(([deptRes, typeRes]) => {
       if (!deptRes.error) {
         const depts = [...new Set(deptRes.data.map((r: any) => r.department).filter(Boolean))].sort() as string[];
@@ -77,19 +76,9 @@ export default function WhoIsOnLeavePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const supabase = createClient();
 
     try {
-      let query = supabase
-        .from("leave_requests")
-        .select(`
-          id, start_date, end_date, days_requested, status, is_half_day, half_day_period,
-          profiles!leave_requests_employee_id_fkey(full_name, employee_id, department),
-          leave_types(leave_name, color)
-        `)
-        .in("status", statusFilter ? [statusFilter] : ["approved", "submitted"])
-        .lte("start_date", endDate)
-        .gte("end_date", startDate);
+      let query = listLeaveRequestsByStatusesAndStartDateToAndEndDateFrom(statusFilter ? [statusFilter] : ["approved", "submitted"], endDate, startDate);
 
       if (deptFilter) {
         query = query.eq("profiles!leave_requests_employee_id_fkey.department", deptFilter);

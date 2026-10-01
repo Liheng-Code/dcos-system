@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { listOvertimeAuditLog } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -68,15 +68,7 @@ export default function OtAuditPage() {
   const [actionFilter, setActionFilter] = useState("");
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("overtime_audit_log")
-      .select(`
-        id, ot_request_id, action, performed_by, details, created_at,
-        performer:profiles!overtime_audit_log_performed_by_fkey(full_name)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(200)
+    listOvertimeAuditLog()
       .then(({ data, error }) => {
         if (error) { console.error(error); setLoading(false); return; }
         setEvents(((data ?? []) as any[]).map((e) => ({

@@ -17,6 +17,7 @@ import {
   Trash2,
   Lock,
 } from "lucide-react";
+import { insertPayrollCostAllocations, listPayrollCostAllocationsWithStatusPendingConfirmedLocked, listPayrollEntriesByPeriodId, listPayrollPeriods, listProjects, updatePayrollCostAllocationById } from "@/lib/hr/hr-queries";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -97,8 +98,8 @@ export default function CostAllocationPage() {
     supabase.auth.getUser().then(({ data }) => { if (data.user) setCurrentUserId(data.user.id); });
 
     Promise.all([
-      supabase.from("payroll_periods").select("id, label, period_year, period_month, status").order("period_year", { ascending: false }).order("period_month", { ascending: false }),
-      supabase.from("projects").select("id, project_name").order("project_name").limit(100),
+      listPayrollPeriods("id, label, period_year, period_month, status"),
+      listProjects(),
     ]).then(([pRes, projRes]) => {
       const ps = (pRes.data ?? []) as Period[];
       setPeriods(ps);
@@ -115,12 +116,8 @@ export default function CostAllocationPage() {
     const supabase = createClient();
 
     Promise.all([
-      supabase.from("payroll_entries")
-        .select("id, gross_salary, total_nssf_er, employer_contributions, profiles!employee_id(full_name, department)")
-        .eq("period_id", selectedPeriodId),
-      supabase.from("payroll_cost_allocations")
-        .select("id, payroll_entry_id, project_id, wbs_element_id, task_id, department, allocation_method, allocation_percent, allocated_amount, is_overhead, status, note")
-        .in("status", ["pending", "confirmed", "locked"]),
+      listPayrollEntriesByPeriodId(selectedPeriodId),
+      listPayrollCostAllocationsWithStatusPendingConfirmedLocked(),
     ]).then(([eRes, aRes]) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const entries = (eRes.data ?? []) as any[];
@@ -250,10 +247,10 @@ export default function CostAllocationPage() {
       };
 
       if (alloc.id) {
-        const { error } = await supabase.from("payroll_cost_allocations").update(payload).eq("id", alloc.id);
+        const { error } = await updatePayrollCostAllocationById(payload, alloc.id);
         if (error) { toast.error(error.message); setSaving(false); return; }
       } else {
-        const { error, data } = await supabase.from("payroll_cost_allocations").insert(payload).select("id").single();
+        const { error, data } = await insertPayrollCostAllocations(payload);
         if (error) { toast.error(error.message); setSaving(false); return; }
         if (data) {
           setRows((prev) => prev.map((r) => r.entry_id !== entryId ? r : {

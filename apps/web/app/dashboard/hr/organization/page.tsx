@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createClient } from "@/lib/supabase/client";
+import { listDepartments, listPositions, listProfilesOrderedByFullName, listTeams, updateProfileById } from "@/lib/hr/hr-queries";
 import { cn } from "@/lib/utils";
 
 type EmployeeStatus = "active" | "inactive" | "resigned";
@@ -189,15 +189,11 @@ export default function OrganizationPage() {
     async function loadData() {
       setLoading(true);
       setError(null);
-      const supabase = createClient();
       const [profileRes, departmentRes, teamRes, positionRes] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id, employee_id, full_name, email, avatar_url, department, team_id, position_id, job_title, grade, level, report_to, status")
-          .order("full_name"),
-        supabase.from("departments").select("id, department_name").order("department_name"),
-        supabase.from("teams").select("id, team_name, department_id").order("team_name"),
-        supabase.from("positions").select("id, position_name, department_id, grade").order("position_name"),
+        listProfilesOrderedByFullName("id, employee_id, full_name, email, avatar_url, department, team_id, position_id, job_title, grade, level, report_to, status"),
+        listDepartments(),
+        listTeams(),
+        listPositions(),
       ]);
 
       if (cancelled) return;
@@ -349,9 +345,8 @@ export default function OrganizationPage() {
     }
 
     setSaving(true);
-    const supabase = createClient();
     const nextManager = managerDraft || null;
-    const { error: updateError } = await supabase.from("profiles").update({ report_to: nextManager }).eq("id", selected.id);
+    const { error: updateError } = await updateProfileById({ report_to: nextManager }, selected.id);
 
     if (updateError) {
       toast.error(updateError.message);

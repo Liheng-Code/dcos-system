@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createClient } from "@/lib/supabase/client";
+import { listAttendanceRecordsByEmployeeIdsAndAttendanceDateFromAndAttendanceDateTo, listProfilesWithStatusActive, listProfilesWithStatusActiveOfIdAndFullNameAndDepartment } from "@/lib/hr/hr-queries";
 
 interface ReportRow {
   employee_id: string;
@@ -49,19 +49,17 @@ export default function AttendanceReportsPage() {
   useEffect(() => { loadReport(); }, [year, month, department]);
 
   async function loadDepartments() {
-    const supabase = createClient();
-    const { data } = await supabase.from("profiles").select("department").eq("status", "active").not("department", "is", null);
+    const { data } = await listProfilesWithStatusActive();
     const unique = [...new Set((data ?? []).map(d => d.department as string))].sort();
     setDepartments(unique);
   }
 
   async function loadReport() {
     setLoading(true);
-    const supabase = createClient();
     const { first, last } = getMonthRange(year, month);
 
     // Get profiles
-    let query = supabase.from("profiles").select("id, full_name, department").eq("status", "active");
+    let query = listProfilesWithStatusActiveOfIdAndFullNameAndDepartment();
     if (department !== "all") query = query.eq("department", department);
     const { data: profiles } = await query.order("full_name");
 
@@ -70,12 +68,7 @@ export default function AttendanceReportsPage() {
     const ids = profiles.map(p => p.id);
 
     // Get attendance records for the month
-    const { data: records } = await supabase
-      .from("attendance_records")
-      .select("employee_id, attendance_date, attendance_type, hours_worked")
-      .in("employee_id", ids)
-      .gte("attendance_date", first)
-      .lte("attendance_date", last);
+    const { data: records } = await listAttendanceRecordsByEmployeeIdsAndAttendanceDateFromAndAttendanceDateTo(ids, first, last);
 
     // Aggregate per employee
     const reportRows: ReportRow[] = profiles.map(p => {

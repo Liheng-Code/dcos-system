@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { insertDeliveryNote, insertGoodsReceipt, listPoItemsByPoId, listPosAwaitingDeliveryBySupplierId, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-service";
+import { insertDeliveryNote, insertGoodsReceipt, listPoItemsByPoId, listPosAwaitingDeliveryBySupplierId, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Truck, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

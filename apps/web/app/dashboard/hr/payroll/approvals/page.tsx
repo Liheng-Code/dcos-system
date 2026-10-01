@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { listPayrollEntriesByPeriodIds, listPayrollPeriodsByStatuses } from "@/lib/hr/hr-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,14 +55,8 @@ export default function PayrollApprovalsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
 
-    const { data: periodRows } = await supabase
-      .from("payroll_periods")
-      .select("id, label, period_year, period_month, start_date, end_date, status, rejection_comment")
-      .in("status", AWAITING_STATUSES)
-      .order("period_year", { ascending: false })
-      .order("period_month", { ascending: false });
+    const { data: periodRows } = await listPayrollPeriodsByStatuses(AWAITING_STATUSES);
 
     const periodsRaw = (periodRows ?? []) as Omit<PendingPeriod, "employee_count" | "total_net">[];
 
@@ -73,10 +67,7 @@ export default function PayrollApprovalsPage() {
     }
 
     const periodIds = periodsRaw.map((p) => p.id);
-    const { data: entryRows } = await supabase
-      .from("payroll_entries")
-      .select("period_id, net_salary")
-      .in("period_id", periodIds);
+    const { data: entryRows } = await listPayrollEntriesByPeriodIds(periodIds);
 
     const agg: Record<string, { count: number; net: number }> = {};
     for (const e of (entryRows ?? []) as { period_id: string; net_salary: number }[]) {

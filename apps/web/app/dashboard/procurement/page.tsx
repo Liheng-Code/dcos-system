@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2, FileText, Package, Building2, CheckSquare, TrendingUp, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
-import { countApprovedSuppliersExpiringBy, countDeliveriesInTransit, countPosInApproval, countPrsAwaitingApproval, countSuppliers } from "@/lib/procurement/procurement-service";
+import { countApprovedSuppliersExpiringBy, countDeliveriesInTransit, countPosInApproval, countPrsAwaitingApproval, countSuppliers } from "@/lib/procurement/procurement-queries";
 
 export default function ProcurementDashboardPage() {
   const router = useRouter();

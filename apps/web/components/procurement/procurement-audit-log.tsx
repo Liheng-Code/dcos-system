@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listAuditLog } from "@/lib/procurement/procurement-service";
+import { listAuditLog } from "@/lib/procurement/procurement-queries";
 import { Loader2, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 

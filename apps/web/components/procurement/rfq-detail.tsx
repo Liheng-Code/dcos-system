@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { getPoByQuotationId, getPrById, getRfqById, insertPo, insertPoItems, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, updateOtherQuotationsOfRfq, updateQuotationById, updateRfqById, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-service";
+import { getPoByQuotationId, getPrById, getRfqById, insertPo, insertPoItems, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, updateOtherQuotationsOfRfq, updateQuotationById, updateRfqById, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-queries";
 
 interface RFQRecord {
   id: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertTosBrackets, insertTosDependentRelief, listTosBrackets, listTosDependentRelief, listTosExchangeRates, listTosFlatRates, updateTosBracketById, updateTosDependentReliefById, updateTosExchangeRateById, updateTosFlatRateById, upsertTosExchangeRates } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,12 +107,11 @@ export default function TaxConfigPage() {
   });
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("tos_brackets").select("*").order("effective_date", { ascending: false }).order("from_khr"),
-      supabase.from("tos_dependent_relief").select("*").order("effective_date", { ascending: false }),
-      supabase.from("tos_flat_rates").select("*").order("effective_date", { ascending: false }),
-      supabase.from("tos_exchange_rates").select("*").order("period_year", { ascending: false }).order("period_month", { ascending: false }),
+      listTosBrackets(),
+      listTosDependentRelief(),
+      listTosFlatRates(),
+      listTosExchangeRates(),
     ]).then(([bRes, rRes, frRes, erRes]) => {
       setBrackets((bRes.data ?? []) as Bracket[]);
       setRelief((rRes.data ?? []) as Relief[]);
@@ -162,16 +161,15 @@ export default function TaxConfigPage() {
     }
 
     setSaving(true);
-    const supabase = createClient();
     let hasError = false;
 
     for (const b of dirty) {
       const payload = { from_khr: b.from_khr, to_khr: b.to_khr, rate_percent: b.rate_percent, tolerance_khr: b.tolerance_khr ?? 0, effective_date: b.effective_date, status: b.status };
       if (b.id) {
-        const { error } = await supabase.from("tos_brackets").update(payload).eq("id", b.id);
+        const { error } = await updateTosBracketById(payload, b.id);
         if (error) { toast.error(error.message); hasError = true; }
       } else {
-        const { error, data } = await supabase.from("tos_brackets").insert(payload).select("id").single();
+        const { error, data } = await insertTosBrackets(payload);
         if (error) { toast.error(error.message); hasError = true; }
         else if (data) {
           setBrackets((prev) => prev.map((x) => x === b ? { ...x, id: data.id, isNew: false, isDirty: false } : x));
@@ -190,14 +188,13 @@ export default function TaxConfigPage() {
 
   async function saveRelief() {
     setSaving(true);
-    const supabase = createClient();
     for (const r of relief) {
       const payload = { relief_type: r.relief_type, amount_khr: r.amount_khr, effective_date: r.effective_date, status: r.status };
       if (r.id) {
-        const { error } = await supabase.from("tos_dependent_relief").update(payload).eq("id", r.id);
+        const { error } = await updateTosDependentReliefById(payload, r.id);
         if (error) { toast.error(error.message); setSaving(false); return; }
       } else {
-        const { error, data } = await supabase.from("tos_dependent_relief").insert(payload).select("id").single();
+        const { error, data } = await insertTosDependentRelief(payload);
         if (error) { toast.error(error.message); setSaving(false); return; }
         if (data) setRelief((prev) => prev.map((x) => x === r ? { ...x, id: data.id } : x));
       }
@@ -210,11 +207,10 @@ export default function TaxConfigPage() {
 
   async function saveFlatRates() {
     setSaving(true);
-    const supabase = createClient();
     for (const fr of flatRates) {
       const payload = { rate_type: fr.rate_type, rate_percent: fr.rate_percent, effective_date: fr.effective_date, status: fr.status };
       if (fr.id) {
-        const { error } = await supabase.from("tos_flat_rates").update(payload).eq("id", fr.id);
+        const { error } = await updateTosFlatRateById(payload, fr.id);
         if (error) { toast.error(error.message); setSaving(false); return; }
       }
     }
@@ -226,13 +222,12 @@ export default function TaxConfigPage() {
 
   async function saveExchangeRate() {
     setSaving(true);
-    const supabase = createClient();
     const payload = { period_year: currentRate.period_year, period_month: currentRate.period_month, rate_khr_per_usd: currentRate.rate_khr_per_usd, source: currentRate.source };
     if (currentRate.id) {
-      const { error } = await supabase.from("tos_exchange_rates").update(payload).eq("id", currentRate.id);
+      const { error } = await updateTosExchangeRateById(payload, currentRate.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
     } else {
-      const { error, data } = await supabase.from("tos_exchange_rates").upsert(payload, { onConflict: "period_year,period_month" }).select("id").single();
+      const { error, data } = await upsertTosExchangeRates(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       if (data) { setCurrentRate((p) => ({ ...p, id: data.id })); setExchangeRates((prev) => [{ ...currentRate, id: data.id }, ...prev.filter((r) => !(r.period_year === currentRate.period_year && r.period_month === currentRate.period_month))]); }
     }

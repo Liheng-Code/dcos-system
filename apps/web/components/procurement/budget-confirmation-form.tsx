@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getPrById, getProfileById, getProjectById, insertBudgetConfirmation, insertBudgetConfirmationItems, listBudgetCodeGroups, listBudgetCodesByIds, listBudgetConfirmationsByProjectId, listPrItemsByPrId, listQsBoqItemsByIds, updatePrById } from "@/lib/procurement/procurement-service";
+import { getPrById, getProfileById, getProjectById, insertBudgetConfirmation, insertBudgetConfirmationItems, listBudgetCodeGroups, listBudgetCodesByIds, listBudgetConfirmationsByProjectId, listPrItemsByPrId, listQsBoqItemsByIds, updatePrById } from "@/lib/procurement/procurement-queries";
 
 interface PRRecordForBC {
   id: string;

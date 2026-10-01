@@ -38,6 +38,7 @@ import {
   type DependentRelief,
   type NSSFRuleSimple,
 } from "@/components/hr/payroll/pit-calculator";
+import { deletePayrollEntryLinesByEntryId, getPayrollSettingWithKeyWorkingTime, getTosExchangeRateByPeriodYearAndPeriodMonth, insertPayrollAuditLog, insertPayrollEntryLines, listAttendanceRecordsByDateFromAndDateTo, listEmployeePayrollProfilesOrderedByEffectiveDate, listEmployeeSalaryStructuresWithEffectiveTo, listEmployeeTaxProfiles, listLeaveRequestsByEndDateFromAndStartDateToWithStatusApproved, listNssfRulesWithStatusActive, listPayrollComponentTypeCodes, listPayrollPeriods, listProfiles, listTimesheetEntriesByWeekStartDateFromAndWeekEndDateToWithStatusApproved, listTosBracketsWithStatusActive, listTosDependentReliefWithStatusActive, updatePayrollPeriodById, upsertPayrollEntry } from "@/lib/hr/hr-queries";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -623,16 +624,16 @@ function RunPayrollInner() {
     const mo = today.getMonth() + 1;
 
     Promise.all([
-      supabase.from("payroll_periods").select("*").order("period_year", { ascending: false }).order("period_month", { ascending: false }),
-      supabase.from("payroll_component_types").select("id, code, category, is_system, name"),
+      listPayrollPeriods("*"),
+      listPayrollComponentTypeCodes(),
       // Fetch active TOS brackets
-      supabase.from("tos_brackets").select("from_khr, to_khr, rate_percent, tolerance_khr").eq("status", "active").order("from_khr"),
+      listTosBracketsWithStatusActive(),
       // Fetch active dependent relief
-      supabase.from("tos_dependent_relief").select("relief_type, amount_khr").eq("status", "active"),
+      listTosDependentReliefWithStatusActive(),
       // Fetch exchange rate for current/most-recent period
-      supabase.from("tos_exchange_rates").select("rate_khr_per_usd").eq("period_year", yr).eq("period_month", mo).maybeSingle(),
+      getTosExchangeRateByPeriodYearAndPeriodMonth(yr, mo, "rate_khr_per_usd"),
       // Fetch active NSSF rules
-      supabase.from("nssf_rules").select("contribution_type, contributor, rate_percent, max_wage_base, apply_cap").eq("status", "active"),
+      listNssfRulesWithStatusActive(),
     ]).then(([pRes, ctRes, tosRes, reliefRes, erRes, nssfRes]) => {
       const ps = (pRes.data ?? []) as Period[];
       setPeriods(ps);
@@ -686,7 +687,7 @@ function RunPayrollInner() {
     const month = selectedPeriod.period_month;
 
     // Update exchange rate for this period if available in DB
-    const erRes = await supabase.from("tos_exchange_rates").select("rate_khr_per_usd").eq("period_year", year).eq("period_month", month).maybeSingle();
+    const erRes = await getTosExchangeRateByPeriodYearAndPeriodMonth(year, month, "rate_khr_per_usd");
     const periodExchangeRate = erRes.data ? Number(erRes.data.rate_khr_per_usd) : exchangeRate;
 
     const daysInMonth = getDaysInMonth(new Date(year, month - 1));
@@ -696,34 +697,17 @@ function RunPayrollInner() {
     const monthEnd   = format(new Date(year, month - 1, daysInMonth), "yyyy-MM-dd");
 
     const [empRes, structRes, otRes, leaveRes, attendRes, taxProfileRes, payrollProfileRes, settingsRes] = await Promise.all([
-      supabase.from("profiles").select("id, full_name, department, job_title"),
-      supabase.from("employee_salary_structures")
-        .select("employee_id, component_type_id, amount, payroll_component_types(code, category, is_taxable, is_system)")
-        .is("effective_to", null),
-      supabase.from("timesheet_entries")
-        .select("employee_id, ot_hours, ot_type, timesheets!inner(week_start_date, week_end_date, status)")
-        .gte("timesheets.week_start_date", monthStart)
-        .lte("timesheets.week_end_date", monthEnd)
-        .in("timesheets.status", ["approved"]),
-      supabase.from("leave_requests")
-        .select("employee_id, start_date, end_date")
-        .eq("status", "approved")
-        .gte("end_date", monthStart)
-        .lte("start_date", monthEnd),
-      supabase.from("attendance_records")
-        .select("employee_id, status")
-        .gte("date", monthStart)
-        .lte("date", monthEnd),
+      listProfiles("id, full_name, department, job_title"),
+      listEmployeeSalaryStructuresWithEffectiveTo("employee_id, component_type_id, amount, payroll_component_types(code, category, is_taxable, is_system)"),
+      listTimesheetEntriesByWeekStartDateFromAndWeekEndDateToWithStatusApproved(monthStart, monthEnd),
+      listLeaveRequestsByEndDateFromAndStartDateToWithStatusApproved(monthStart, monthEnd),
+      listAttendanceRecordsByDateFromAndDateTo(monthStart, monthEnd),
       // Fetch tax profiles for all employees
-      supabase.from("employee_tax_profiles")
-        .select("employee_id, tax_residency, marital_status, spouse_dependent, num_children")
-        .order("effective_date", { ascending: false }),
+      listEmployeeTaxProfiles("employee_id, tax_residency, marital_status, spouse_dependent, num_children"),
       // Fetch payroll profiles for currency awareness
-      supabase.from("employee_payroll_profiles")
-        .select("employee_id, currency")
-        .order("effective_date", { ascending: false }),
+      listEmployeePayrollProfilesOrderedByEffectiveDate(),
       // Fetch configured working days/hours per month (falls back to 26 days / 8 hours)
-      supabase.from("payroll_settings").select("value").eq("key", "working_time").maybeSingle(),
+      getPayrollSettingWithKeyWorkingTime(),
     ]);
 
     const workingTime = (settingsRes.data?.value ?? {}) as WorkingTimeSettings;
@@ -934,9 +918,7 @@ function RunPayrollInner() {
     const supabase = createClient();
 
     for (const row of preview) {
-      const { data: entry, error: entryErr } = await supabase
-        .from("payroll_entries")
-        .upsert({
+      const { data: entry, error: entryErr } = await upsertPayrollEntry({
           period_id: selectedPeriod.id,
           employee_id: row.employee_id,
           gross_salary: row.totalEarnings,
@@ -956,23 +938,21 @@ function RunPayrollInner() {
           status: "draft",
           calculated_at: new Date().toISOString(),
           calculated_by: currentUserId,
-        }, { onConflict: "period_id,employee_id" })
-        .select("id")
-        .single();
+        });
 
       if (entryErr || !entry) continue;
 
-      await supabase.from("payroll_entry_lines").delete().eq("entry_id", entry.id);
+      await deletePayrollEntryLinesByEntryId(entry.id);
       if (row.lines.length > 0) {
-        await supabase.from("payroll_entry_lines").insert(row.lines.map((l) => ({ entry_id: entry.id, ...l })));
+        await insertPayrollEntryLines(row.lines.map((l) => ({ entry_id: entry.id, ...l })));
       }
     }
 
     // Advance period to "calculated"
-    await supabase.from("payroll_periods").update({ status: "calculated" }).eq("id", selectedPeriod.id);
+    await updatePayrollPeriodById({ status: "calculated" }, selectedPeriod.id);
 
     // Log audit event
-    await supabase.from("payroll_audit_log").insert({
+    await insertPayrollAuditLog({
       period_id: selectedPeriod.id,
       user_id: currentUserId,
       action: "payroll_calculated",

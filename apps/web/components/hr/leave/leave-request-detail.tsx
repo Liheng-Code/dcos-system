@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format, eachDayOfInterval, parseISO } from "date-fns";
 import { insertLeaveTaskAlert } from "@/lib/hr/leave";
+import { deleteAttendanceRecordsByEmployeeIdAndAttendanceDatesWithAttendanceTypeLEAVE, getLeaveBalanceByEmployeeIdAndLeaveTypeIdAndFiscalYear, getLeaveRequestById, getProfileById, insertLeaveNotification, insertLeaveRequestComment, listLeaveRequestCommentsByLeaveRequestId, updateLeaveBalanceById, updateLeaveRequestById, upsertAttendanceRecords } from "@/lib/hr/hr-queries";
 
 interface LeaveRequest {
   id: string;
@@ -79,20 +80,8 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     });
 
     Promise.all([
-      supabase
-        .from("leave_requests")
-        .select(`
-          *,
-          profiles!leave_requests_employee_id_fkey(full_name, employee_id, email),
-          leave_types(leave_name, is_paid)
-        `)
-        .eq("id", requestId)
-        .single(),
-      supabase
-        .from("leave_request_comments")
-        .select("*, profiles(full_name)")
-        .eq("leave_request_id", requestId)
-        .order("created_at"),
+      getLeaveRequestById(requestId),
+      listLeaveRequestCommentsByLeaveRequestId(requestId),
     ]).then(([reqRes, commRes]) => {
       if (reqRes.data) setRequest(reqRes.data);
       if (commRes.data) setComments(commRes.data);
@@ -110,12 +99,8 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
 
   const queueNotification = async (eventType: string, recipientId: string, subject: string, body: string) => {
     const supabase = createClient();
-    const { data: rec } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", recipientId)
-      .single();
-    await supabase.from("leave_notifications").insert({
+    const { data: rec } = await getProfileById(recipientId, "full_name, email");
+    await insertLeaveNotification({
       leave_request_id: requestId,
       event_type: eventType,
       recipient_id: recipientId,
@@ -137,22 +122,14 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     }));
     // Upsert to handle partial overlaps safely
     for (const rec of records) {
-      await supabase.from("attendance_records").upsert(rec, {
-        onConflict: "employee_id, attendance_date",
-        ignoreDuplicates: false,
-      });
+      await upsertAttendanceRecords(rec);
     }
   };
 
   const rollbackAttendanceForLeave = async (supabase: ReturnType<typeof createClient>, employeeId: string, startDate: string, endDate: string) => {
     const dates = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
     const dateStrings = dates.map((d) => format(d, "yyyy-MM-dd"));
-    await supabase
-      .from("attendance_records")
-      .delete()
-      .eq("employee_id", employeeId)
-      .in("attendance_date", dateStrings)
-      .eq("attendance_type", "LEAVE");
+    await deleteAttendanceRecordsByEmployeeIdAndAttendanceDatesWithAttendanceTypeLEAVE(employeeId, dateStrings);
   };
 
   // ── Approve ───────────────────────────────────────────────
@@ -196,13 +173,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
       if (isFinalApproval) {
         updates.status = "approved";
         // Deduct balance: carried-over days first, then allocated
-        const { data: balance } = await supabase
-          .from("leave_balances")
-          .select("id, carried_over_days, allocated_days, used_days, remaining_days")
-          .eq("employee_id", request.employee_id)
-          .eq("leave_type_id", request.leave_type_id)
-          .eq("fiscal_year", new Date().getFullYear())
-          .single();
+        const { data: balance } = await getLeaveBalanceByEmployeeIdAndLeaveTypeIdAndFiscalYear(request.employee_id, request.leave_type_id, new Date().getFullYear());
 
         if (balance) {
           let remaining = request.days_requested;
@@ -218,16 +189,13 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
             newAllocated -= remaining;
           }
 
-          await supabase
-            .from("leave_balances")
-            .update({
+          await updateLeaveBalanceById({
               carried_over_days: Math.max(newCarried, 0),
               allocated_days: Math.max(newAllocated, 0),
               used_days: balance.used_days + request.days_requested,
               remaining_days: Math.max(balance.remaining_days - request.days_requested, 0),
               last_updated: now,
-            })
-            .eq("id", balance.id);
+            }, balance.id);
         }
 
         // Sync attendance: mark leave dates as LEAVE type
@@ -250,7 +218,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
         });
       }
 
-      await supabase.from("leave_requests").update(updates).eq("id", requestId);
+      await updateLeaveRequestById(updates, requestId);
       onStatusChange();
       onClose();
     } catch (err: any) {
@@ -274,7 +242,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
         ? { status: "rejected", approver_1_status: "rejected", approver_1_date: now, approver_1_notes: rejectNotes }
         : { status: "rejected", approver_2_status: "rejected", approver_2_date: now, approver_2_notes: rejectNotes };
 
-      await supabase.from("leave_requests").update(updates).eq("id", requestId);
+      await updateLeaveRequestById(updates, requestId);
 
       // Notify employee ③
       const rejectedBody = `Your ${request.leave_types.leave_name} request has been rejected. Reason: ${rejectNotes}`;
@@ -361,28 +329,22 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
 
     try {
       if (approve) {
-        await supabase.from("leave_requests").update({
+        await updateLeaveRequestById({
           status: "withdrawn",
           cancellation_approved_by: currentUserId,
           payroll_reversal_needed: true,
-        }).eq("id", requestId);
+        }, requestId);
 
         // Restore balance (carried-over first)
-        const { data: balance } = await supabase
-          .from("leave_balances")
-          .select("id, carried_over_days, allocated_days, used_days, remaining_days")
-          .eq("employee_id", request.employee_id)
-          .eq("leave_type_id", request.leave_type_id)
-          .eq("fiscal_year", new Date().getFullYear())
-          .single();
+        const { data: balance } = await getLeaveBalanceByEmployeeIdAndLeaveTypeIdAndFiscalYear(request.employee_id, request.leave_type_id, new Date().getFullYear());
 
         if (balance) {
           // Return days to remaining (simplified — full carryover logic would check original deduction)
-          await supabase.from("leave_balances").update({
+          await updateLeaveBalanceById({
             used_days: Math.max(balance.used_days - request.days_requested, 0),
             remaining_days: balance.remaining_days + request.days_requested,
             last_updated: new Date().toISOString(),
-          }).eq("id", balance.id);
+          }, balance.id);
         }
 
         // Rollback attendance records marked as LEAVE for these dates
@@ -393,7 +355,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
         await queueNotification("request_withdrawn", request.employee_id, "Your Leave Has Been Cancelled", `Your ${request.leave_types.leave_name} leave cancellation has been approved. ${request.days_requested} day(s) returned to your balance. Attendance records have been rolled back.`);
       } else {
         // Reject cancellation — revert to approved
-        await supabase.from("leave_requests").update({ status: "approved" }).eq("id", requestId);
+        await updateLeaveRequestById({ status: "approved" }, requestId);
         await queueNotification("cancellation_denied", request.employee_id, "Leave Cancellation Was Denied", `Your request to cancel your ${request.leave_types.leave_name} leave was denied. Your leave remains approved.`);
       }
 
@@ -410,7 +372,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     const supabase = createClient();
-    await supabase.from("leave_request_comments").insert({
+    await insertLeaveRequestComment({
       leave_request_id: requestId,
       commented_by: currentUserId,
       comment_text: newComment,
@@ -418,11 +380,7 @@ export default function LeaveRequestDetail({ requestId, onClose, onStatusChange 
     });
     setNewComment("");
     // Refresh comments
-    const { data } = await supabase
-      .from("leave_request_comments")
-      .select("*, profiles(full_name)")
-      .eq("leave_request_id", requestId)
-      .order("created_at");
+    const { data } = await listLeaveRequestCommentsByLeaveRequestId(requestId);
     setComments(data || []);
   };
 

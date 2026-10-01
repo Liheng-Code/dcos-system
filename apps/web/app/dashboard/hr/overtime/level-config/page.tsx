@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Save, Shield, AlertCircle } from "lucide-react";
+import { listOvertimeLevelConfig, updateOvertimeLevelConfigById } from "@/lib/hr/hr-queries";
 
 interface LevelConfig {
   id: string;
@@ -26,10 +27,7 @@ export default function OTLevelConfigPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase
-      .from("overtime_level_config")
-      .select("*")
-      .order("role_level")
+    listOvertimeLevelConfig()
       .then(({ data, error }) => {
         if (data) setConfigs(data);
         if (error) setError(error.message);
@@ -50,16 +48,13 @@ export default function OTLevelConfigPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     for (const cfg of configs) {
-      const { error } = await supabase
-        .from("overtime_level_config")
-        .update({
+      const { error } = await updateOvertimeLevelConfigById({
           ot_eligible: cfg.ot_eligible,
           max_hours_per_month: cfg.max_hours_per_month || null,
           require_supervisor_approval: cfg.require_supervisor_approval,
           is_active: cfg.is_active,
           updated_by: user?.id,
-        })
-        .eq("id", cfg.id);
+        }, cfg.id);
 
       if (error) {
         setError(error.message);

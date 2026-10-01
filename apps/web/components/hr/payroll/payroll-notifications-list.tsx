@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { listPayrollNotificationsByRecipientId, updatePayrollNotificationById, updatePayrollNotificationsByIds } from "@/lib/hr/hr-queries";
 
 // payroll_notifications has no dedicated is_read column (unlike procurement_notifications /
 // overtime_notifications). The only nullable status column is `sent_at` — treated here as the
@@ -42,12 +43,7 @@ export function PayrollNotificationsList() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { setLoading(false); return; }
-      supabase
-        .from("payroll_notifications")
-        .select("id, period_id, event_type, subject, body, queued_at, sent_at")
-        .eq("recipient_id", data.user.id)
-        .order("queued_at", { ascending: false })
-        .limit(50)
+      listPayrollNotificationsByRecipientId(data.user.id)
         .then(({ data: rows }) => {
           if (rows) setNotifications(rows as PayrollNotification[]);
           setLoading(false);
@@ -69,7 +65,7 @@ export function PayrollNotificationsList() {
     const ids = notifications.filter((n) => !n.sent_at).map((n) => n.id);
     if (ids.length === 0) return;
     const now = new Date().toISOString();
-    const { error } = await supabase.from("payroll_notifications").update({ sent_at: now }).in("id", ids);
+    const { error } = await updatePayrollNotificationsByIds({ sent_at: now }, ids);
     if (error) { toast.error(error.message); return; }
     setNotifications((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, sent_at: now } : n)));
     toast.success("All marked as read");
@@ -80,7 +76,7 @@ export function PayrollNotificationsList() {
     if (!n) return;
     const supabase = createClient();
     const nextSentAt = n.sent_at ? null : new Date().toISOString();
-    await supabase.from("payroll_notifications").update({ sent_at: nextSentAt }).eq("id", id);
+    await updatePayrollNotificationById({ sent_at: nextSentAt }, id);
     setNotifications((prev) => prev.map((x) => (x.id === id ? { ...x, sent_at: nextSentAt } : x)));
   }
 

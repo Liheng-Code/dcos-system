@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countOvertimeRecordsByOvertimeDateFromAndOvertimeDateToWithApproved, countProfilesWithStatusActive, countTimesheetsByWeekStartDateFromAndWeekEndDateToWithStatusApproved, countTosBracketsWithStatusActive, getTosExchangeRateByPeriodYearAndPeriodMonth, listEmployeeBankAccountsWithIsPrimary, listEmployeeNssfProfilesOfEmployeeId, listEmployeeTaxProfilesOfEmployeeId, listPayrollEntriesByPeriodIdOrderedByGrossSalary, listPayrollPeriods } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -91,12 +91,7 @@ export default function PayrollDashboardPage() {
   const [showAlerts, setShowAlerts] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("payroll_periods")
-      .select("id, label, status, period_year, period_month")
-      .order("period_year", { ascending: false })
-      .order("period_month", { ascending: false })
+    listPayrollPeriods("id, label, status, period_year, period_month")
       .then(({ data }) => {
         const rows = (data || []) as Period[];
         setPeriods(rows);
@@ -109,12 +104,7 @@ export default function PayrollDashboardPage() {
   useEffect(() => {
     if (!selectedPeriod) return;
     setLoadingEntries(true);
-    const supabase = createClient();
-    supabase
-      .from("payroll_entries")
-      .select("id, employee_id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, total_deductions, net_salary, status, profiles!employee_id (full_name, department)")
-      .eq("period_id", selectedPeriod.id)
-      .order("gross_salary", { ascending: false })
+    listPayrollEntriesByPeriodIdOrderedByGrossSalary(selectedPeriod.id, "id, employee_id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, total_deductions, net_salary, status, profiles!employee_id (full_name, department)")
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setEntries((data || []).map((r: any) => ({
@@ -132,7 +122,6 @@ export default function PayrollDashboardPage() {
   useEffect(() => {
     if (!selectedPeriod) return;
     setLoadingAlerts(true);
-    const supabase = createClient();
 
     const year = selectedPeriod.period_year;
     const month = selectedPeriod.period_month;
@@ -141,24 +130,18 @@ export default function PayrollDashboardPage() {
 
     Promise.all([
       // Employees with no tax profile
-      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "active"),
-      supabase.from("employee_tax_profiles").select("employee_id"),
-      supabase.from("employee_nssf_profiles").select("employee_id"),
-      supabase.from("employee_bank_accounts").select("employee_id").eq("is_primary", true),
+      countProfilesWithStatusActive(),
+      listEmployeeTaxProfilesOfEmployeeId(),
+      listEmployeeNssfProfilesOfEmployeeId(),
+      listEmployeeBankAccountsWithIsPrimary(),
       // Unapproved timesheets in period
-      supabase.from("timesheets").select("id", { count: "exact", head: true })
-        .neq("status", "approved")
-        .gte("week_start_date", monthStart)
-        .lte("week_end_date", monthEnd),
+      countTimesheetsByWeekStartDateFromAndWeekEndDateToWithStatusApproved(monthStart, monthEnd),
       // Pending overtime
-      supabase.from("overtime_records").select("id", { count: "exact", head: true })
-        .eq("approved", false)
-        .gte("overtime_date", monthStart)
-        .lte("overtime_date", monthEnd),
+      countOvertimeRecordsByOvertimeDateFromAndOvertimeDateToWithApproved(monthStart, monthEnd),
       // Exchange rate for period
-      supabase.from("tos_exchange_rates").select("id").eq("period_year", year).eq("period_month", month).maybeSingle(),
+      getTosExchangeRateByPeriodYearAndPeriodMonth(year, month, "id"),
       // Active TOS brackets
-      supabase.from("tos_brackets").select("id", { count: "exact", head: true }).eq("status", "active"),
+      countTosBracketsWithStatusActive(),
     ]).then(([activeRes, taxRes, nssfRes, bankRes, tsRes, otRes, erRes, tosRes]) => {
       const activeCount = activeRes.count ?? 0;
       const withTax  = new Set((taxRes.data ?? []).map((r: { employee_id: string }) => r.employee_id)).size;

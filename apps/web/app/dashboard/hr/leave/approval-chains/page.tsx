@@ -6,6 +6,7 @@ import { computeApprovalChainFromData, type ProfileData, type RoleData } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pencil, X } from "lucide-react";
+import { deleteLeaveApproverConfigByEmployeeIdWithConfigTypePersonal, getProfileByIdOfRole, insertLeaveApproverConfig, listLeaveApproverConfigWithConfigTypePersonalAndIsActive, listProfilesOrderedByFullName, listUserRoles, listUserRolesByUserIdWithRoleCodeHRManagerAdmin } from "@/lib/hr/hr-queries";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProfileRow {
@@ -173,17 +174,14 @@ export default function ApprovalChainsPage() {
     const uid = userData.user?.id;
 
     const [profilesRes, rolesRes, overridesRes, meRoleRes, meProfileRes] = await Promise.all([
-      supabase.from("profiles").select("id, full_name, email, job_title, report_to").order("full_name"),
-      supabase.from("user_roles").select("user_id, role_code, roles(code, name, level, type)"),
-      supabase.from("leave_approver_config")
-        .select("employee_id, approver_level, approver_id")
-        .eq("config_type", "personal")
-        .eq("is_active", true),
+      listProfilesOrderedByFullName("id, full_name, email, job_title, report_to"),
+      listUserRoles(),
+      listLeaveApproverConfigWithConfigTypePersonalAndIsActive(),
       uid
-        ? supabase.from("user_roles").select("role_code").eq("user_id", uid).in("role_code", ["HR_Manager", "admin"])
+        ? listUserRolesByUserIdWithRoleCodeHRManagerAdmin(uid)
         : Promise.resolve({ data: [] }),
       uid
-        ? supabase.from("profiles").select("role").eq("id", uid).maybeSingle()
+        ? getProfileByIdOfRole(uid)
         : Promise.resolve({ data: null }),
     ]);
 
@@ -293,10 +291,7 @@ export default function ApprovalChainsPage() {
     const createdBy = userData.user?.id;
 
     // Delete existing personal entries for this employee
-    const { error: deleteError } = await supabase.from("leave_approver_config")
-      .delete()
-      .eq("config_type", "personal")
-      .eq("employee_id", employeeId);
+    const { error: deleteError } = await deleteLeaveApproverConfigByEmployeeIdWithConfigTypePersonal(employeeId);
     if (deleteError) { setSaveError(deleteError.message); setSaving(false); return; }
 
     const inserts = [];
@@ -304,7 +299,7 @@ export default function ApprovalChainsPage() {
     if (a2Id) inserts.push({ config_type: "personal", employee_id: employeeId, approver_level: 2, approver_id: a2Id, is_active: true, created_by: createdBy });
 
     if (inserts.length > 0) {
-      const { error } = await supabase.from("leave_approver_config").insert(inserts);
+      const { error } = await insertLeaveApproverConfig(inserts);
       if (error) { setSaveError(error.message); setSaving(false); return; }
     }
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { insertPr, insertPrItem, listReorderableInvItems } from "@/lib/procurement/procurement-service";
+import { insertPr, insertPrItem, listReorderableInvItems } from "@/lib/procurement/procurement-queries";
 
 // FR-017 reorder-alert bridge: Inventory (inv_items / inv_stock) -> Procurement (draft PR).
 // This used to read the legacy procurement_inventory stub table directly; that table is

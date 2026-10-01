@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { LocationPicker } from "@/components/ui/location-picker";
+import { deleteSiteLocationById, insertEmployeeAttendanceSiteAssignment, insertSiteLocation, listEmployeeAttendanceSiteAssignmentsByFilter, listProfilesWithStatusActiveOrderedByFullName, listSiteLocations, updateEmployeeAttendanceSiteAssignmentById } from "@/lib/hr/hr-queries";
 
 interface SiteLocation {
   id: string;
@@ -126,13 +127,9 @@ export default function SitesPage() {
     setLoading(true);
     const supabase = createClient();
     const [{ data: siteRows, error: siteError }, { data: employeeRows, error: employeeError }, { data: assignmentRows, error: assignmentError }] = await Promise.all([
-      supabase.from("site_locations").select("*").order("name"),
-      supabase.from("profiles").select("id, full_name, employee_id, department").eq("status", "active").order("full_name"),
-      supabase
-        .from("employee_attendance_site_assignments")
-        .select("id, employee_id, site_id, effective_from, effective_to, is_required")
-        .or(`effective_to.is.null,effective_to.gte.${new Date().toISOString().split("T")[0]}`)
-        .order("effective_from", { ascending: false }),
+      listSiteLocations(),
+      listProfilesWithStatusActiveOrderedByFullName("id, full_name, employee_id, department"),
+      listEmployeeAttendanceSiteAssignmentsByFilter(`effective_to.is.null,effective_to.gte.${new Date().toISOString().split("T")[0]}`),
     ]);
     if (siteError) toast.error(siteError.message);
     if (employeeError) toast.error(employeeError.message);
@@ -147,7 +144,7 @@ export default function SitesPage() {
     if (!form.name.trim()) return toast.error("Site name is required");
     setSaving(true);
     const supabase = createClient();
-    const { error } = await supabase.from("site_locations").insert({
+    const { error } = await insertSiteLocation({
       name: form.name,
       address: form.address || null,
       lat: form.lat,
@@ -163,7 +160,7 @@ export default function SitesPage() {
 
   async function handleDelete(id: string) {
     const supabase = createClient();
-    const { error } = await supabase.from("site_locations").delete().eq("id", id);
+    const { error } = await deleteSiteLocationById(id);
     if (error) toast.error(error.message);
     else { toast.success("Site deleted"); loadSites(); }
   }
@@ -184,7 +181,7 @@ export default function SitesPage() {
       return toast.error("This staff member is already assigned to the site");
     }
     const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from("employee_attendance_site_assignments").insert({
+    const { error } = await insertEmployeeAttendanceSiteAssignment({
       employee_id: assignmentEmployeeId,
       site_id: assignmentSite.id,
       effective_from: assignmentFrom,
@@ -203,10 +200,7 @@ export default function SitesPage() {
   async function endAssignment(id: string) {
     const supabase = createClient();
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const { error } = await supabase
-      .from("employee_attendance_site_assignments")
-      .update({ effective_to: yesterday, updated_at: new Date().toISOString() })
-      .eq("id", id);
+    const { error } = await updateEmployeeAttendanceSiteAssignmentById({ effective_to: yesterday, updated_at: new Date().toISOString() }, id);
     if (error) toast.error(error.message);
     else {
       toast.success("Assignment ended");

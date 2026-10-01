@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { WhoIsOnLeaveToday } from "@/components/hr/leave/who-is-on-leave-today";
+import { getProfileById, listLeaveBalancesByEmployeeIdAndFiscalYearOrderedByLeaveTypeId, listLeaveRequestsByEmployeeIdAndStartDateFromAndStartDateToWithStatusApprovedPendingCancellationSubmitted, listLeaveRequestsByEmployeeIdAndStartDateFromWithStatusApproved, listLeaveRequestsByEmployeeIdWithStatusSubmitted, listLeaveTypesWithIsActive, listUserRolesByUserIdWithRoleCodeHRManagerAdmin } from "@/lib/hr/hr-queries";
 
 const ADMIN_LINKS = [
   { href: "/dashboard/administration/leave-types",    label: "Leave Types",     icon: Settings },
@@ -169,57 +170,24 @@ export default function LeaveDashboardPage() {
       const uid = userData.user.id;
 
       // Check admin/HR Manager role
-      supabase.from("user_roles").select("role_code")
-        .eq("user_id", uid).in("role_code", ["HR_Manager", "admin"])
+      listUserRolesByUserIdWithRoleCodeHRManagerAdmin(uid)
         .then(({ data }) => setIsAdmin((data?.length ?? 0) > 0));
 
       const [balRes, upcomingRes, pendingRes, usageRes, typesRes, profileRes] = await Promise.all([
         // Fix: order by direct column (not embedded FK column — PostgREST limitation)
-        supabase
-          .from("leave_balances")
-          .select("id, leave_type_id, allocated_days, used_days, remaining_days, carried_over_days")
-          .eq("employee_id", uid)
-          .eq("fiscal_year", currentYear)
-          .order("leave_type_id"),
+        listLeaveBalancesByEmployeeIdAndFiscalYearOrderedByLeaveTypeId(uid, currentYear),
 
-        supabase
-          .from("leave_requests")
-          .select("id, start_date, end_date, days_requested, leave_types(leave_name)")
-          .eq("employee_id", uid)
-          .eq("status", "approved")
-          .gte("start_date", today)
-          .order("start_date")
-          .limit(5),
+        listLeaveRequestsByEmployeeIdAndStartDateFromWithStatusApproved(uid, today),
 
-        supabase
-          .from("leave_requests")
-          .select("id, start_date, end_date, days_requested, leave_types(leave_name)")
-          .eq("employee_id", uid)
-          .eq("status", "submitted")
-          .order("submission_date", { ascending: false })
-          .limit(5),
+        listLeaveRequestsByEmployeeIdWithStatusSubmitted(uid),
 
-        supabase
-          .from("leave_requests")
-          .select("leave_type_id, days_requested, status")
-          .eq("employee_id", uid)
-          .in("status", ["approved", "pending_cancellation", "submitted"])
-          .gte("start_date", `${currentYear}-01-01`)
-          .lte("start_date", `${currentYear}-12-31`),
+        listLeaveRequestsByEmployeeIdAndStartDateFromAndStartDateToWithStatusApprovedPendingCancellationSubmitted(uid, `${currentYear}-01-01`, `${currentYear}-12-31`),
 
         // Fetch all active leave types (drives the card grid even when no balance records)
-        supabase
-          .from("leave_types")
-          .select("id, leave_name, color, max_days_per_year, gender_restriction")
-          .eq("is_active", true)
-          .order("leave_name"),
+        listLeaveTypesWithIsActive("id, leave_name, color, max_days_per_year, gender_restriction"),
 
         // Fetch current user's gender for leave type filtering
-        supabase
-          .from("profiles")
-          .select("gender")
-          .eq("id", uid)
-          .single(),
+        getProfileById(uid, "gender"),
       ]);
 
       // Pending days map: leave_type_id → total submitted days

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { insertDeliveryNote, insertGoodsReceipts, listPosAwaitingDelivery, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-service";
+import { insertDeliveryNote, insertGoodsReceipts, listPosAwaitingDelivery, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-queries";
 
 interface IssuedPO {
   id: string;

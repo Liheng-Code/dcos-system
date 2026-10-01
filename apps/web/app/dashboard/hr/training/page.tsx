@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listTrainingCertificatesByExpiryDateToAndExpiryDateFrom, listTrainingRecords, listTrainingRecordsOrderedByEnrollmentDate } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,14 +50,11 @@ export default function TrainingPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
     // Fetch training record statistics
-    supabase
-      .from("training_records")
-      .select("status")
+    listTrainingRecords()
       .then(({ data }) => {
         if (data) {
           const completed = data.filter((r) => r.status === "completed").length;
@@ -73,28 +70,14 @@ export default function TrainingPage() {
       });
 
     // Fetch recent training records
-    supabase
-      .from("training_records")
-      .select(`
-        id,
-        enrollment_date,
-        completion_date,
-        status,
-        score,
-        profiles(full_name, employee_id),
-        training_courses(course_name, provider, duration_hours)
-      `)
-      .order("enrollment_date", { ascending: false })
-      .limit(50)
+    listTrainingRecordsOrderedByEnrollmentDate()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setRecords(data as any);
       });
 
     // Fetch certificates expiring within 30 days
-    supabase
-      .from("training_certificates")
-      .select(`
+    listTrainingCertificatesByExpiryDateToAndExpiryDateFrom(thirtyDaysFromNow.toISOString().split("T")[0], new Date().toISOString().split("T")[0], `
         id,
         certification_name,
         issuing_body,
@@ -103,8 +86,6 @@ export default function TrainingPage() {
         status,
         profiles(full_name, employee_id)
       `)
-      .lte("expiry_date", thirtyDaysFromNow.toISOString().split("T")[0])
-      .gte("expiry_date", new Date().toISOString().split("T")[0])
       .then(({ data }) => {
         if (data) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

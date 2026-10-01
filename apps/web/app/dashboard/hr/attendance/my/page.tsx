@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TelegramLinkCard } from "@/components/hr/attendance/telegram-link-card";
 import { createClient } from "@/lib/supabase/client";
+import { listAttendanceRecordsByEmployeeIdAndAttendanceDateFromAndAttendanceDateTo } from "@/lib/hr/hr-queries";
 
 interface AttendanceRecord {
   attendance_date: string;
@@ -56,13 +57,7 @@ export default function MyAttendancePage() {
     const firstDay = new Date(viewYear, viewMonth, 1).toISOString().split("T")[0];
     const lastDay = new Date(viewYear, viewMonth + 1, 0).toISOString().split("T")[0];
 
-    const { data } = await supabase
-      .from("attendance_records")
-      .select("attendance_date, attendance_type, check_in_time, check_out_time, hours_worked, verified")
-      .eq("employee_id", user.id)
-      .gte("attendance_date", firstDay)
-      .lte("attendance_date", lastDay)
-      .order("attendance_date", { ascending: true });
+    const { data } = await listAttendanceRecordsByEmployeeIdAndAttendanceDateFromAndAttendanceDateTo(user.id, firstDay, lastDay);
 
     setRecords(data ?? []);
     setLoading(false);

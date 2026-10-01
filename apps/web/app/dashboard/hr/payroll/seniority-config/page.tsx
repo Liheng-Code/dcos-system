@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertPayrollSeniorityRules, listPayrollSeniorityRules, updatePayrollSeniorityRuleById } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,8 +33,7 @@ export default function SeniorityConfigPage() {
   const [rules, setRules] = useState<SeniorityRuleRow[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("payroll_seniority_rules").select("*").order("effective_date", { ascending: false })
+    listPayrollSeniorityRules()
       .then(({ data }) => {
         setRules((data ?? []) as SeniorityRuleRow[]);
         setLoading(false);
@@ -64,7 +63,6 @@ export default function SeniorityConfigPage() {
 
   async function saveRules() {
     setSaving(true);
-    const supabase = createClient();
     for (const rule of rules) {
       if (rule.payment_months.length === 0) {
         toast.error("Each rule needs at least one payment month");
@@ -80,10 +78,10 @@ export default function SeniorityConfigPage() {
         notes: rule.notes,
       };
       if (rule.id) {
-        const { error } = await supabase.from("payroll_seniority_rules").update(payload).eq("id", rule.id);
+        const { error } = await updatePayrollSeniorityRuleById(payload, rule.id);
         if (error) { toast.error(error.message); setSaving(false); return; }
       } else {
-        const { error, data } = await supabase.from("payroll_seniority_rules").insert(payload).select("id").single();
+        const { error, data } = await insertPayrollSeniorityRules(payload);
         if (error) { toast.error(error.message); setSaving(false); return; }
         if (data) setRules((prev) => prev.map((r) => (r === rule ? { ...r, id: data.id } : r)));
       }

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Shield, Loader2, Save, AlertTriangle, Info } from "lucide-react";
+import { getProfileById, listLeaveEmploymentPolicy, listLeaveTypesWithIsActive, listUserRolesByUserIdWithRoleCodeHRManagerAdmin, upsertLeaveEmploymentPolicy } from "@/lib/hr/hr-queries";
 
 interface LeaveType {
   id: string;
@@ -74,7 +75,6 @@ export default function ProbationPolicyPage() {
   // Store changes as a map of "et|ps|ltid" -> CellValue
   const [changes, setChanges] = useState<Record<string, CellValue>>({});
 
-  const supabase = useMemo(() => createClient(), []);
 
   const policyKey = useCallback((et: string, ps: string, ltid: string) => `${et}|${ps}|${ltid}`, []);
 
@@ -110,8 +110,8 @@ export default function ProbationPolicyPage() {
       if (!data.user) { setAdminChecked(true); setLoading(false); return; }
       const uid = data.user.id;
       Promise.all([
-        u.from("profiles").select("role").eq("id", uid).single(),
-        u.from("user_roles").select("role_code").eq("user_id", uid).in("role_code", ["HR_Manager", "admin"]),
+        getProfileById(uid, "role"),
+        listUserRolesByUserIdWithRoleCodeHRManagerAdmin(uid),
       ]).then(([profileRes, roleRes]) => {
         const isProfileAdmin = profileRes.data?.role === "admin";
         const hasAdminRole = (roleRes.data ?? []).length > 0;
@@ -126,8 +126,8 @@ export default function ProbationPolicyPage() {
     if (!isAdmin) { setLoading(false); return; }
     const u = createClient();
     Promise.all([
-      u.from("leave_types").select("id, leave_code, leave_name").eq("is_active", true).order("leave_name"),
-      u.from("leave_employment_policy").select("*"),
+      listLeaveTypesWithIsActive("id, leave_code, leave_name"),
+      listLeaveEmploymentPolicy(),
     ]).then(([typesRes, policyRes]) => {
       setLeaveTypes(typesRes.data || []);
       setPolicies(policyRes.data || []);
@@ -146,8 +146,7 @@ export default function ProbationPolicyPage() {
       rowsToUpsert.push(rowFromCellValue(et, ps, ltid, value));
     }
 
-    const { error } = await supabase.from("leave_employment_policy").upsert(
-      rowsToUpsert.map((r) => ({
+    const { error } = await upsertLeaveEmploymentPolicy(rowsToUpsert.map((r) => ({
         employment_type: r.employment_type,
         probation_status: r.probation_status,
         leave_type_id: r.leave_type_id,
@@ -156,9 +155,7 @@ export default function ProbationPolicyPage() {
         requires_attachment: r.requires_attachment,
         monthly_accrual: r.monthly_accrual,
         usable: r.usable,
-      })),
-      { onConflict: "employment_type, probation_status, leave_type_id" },
-    );
+      })));
 
     setSaving(false);
     if (error) {
@@ -166,7 +163,7 @@ export default function ProbationPolicyPage() {
     } else {
       setSaveSuccess(true);
       const u = createClient();
-      const { data } = await u.from("leave_employment_policy").select("*");
+      const { data } = await listLeaveEmploymentPolicy();
       setPolicies(data || []);
       setChanges({});
       setTimeout(() => setSaveSuccess(false), 3000);

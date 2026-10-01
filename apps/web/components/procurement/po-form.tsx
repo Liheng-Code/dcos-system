@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getPrById, getProjectById, insertPo, insertPoItems, listActiveSuppliers, listApprovedPrsByProjectId, listBoqRequisitionStatusByBoqItemIds, listPosByProjectId, listPrItemsByPrId } from "@/lib/procurement/procurement-service";
+import { getPrById, getProjectById, insertPo, insertPoItems, listActiveSuppliers, listApprovedPrsByProjectId, listBoqRequisitionStatusByBoqItemIds, listPosByProjectId, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 import { AlertTriangle, ArrowLeft, Loader2, Save, Trash2, Plus, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";

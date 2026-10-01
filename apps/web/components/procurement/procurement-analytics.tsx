@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listPos, listPrApprovalStatuses } from "@/lib/procurement/procurement-service";
+import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listPos, listPrApprovalStatuses } from "@/lib/procurement/procurement-queries";
 import { Loader2, DollarSign, TrendingUp, Truck, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 

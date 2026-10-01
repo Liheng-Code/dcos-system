@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { createClient } from "@/lib/supabase/client";
+import { listDepartments, listEmployeeBankAccountsWithIsPrimary, listEmployeeCertifications, listEmployeeDocuments, listEmployeeNssfProfiles, listEmployeePayrollProfiles, listEmployeeTaxProfiles, listPositions, listProfilesOrderedByEmployeeId, listTeams, updateProfilesByIds } from "@/lib/hr/hr-queries";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -83,18 +83,17 @@ export default function EmployeesListPage() {
     async function loadData() {
       setLoading(true);
       setError(null);
-      const supabase = createClient();
       const [fullProfileRes, departmentRes, teamRes, positionRes, documentRes, certRes, payrollRes, taxRes, nssfRes, bankRes] = await Promise.all([
-        supabase.from("profiles").select(PROFILE_SELECT_EXTENDED).order("employee_id", { ascending: true, nullsFirst: false }),
-        supabase.from("departments").select("id, department_name").order("department_name"),
-        supabase.from("teams").select("id, team_name, department_id").order("team_name"),
-        supabase.from("positions").select("id, position_name, department_id, grade").order("position_name"),
-        supabase.from("employee_documents").select("id, employee_id, document_type, document_name, expiry_date, verified"),
-        supabase.from("employee_certifications").select("id, employee_id, certification_name, issuing_body, expiry_date, status"),
-        supabase.from("employee_payroll_profiles").select("employee_id"),
-        supabase.from("employee_tax_profiles").select("employee_id").order("effective_date", { ascending: false }),
-        supabase.from("employee_nssf_profiles").select("employee_id").order("effective_date", { ascending: false }),
-        supabase.from("employee_bank_accounts").select("employee_id").eq("is_primary", true),
+        listProfilesOrderedByEmployeeId(PROFILE_SELECT_EXTENDED),
+        listDepartments(),
+        listTeams(),
+        listPositions(),
+        listEmployeeDocuments(),
+        listEmployeeCertifications(),
+        listEmployeePayrollProfiles(),
+        listEmployeeTaxProfiles("employee_id"),
+        listEmployeeNssfProfiles(),
+        listEmployeeBankAccountsWithIsPrimary(),
       ]);
 
       if (cancelled) return;
@@ -102,7 +101,7 @@ export default function EmployeesListPage() {
       let profileData = fullProfileRes.data as Partial<EmployeeProfile>[] | null;
       let profileError = fullProfileRes.error;
       if (isMissingExtendedProfileColumn(fullProfileRes.error?.message)) {
-        const baseProfileRes = await supabase.from("profiles").select(PROFILE_SELECT_BASE).order("employee_id", { ascending: true, nullsFirst: false });
+        const baseProfileRes = await listProfilesOrderedByEmployeeId(PROFILE_SELECT_BASE);
         profileData = baseProfileRes.data as Partial<EmployeeProfile>[] | null;
         profileError = baseProfileRes.error;
       }
@@ -429,13 +428,12 @@ export default function EmployeesListPage() {
         filteredIds={filtered.length < profiles.length ? filtered.map((p) => p.id) : undefined}
         statusSets={{ hasPayrollProfile, hasTaxProfile, hasNSSFProfile, hasBankAccount }}
         onComplete={() => {
-          const supabase = createClient();
           Promise.all([
-            supabase.from("profiles").select(PROFILE_SELECT_EXTENDED).order("employee_id", { ascending: true, nullsFirst: false }),
-            supabase.from("employee_payroll_profiles").select("employee_id"),
-            supabase.from("employee_tax_profiles").select("employee_id").order("effective_date", { ascending: false }),
-            supabase.from("employee_nssf_profiles").select("employee_id").order("effective_date", { ascending: false }),
-            supabase.from("employee_bank_accounts").select("employee_id").eq("is_primary", true),
+            listProfilesOrderedByEmployeeId(PROFILE_SELECT_EXTENDED),
+            listEmployeePayrollProfiles(),
+            listEmployeeTaxProfiles("employee_id"),
+            listEmployeeNssfProfiles(),
+            listEmployeeBankAccountsWithIsPrimary(),
           ]).then(([profileRes, payrollRes, taxRes, nssfRes, bankRes]) => {
             if (!profileRes.error && profileRes.data) {
               setProfiles((profileRes.data as Partial<EmployeeProfile>[]).map(normalizeProfile));
@@ -478,9 +476,8 @@ export default function EmployeesListPage() {
                 disabled={bulkUpdating}
                 onClick={async () => {
                   setBulkUpdating(true);
-                  const supabase = createClient();
                   const ids = filtered.filter((p) => selectedIds.has(p.id)).map((p) => p.id);
-                  const { error } = await supabase.from("profiles").update({ employment_type: bulkEmploymentType }).in("id", ids);
+                  const { error } = await updateProfilesByIds({ employment_type: bulkEmploymentType }, ids);
                   setBulkUpdating(false);
                   if (error) {
                     toast.error(error.message);

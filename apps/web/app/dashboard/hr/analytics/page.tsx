@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listProfiles } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Users } from "lucide-react";
 import { subDays, format } from "date-fns";
@@ -25,13 +25,10 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     const thirtyDaysAgo = subDays(new Date(), 30).toISOString().split("T")[0];
 
     // Fetch workforce statistics
-    supabase
-      .from("profiles")
-      .select("status, department, join_date")
+    listProfiles("status, department, join_date")
       .then(({ data }) => {
         if (data) {
           const stats: WorkforceStats = {

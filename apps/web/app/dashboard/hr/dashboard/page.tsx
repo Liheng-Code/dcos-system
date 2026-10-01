@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listAttendanceRecordsByAttendanceDate, listAttendanceRecordsOrderedByAttendanceDate, listEmployeeProjectAssignments, listLeaveRequestsWithStatusApproved, listLeaveRequestsWithStatusSubmitted, listProfiles, listTimesheets, listTimesheetsOrderedByWeekStartDate, listTrainingCertificatesByExpiryDateToAndExpiryDateFrom } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,37 +58,23 @@ export default function WorkforceDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     const today = format(new Date(), "yyyy-MM-dd");
     const thirtyDaysFromNow = format(subDays(new Date(), -30), "yyyy-MM-dd");
 
     // Fetch workforce statistics
     Promise.all([
       // Total and active employees
-      supabase.from("profiles").select("id, status"),
+      listProfiles("id, status"),
       // Today's attendance
-      supabase
-        .from("attendance_records")
-        .select("attendance_type")
-        .eq("attendance_date", today),
+      listAttendanceRecordsByAttendanceDate(today, "attendance_type"),
       // Timesheets for OT calculation
-      supabase.from("timesheets").select("total_ot_hours"),
+      listTimesheets("total_ot_hours"),
       // Leave requests
-      supabase.from("leave_requests").select("status").eq("status", "submitted"),
+      listLeaveRequestsWithStatusSubmitted(),
       // Expiring certificates
-      supabase
-        .from("training_certificates")
-        .select(
-          `id, certification_name, expiry_date, profiles(full_name, employee_id)`
-        )
-        .lte("expiry_date", thirtyDaysFromNow)
-        .gte("expiry_date", today),
+      listTrainingCertificatesByExpiryDateToAndExpiryDateFrom(thirtyDaysFromNow, today, `id, certification_name, expiry_date, profiles(full_name, employee_id)`),
       // Resource allocations
-      supabase
-        .from("employee_project_assignments")
-        .select(
-          `allocation_percent, profiles(id, full_name)`
-        ),
+      listEmployeeProjectAssignments(),
     ]).then(([empRes, attRes, otRes, leaveRes, certRes, resourceRes]) => {
       // Calculate employee stats
       if (empRes.data) {
@@ -168,26 +154,12 @@ export default function WorkforceDashboard() {
   }, []);
 
   const handlePayrollExport = async () => {
-    const supabase = createClient();
 
     // Fetch all required data
     const [timesheets, attendance, leaves] = await Promise.all([
-      supabase
-        .from("timesheets")
-        .select(
-          `id, week_start_date, total_hours, total_ot_hours, employee_id, profiles(full_name, employee_id)`
-        )
-        .order("week_start_date", { ascending: false }),
-      supabase
-        .from("attendance_records")
-        .select(`attendance_date, attendance_type, employee_id, profiles(full_name)`)
-        .order("attendance_date", { ascending: false }),
-      supabase
-        .from("leave_requests")
-        .select(
-          `start_date, end_date, days_requested, status, employee_id, leave_types(leave_name), profiles(full_name)`
-        )
-        .eq("status", "approved"),
+      listTimesheetsOrderedByWeekStartDate(),
+      listAttendanceRecordsOrderedByAttendanceDate(),
+      listLeaveRequestsWithStatusApproved(),
     ]);
 
     // Consolidate into payroll package

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, listPrsByProjectId, updatePrById } from "@/lib/procurement/procurement-service";
+import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, listPrsByProjectId, updatePrById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, Plus, Trash2, ArrowLeft, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { listOpenBoqRequisitionStatusByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-service";
+import { listOpenBoqRequisitionStatusByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-queries";
 import { Loader2, PackageOpen, Search, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

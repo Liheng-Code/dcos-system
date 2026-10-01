@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { X, Plus, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { getEmployeeBankAccountByEmployeeIdWithIsPrimary, insertEmployeeBankAccount, insertEmployeeSalaryStructures, listEmployeeSalaryStructuresByEmployeeIdWithEffectiveTo, listPayrollComponentTypes, updateEmployeeBankAccountById, updateEmployeeSalaryStructuresByEmployeeIdWithEffectiveTo } from "@/lib/hr/hr-queries";
 
 interface ComponentType {
   id: string;
@@ -46,16 +47,9 @@ export function SalaryStructureSheet({ employee, onClose }: Props) {
   useEffect(() => {
     const supabase = createClient();
     Promise.all([
-      supabase.from("payroll_component_types").select("*").order("sort_order"),
-      supabase.from("employee_salary_structures")
-        .select("component_type_id, amount, payroll_component_types(name, category, is_system)")
-        .eq("employee_id", employee.id)
-        .is("effective_to", null),
-      supabase.from("employee_bank_accounts")
-        .select("*")
-        .eq("employee_id", employee.id)
-        .eq("is_primary", true)
-        .maybeSingle(),
+      listPayrollComponentTypes(),
+      listEmployeeSalaryStructuresByEmployeeIdWithEffectiveTo(employee.id),
+      getEmployeeBankAccountByEmployeeIdWithIsPrimary(employee.id, "*"),
     ]).then(([typesRes, structRes, bankRes]) => {
       const types = (typesRes.data || []) as ComponentType[];
       setComponentTypes(types);
@@ -116,11 +110,7 @@ export function SalaryStructureSheet({ employee, onClose }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
 
     // 1. Close all current active structures for this employee
-    await supabase
-      .from("employee_salary_structures")
-      .update({ effective_to: today })
-      .eq("employee_id", employee.id)
-      .is("effective_to", null);
+    await updateEmployeeSalaryStructuresByEmployeeIdWithEffectiveTo({ effective_to: today }, employee.id);
 
     // 2. Insert new structure lines
     const inserts = lines
@@ -134,7 +124,7 @@ export function SalaryStructureSheet({ employee, onClose }: Props) {
       }));
 
     if (inserts.length > 0) {
-      const { error } = await supabase.from("employee_salary_structures").insert(inserts);
+      const { error } = await insertEmployeeSalaryStructures(inserts);
       if (error) {
         toast.error("Failed to save salary structure");
         setSaving(false);
@@ -145,14 +135,14 @@ export function SalaryStructureSheet({ employee, onClose }: Props) {
     // 3. Upsert bank account
     if (bank.bank_name && bank.account_number) {
       if (bank.id) {
-        await supabase.from("employee_bank_accounts").update({
+        await updateEmployeeBankAccountById({
           bank_name: bank.bank_name,
           account_number: bank.account_number,
           account_name: bank.account_name,
           branch: bank.branch,
-        }).eq("id", bank.id);
+        }, bank.id);
       } else {
-        await supabase.from("employee_bank_accounts").insert({
+        await insertEmployeeBankAccount({
           employee_id: employee.id,
           bank_name: bank.bank_name,
           account_number: bank.account_number,

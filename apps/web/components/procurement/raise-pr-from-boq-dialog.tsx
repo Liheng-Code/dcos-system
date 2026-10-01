@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds, listPrsByProjectId } from "@/lib/procurement/procurement-service";
+import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds, listPrsByProjectId } from "@/lib/procurement/procurement-queries";
 import { Loader2, ShoppingCart, Hash, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

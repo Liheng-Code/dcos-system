@@ -23,6 +23,7 @@ import {
   Edit,
   LogOut,
 } from "lucide-react";
+import { listOvertimeNotificationsByRecipientIdAndOtRequestIdAndQueuedAtAfter } from "@/lib/hr/hr-queries";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -83,12 +84,7 @@ export function OTRequestDetail({ requestId, onClose, onStatusChange }: Props) {
     const interval = setInterval(async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: rows } = await supabase
-        .from("overtime_notifications")
-        .select("id")
-        .eq("recipient_id", user.id)
-        .eq("ot_request_id", requestId)
-        .gt("queued_at", lastCheck);
+      const { data: rows } = await listOvertimeNotificationsByRecipientIdAndOtRequestIdAndQueuedAtAfter(user.id, requestId, lastCheck);
       if (rows && rows.length > 0) {
         setNewNotifications(true);
         lastCheck = new Date().toISOString();

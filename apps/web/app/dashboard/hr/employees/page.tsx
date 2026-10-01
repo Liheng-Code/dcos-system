@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { listDepartments, listEmployeeCertifications, listEmployeeDocuments, listProfilesOrderedByEmployeeId } from "@/lib/hr/hr-queries";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { EmployeesTabs } from "@/components/hr/employees/employees-tabs";
@@ -48,12 +48,11 @@ export default function EmployeesDashboardPage() {
     async function load() {
       setLoading(true);
       setError(null);
-      const supabase = createClient();
       const [profileRes, departmentRes, documentRes, certRes] = await Promise.all([
-        supabase.from("profiles").select(PROFILE_SELECT_EXTENDED).order("employee_id", { ascending: true, nullsFirst: false }),
-        supabase.from("departments").select("id, department_name").order("department_name"),
-        supabase.from("employee_documents").select("id, employee_id, document_type, document_name, expiry_date, verified"),
-        supabase.from("employee_certifications").select("id, employee_id, certification_name, issuing_body, expiry_date, status"),
+        listProfilesOrderedByEmployeeId(PROFILE_SELECT_EXTENDED),
+        listDepartments(),
+        listEmployeeDocuments(),
+        listEmployeeCertifications(),
       ]);
 
       if (cancelled) return;
@@ -61,7 +60,7 @@ export default function EmployeesDashboardPage() {
       let profileData = profileRes.data as Partial<EmployeeProfile>[] | null;
       let profileError = profileRes.error;
       if (isMissingExtendedProfileColumn(profileRes.error?.message)) {
-        const baseRes = await supabase.from("profiles").select(PROFILE_SELECT_BASE).order("employee_id", { ascending: true, nullsFirst: false });
+        const baseRes = await listProfilesOrderedByEmployeeId(PROFILE_SELECT_BASE);
         profileData = baseRes.data as Partial<EmployeeProfile>[] | null;
         profileError = baseRes.error;
       }

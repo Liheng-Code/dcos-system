@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { listActiveSuppliers } from "@/lib/procurement/procurement-service";
+import { listActiveSuppliers } from "@/lib/procurement/procurement-queries";
 import { Loader2, Building2 } from "lucide-react";
 import { SupplierPOView } from "./supplier-po-view";
 import { SupplierRFQResponse } from "./supplier-rfq-response";

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/client";
+import { listAttendanceRecordsByAttendanceDate, listProfilesWithStatusActiveOrderedByFullName, upsertAttendanceLogs, upsertAttendanceRecords2 } from "@/lib/hr/hr-queries";
 
 type AttendanceTypeKey = "PRESENT" | "ABSENT" | "LATE" | "LEAVE" | "WFH" | "SITE_WORK";
 
@@ -42,22 +42,14 @@ export default function SupervisorAttendancePage() {
   async function loadEmployees() {
     setLoading(true);
     setSaved(false);
-    const supabase = createClient();
 
     // Load active employees
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, department, job_title")
-      .eq("status", "active")
-      .order("full_name");
+    const { data: profiles } = await listProfilesWithStatusActiveOrderedByFullName("id, full_name, department, job_title");
 
     if (!profiles) { setLoading(false); return; }
 
     // Load existing records for selected date
-    const { data: existing } = await supabase
-      .from("attendance_records")
-      .select("employee_id, attendance_type, check_in_time")
-      .eq("attendance_date", selectedDate);
+    const { data: existing } = await listAttendanceRecordsByAttendanceDate(selectedDate, "employee_id, attendance_type, check_in_time");
 
     const existingMap = Object.fromEntries((existing ?? []).map(r => [r.employee_id, r]));
 
@@ -92,7 +84,6 @@ export default function SupervisorAttendancePage() {
     if (toSave.length === 0) return toast.error("No attendance statuses selected");
 
     setSaving(true);
-    const supabase = createClient();
 
     const records = toSave.map(e => ({
       employee_id: e.id,
@@ -102,9 +93,7 @@ export default function SupervisorAttendancePage() {
       updated_at: new Date().toISOString(),
     }));
 
-    const { error } = await supabase
-      .from("attendance_records")
-      .upsert(records, { onConflict: "employee_id,attendance_date" });
+    const { error } = await upsertAttendanceRecords2(records);
 
     if (error) {
       toast.error(error.message);
@@ -121,7 +110,7 @@ export default function SupervisorAttendancePage() {
         }));
 
       if (logs.length > 0) {
-        await supabase.from("attendance_logs").upsert(logs);
+        await upsertAttendanceLogs(logs);
       }
 
       toast.success(`Saved attendance for ${toSave.length} employees`);

@@ -170,6 +170,7 @@ function analyse(segments) {
   let op = first.method === "rpc" ? "rpc" : "select";
   let single = false, head = false, insertOne = false;
   let columns = null; // the literal column list of the first select(), if any
+  const orderCols = [];
 
   const body = segments.map(({ method, args }, idx) => {
     let out = args.slice();
@@ -182,7 +183,8 @@ function analyse(segments) {
       // insert(row) and insert([row]) are the same request; both become insert([row]).
       if (inner && inner.length === 1 && !inner[0].startsWith("...")) { out[0] = `[${param("row", "object", inner[0])}]`; insertOne = true; }
       else if (a.startsWith("{")) { out[0] = `[${param("row", "object", a)}]`; insertOne = true; }
-      else out[0] = param("rows", "object[]", a);
+      // A variable may hold one row or a list of rows; insert accepts both.
+      else out[0] = param("rows", "object | object[]", a);
       if (args[1] !== undefined && !isLiteral(args[1])) out[1] = param("options", "object", args[1]);
     } else if (method === "update") {
       op = "update";
@@ -200,13 +202,20 @@ function analyse(segments) {
       if (isLiteral(args[1])) {
         litFilters.push({ col, value: args[1] });
       } else if (method === "in") {
-        const base = col === "id" ? "ids" : col === "status" ? "statuses" : camel(col) + "s";
-        out[1] = param(base, "readonly (string | number)[]", args[1]);
-        dynFilters.push({ col, plural: true });
+        out[1] = param(camel(pluralize(col)), "readonly (string | number)[]", args[1]);
+        dynFilters.push({ word: pascal(pluralize(col)), col, plural: true });
       } else {
-        out[1] = param(camel(col), "string | number | boolean", args[1]);
-        dynFilters.push({ col, method });
+        // Ranges and exclusions read better with their direction: dateFrom / dateTo / exceptId.
+        const suffix = { gte: "From", lte: "To", gt: "After", lt: "Before" }[method] ?? "";
+        const base = method === "neq" ? "except" + pascal(col) : camel(col) + suffix;
+        out[1] = param(base, "string | number | boolean", args[1]);
+        dynFilters.push({ word: method === "neq" ? "Except" + pascal(col) : pascal(col) + suffix, col, method });
       }
+    } else if (method === "or" && !isLiteral(args[0])) {
+      out[0] = param("filter", "string", args[0]);
+      dynFilters.push({ word: "Filter", col: "" });
+    } else if (method === "order") {
+      if (STRING.test(args[0] ?? "")) orderCols.push(unquote(args[0]));
     } else {
       out = args.map((a, n) => (isLiteral(a) ? a : param(args.length > 1 ? `${method}${n + 1}` : method, "string | number", a)));
     }
@@ -218,13 +227,13 @@ function analyse(segments) {
   const words = target.slice(prefix.length).split("_");
   const plural = pascal(words.join("_"));
   const one = pascal([...words.slice(0, -1), singular(words[words.length - 1])].join("_"));
-  const byId = dynFilters.some((f) => f.col === "id" && !f.plural);
+  const byId = dynFilters.some((f) => f.col === "id" && !f.plural && f.method === "eq");
   let name;
   if (op === "rpc") name = camel(target);
   else if (op === "select") name = head ? `count${plural}` : single ? `get${one}` : `list${plural}`;
   else if (op === "insert" || op === "upsert") name = op + (insertOne ? one : plural);
   else name = op + (byId ? one : plural);
-  if (dynFilters.length) name += "By" + dynFilters.map((f) => pascal(f.col) + (f.plural ? "s" : "")).join("And");
+  if (dynFilters.length) name += "By" + dynFilters.map((f) => f.word).join("And");
   // Literal filters are part of what the query means, so they go in the name.
   const literalWords = litFilters.map((f) => {
     const values = (f.value.match(/"[^"]*"|'[^']*'/g) ?? []).map((v) => pascal(v.slice(1, -1)));
@@ -232,7 +241,26 @@ function analyse(segments) {
   });
   if (literalWords.length) name += "With" + literalWords.join("And");
 
-  return { target, params, callArgs, shape: body.join(""), columns, name, op };
+  // Suffixes to try, in order, when another query already has this name.
+  const alts = [];
+  if (orderCols.length) alts.push("OrderedBy" + orderCols.map(pascal).join("And"));
+  if (columns !== null) {
+    const text = columns.trim().slice(1, -1);
+    const plain = text.split(",").map((c) => c.trim());
+    if (plain.length <= 3 && plain.every((c) => /^[a-z_][a-z0-9_]*$/.test(c))) alts.push("Of" + plain.map(pascal).join("And"));
+    const embeds = [...text.matchAll(/([a-z_][a-z0-9_]*)\s*(?:![a-z0-9_]+)?\s*\(/g)].map((m) => pascal(m[1]));
+    if (embeds.length) alts.push("With" + [...new Set(embeds)].slice(0, 3).join("And"));
+    if (alts.length > 1) alts.push(alts[0] + alts[alts.length - 1]);
+  }
+
+  return { target, params, callArgs, shape: body.join(""), columns, name, alts, op };
+}
+
+function pluralize(col) {
+  if (col === "id") return "ids";
+  if (/(s|x|ch|sh)$/.test(col)) return col + "es";
+  if (/[^aeiou]y$/.test(col)) return col.replace(/y$/, "ies");
+  return col + "s";
 }
 
 /** Fixes each call's final body: a shape used with several column lists takes `columns` as a parameter. */
@@ -302,14 +330,23 @@ if (fs.existsSync(opt.service)) {
   }
 }
 
-const registry = new Map(existing); // body -> fn
+// Two queries that differ only in layout (line breaks, trailing commas) are the same query.
+const keyOf = (body) =>
+  body.replace(/\s+/g, " ").replace(/,\s*([}\])])/g, "$1").replace(/([{[(])\s+/g, "$1").replace(/\s+([}\])])/g, "$1");
+
+const registry = new Map([...existing].map(([body, fn]) => [keyOf(body), fn])); // normalised body -> fn
 const taken = new Set([...existing.values()].map((f) => f.name));
 const autoNames = [];
 for (const f of perFile) {
   for (const c of f.calls) {
-    let fn = registry.get(c.body);
+    let fn = registry.get(keyOf(c.body));
     if (!fn) {
+      // On a clash, try a describing suffix (ordering, columns, joined tables) before a number.
       let name = c.name, n = 2;
+      for (const alt of c.alts ?? []) {
+        if (!taken.has(name)) break;
+        name = c.name + alt;
+      }
       while (taken.has(name)) name = c.name + n++;
       const auto = name;
       taken.add(auto); // keep numbering stable whether or not the name is overridden
@@ -319,7 +356,7 @@ for (const f of perFile) {
       }
       taken.add(name);
       fn = { name, auto, target: c.target, params: c.params.join(", "), body: c.body };
-      registry.set(c.body, fn);
+      registry.set(keyOf(c.body), fn);
       autoNames.push(fn);
     }
     c.fn = fn.name;

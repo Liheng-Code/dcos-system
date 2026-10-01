@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { listLeaveBalancesByEmployeeIdAndFiscalYearOrderedByLeaveTypesLeaveName, listLeaveRequestsByEmployeeIdAndStartDateFrom } from "@/lib/hr/hr-queries";
 
 interface BalanceRow {
   id: string;
@@ -56,22 +57,9 @@ export default function LeaveBalancePage() {
       const uid = data.user.id;
 
       Promise.all([
-        supabase
-          .from("leave_balances")
-          .select(`
-            *,
-            leave_types(leave_name, leave_code, is_paid, carryover_allowed, carryover_expiry_month)
-          `)
-          .eq("employee_id", uid)
-          .eq("fiscal_year", currentYear)
-          .order("leave_types(leave_name)"),
+        listLeaveBalancesByEmployeeIdAndFiscalYearOrderedByLeaveTypesLeaveName(uid, currentYear),
 
-        supabase
-          .from("leave_requests")
-          .select("id, start_date, end_date, days_requested, status, leave_types(leave_name)")
-          .eq("employee_id", uid)
-          .gte("start_date", `${currentYear}-01-01`)
-          .order("start_date", { ascending: false }),
+        listLeaveRequestsByEmployeeIdAndStartDateFrom(uid, `${currentYear}-01-01`),
       ]).then(([balRes, histRes]) => {
         setBalances(balRes.data || []);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

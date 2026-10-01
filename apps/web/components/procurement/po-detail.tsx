@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { printPO } from "@/lib/print-service";
 import { amountInWords } from "@/lib/number-to-words";
-import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, updatePoById } from "@/lib/procurement/procurement-service";
+import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, updatePoById } from "@/lib/procurement/procurement-queries";
 
 interface PORecord {
   id: string;

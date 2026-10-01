@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { getProfileById } from "@/lib/hr/hr-queries";
 
 const LINK_CODE_ENDPOINT = "/api/hr/attendance/telegram/link-code";
 
@@ -46,11 +47,7 @@ export function TelegramLinkCard() {
         setChecking(false);
         return;
       }
-      const { data } = await supabase
-        .from("profiles")
-        .select("telegram_user_id")
-        .eq("id", user.id)
-        .single();
+      const { data } = await getProfileById(user.id, "telegram_user_id");
       setLinked(!!data?.telegram_user_id);
       setChecking(false);
     }

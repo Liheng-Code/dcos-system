@@ -21,6 +21,7 @@ import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, isToday, isSameMonth,
 } from "date-fns";
+import { getProfileById, listLeavePublicHolidaysByHolidayDateFromAndHolidayDateToWithIsActive, listLeaveRequestsByStartDateToAndEndDateFromWithStatusSubmittedApproved, listProfilesByDepartment } from "@/lib/hr/hr-queries";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const COLOR_HEX: Record<string, string> = {
@@ -197,37 +198,20 @@ export default function TeamCalendarPage() {
     supabase.auth.getUser().then(async ({ data: userData }) => {
       if (!userData.user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("department")
-        .eq("id", userData.user.id)
-        .single();
+      const { data: profile } = await getProfileById(userData.user.id, "department");
 
       // Fetch leave requests + public holidays in parallel
-      let leaveQuery = supabase
-        .from("leave_requests")
-        .select("start_date, end_date, status, profiles!leave_requests_employee_id_fkey(full_name), leave_types(leave_name, color)")
-        .in("status", ["submitted", "approved"])
-        .lte("start_date", monthEnd)
-        .gte("end_date", monthStart);
+      let leaveQuery = listLeaveRequestsByStartDateToAndEndDateFromWithStatusSubmittedApproved(monthEnd, monthStart);
 
       if (profile?.department) {
-        const { data: deptMembers } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("department", profile.department);
+        const { data: deptMembers } = await listProfilesByDepartment(profile.department);
         const ids = (deptMembers || []).map((m: { id: string }) => m.id);
         if (ids.length > 0) leaveQuery = leaveQuery.in("employee_id", ids);
       }
 
       const [leaveRes, holidayRes] = await Promise.all([
         leaveQuery,
-        supabase
-          .from("leave_public_holidays")
-          .select("holiday_date, holiday_name")
-          .gte("holiday_date", monthStart)
-          .lte("holiday_date", monthEnd)
-          .eq("is_active", true),
+        listLeavePublicHolidaysByHolidayDateFromAndHolidayDateToWithIsActive(monthStart, monthEnd),
       ]);
 
       // Build day data map

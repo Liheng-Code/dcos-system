@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { listPoItemsByPoId, listPosBySupplierId } from "@/lib/procurement/procurement-service";
+import { listPoItemsByPoId, listPosBySupplierId } from "@/lib/procurement/procurement-queries";
 import { Loader2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

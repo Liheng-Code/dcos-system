@@ -10,6 +10,7 @@ import { Plus, Loader2, X, ChevronRight } from "lucide-react";
 import { format, getDaysInMonth } from "date-fns";
 import { toast } from "sonner";
 import Link from "next/link";
+import { insertPayrollPeriod, listPayrollPeriods, updatePayrollEntriesByPeriodId, updatePayrollPeriodById } from "@/lib/hr/hr-queries";
 
 interface Period {
   id: string;
@@ -63,11 +64,7 @@ export default function PayrollPeriodsPage() {
 
   function load() {
     const supabase = createClient();
-    supabase
-      .from("payroll_periods")
-      .select("*")
-      .order("period_year", { ascending: false })
-      .order("period_month", { ascending: false })
+    listPayrollPeriods("*")
       .then(({ data }) => {
         setPeriods((data || []) as Period[]);
         setLoading(false);
@@ -85,7 +82,7 @@ export default function PayrollPeriodsPage() {
     const end   = `${form.year}-${String(form.month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
     const label = `${MONTHS[form.month - 1]} ${form.year}`;
 
-    const { error } = await supabase.from("payroll_periods").insert({
+    const { error } = await insertPayrollPeriod({
       period_year:  form.year,
       period_month: form.month,
       label,
@@ -116,16 +113,13 @@ export default function PayrollPeriodsPage() {
       update.approved_by = user?.id ?? null;
       update.approved_at = new Date().toISOString();
     }
-    const { error } = await supabase.from("payroll_periods").update(update).eq("id", period.id);
+    const { error } = await updatePayrollPeriodById(update, period.id);
     if (error) { toast.error("Failed to update period status"); return; }
 
     // Entry-level status must reach a non-"draft" state once the period is paid,
     // since "My Payslip" only shows entries whose status isn't "draft".
     if (next === "paid") {
-      const { error: entriesError } = await supabase
-        .from("payroll_entries")
-        .update({ status: "paid" })
-        .eq("period_id", period.id);
+      const { error: entriesError } = await updatePayrollEntriesByPeriodId({ status: "paid" }, period.id);
       if (entriesError) toast.error("Period marked paid, but payslips failed to publish: " + entriesError.message);
     }
 

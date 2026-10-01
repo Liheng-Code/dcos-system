@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getInvoiceMatchById, listPoItemsByPoId, listPos, listSuppliers, updateInvoiceMatchById, updatePoById } from "@/lib/procurement/procurement-service";
+import { getInvoiceMatchById, listPoItemsByPoId, listPos, listSuppliers, updateInvoiceMatchById, updatePoById } from "@/lib/procurement/procurement-queries";
 
 interface InvoiceMatch {
   id: string;

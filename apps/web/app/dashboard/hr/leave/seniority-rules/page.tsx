@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listLeaveSeniorityRules, listLeaveTypes } from "@/lib/hr/hr-queries";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
 
@@ -54,10 +54,9 @@ export default function SeniorityRulesAdminPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = async () => {
-    const supabase = createClient();
     const [rulesRes, typesRes] = await Promise.all([
-      supabase.from("leave_seniority_rules").select("*").order("min_years"),
-      supabase.from("leave_types").select("id, leave_name").order("leave_name"),
+      listLeaveSeniorityRules(),
+      listLeaveTypes(),
     ]);
     setRules(((rulesRes.data || []) as SeniorityRule[]).map(normalizeRule));
     setLeaveTypes(typesRes.data || []);

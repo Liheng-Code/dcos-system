@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listOvertimeLimits, updateOvertimeLimitById } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,11 +36,7 @@ export default function OTLimitsPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("overtime_limits")
-      .select("*")
-      .order("limit_type")
+    listOvertimeLimits()
       .then(({ data, error }) => {
         if (data) setLimits(data);
         setLoading(false);
@@ -56,16 +52,12 @@ export default function OTLimitsPage() {
     setError(null);
     setSuccess(null);
 
-    const supabase = createClient();
     for (const limit of limits) {
-      const { error } = await supabase
-        .from("overtime_limits")
-        .update({
+      const { error } = await updateOvertimeLimitById({
           max_hours: limit.max_hours,
           escalation_required: limit.escalation_required,
           is_active: limit.is_active,
-        })
-        .eq("id", limit.id);
+        }, limit.id);
 
       if (error) {
         setError(error.message);

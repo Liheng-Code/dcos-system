@@ -52,7 +52,7 @@ export function listAuditLog() {
 // ── procurement_budget_confirmation_items ─────────────────────────────────────
 
 // @table procurement_budget_confirmation_items
-export function insertBudgetConfirmationItems(rows: object[]) {
+export function insertBudgetConfirmationItems(rows: object | object[]) {
   return db().from("procurement_budget_confirmation_items").insert(rows);
 }
 
@@ -123,7 +123,7 @@ export function insertGoodsReceipt(row: object) {
 }
 
 // @table procurement_goods_receipts
-export function insertGoodsReceipts(rows: object[]) {
+export function insertGoodsReceipts(rows: object | object[]) {
   return db().from("procurement_goods_receipts").insert(rows);
 }
 
@@ -191,7 +191,7 @@ export function updateNotificationsByIds(patch: object, ids: readonly (string | 
 // ── procurement_po_items ──────────────────────────────────────────────────────
 
 // @table procurement_po_items
-export function insertPoItems(rows: object[]) {
+export function insertPoItems(rows: object | object[]) {
   return db().from("procurement_po_items").insert(rows);
 }
 
@@ -321,7 +321,7 @@ export function insertPrItem(row: object) {
 }
 
 // @table procurement_pr_items
-export function insertPrItems(rows: object[]) {
+export function insertPrItems(rows: object | object[]) {
   return db().from("procurement_pr_items").insert(rows);
 }
 
@@ -402,7 +402,7 @@ export function updatePrsByIds(patch: object, ids: readonly (string | number)[])
 // ── procurement_quotation_items ───────────────────────────────────────────────
 
 // @table procurement_quotation_items
-export function insertQuotationItems(rows: object[]) {
+export function insertQuotationItems(rows: object | object[]) {
   return db().from("procurement_quotation_items").insert(rows);
 }
 
@@ -434,7 +434,7 @@ export function updateQuotationById(patch: object, id: string | number | boolean
 // ── procurement_rfq_suppliers ─────────────────────────────────────────────────
 
 // @table procurement_rfq_suppliers
-export function insertRfqSuppliers(rows: object[]) {
+export function insertRfqSuppliers(rows: object | object[]) {
   return db().from("procurement_rfq_suppliers").insert(rows);
 }
 

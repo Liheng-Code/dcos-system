@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import LeaveRequestDetail from "@/components/hr/leave/leave-request-detail";
+import { listLeaveRequestsByEmployeeId, listProfilesByIds } from "@/lib/hr/hr-queries";
 
 interface LeaveRequest {
   id: string;
@@ -60,12 +61,7 @@ function MyRequestsContent() {
     const uid = userData.user?.id;
     if (!uid) return;
 
-    const { data } = await supabase
-      .from("leave_requests")
-      .select("id, leave_type_id, start_date, end_date, days_requested, status, reason, submission_date, is_half_day, approver_1_id, approver_1_status, approver_2_id, approver_2_status, leave_types(leave_name)")
-      .eq("employee_id", uid)
-      .order("submission_date", { ascending: false })
-      .limit(50);
+    const { data } = await listLeaveRequestsByEmployeeId(uid);
 
     const requests = (data || []) as unknown as LeaveRequest[];
     setRequests(requests);
@@ -77,10 +73,7 @@ function MyRequestsContent() {
       if (r.approver_2_id) approverIds.add(r.approver_2_id);
     }
     if (approverIds.size > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, employee_id")
-        .in("id", [...approverIds]);
+      const { data: profiles } = await listProfilesByIds([...approverIds]);
       const map: Record<string, { full_name: string; employee_id: string }> = {};
       for (const p of profiles || []) {
         map[p.id] = { full_name: p.full_name, employee_id: p.employee_id };

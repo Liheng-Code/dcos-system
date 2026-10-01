@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listEmployeeSkills, listEmployeeSkillsWithSkills, listSkills } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,12 +36,9 @@ export default function CompetencyPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch skills overview
-    supabase
-      .from("skills")
-      .select("id, skill_category")
+    listSkills()
       .then(({ data }) => {
         if (data) {
           const categories = new Set(data.map((s) => s.skill_category)).size;
@@ -54,17 +51,7 @@ export default function CompetencyPage() {
       });
 
     // Fetch employee skill assignments
-    supabase
-      .from("employee_skills")
-      .select(`
-        id,
-        proficiency_level,
-        verified_date,
-        profiles(full_name, employee_id),
-        skills(skill_name, skill_category)
-      `)
-      .order("verified_date", { ascending: false })
-      .limit(50)
+    listEmployeeSkills()
       .then(({ data }) => {
         if (data) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,12 +71,7 @@ export default function CompetencyPage() {
       });
 
     // Fetch skill statistics by skill
-    supabase
-      .from("employee_skills")
-      .select(`
-        skills(skill_name, skill_category),
-        proficiency_level
-      `)
+    listEmployeeSkillsWithSkills()
       .then(({ data }) => {
         if (data) {
           const skillMap: Record<string, { category: string; levels: number[] }> = {};

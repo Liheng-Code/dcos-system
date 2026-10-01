@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { listOvertimeNotificationsByRecipientId, updateOvertimeNotificationsByIds } from "@/lib/hr/hr-queries";
 
 interface Notification {
   id: string;
@@ -42,15 +43,7 @@ export default function OtNotificationsPage() {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
 
-      const { data: rows } = await supabase
-        .from("overtime_notifications")
-        .select(`
-          id, event_type, body, subject, sent_at, queued_at, is_read,
-          overtime_requests(id, ot_type, hours)
-        `)
-        .eq("recipient_id", data.user.id)
-        .order("queued_at", { ascending: false })
-        .limit(50);
+      const { data: rows } = await listOvertimeNotificationsByRecipientId(data.user.id);
 
       setNotifications((rows || []) as any);
       setLoading(false);
@@ -60,10 +53,7 @@ export default function OtNotificationsPage() {
         .filter((n: any) => !n.is_read)
         .map((n: any) => n.id);
       if (unreadIds.length > 0) {
-        supabase
-          .from("overtime_notifications")
-          .update({ is_read: true })
-          .in("id", unreadIds)
+        updateOvertimeNotificationsByIds({ is_read: true }, unreadIds)
           .then(() => {});
       }
     });

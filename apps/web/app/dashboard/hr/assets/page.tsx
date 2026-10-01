@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listAssetAssignmentsWithStatusActive, listEmployeeAssets, listEmployeeAssetsOrderedByPurchaseDate } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,12 +53,9 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch asset inventory statistics
-    supabase
-      .from("employee_assets")
-      .select("status")
+    listEmployeeAssets()
       .then(({ data }) => {
         if (data) {
           const assigned = data.filter((a) => a.status === "assigned").length;
@@ -75,40 +72,13 @@ export default function AssetsPage() {
       });
 
     // Fetch all assets
-    supabase
-      .from("employee_assets")
-      .select(`
-        id,
-        asset_code,
-        asset_name,
-        asset_type,
-        serial_number,
-        purchase_date,
-        purchase_cost,
-        status,
-        warranty_expiry
-      `)
-      .order("purchase_date", { ascending: false })
-      .limit(50)
+    listEmployeeAssetsOrderedByPurchaseDate()
       .then(({ data }) => {
         if (data) setAssets(data);
       });
 
     // Fetch active asset assignments
-    supabase
-      .from("asset_assignments")
-      .select(`
-        id,
-        assignment_date,
-        return_date,
-        status,
-        condition_on_assignment,
-        profiles(full_name, employee_id),
-        employee_assets(asset_code, asset_name, asset_type, brand, model)
-      `)
-      .eq("status", "active")
-      .order("assignment_date", { ascending: false })
-      .limit(50)
+    listAssetAssignmentsWithStatusActive()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setAssignments(data as any);

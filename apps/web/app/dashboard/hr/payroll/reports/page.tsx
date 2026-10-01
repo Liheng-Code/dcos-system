@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listNssfRulesWithStatusActiveAndApplyCap, listPayrollEntriesByPeriodIdOrderedByGrossSalary, listPayrollEntryLinesByEntryIds, listPayrollPeriods } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -338,8 +338,7 @@ export default function PayrollReportsPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("payroll_periods").select("id, label, period_year, period_month, status").order("period_year", { ascending: false }).order("period_month", { ascending: false })
+    listPayrollPeriods("id, label, period_year, period_month, status")
       .then(({ data }) => {
         const ps = (data ?? []) as Period[];
         setPeriods(ps);
@@ -351,11 +350,7 @@ export default function PayrollReportsPage() {
   useEffect(() => {
     if (!selectedPeriod) return;
     window.setTimeout(() => setLoadingReport(true), 0);
-    const supabase = createClient();
-    supabase.from("payroll_entries")
-      .select("id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, total_deductions, net_salary, ot_hours, status, profiles!employee_id(full_name, department)")
-      .eq("period_id", selectedPeriod.id)
-      .order("gross_salary", { ascending: false })
+    listPayrollEntriesByPeriodIdOrderedByGrossSalary(selectedPeriod.id, "id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, total_deductions, net_salary, ot_hours, status, profiles!employee_id(full_name, department)")
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setReportData(((data ?? []) as any[]).map((e) => ({
@@ -378,18 +373,11 @@ export default function PayrollReportsPage() {
   useEffect(() => {
     if (!selectedPeriod || activeReport !== "compliance") return;
     window.setTimeout(() => setLoadingCompliance(true), 0);
-    const supabase = createClient();
 
     (async () => {
       const [entriesRes, nssfRulesRes] = await Promise.all([
-        supabase.from("payroll_entries")
-          .select("id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, tax_relief_khr, taxable_income, exchange_rate, working_days, present_days, profiles!employee_id(full_name, department)")
-          .eq("period_id", selectedPeriod.id)
-          .order("gross_salary", { ascending: false }),
-        supabase.from("nssf_rules")
-          .select("max_wage_base, apply_cap")
-          .eq("status", "active")
-          .eq("apply_cap", true),
+        listPayrollEntriesByPeriodIdOrderedByGrossSalary(selectedPeriod.id, "id, gross_salary, total_tos, total_nssf_ee, total_nssf_er, tax_relief_khr, taxable_income, exchange_rate, working_days, present_days, profiles!employee_id(full_name, department)"),
+        listNssfRulesWithStatusActiveAndApplyCap(),
       ]);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -397,9 +385,7 @@ export default function PayrollReportsPage() {
       const entryIds = entries.map((e) => e.id as string);
 
       const linesRes = entryIds.length > 0
-        ? await supabase.from("payroll_entry_lines")
-            .select("entry_id, amount, payroll_component_types(code)")
-            .in("entry_id", entryIds)
+        ? await listPayrollEntryLinesByEntryIds(entryIds)
         : { data: [] };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lines = (linesRes.data ?? []) as any[];

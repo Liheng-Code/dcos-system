@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getBudgetConfirmationByPrId, getPrById, getProjectById, listBudgetConfirmationItemsByBcId, listProfilesByIds } from "@/lib/procurement/procurement-service";
+import { getBudgetConfirmationByPrId, getPrById, getProjectById, listBudgetConfirmationItemsByBcId, listProfilesByIds } from "@/lib/procurement/procurement-queries";
 import { Loader2, ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

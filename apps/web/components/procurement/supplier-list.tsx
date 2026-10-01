@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deleteSupplierById, listSuppliersByName } from "@/lib/procurement/procurement-service";
+import { deleteSupplierById, listSuppliersByName } from "@/lib/procurement/procurement-queries";
 import { Search, Plus, Loader2, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

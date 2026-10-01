@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRfqById, insertQuotation, insertQuotationItems, listPrItemsByPrId, listRfqSuppliersBySupplierId, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-service";
+import { getRfqById, insertQuotation, insertQuotationItems, listPrItemsByPrId, listRfqSuppliersBySupplierId, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-queries";
 import { Loader2, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";

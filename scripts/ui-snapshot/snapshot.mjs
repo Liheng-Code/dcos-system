@@ -35,7 +35,10 @@ const views = JSON.parse(fs.readFileSync(viewsFile, "utf8"));
 const BASE = process.env.DCOS_SNAPSHOT_BASE ?? "http://localhost:3000";
 const EMAIL = process.env.DCOS_SNAPSHOT_EMAIL ?? "liheng@dcos.com";
 const PASSWORD = process.env.DCOS_SNAPSHOT_PASSWORD ?? "dcosdemo#2026";
-const SETTLE_MS = 1500;
+// How long to let a page settle after it loads. Raise it (DCOS_SNAPSHOT_SETTLE, in ms)
+// for pages that fill in panels late; a view that differs between two runs with no
+// code change needs a longer settle.
+const SETTLE_MS = Number(process.env.DCOS_SNAPSHOT_SETTLE) || 1500;
 
 const result = { errors: [], views: {} };
 const browser = await chromium.launch({ channel: process.env.DCOS_SNAPSHOT_BROWSER ?? "msedge" });
@@ -50,7 +53,8 @@ async function capture(scope) {
     const controls = [...root.querySelectorAll("input, select, textarea")].filter(visible).map((el) => ({
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute("type") ?? "",
-      value: el.type === "checkbox" ? String(el.checked) : el.value,
+      // Password fields are never recorded (some forms pre-fill a random one).
+      value: el.type === "checkbox" ? String(el.checked) : el.type === "password" ? "(not recorded)" : el.value,
       disabled: el.disabled,
       options: el.tagName === "SELECT" ? [...el.options].map((o) => o.value + "=" + o.text) : undefined,
     }));
@@ -66,7 +70,8 @@ async function capture(scope) {
 
 async function open(view) {
   await page.goto(BASE + view.url, { waitUntil: "domcontentloaded" });
-  if (view.waitFor) await page.waitForSelector(view.waitFor);
+  // A page without the expected element (no <main>, for instance) is still recorded, from <body>.
+  if (view.waitFor) await page.waitForSelector(view.waitFor, { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(SETTLE_MS);
 }
 
@@ -79,34 +84,44 @@ try {
 
   for (const view of views) {
     const scope = view.scope ?? "main";
-    await open(view);
-    result.views[view.name] = await capture(scope);
-
-    if (view.tabs) {
-      const tabs = page.locator('[role="tablist"] [role="tab"]');
-      for (let i = 0; i < (await tabs.count()); i++) {
-        const label = (await tabs.nth(i).innerText()).trim();
-        await tabs.nth(i).click();
-        await page.waitForTimeout(300);
-        result.views[`${view.name} / tab ${label}`] = await capture(scope);
-      }
+    try {
+      await recordView(view, scope);
+      console.log(`recorded ${view.name}`);
+    } catch (e) {
+      // One broken view must not stop the run; it shows up in the comparison instead.
+      result.views[view.name] = { text: "(could not be recorded: " + e.message.split("\n")[0] + ")", controls: [], buttons: [] };
+      console.log(`could not record ${view.name}`);
     }
-    for (const label of view.clicks ?? []) {
-      await page.getByRole("button", { name: label, exact: true }).first().click();
-      await page.waitForTimeout(SETTLE_MS);
-      result.views[`${view.name} / ${label}`] = await capture(scope);
-    }
-    for (const label of view.freshClicks ?? []) {
-      await open(view);
-      await page.getByRole("button", { name: label, exact: true }).first().click();
-      await page.waitForTimeout(500);
-      result.views[`${view.name} / dialog ${label}`] = await capture("body");
-    }
-    console.log(`recorded ${view.name}`);
   }
 } catch (e) {
   result.errors.push("script: " + e.message.split("\n")[0]);
   console.error("FAILED: " + e.message.split("\n")[0]);
+}
+
+async function recordView(view, scope) {
+  await open(view);
+  result.views[view.name] = await capture(scope);
+
+  if (view.tabs) {
+    const tabs = page.locator('[role="tablist"] [role="tab"]');
+    for (let i = 0; i < (await tabs.count()); i++) {
+      const label = (await tabs.nth(i).innerText()).trim();
+      await tabs.nth(i).click();
+      await page.waitForTimeout(300);
+      result.views[`${view.name} / tab ${label}`] = await capture(scope);
+    }
+  }
+  for (const label of view.clicks ?? []) {
+    await page.getByRole("button", { name: label, exact: true }).first().click();
+    await page.waitForTimeout(SETTLE_MS);
+    result.views[`${view.name} / ${label}`] = await capture(scope);
+  }
+  for (const label of view.freshClicks ?? []) {
+    await open(view);
+    await page.getByRole("button", { name: label, exact: true }).first().click();
+    await page.waitForTimeout(500);
+    result.views[`${view.name} / dialog ${label}`] = await capture("body");
+  }
 }
 
 fs.writeFileSync(out, JSON.stringify(result, null, 1));

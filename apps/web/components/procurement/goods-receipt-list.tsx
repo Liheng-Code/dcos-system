@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listDeliveryNotes } from "@/lib/procurement/procurement-service";
+import { listDeliveryNotes } from "@/lib/procurement/procurement-queries";
 import { Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

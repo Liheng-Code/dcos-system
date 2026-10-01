@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listTimesheets, listTimesheetsWithProfiles } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,9 @@ export default function TimesheetPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
 
     // Fetch timesheet statistics
-    supabase
-      .from("timesheets")
-      .select("status, total_hours")
+    listTimesheets("status, total_hours")
       .then(({ data }) => {
         if (data) {
           const counts = { submitted: 0, approved: 0, pending: 0, total_hours: 0 };
@@ -48,20 +45,7 @@ export default function TimesheetPage() {
       });
 
     // Fetch recent timesheets
-    supabase
-      .from("timesheets")
-      .select(`
-        id,
-        week_start_date,
-        week_end_date,
-        status,
-        total_hours,
-        total_ot_hours,
-        submission_date,
-        profiles!inner(full_name, employee_id)
-      `)
-      .order("week_start_date", { ascending: false })
-      .limit(50)
+    listTimesheetsWithProfiles()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setTimesheets(data as any);

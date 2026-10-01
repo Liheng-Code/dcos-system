@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { listLeaveYearEndLogs } from "@/lib/hr/hr-queries";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Calendar, Clock } from "lucide-react";
@@ -53,11 +53,7 @@ export default function YearEndAdminPage() {
   }, [preview, previewDepartment, previewLeaveType, previewSearch, previewStatus]);
 
   const refreshLogs = async () => {
-    const { data } = await createClient()
-      .from("leave_year_end_logs")
-      .select("*, profiles(full_name)")
-      .order("run_date", { ascending: false })
-      .limit(20);
+    const { data } = await listLeaveYearEndLogs();
     setLogs(data || []);
   };
 

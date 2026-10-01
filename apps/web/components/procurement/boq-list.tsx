@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { deleteQsBoqItemById, deleteQsBoqSectionById, listQsBoqItemsByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-service";
+import { deleteQsBoqItemById, deleteQsBoqSectionById, listQsBoqItemsByProjectId, listQsBoqSectionsByProjectId } from "@/lib/procurement/procurement-queries";
 import { Search, Plus, Loader2, Pencil, Trash2, ChevronDown, ChevronRight, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, AlertTriangle, Clock, FileText, Save, Send } from "lucide-react";
 import { toast } from "sonner";
+import { getProfileById } from "@/lib/hr/hr-queries";
 
 const OT_TYPES = [
   { value: "weekday", label: "Weekday OT" },
@@ -78,7 +79,7 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
       if (data.user) {
         setUser(data.user);
         if (!initialData?.employee_id) {
-          supabase.from("profiles").select("id, full_name, department").eq("id", data.user.id).single().then(({ data: profile }) => {
+          getProfileById(data.user.id, "id, full_name, department").then(({ data: profile }) => {
             if (profile) {
               setForm((f) => ({ ...f, employee_id: profile.id, department: profile.department || "" }));
             }

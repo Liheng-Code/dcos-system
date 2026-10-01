@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { insertInvoiceMatch, listGoodsReceiptsByPoId, listPosReadyForInvoiceMatch, updatePoById } from "@/lib/procurement/procurement-service";
+import { insertInvoiceMatch, listGoodsReceiptsByPoId, listPosReadyForInvoiceMatch, updatePoById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";

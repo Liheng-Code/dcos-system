@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertNssfRules, listNssfRules, updateNssfRuleById } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,8 +46,7 @@ export default function NSSFConfigPage() {
   const [rules, setRules] = useState<NSSFRule[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("nssf_rules").select("*").order("contribution_type").order("contributor").order("effective_date", { ascending: false })
+    listNssfRules()
       .then(({ data }) => {
         setRules((data ?? []) as NSSFRule[]);
         setLoading(false);
@@ -67,7 +66,6 @@ export default function NSSFConfigPage() {
 
   async function saveRules(type: string) {
     setSaving(true);
-    const supabase = createClient();
     const toSave = rules.filter((r) => r.contribution_type === type);
     for (const rule of toSave) {
       const payload = {
@@ -81,10 +79,10 @@ export default function NSSFConfigPage() {
         status: rule.status,
       };
       if (rule.id) {
-        const { error } = await supabase.from("nssf_rules").update(payload).eq("id", rule.id);
+        const { error } = await updateNssfRuleById(payload, rule.id);
         if (error) { toast.error(error.message); setSaving(false); return; }
       } else {
-        const { error, data } = await supabase.from("nssf_rules").insert(payload).select("id").single();
+        const { error, data } = await insertNssfRules(payload);
         if (error) { toast.error(error.message); setSaving(false); return; }
         if (data) setRules((prev) => prev.map((r) => r === rule ? { ...r, id: data.id } : r));
       }

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { deleteWorkShiftById, insertEmployeeShiftAssignments, insertWorkShifts, listProfilesWithStatusActiveOrderedByFullName, listWorkShifts } from "@/lib/hr/hr-queries";
 
 interface WorkShift {
   id: string;
@@ -59,18 +60,14 @@ export default function ShiftsPage() {
   async function loadShifts() {
     setLoading(true);
     const supabase = createClient();
-    const { data } = await supabase.from("work_shifts").select("*").order("name");
+    const { data } = await listWorkShifts();
     setShifts(data ?? []);
     setLoading(false);
   }
 
   async function loadEmployees() {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, department")
-      .eq("status", "active")
-      .order("full_name");
+    const { data } = await listProfilesWithStatusActiveOrderedByFullName("id, full_name, department");
     setEmployees(data ?? []);
   }
 
@@ -92,7 +89,7 @@ export default function ShiftsPage() {
       start_time: form.shift_type === "flexible" ? null : form.start_time,
       end_time: form.shift_type === "flexible" ? null : form.end_time,
     };
-    const { error } = await supabase.from("work_shifts").insert(payload);
+    const { error } = await insertWorkShifts(payload);
     if (error) { toast.error(error.message); }
     else { toast.success("Shift created"); setShowCreate(false); setForm(DEFAULT_SHIFT); loadShifts(); }
     setSaving(false);
@@ -100,7 +97,7 @@ export default function ShiftsPage() {
 
   async function handleDelete(id: string) {
     const supabase = createClient();
-    const { error } = await supabase.from("work_shifts").delete().eq("id", id);
+    const { error } = await deleteWorkShiftById(id);
     if (error) toast.error(error.message);
     else { toast.success("Shift deleted"); loadShifts(); }
   }
@@ -118,7 +115,7 @@ export default function ShiftsPage() {
       assigned_by: user?.id ?? null,
     }));
 
-    const { error } = await supabase.from("employee_shift_assignments").insert(rows);
+    const { error } = await insertEmployeeShiftAssignments(rows);
     if (error) toast.error(error.message);
     else { toast.success(`Assigned ${selectedEmployees.length} employee(s)`); setAssignShift(null); setSelectedEmployees([]); }
     setSaving(false);

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
+import { deleteLeavePublicHolidayById, insertLeavePublicHolidays, listLeavePublicHolidaysByYearWithIsActive, listUserRolesByUserIdWithRoleCodeHRManagerAdmin, updateLeavePublicHolidayById } from "@/lib/hr/hr-queries";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PublicHoliday {
@@ -92,12 +93,7 @@ export default function PublicHolidaysPage() {
   // ── Fetch holidays + check role ────────────────────────────────────────────
   const fetchHolidays = async (year: number) => {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("leave_public_holidays")
-      .select("id, holiday_date, holiday_name, year, is_active, note")
-      .eq("year", year)
-      .eq("is_active", true)
-      .order("holiday_date");
+    const { data } = await listLeavePublicHolidaysByYearWithIsActive(year);
     setHolidays(data || []);
   };
 
@@ -108,11 +104,7 @@ export default function PublicHolidaysPage() {
       const uid = userData.user?.id;
       if (uid) {
         setCurrentUserId(uid);
-        const { data: roleRows } = await supabase
-          .from("user_roles")
-          .select("role_code")
-          .eq("user_id", uid)
-          .in("role_code", ["HR_Manager", "admin"]);
+        const { data: roleRows } = await listUserRolesByUserIdWithRoleCodeHRManagerAdmin(uid);
         setCanManage((roleRows?.length ?? 0) > 0);
       }
       await fetchHolidays(selectedYear);
@@ -157,7 +149,7 @@ export default function PublicHolidaysPage() {
       is_active: true,
       created_by: currentUserId || undefined,
     }));
-    const { error } = await supabase.from("leave_public_holidays").insert(rows);
+    const { error } = await insertLeavePublicHolidays(rows);
     if (error) {
       setAddError(error.message);
     } else {
@@ -181,10 +173,7 @@ export default function PublicHolidaysPage() {
     setEditSaving(true);
     setEditError(null);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("leave_public_holidays")
-      .update({ holiday_date: editForm.holiday_date, holiday_name: editForm.holiday_name.trim(), is_active: editForm.is_active, note: editForm.note.trim() || null })
-      .eq("id", editingHoliday.id);
+    const { error } = await updateLeavePublicHolidayById({ holiday_date: editForm.holiday_date, holiday_name: editForm.holiday_name.trim(), is_active: editForm.is_active, note: editForm.note.trim() || null }, editingHoliday.id);
     if (error) {
       setEditError(error.message);
     } else {
@@ -200,7 +189,7 @@ export default function PublicHolidaysPage() {
     setDeleteLoading(true);
     setDeleteError(null);
     const supabase = createClient();
-    const { error } = await supabase.from("leave_public_holidays").delete().eq("id", deletingHoliday.id);
+    const { error } = await deleteLeavePublicHolidayById(deletingHoliday.id);
     if (error) {
       setDeleteError(error.message);
     } else {
@@ -228,7 +217,7 @@ export default function PublicHolidaysPage() {
         created_by: currentUserId || undefined,
       };
     });
-    const { error } = await supabase.from("leave_public_holidays").insert(rows);
+    const { error } = await insertLeavePublicHolidays(rows);
     if (error) {
       setRollError(error.message.includes("unique") ? `Some holidays already exist in ${nextYear}. Remove duplicates first.` : error.message);
     } else {

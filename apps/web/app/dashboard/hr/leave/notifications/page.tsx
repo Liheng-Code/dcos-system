@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { listLeaveNotificationsByRecipientId } from "@/lib/hr/hr-queries";
 
 interface Notification {
   id: string;
@@ -40,15 +41,7 @@ export default function NotificationsPage() {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
 
-      const { data: rows } = await supabase
-        .from("leave_notifications")
-        .select(`
-          id, event_type, body, subject, sent_at, queued_at,
-          leave_requests(start_date, end_date, leave_types(leave_name))
-        `)
-        .eq("recipient_id", data.user.id)
-        .order("queued_at", { ascending: false })
-        .limit(50);
+      const { data: rows } = await listLeaveNotificationsByRecipientId(data.user.id);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setNotifications((rows || []) as any);

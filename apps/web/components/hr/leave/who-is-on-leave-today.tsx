@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listLeaveRequestsByStartDateToAndEndDateFromWithStatusApproved } from "@/lib/hr/hr-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 import { UserRound } from "lucide-react";
@@ -41,22 +41,9 @@ export function WhoIsOnLeaveToday({ compact = false }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     const today = format(new Date(), "yyyy-MM-dd");
 
-    supabase
-      .from("leave_requests")
-      .select(`
-        id,
-        start_date,
-        end_date,
-        profiles!employee_id (full_name, department),
-        leave_types (leave_name, color)
-      `)
-      .eq("status", "approved")
-      .lte("start_date", today)
-      .gte("end_date", today)
-      .order("start_date")
+    listLeaveRequestsByStartDateToAndEndDateFromWithStatusApproved(today, today)
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows = (data || []).map((r: any) => ({

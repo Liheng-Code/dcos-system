@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { insertSupplier, updateSupplierById } from "@/lib/procurement/procurement-service";
+import { insertSupplier, updateSupplierById } from "@/lib/procurement/procurement-queries";
 import { X, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";

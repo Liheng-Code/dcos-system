@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listGoodsReceipts, listPos, listRfqSuppliers } from "@/lib/procurement/procurement-service";
+import { listActiveSuppliersUnordered, listDeliveryNoteColumns, listGoodsReceipts, listPos, listRfqSuppliers } from "@/lib/procurement/procurement-queries";
 import { Loader2, TrendingUp, Truck, Clock, Star, XCircle, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

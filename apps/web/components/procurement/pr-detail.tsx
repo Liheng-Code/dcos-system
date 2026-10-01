@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { deletePrById, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-service";
+import { deletePrById, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-queries";
 
 interface PRRecord {
   id: string;

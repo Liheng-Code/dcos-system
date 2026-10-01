@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { listNotifications, updateNotificationById, updateNotificationsByIds } from "@/lib/procurement/procurement-service";
+import { listNotifications, updateNotificationById, updateNotificationsByIds } from "@/lib/procurement/procurement-queries";
 import { Loader2, Bell, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

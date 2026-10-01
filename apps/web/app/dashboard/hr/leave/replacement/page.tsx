@@ -9,6 +9,7 @@ import { RefreshCw, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import LeaveRequestDetail from "@/components/hr/leave/leave-request-detail";
+import { listLeaveRequestsByEmployeeIdAndLeaveTypeIds, listLeaveTypesWithIsReplacementLeave } from "@/lib/hr/hr-queries";
 
 interface LeaveRequest {
   id: string;
@@ -40,20 +41,12 @@ export default function ReplacementLeavePage() {
     if (!uid) return;
 
     // Get replacement leave type IDs
-    const { data: replacementTypes } = await supabase
-      .from("leave_types")
-      .select("id")
-      .eq("is_replacement_leave", true);
+    const { data: replacementTypes } = await listLeaveTypesWithIsReplacementLeave();
 
     if (!replacementTypes?.length) { setLoading(false); return; }
     const typeIds = replacementTypes.map((t) => t.id);
 
-    const { data } = await supabase
-      .from("leave_requests")
-      .select("id, start_date, end_date, days_requested, status, reason, profiles(full_name)")
-      .eq("employee_id", uid)
-      .in("leave_type_id", typeIds)
-      .order("start_date", { ascending: false });
+    const { data } = await listLeaveRequestsByEmployeeIdAndLeaveTypeIds(uid, typeIds);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setRequests((data || []) as any);

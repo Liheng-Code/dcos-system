@@ -18,6 +18,7 @@ import {
 } from "date-fns";
 import { CalendarDays, FileText, Users, Paperclip, Plus, X, Info, Lock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getLeaveEmploymentPolicyByEmploymentTypeAndProbationStatusAndLeaveTypeId, getProfileById, insertLeaveNotification, insertLeaveRequest, listLeaveBalancesByEmployeeIdAndFiscalYear, listLeavePublicHolidaysByYearsWithIsActive, listLeaveRequestsByEmployeeIdWithStatusSubmittedApprovedPendingCancellation, listLeaveTypesWithIsActive, listProfilesByExceptId } from "@/lib/hr/hr-queries";
 
 interface LeaveType {
   id: string;
@@ -204,36 +205,16 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     const nextYear = currentYear + 1;
     Promise.all([
       supabase.auth.getUser(),
-      supabase
-        .from("leave_types")
-        .select("id, leave_code, leave_name, max_days_per_year, is_paid, half_day_allowed, skip_team_capacity, max_days_per_request, advance_notice_days, probation_required, gender_restriction, is_replacement_leave, requires_document, is_active")
-        .eq("is_active", true)
-        .order("leave_name"),
-      supabase
-        .from("leave_public_holidays")
-        .select("holiday_date, holiday_name")
-        .in("year", [currentYear, nextYear])
-        .eq("is_active", true),
+      listLeaveTypesWithIsActive("id, leave_code, leave_name, max_days_per_year, is_paid, half_day_allowed, skip_team_capacity, max_days_per_request, advance_notice_days, probation_required, gender_restriction, is_replacement_leave, requires_document, is_active"),
+      listLeavePublicHolidaysByYearsWithIsActive([currentYear, nextYear]),
     ]).then(async ([userRes, typesRes, holidaysRes]) => {
       if (userRes.data.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, full_name, email, join_date, department, gender, probation_status, probation_end_date, employment_type")
-          .eq("id", userRes.data.user.id)
-          .single();
+        const { data: profile } = await getProfileById(userRes.data.user.id, "id, full_name, email, join_date, department, gender, probation_status, probation_end_date, employment_type");
         setCurrentUser(profile);
 
         const [{ data: balData }, { data: existingReqs }] = await Promise.all([
-          supabase
-            .from("leave_balances")
-            .select("leave_type_id, remaining_days, carried_over_days")
-            .eq("employee_id", userRes.data.user.id)
-            .eq("fiscal_year", currentYear),
-          supabase
-            .from("leave_requests")
-            .select("start_date, end_date")
-            .eq("employee_id", userRes.data.user.id)
-            .in("status", ["submitted", "approved", "pending_cancellation"]),
+          listLeaveBalancesByEmployeeIdAndFiscalYear(userRes.data.user.id, currentYear),
+          listLeaveRequestsByEmployeeIdWithStatusSubmittedApprovedPendingCancellation(userRes.data.user.id),
         ]);
         setBalances(balData || []);
 
@@ -277,11 +258,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     setPickerQuery("");
     setPickerSelected(ccTeammates);
     const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("id, full_name, department")
-      .neq("id", currentUser?.id ?? "")
-      .order("full_name")
+    listProfilesByExceptId(currentUser?.id ?? "")
       .then(({ data }) => setAllProfiles(data || []));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTeammatePicker]);
@@ -290,13 +267,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   useEffect(() => {
     if (!currentUser || !selectedTypeId) { setEmploymentPolicy(null); return; }
     const supabase = createClient();
-    supabase
-      .from("leave_employment_policy")
-      .select("allowed, requires_hr, requires_attachment, monthly_accrual, usable")
-      .eq("employment_type", currentUser.employment_type ?? "permanent")
-      .eq("probation_status", currentUser.probation_status ?? "not_applicable")
-      .eq("leave_type_id", selectedTypeId)
-      .maybeSingle()
+    getLeaveEmploymentPolicyByEmploymentTypeAndProbationStatusAndLeaveTypeId(currentUser.employment_type ?? "permanent", currentUser.probation_status ?? "not_applicable", selectedTypeId)
       .then(({ data }) => setEmploymentPolicy(data || null));
   }, [currentUser, selectedTypeId]);
 
@@ -368,15 +339,11 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   ) => {
     if (!currentUser) return;
     const supabase = createClient();
-    const { data: approverProfile } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", approverId)
-      .single();
+    const { data: approverProfile } = await getProfileById(approverId, "full_name, email");
 
     const body = `${currentUser.full_name} has submitted a leave request for ${daysRequested} day(s) from ${format(new Date(startDate), "dd MMM yyyy")} to ${format(new Date(endDate), "dd MMM yyyy")}. Reason: ${reason}`;
 
-    await supabase.from("leave_notifications").insert({
+    await insertLeaveNotification({
       leave_request_id: requestId,
       event_type: "request_submitted",
       recipient_id: approverId,
@@ -408,9 +375,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     try {
       const { a1, a2 } = await resolveApprovers();
 
-      const { data: request, error: insertError } = await supabase
-        .from("leave_requests")
-        .insert({
+      const { data: request, error: insertError } = await insertLeaveRequest({
           employee_id: currentUser.id,
           requested_by_id: currentUser.id,
           leave_type_id: selectedTypeId,
@@ -426,9 +391,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
           approver_1_status: a1 ? "pending" : null,
           approver_2_id: a2 && a2 !== a1 ? a2 : null,
           approver_2_status: a2 && a2 !== a1 ? "pending" : null,
-        })
-        .select("id")
-        .single();
+        });
 
       if (insertError) throw insertError;
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { insertRfq, insertRfqSuppliers, listActiveSuppliers, listApprovedPrs, listPrItemsByPrId } from "@/lib/procurement/procurement-service";
+import { insertRfq, insertRfqSuppliers, listActiveSuppliers, listApprovedPrs, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 import { AlertTriangle, ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";

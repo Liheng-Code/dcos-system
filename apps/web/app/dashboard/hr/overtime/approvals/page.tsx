@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { OTRequestDetail } from "@/components/hr/overtime/ot-request-detail";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, CheckSquare, AlertCircle } from "lucide-react";
+import { listOvertimeApprovalsByApproverIdWithStatusPending } from "@/lib/hr/hr-queries";
 
 interface ApprovalRow {
   ot_request_id: string;
@@ -50,21 +51,7 @@ export default function OTApprovalsPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setLoading(false); return; }
       setErrorMessage(null);
-      supabase
-        .from("overtime_approvals")
-        .select(`
-          ot_request_id,
-          approval_id:id,
-          status,
-          approver_level,
-          overtime_requests!inner(
-            id, employee_id, ot_type, hours, reason, status, start_time,
-            employee:profiles!overtime_requests_employee_id_fkey(full_name, employee_id)
-          )
-        `)
-        .eq("approver_id", user.id)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
+      listOvertimeApprovalsByApproverIdWithStatusPending(user.id)
         .then(({ data, error }) => {
           if (error) {
             setErrorMessage(error.message);

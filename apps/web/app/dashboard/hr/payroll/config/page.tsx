@@ -21,6 +21,7 @@ import {
   Clock,
   Percent,
 } from "lucide-react";
+import { listPayrollSettingsWithKeyWorkingTimeOtMultipliers, upsertPayrollSettings } from "@/lib/hr/hr-queries";
 
 // ─── Config hub links (existing pages — logic lives there, not here) ─────────
 
@@ -82,10 +83,7 @@ export default function PayrollConfigPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase
-      .from("payroll_settings")
-      .select("key, value")
-      .in("key", ["working_time", "ot_multipliers"])
+    listPayrollSettingsWithKeyWorkingTimeOtMultipliers()
       .then(({ data }) => {
         const rows = (data ?? []) as { key: string; value: WorkingTimeValue | OtMultipliersValue }[];
         const wt = rows.find((r) => r.key === "working_time")?.value as WorkingTimeValue | undefined;
@@ -134,8 +132,7 @@ export default function PayrollConfigPage() {
     const { data: userData } = await supabase.auth.getUser();
     const now = new Date().toISOString();
 
-    const { error: upsertError } = await supabase.from("payroll_settings").upsert(
-      [
+    const { error: upsertError } = await upsertPayrollSettings([
         {
           key: "working_time",
           value: { days_per_month: daysPerMonth, hours_per_day: hoursPerDay },
@@ -148,9 +145,7 @@ export default function PayrollConfigPage() {
           updated_by: userData.user?.id,
           updated_at: now,
         },
-      ],
-      { onConflict: "key" },
-    );
+      ]);
 
     if (upsertError) {
       setError(upsertError.message);

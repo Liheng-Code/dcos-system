@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listAttendanceRecords, listAttendanceRecordsByAttendanceDate } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,13 +53,9 @@ export default function AttendancePage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => data && setMyStatus(data));
 
-    const supabase = createClient();
 
     // Fetch today's attendance stats
-    supabase
-      .from("attendance_records")
-      .select("attendance_type")
-      .eq("attendance_date", format(new Date(), "yyyy-MM-dd"))
+    listAttendanceRecordsByAttendanceDate(format(new Date(), "yyyy-MM-dd"), "attendance_type")
       .then(({ data }) => {
         if (data) {
           const stats = { present: 0, absent: 0, late: 0, leave: 0 };
@@ -74,20 +70,7 @@ export default function AttendancePage() {
       });
 
     // Fetch recent attendance records with employee info
-    supabase
-      .from("attendance_records")
-      .select(`
-        id,
-        employee_id,
-        attendance_date,
-        attendance_type,
-        check_in_time,
-        check_out_time,
-        verified,
-        profiles!inner(full_name, employee_id)
-      `)
-      .order("attendance_date", { ascending: false })
-      .limit(50)
+    listAttendanceRecords()
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (data) setRecords(data as any);

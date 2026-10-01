@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getPayrollEntryById, listPayrollEntryLinesByEntryId } from "@/lib/hr/hr-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,15 +64,9 @@ export default function PayrollEntryDetailPage({ params }: { params: Promise<{ i
   const [lines, setLines] = useState<Line[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
     Promise.all([
-      supabase.from("payroll_entries")
-        .select("*, profiles!payroll_entries_employee_id_fkey(full_name, department, job_title), payroll_periods!period_id(label, period_year, period_month)")
-        .eq("id", id)
-        .maybeSingle(),
-      supabase.from("payroll_entry_lines")
-        .select("id, amount, note, payroll_component_types(code, name, category)")
-        .eq("entry_id", id),
+      getPayrollEntryById(id),
+      listPayrollEntryLinesByEntryId(id),
     ]).then(([eRes, lRes]) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const e = eRes.data as any;

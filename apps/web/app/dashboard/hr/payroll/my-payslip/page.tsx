@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2, ScrollText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PayslipCard } from "@/components/hr/payroll/payslip-card";
+import { getEmployeeBankAccountByEmployeeIdWithIsPrimary, getPayrollEntryByPeriodIdAndEmployeeId, getProfileById, listPayrollEntriesByEmployeeIdWithStatusDraft, listPayrollPeriods } from "@/lib/hr/hr-queries";
 
 interface Period {
   id: string;
@@ -73,12 +74,9 @@ function MyPayslipInner() {
       setCurrentUserId(uid);
 
       const [profRes, bankRes, periodsRes] = await Promise.all([
-        supabase.from("profiles").select("full_name, department, job_title").eq("id", uid).single(),
-        supabase.from("employee_bank_accounts").select("bank_name, account_number").eq("employee_id", uid).eq("is_primary", true).maybeSingle(),
-        supabase.from("payroll_periods")
-          .select("id, label, period_year, period_month, start_date, end_date")
-          .order("period_year", { ascending: false })
-          .order("period_month", { ascending: false }),
+        getProfileById(uid, "full_name, department, job_title"),
+        getEmployeeBankAccountByEmployeeIdWithIsPrimary(uid, "bank_name, account_number"),
+        listPayrollPeriods("id, label, period_year, period_month, start_date, end_date"),
       ]);
 
       setProfile(profRes.data as Profile | null);
@@ -86,11 +84,7 @@ function MyPayslipInner() {
 
       // Only show periods where user has a non-draft entry
       const allPeriods = (periodsRes.data || []) as Period[];
-      const entryRes = await supabase
-        .from("payroll_entries")
-        .select("period_id")
-        .eq("employee_id", uid)
-        .neq("status", "draft");
+      const entryRes = await listPayrollEntriesByEmployeeIdWithStatusDraft(uid);
 
       const eligiblePeriodIds = new Set((entryRes.data || []).map((e: { period_id: string }) => e.period_id));
       const visiblePeriods = allPeriods.filter((p) => eligiblePeriodIds.has(p.id));
@@ -107,21 +101,7 @@ function MyPayslipInner() {
     if (!selectedPeriodId || !currentUserId) return;
     window.setTimeout(() => { setLoadingEntry(true); setEntry(null); }, 0);
     const supabase = createClient();
-    supabase
-      .from("payroll_entries")
-      .select(`
-        id, gross_salary, total_deductions, net_salary,
-        working_days, present_days, leave_days, ot_hours,
-        total_tos, total_nssf_ee, total_nssf_er,
-        tax_relief_khr, taxable_income, exchange_rate, status,
-        payroll_entry_lines (
-          amount, note,
-          payroll_component_types (name, category)
-        )
-      `)
-      .eq("period_id", selectedPeriodId)
-      .eq("employee_id", currentUserId)
-      .single()
+    getPayrollEntryByPeriodIdAndEmployeeId(selectedPeriodId, currentUserId)
       .then(({ data }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setEntry(data as any);

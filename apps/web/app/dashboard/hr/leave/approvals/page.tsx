@@ -9,6 +9,7 @@ import { CheckSquare } from "lucide-react";
 import { format } from "date-fns";
 import LeaveRequestDetail from "@/components/hr/leave/leave-request-detail";
 import { insertLeaveTaskAlert } from "@/lib/hr/leave";
+import { getLeaveBalanceByEmployeeIdAndLeaveTypeIdAndFiscalYear, getProfileById, insertLeaveNotification, listLeaveRequestsByFilterWithStatusSubmittedPendingCancellationOrderedByStartDate, updateLeaveBalanceById, updateLeaveRequestById } from "@/lib/hr/hr-queries";
 
 interface LeaveRequest {
   id: string;
@@ -48,17 +49,7 @@ export default function ApprovalsPage() {
     const uid = userData.user?.id || "";
     setCurrentUserId(uid);
 
-    const { data } = await supabase
-      .from("leave_requests")
-      .select(`
-        id, leave_type_id, employee_id, start_date, end_date, days_requested, status, reason,
-        approver_1_id, approver_2_id, approver_1_status, approver_2_status,
-        profiles!leave_requests_employee_id_fkey(full_name, employee_id),
-        leave_types(leave_name)
-      `)
-      .or(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`)
-      .in("status", ["submitted", "pending_cancellation"])
-      .order("start_date", { ascending: true });
+    const { data } = await listLeaveRequestsByFilterWithStatusSubmittedPendingCancellationOrderedByStartDate(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`);
 
     const raw = (data || []) as unknown as LeaveRequest[];
 
@@ -81,12 +72,8 @@ export default function ApprovalsPage() {
 
   const queueNotification = async (eventType: string, recipientId: string, subject: string, body: string, requestId: string) => {
     const supabase = createClient();
-    const { data: rec } = await supabase
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", recipientId)
-      .single();
-    await supabase.from("leave_notifications").insert({
+    const { data: rec } = await getProfileById(recipientId, "full_name, email");
+    await insertLeaveNotification({
       leave_request_id: requestId,
       event_type: eventType,
       recipient_id: recipientId,
@@ -134,13 +121,7 @@ export default function ApprovalsPage() {
 
       if (isFinalApproval) {
         updates.status = "approved";
-        const { data: balance } = await supabase
-          .from("leave_balances")
-          .select("id, carried_over_days, allocated_days, used_days, remaining_days")
-          .eq("employee_id", req.employee_id)
-          .eq("leave_type_id", req.leave_type_id)
-          .eq("fiscal_year", new Date().getFullYear())
-          .single();
+        const { data: balance } = await getLeaveBalanceByEmployeeIdAndLeaveTypeIdAndFiscalYear(req.employee_id, req.leave_type_id, new Date().getFullYear());
 
         if (balance) {
           let remaining = req.days_requested;
@@ -156,13 +137,13 @@ export default function ApprovalsPage() {
             newAllocated -= remaining;
           }
 
-          await supabase.from("leave_balances").update({
+          await updateLeaveBalanceById({
             carried_over_days: Math.max(newCarried, 0),
             allocated_days: Math.max(newAllocated, 0),
             used_days: balance.used_days + req.days_requested,
             remaining_days: Math.max(balance.remaining_days - req.days_requested, 0),
             last_updated: now,
-          }).eq("id", balance.id);
+          }, balance.id);
         }
 
         const approvedBody = `Your ${req.leave_types.leave_name} request for ${req.days_requested} day(s) from ${format(new Date(req.start_date), "dd MMM yyyy")} has been approved.`;
@@ -181,7 +162,7 @@ export default function ApprovalsPage() {
         });
       }
 
-      await supabase.from("leave_requests").update(updates).eq("id", req.id);
+      await updateLeaveRequestById(updates, req.id);
       fetchData();
     } catch (err: any) {
       setActionError(err.message || "Failed to approve request.");
@@ -203,7 +184,7 @@ export default function ApprovalsPage() {
         ? { status: "rejected", approver_1_status: "rejected", approver_1_date: now, approver_1_notes: rejectNotes }
         : { status: "rejected", approver_2_status: "rejected", approver_2_date: now, approver_2_notes: rejectNotes };
 
-      await supabase.from("leave_requests").update(updates).eq("id", req.id);
+      await updateLeaveRequestById(updates, req.id);
 
       const rejectedBody = `Your ${req.leave_types.leave_name} request has been rejected. Reason: ${rejectNotes}`;
       await queueNotification(
