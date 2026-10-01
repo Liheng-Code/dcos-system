@@ -6,6 +6,7 @@ import { Plus, Trash2, Users, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { connectStakeholder, disconnectStakeholder } from "@/lib/stakeholder-assignment";
+import { deleteProjectTeamMemberById, insertProjectStakeholderTeamReturning, insertProjectTeamMember, listProjectStakeholderTeamsByProjectId, listProjectStakeholdersByProjectId, listProjectTeamMembersByProjectStakeholderTeamIds, listRoles, listStakeholderStaffByStakeholderId, listStakeholders } from "@/lib/projects/projects-queries";
 
 interface StakeholderRow {
   id: string;
@@ -69,14 +70,10 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
   async function load() {
     setLoading(true);
     const [psRes, teamRes, allSRes, rolesRes] = await Promise.all([
-      supabase.from("project_stakeholders")
-        .select("id, stakeholder_id, role_in_project, stakeholders(organization_name, stakeholder_type)")
-        .eq("project_id", projectId),
-      supabase.from("project_stakeholder_teams")
-        .select("id, stakeholder_id, team_name, placeholder_id, template_placeholders(label)")
-        .eq("project_id", projectId),
-      supabase.from("stakeholders").select("id, organization_name, stakeholder_type").order("organization_name"),
-      supabase.from("roles").select("code, name").order("level"),
+      listProjectStakeholdersByProjectId(projectId, "id, stakeholder_id, role_in_project, stakeholders(organization_name, stakeholder_type)"),
+      listProjectStakeholderTeamsByProjectId(projectId, "id, stakeholder_id, team_name, placeholder_id, template_placeholders(label)"),
+      listStakeholders(),
+      listRoles(),
     ]);
 
     if (allSRes.data) setAllStakeholders(allSRes.data as StakeholderRow[]);
@@ -102,10 +99,7 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
     }
 
     if (teamIds.length > 0) {
-      const { data: memberData } = await supabase
-        .from("project_team_members")
-        .select("id, project_stakeholder_team_id, stakeholder_staff_id, role_on_project, stakeholder_staff(full_name, job_title)")
-        .in("project_stakeholder_team_id", teamIds);
+      const { data: memberData } = await listProjectTeamMembersByProjectStakeholderTeamIds(teamIds, "id, project_stakeholder_team_id, stakeholder_staff_id, role_on_project, stakeholder_staff(full_name, job_title)");
       if (memberData) {
         for (const m of memberData as unknown as {
           id: string; project_stakeholder_team_id: string; stakeholder_staff_id: string;
@@ -153,9 +147,7 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
 
   async function loadStaffForStakeholder(stakeholderId: string) {
     if (teamStaffCache[stakeholderId]) return;
-    const { data } = await supabase.from("stakeholder_staff")
-      .select("id, full_name, job_title")
-      .eq("stakeholder_id", stakeholderId);
+    const { data } = await listStakeholderStaffByStakeholderId(stakeholderId);
     if (data) setTeamStaffCache((prev) => ({ ...prev, [stakeholderId]: data as StaffEntry[] }));
   }
 
@@ -187,16 +179,16 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
     // Ensure a team row exists (create one if the stakeholder has no teams yet)
     let targetTeamId = teamId;
     if (!targetTeamId) {
-      const { data: team, error: tErr } = await supabase.from("project_stakeholder_teams").insert({
+      const { data: team, error: tErr } = await insertProjectStakeholderTeamReturning({
         project_id: projectId,
         stakeholder_id: stakeholderId,
         team_name: "Default Team",
-      }).select().single();
+      });
       if (tErr || !team) { toast.error("Failed to create team"); setSaving(false); return; }
       targetTeamId = team.id;
     }
 
-    const { error } = await supabase.from("project_team_members").insert({
+    const { error } = await insertProjectTeamMember({
       project_stakeholder_team_id: targetTeamId,
       stakeholder_staff_id: newMemberStaffId,
       role_on_project: newMemberRole || null,
@@ -208,7 +200,7 @@ export function ProjectStakeholdersTab({ projectId }: ProjectStakeholdersTabProp
 
   async function handleRemoveMember(memberId: string) {
     setSaving(true);
-    const { error } = await supabase.from("project_team_members").delete().eq("id", memberId);
+    const { error } = await deleteProjectTeamMemberById(memberId);
     if (error) toast.error(error.message);
     else { toast.success("Member removed"); await load(); }
     setSaving(false);

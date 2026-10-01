@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { listMobileDeviceRegistrations } from "@/lib/mobile/mobile-queries";
 import { Loader2, Smartphone, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default function MobileDevicesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("mobile_device_registrations").select("*").order("registered_at", { ascending: false }).then(({ data }) => {
+    listMobileDeviceRegistrations().then(({ data }) => {
       if (data) setDevices(data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 

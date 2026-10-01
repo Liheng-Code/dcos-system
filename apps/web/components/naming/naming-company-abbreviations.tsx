@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listCompanies, updateCompanyById } from "@/lib/naming/naming-queries";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,19 +13,18 @@ interface Company {
 }
 
 export function NamingCompanyAbbreviations() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editMap, setEditMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    supabase.from("companies").select("id, name, code").order("name").then(({ data, error }) => {
+    listCompanies().then(({ data, error }) => {
       if (data) setCompanies(data as Company[]);
       if (error) toast.error("Failed to load companies");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function validateCode(code: string): string | null {
     if (!/^[A-Z]{4}$/.test(code)) return "Must be exactly 4 uppercase letters";
@@ -38,7 +37,7 @@ export function NamingCompanyAbbreviations() {
     const error = validateCode(code);
     if (error) { toast.error(error); return; }
     setSaving(true);
-    const { error: dbErr } = await supabase.from("companies").update({ code }).eq("id", id);
+    const { error: dbErr } = await updateCompanyById({ code }, id);
     if (dbErr) {
       toast.error(dbErr.message);
     } else {

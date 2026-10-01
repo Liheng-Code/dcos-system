@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countTenderBidSummariesByTenderId, countTenderBoqItemsByTenderId, countTenderPreliminariesItemsByTenderId, countTenderPriceListByTenderId, countTenderRiskItemsByTenderId, countWbsTasksByProjectId, getStakeholderById, insertContractRegister, listTenderCommercialItemsByTenderId, updateProjectByIdReturning } from "@/lib/projects/projects-queries";
 import { X, Loader2, ArrowRight, CheckCircle2, Package, FileText, AlertTriangle, GanttChartSquare, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,6 @@ interface Counts {
 }
 
 export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onClose, onConvert }: AwardConversionDialogProps) {
-  const supabase = createClient();
   const [counts, setCounts] = useState<Counts | null>(null);
   const [awardDate, setAwardDate] = useState(new Date().toISOString().slice(0, 10));
   const [contractNo, setContractNo] = useState(`HC-${project.project_code}`);
@@ -61,12 +60,12 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      supabase.from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
-      supabase.from("tender_preliminaries_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
-      supabase.from("tender_price_list").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
-      supabase.from("tender_risk_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
-      supabase.from("tender_bid_summaries").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
-      supabase.from("wbs_tasks").select("id", { count: "exact", head: true }).eq("project_id", project.id),
+      countTenderBoqItemsByTenderId(tenderId),
+      countTenderPreliminariesItemsByTenderId(tenderId),
+      countTenderPriceListByTenderId(tenderId),
+      countTenderRiskItemsByTenderId(tenderId),
+      countTenderBidSummariesByTenderId(tenderId),
+      countWbsTasksByProjectId(project.id),
     ]).then(([boq, pre, pl, risk, bs, tasks]) => {
       if (cancelled) return;
       setCounts({
@@ -79,16 +78,16 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
       });
     });
     return () => { cancelled = true; };
-  }, [project.id, tenderId, supabase]);
+  }, [project.id, tenderId]);
 
   const add = (msg: string) => setLog((prev) => [...prev, msg]);
 
   async function createHeadContract() {
     const [{ data: client }, { data: terms }] = await Promise.all([
       project.client_id
-        ? supabase.from("stakeholders").select("organization_name").eq("id", project.client_id).maybeSingle()
+        ? getStakeholderById(project.client_id)
         : Promise.resolve({ data: null }),
-      supabase.from("tender_commercial_items").select("topic, client_requirement, assessment, qualification").eq("tender_id", tenderId).order("sort_order"),
+      listTenderCommercialItemsByTenderId(tenderId),
     ]);
     const label = (t: string) => COMMERCIAL_TOPICS.find((c) => c.topic === t)?.label ?? t;
     const rows = (terms ?? []) as { topic: string; client_requirement: string | null; assessment: string; qualification: string | null }[];
@@ -97,7 +96,7 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
       .filter((r) => r.client_requirement || r.qualification)
       .map((r) => `${label(r.topic)}: ${r.client_requirement ?? "—"}${r.qualification ? ` (qualified: ${r.qualification})` : ""}`)
       .join("\n");
-    const { error } = await supabase.from("contract_register").insert({
+    const { error } = await insertContractRegister({
       project_id: project.id,
       contract_no: contractNo.trim(),
       contract_type: "head_contract",
@@ -135,12 +134,7 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
     add(`Tender recorded as awarded on ${new Date(awardDate).toLocaleDateString()}`);
 
     // 2. The same project becomes post-contract.
-    const { data: updated, error: projErr } = await supabase
-      .from("projects")
-      .update({ project_type: "awarded", contract_value: bidPrice, updated_at: new Date().toISOString() })
-      .eq("id", project.id)
-      .select()
-      .single();
+    const { data: updated, error: projErr } = await updateProjectByIdReturning({ project_type: "awarded", contract_value: bidPrice, updated_at: new Date().toISOString() }, project.id);
     if (projErr) {
       toast.error(`Award recorded, but the project type could not be changed: ${projErr.message}`);
       setConverting(false);

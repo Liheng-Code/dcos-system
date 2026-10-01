@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { connectStakeholder } from "@/lib/stakeholder-assignment";
 import { initials, AVATAR_COLORS } from "@/components/stakeholders/constants";
 import type { Stakeholder } from "@/components/stakeholders/stakeholder-edit-sheet";
+import { insertProjectStakeholderTeamReturning, insertStakeholderStaffReturning, listProfilesWithStatusActive, listProjectStakeholderTeamsByProjectIdAndStakeholderId, listProjectStakeholderTeamsByProjectIdAndStakeholderIdOfId, listProjectTeamMembersByProjectStakeholderTeamIds, listRoles, listStakeholderStaffByStakeholderId, upsertProjectTeamMembers } from "@/lib/stakeholders/stakeholders-queries";
 
 interface Candidate {
   id: string;
@@ -62,14 +63,9 @@ export function BulkHrAssignDialog({
       }
       const supabase = createClient();
       const [rolesRes, teamRes, rosterRes] = await Promise.all([
-        supabase.from("roles").select("code, name").order("level"),
-        supabase.from("project_stakeholder_teams")
-          .select("id")
-          .eq("project_id", projectId)
-          .eq("stakeholder_id", stakeholder.id),
-        supabase.from("stakeholder_staff")
-          .select("id, profile_id, full_name, job_title, email")
-          .eq("stakeholder_id", stakeholder.id),
+        listRoles(),
+        listProjectStakeholderTeamsByProjectIdAndStakeholderId(projectId, stakeholder.id),
+        listStakeholderStaffByStakeholderId(stakeholder.id),
       ]);
 
       const teamIds = (teamRes.data ?? []).map((t: { id: string }) => t.id);
@@ -82,9 +78,7 @@ export function BulkHrAssignDialog({
 
       const assigned = new Set<string>();
       if (teamIds.length > 0) {
-        const { data: members } = await supabase.from("project_team_members")
-          .select("stakeholder_staff_id")
-          .in("project_stakeholder_team_id", teamIds);
+        const { data: members } = await listProjectTeamMembersByProjectStakeholderTeamIds(teamIds);
         for (const m of members ?? []) {
           if (isInternal) {
             const staffRow = staffById.get(m.stakeholder_staff_id);
@@ -98,10 +92,7 @@ export function BulkHrAssignDialog({
       if (cancelled) return;
 
       if (isInternal) {
-        const { data: employees } = await supabase.from("profiles")
-          .select("id, employee_id, full_name, email, job_title, department, status")
-          .eq("status", "active")
-          .order("full_name");
+        const { data: employees } = await listProfilesWithStatusActive();
         setCandidates((employees ?? []).map((e: HREmployee) => ({
           id: e.id,
           full_name: e.full_name,
@@ -161,13 +152,13 @@ export function BulkHrAssignDialog({
   async function ensureStaffRow(supabase: ReturnType<typeof createClient>, profileId: string) {
     if (staffByProfileId[profileId]) return staffByProfileId[profileId].id;
     const profile = candidates.find((c) => c.id === profileId);
-    const { data, error } = await supabase.from("stakeholder_staff").insert({
+    const { data, error } = await insertStakeholderStaffReturning({
       stakeholder_id: stakeholder.id,
       full_name: profile?.full_name ?? "",
       job_title: profile?.job_title ?? null,
       email: profile?.email ?? null,
       profile_id: profileId,
-    }).select("id").single();
+    });
     if (error || !data) throw error ?? new Error("Failed to register member");
     return data.id;
   }
@@ -182,18 +173,11 @@ export function BulkHrAssignDialog({
 
     // Find or create the stakeholder's team on this project.
     let teamId: string;
-    const { data: existing } = await supabase.from("project_stakeholder_teams")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("stakeholder_id", stakeholder.id)
-      .limit(1);
+    const { data: existing } = await listProjectStakeholderTeamsByProjectIdAndStakeholderIdOfId(projectId, stakeholder.id);
     if (existing && existing.length > 0) {
       teamId = existing[0].id;
     } else {
-      const { data: team, error: teamErr } = await supabase.from("project_stakeholder_teams")
-        .insert({ project_id: projectId, stakeholder_id: stakeholder.id, team_name: "Default Team" })
-        .select("id")
-        .single();
+      const { data: team, error: teamErr } = await insertProjectStakeholderTeamReturning({ project_id: projectId, stakeholder_id: stakeholder.id, team_name: "Default Team" });
       if (teamErr || !team) { toast.error("Failed to create project team"); setSaving(false); return; }
       teamId = team.id;
     }
@@ -214,8 +198,7 @@ export function BulkHrAssignDialog({
         stakeholder_staff_id: staffId,
         role_on_project: role || null,
       }));
-      const { error } = await supabase.from("project_team_members")
-        .upsert(rows, { onConflict: "project_stakeholder_team_id,stakeholder_staff_id", ignoreDuplicates: true });
+      const { error } = await upsertProjectTeamMembers(rows);
       if (error) { toast.error(error.message); setSaving(false); return; }
 
       toast.success(`${rows.length} member${rows.length !== 1 ? "s" : ""} assigned to ${projectName ?? "project"}`);

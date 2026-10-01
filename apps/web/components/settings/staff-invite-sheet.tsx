@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { X, Loader2, Send } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { listRolesOfCodeAndNameAndType } from "@/lib/settings/settings-queries";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -63,8 +63,7 @@ export function StaffInviteSheet({ departments, onClose, onInvited }: StaffInvit
   });
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("roles").select("code, name, type").then(({ data }) => {
+    listRolesOfCodeAndNameAndType().then(({ data }) => {
       if (data) setRoles(data as RoleOption[]);
     });
   }, []);

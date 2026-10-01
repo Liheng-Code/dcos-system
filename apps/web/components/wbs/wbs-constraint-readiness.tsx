@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listTaskConstraintsByTaskIds, upsertTaskConstraint } from "@/lib/wbs/wbs-queries";
 import { ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,7 +65,6 @@ interface Props {
  * this table yet); one dot per constraint type, click to cycle its status.
  */
 export function WbsConstraintReadiness({ tasks }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<ConstraintRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [blockersOnly, setBlockersOnly] = useState(false);
@@ -81,10 +80,7 @@ export function WbsConstraintReadiness({ tasks }: Props) {
       return;
     }
     setLoading(true);
-    supabase
-      .from("task_constraints")
-      .select("task_id, constraint_type, status, source, notes")
-      .in("task_id", ids)
+    listTaskConstraintsByTaskIds(ids)
       .then(({ data }) => {
         setRows((data ?? []) as ConstraintRow[]);
         setLoading(false);
@@ -131,12 +127,7 @@ export function WbsConstraintReadiness({ tasks }: Props) {
     // A manual click always claims the row — otherwise the next automatic
     // trigger (procurement/document/RFI/inspection feed) would silently
     // overwrite this override, since those feeds skip only source='manual'.
-    await supabase
-      .from("task_constraints")
-      .upsert(
-        { task_id: taskId, constraint_type: type, status: next, source: "manual", source_ref: null },
-        { onConflict: "task_id,constraint_type" },
-      );
+    await upsertTaskConstraint({ task_id: taskId, constraint_type: type, status: next, source: "manual", source_ref: null });
   }
 
   const visibleTasks = blockersOnly ? tasks.filter((t) => !isReady(t.id)) : tasks;

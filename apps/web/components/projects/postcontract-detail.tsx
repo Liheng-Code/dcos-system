@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getContractRegisterByProjectIdWithStatusActiveDraft, getProjectPrecontractDetailByProjectId, listQsRiskItemsByProjectId } from "@/lib/projects/projects-queries";
 import { ChevronLeft, Loader2, Pencil, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,6 @@ interface RiskItem {
 }
 
 export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDetailProps) {
-  const supabase = createClient();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [editing, setEditing] = useState(false);
   const [contract, setContract] = useState<ContractRecord | null>(null);
@@ -74,21 +73,10 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
     async function load() {
       const [contractRes, risksRes, snapshotRes, tenderRes] = await Promise.all([
         // A contract awarded in place starts as a draft head contract until it is signed; prefer the active one.
-        supabase
-          .from("contract_register")
-          .select("*")
-          .eq("project_id", project.id)
-          .in("status", ["active", "draft"])
-          .order("status")
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from("qs_risk_items")
-          .select("*")
-          .eq("project_id", project.id)
-          .order("created_at"),
+        getContractRegisterByProjectIdWithStatusActiveDraft(project.id),
+        listQsRiskItemsByProjectId(project.id),
         getContractSnapshot(project.id),
-        supabase.from("project_precontract_details").select("project_id").eq("project_id", project.id).maybeSingle(),
+        getProjectPrecontractDetailByProjectId(project.id, "project_id"),
       ]);
 
       setHasTenderRecord(!!tenderRes.data);
@@ -98,7 +86,7 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
       setLoading(false);
     }
     load();
-  }, [project.id, supabase]);
+  }, [project.id]);
 
   function formatCurrency(val: number | null) {
     if (val == null || val === 0) return "—";

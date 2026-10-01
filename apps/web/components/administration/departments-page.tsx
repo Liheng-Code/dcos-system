@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countProfilesByDepartmentId, deleteDepartmentById, insertDepartments, listDepartmentsOrderedByDepartmentName, listProfiles, updateDepartmentById } from "@/lib/administration/administration-queries";
 import { toast } from "sonner";
 import { Loader2, Plus, Pencil, Trash2, Building2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,6 @@ const EMPTY_FORM = {
 };
 
 export function DepartmentsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
   const [staffCounts, setStaffCounts] = useState<Record<string, number>>({});
@@ -72,11 +71,8 @@ export function DepartmentsPage() {
     setLoading(true);
     setError(null);
     const [{ data: depts, error: deptErr }, { data: people, error: peopleErr }] = await Promise.all([
-      supabase
-        .from("departments")
-        .select("id, department_code, department_name, description, parent_id, department_head")
-        .order("department_name", { ascending: true }),
-      supabase.from("profiles").select("id, full_name").order("full_name", { ascending: true }),
+      listDepartmentsOrderedByDepartmentName(),
+      listProfiles(),
     ]);
     if (deptErr || peopleErr) {
       setError((deptErr ?? peopleErr)?.message ?? "Failed to load departments");
@@ -90,10 +86,7 @@ export function DepartmentsPage() {
     const counts: Record<string, number> = {};
     await Promise.all(
       list.map(async (d) => {
-        const { count } = await supabase
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("department_id", d.id);
+        const { count } = await countProfilesByDepartmentId(d.id);
         counts[d.id] = count ?? 0;
       }),
     );
@@ -144,8 +137,8 @@ export function DepartmentsPage() {
       department_head: form.department_head || null,
     };
     const { error: saveErr } = form.id
-      ? await supabase.from("departments").update(payload).eq("id", form.id)
-      : await supabase.from("departments").insert(payload);
+      ? await updateDepartmentById(payload, form.id)
+      : await insertDepartments(payload);
     setSaving(false);
     if (saveErr) {
       toast.error(saveErr.message);
@@ -166,7 +159,7 @@ export function DepartmentsPage() {
       return;
     }
     setDeleting(true);
-    const { error: delErr } = await supabase.from("departments").delete().eq("id", deleteTarget.id);
+    const { error: delErr } = await deleteDepartmentById(deleteTarget.id);
     setDeleting(false);
     if (delErr) {
       toast.error(delErr.message);

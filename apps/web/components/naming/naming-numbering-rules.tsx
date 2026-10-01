@@ -6,6 +6,7 @@ import { Loader2, Save, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { getCompanyById, getProfileById, getProjectById, getProjectNumberingRuleByProjectId, listDisciplineCodesWithIsActive, listDocumentTypesWithIsActive, upsertProjectNumberingRules } from "@/lib/naming/naming-queries";
 
 interface NamingNumberingRulesProps {
   projectId: string | null;
@@ -64,17 +65,17 @@ export function NamingNumberingRules({ projectId, onSaved }: NamingNumberingRule
       const { data: { user } } = await supabase.auth.getUser();
       const uid = user?.id;
       Promise.all([
-        supabase.from("discipline_codes").select("code, name").eq("is_active", true).order("sort_order"),
-        supabase.from("document_types").select("code, name").eq("is_active", true).order("code"),
-        supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
-        uid ? supabase.from("profiles").select("company_id").eq("id", uid).single() : Promise.resolve({ data: null }),
-        supabase.from("projects").select("project_code").eq("id", projectId).single(),
+        listDisciplineCodesWithIsActive(),
+        listDocumentTypesWithIsActive(),
+        getProjectNumberingRuleByProjectId(projectId),
+        uid ? getProfileById(uid) : Promise.resolve({ data: null }),
+        getProjectById(projectId, "project_code"),
       ]).then(([discRes, dtRes, ruleRes, profileRes, projRes]) => {
         if (discRes.data) setDisciplines(discRes.data as { code: string; name: string }[]);
         if (dtRes.data) setDocTypes(dtRes.data as { code: string; name: string }[]);
 
         if (profileRes.data?.company_id) {
-          supabase.from("companies").select("code").eq("id", profileRes.data.company_id).single().then(({ data: cd }) => {
+          getCompanyById(profileRes.data.company_id, "code").then(({ data: cd }) => {
             if (cd) setCompanyCode(cd.code as string);
           });
         }
@@ -148,9 +149,7 @@ export function NamingNumberingRules({ projectId, onSaved }: NamingNumberingRule
       revision_format: rules.revision_format,
       running_number_scope: rules.running_number_scope,
     };
-    const { error } = await supabase
-      .from("project_numbering_rules")
-      .upsert(payload, { onConflict: "project_id" });
+    const { error } = await upsertProjectNumberingRules(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Numbering rules saved");

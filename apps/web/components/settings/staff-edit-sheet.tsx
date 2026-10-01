@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { StaffProfile } from "@/components/settings/staff-list-page";
 import type { AccountStatus } from "@/lib/admin-users/admin-users-service";
+import { deleteUserRolesByUserIdAndRoleCodes, insertUserRoles, listRolesOfCodeAndNameAndType, listUserRolesByUserId, updateProfileById } from "@/lib/settings/settings-queries";
 
 interface Role {
   code: string;
@@ -74,13 +75,10 @@ export function StaffEditSheet({ profile, departments, onClose, onUpdate }: Staf
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.from("roles").select("code, name, type").then(({ data }) => {
+    listRolesOfCodeAndNameAndType().then(({ data }) => {
       if (data) setRoles(data as Role[]);
     });
-    supabase
-      .from("user_roles")
-      .select("role_code")
-      .eq("user_id", profile.id)
+    listUserRolesByUserId(profile.id)
       .then(({ data }) => {
         if (data) setAssignedRoles(data.map((r: { role_code: string }) => r.role_code));
       });
@@ -97,9 +95,7 @@ export function StaffEditSheet({ profile, departments, onClose, onUpdate }: Staf
     setSaving(true);
     const supabase = createClient();
 
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .update({
+    const { error: profileErr } = await updateProfileById({
         full_name: form.full_name,
         email: form.email,
         job_title: form.job_title,
@@ -109,8 +105,7 @@ export function StaffEditSheet({ profile, departments, onClose, onUpdate }: Staf
         status: form.status,
         employee_id: form.employee_id,
         report_to: form.report_to,
-      })
-      .eq("id", form.id);
+      }, form.id);
 
     if (profileErr) {
       toast.error(profileErr.message);
@@ -119,22 +114,17 @@ export function StaffEditSheet({ profile, departments, onClose, onUpdate }: Staf
     }
 
     // Sync role assignments
-    const { data: existing } = await supabase
-      .from("user_roles")
-      .select("role_code")
-      .eq("user_id", form.id);
+    const { data: existing } = await listUserRolesByUserId(form.id);
 
     const existingCodes = (existing ?? []).map((r: { role_code: string }) => r.role_code);
     const toAdd = assignedRoles.filter((c) => !existingCodes.includes(c));
     const toRemove = existingCodes.filter((c: string) => !assignedRoles.includes(c));
 
     if (toRemove.length > 0) {
-      await supabase.from("user_roles").delete().eq("user_id", form.id).in("role_code", toRemove);
+      await deleteUserRolesByUserIdAndRoleCodes(form.id, toRemove);
     }
     if (toAdd.length > 0) {
-      await supabase.from("user_roles").insert(
-        toAdd.map((code) => ({ user_id: form.id, role_code: code })),
-      );
+      await insertUserRoles(toAdd.map((code) => ({ user_id: form.id, role_code: code })));
     }
 
     toast.success("Staff updated");

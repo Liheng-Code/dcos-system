@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listProfilesOfIdAndFullName, listProjects } from "@/lib/projects/projects-queries";
 import { Search, Loader2, Filter, X, Plus, Users, ChevronLeft, LayoutGrid, List, Calendar, MapPin, DollarSign, Handshake, HardHat as HardHatIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -71,17 +71,13 @@ export function ProjectListPage() {
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
 
   function fetchProjects() {
-    const supabase = createClient();
-    supabase
-      .from("projects")
-      .select("*")
-      .order("created_at", { ascending: false })
+    listProjects()
       .then(({ data }) => {
         if (data) setProjects(data as Project[]);
         setLoading(false);
       });
 
-    supabase.from("profiles").select("id, full_name").then(({ data }) => {
+    listProfilesOfIdAndFullName("id, full_name").then(({ data }) => {
       if (data) {
         const map: Record<string, string> = {};
         for (const p of data) map[p.id] = p.full_name;

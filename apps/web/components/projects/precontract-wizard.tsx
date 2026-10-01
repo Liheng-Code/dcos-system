@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getProjectById, getProjectPrecontractDetailByProjectId, getTenderRegisterById, getTenderRegisterByProjectId, getTenderRegisterByTenderNo, insertProjectsReturning, insertTenderRegisterReturning, insertTenderRiskItems, listProfilesOfIdAndFullName, listStakeholdersWithStatusActive, updateProjectById, updateTenderRegisterById, upsertProjectPrecontractDetails } from "@/lib/projects/projects-queries";
 import { X, Loader2, Save, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -119,7 +119,6 @@ interface PrecontractForm {
 }
 
 export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizardProps) {
-  const supabase = createClient();
   const [activeStep, setActiveStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -162,28 +161,24 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   const active = STEPS.find((s) => s.id === activeStep);
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name").then(({ data }) => {
+    listProfilesOfIdAndFullName("id, full_name").then(({ data }) => {
       if (data) setStaff(data as StaffProfile[]);
     });
-    supabase
-      .from("stakeholders")
-      .select("id, organization_name, stakeholder_type")
-      .eq("status", "active")
-      .order("organization_name", { ascending: true })
+    listStakeholdersWithStatusActive()
       .then(({ data }) => {
         if (data) setClients(data as Stakeholder[]);
       });
-  }, [supabase]);
+  }, []);
 
   // Load existing precontract details (and the linked tender record) when editing
   const editingProjectId = project?.id;
   useEffect(() => {
     if (!editingProjectId) return;
     async function load() {
-      const { data } = await supabase.from("project_precontract_details").select("*").eq("project_id", editingProjectId!).maybeSingle();
+      const { data } = await getProjectPrecontractDetailByProjectId(editingProjectId!, "*");
       if (!data) return;
       const { data: tender } = data.tender_register_id
-        ? await supabase.from("tender_register").select("tender_no, issue_date, budget_range").eq("id", data.tender_register_id).maybeSingle()
+        ? await getTenderRegisterById(data.tender_register_id, "tender_no, issue_date, budget_range")
         : { data: null };
       setForm((prev) => ({
         ...prev,
@@ -200,7 +195,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       }));
     }
     void load();
-  }, [editingProjectId, supabase]);
+  }, [editingProjectId]);
 
   function update(field: keyof PrecontractForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -242,11 +237,11 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
 
     let projectId: string;
     if (isEditing) {
-      const { error } = await supabase.from("projects").update(projectPayload).eq("id", project.id);
+      const { error } = await updateProjectById(projectPayload, project.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       projectId = project.id;
     } else {
-      const { data, error } = await supabase.from("projects").insert(projectPayload).select().single();
+      const { data, error } = await insertProjectsReturning(projectPayload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       projectId = data.id;
     }
@@ -269,17 +264,9 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     };
 
     // Reuse this project's tender; a tender_no match is only reused when no other project owns it.
-    const { data: existingByProject } = await supabase
-      .from("tender_register")
-      .select("id")
-      .eq("project_id", projectId)
-      .maybeSingle();
+    const { data: existingByProject } = await getTenderRegisterByProjectId(projectId);
 
-    const { data: existingByNo } = await supabase
-      .from("tender_register")
-      .select("id, project_id")
-      .eq("tender_no", tenderPayload.tender_no)
-      .maybeSingle();
+    const { data: existingByNo } = await getTenderRegisterByTenderNo(tenderPayload.tender_no);
 
     if (existingByNo && existingByNo.project_id && existingByNo.project_id !== projectId && existingByNo.id !== existingByProject?.id) {
       toast.error(`Tender reference ${tenderPayload.tender_no} is already used by another project.`);
@@ -291,15 +278,11 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     let tenderId: string;
     if (existingId) {
       // Status is not touched here: tender_register.status is the client-side procurement status.
-      const { error: tenderErr } = await supabase.from("tender_register").update(tenderPayload).eq("id", existingId);
+      const { error: tenderErr } = await updateTenderRegisterById(tenderPayload, existingId);
       if (tenderErr) { toast.error(tenderErr.message); setSaving(false); return; }
       tenderId = existingId;
     } else {
-      const { data: newTender, error: tenderErr } = await supabase
-        .from("tender_register")
-        .insert({ ...tenderPayload, status: "draft" })
-        .select()
-        .single();
+      const { data: newTender, error: tenderErr } = await insertTenderRegisterReturning({ ...tenderPayload, status: "draft" });
       if (tenderErr) { toast.error(tenderErr.message); setSaving(false); return; }
       tenderId = newTender.id;
     }
@@ -319,9 +302,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       bid_currency: form.currency,
     };
 
-    const { error: pcErr } = await supabase
-      .from("project_precontract_details")
-      .upsert(precontractPayload, { onConflict: "project_id" });
+    const { error: pcErr } = await upsertProjectPrecontractDetails(precontractPayload);
     if (pcErr) { toast.error(pcErr.message); setSaving(false); return; }
 
     // 4. Initial risks, on creation only (afterwards they are managed in Risk & Opportunity).
@@ -336,21 +317,21 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
         impact: r.impact,
         mitigation: r.mitigation || null,
       }));
-      const { error: riskErr } = await supabase.from("tender_risk_items").insert(riskPayload);
+      const { error: riskErr } = await insertTenderRiskItems(riskPayload);
       if (riskErr) toast.error(`Project saved, but the initial risks were not: ${riskErr.message}`);
     }
 
     toast.success(isEditing ? "Pre-contract project updated" : "Pre-contract project created");
     setSaving(false);
 
-    const { data: updated } = await supabase.from("projects").select("*").eq("id", projectId).single();
+    const { data: updated } = await getProjectById(projectId);
     if (updated) onSave(updated as Project);
     else onSave({ ...projectPayload, id: projectId } as unknown as Project);
   }
 
   async function handleActivate() {
     setActivating(true);
-    await supabase.from("projects").update({ project_status: "active" }).eq("id", project?.id ?? "");
+    await updateProjectById({ project_status: "active" }, project?.id ?? "");
     toast.success("Pre-contract project activated");
     setActivating(false);
     if (project) onSave({ ...project, project_status: "active" });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getCompany, updateCompanyById } from "@/lib/settings/settings-queries";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,6 @@ interface FormData {
 }
 
 export function CompanyProfilePage() {
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [company, setCompany] = useState<Company | null>(null);
@@ -53,7 +52,7 @@ export function CompanyProfilePage() {
   });
 
   useEffect(() => {
-    supabase.from("companies").select("*").limit(1).single().then(({ data, error }) => {
+    getCompany().then(({ data, error }) => {
       if (data) {
         setCompany(data as Company);
         setForm({
@@ -73,7 +72,7 @@ export function CompanyProfilePage() {
       }
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   const isDirty = useMemo(() => {
     if (!company) return false;
@@ -110,7 +109,7 @@ export function CompanyProfilePage() {
       description: form.description || null,
       date_format: form.date_format,
     };
-    const { error } = await supabase.from("companies").update(payload).eq("id", company.id);
+    const { error } = await updateCompanyById(payload, company.id);
     if (error) {
       toast.error(error.message);
     } else {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listZoneTypeCodes } from "@/lib/naming/naming-queries";
 import { Loader2, Grid3X3 } from "lucide-react";
 
 interface ZoneTypeCode {
@@ -24,20 +24,16 @@ export function WbsZoneConfig({
   onDesignZonesChange,
   onConstructionZonesChange,
 }: WbsZoneConfigProps) {
-  const supabase = createClient();
   const [zones, setZones] = useState<ZoneTypeCode[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("zone_type_codes")
-      .select("code, name, category, description")
-      .order("sort_order")
+    listZoneTypeCodes()
       .then(({ data }) => {
         if (data) setZones(data as ZoneTypeCode[]);
         setLoading(false);
       });
-  }, [supabase]);
+  }, []);
 
   function toggle(arr: string[], code: string, onChange: (v: string[]) => void) {
     if (code.endsWith("All")) {

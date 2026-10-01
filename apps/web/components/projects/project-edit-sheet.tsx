@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteProjectStakeholderMappingsByProjectId, deleteProjectStakeholderTeamsByProjectId, deleteProjectStakeholdersByProjectId, insertProjectStakeholder, insertProjectStakeholderMapping, insertProjectStakeholderTeamReturning, insertProjectTeamMember, insertProjectsReturning, listProfilesOrderedByFullName, listProjectStakeholderMappingsByProjectId, listProjectTeamMembersByProjectId, listStakeholderStaffByStakeholderIds, listStakeholderTemplates, listStakeholdersWithStatusActive, listTemplatePlaceholdersByTemplateId, updateProjectByIdReturning } from "@/lib/projects/projects-queries";
 import { X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -132,7 +132,6 @@ interface ProjectEditSheetProps {
 }
 
 export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetProps) {
-  const supabase = createClient();
   const [saving, setSaving] = useState(false);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [clients, setClients] = useState<Stakeholder[]>([]);
@@ -180,38 +179,31 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
   const isEditing = !!project;
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name, employee_id").order("full_name", { ascending: true }).then(({ data }) => {
+    listProfilesOrderedByFullName().then(({ data }) => {
       if (data) setStaff(data as StaffProfile[]);
     });
-    supabase.from("stakeholders").select("id, organization_name, stakeholder_type").eq("status", "active").order("organization_name", { ascending: true }).then(({ data }) => {
+    listStakeholdersWithStatusActive().then(({ data }) => {
       if (data) setClients(data as Stakeholder[]);
     });
-    supabase.from("stakeholder_templates").select("id, name").order("name", { ascending: true }).then(({ data }) => {
+    listStakeholderTemplates().then(({ data }) => {
       if (data) setTemplates(data);
     });
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (selectedTemplateId) {
-      supabase
-        .from("template_placeholders")
-        .select("*, template_placeholder_teams(*)")
-        .eq("template_id", selectedTemplateId)
-        .order("sort_order", { ascending: true })
+      listTemplatePlaceholdersByTemplateId(selectedTemplateId)
         .then(({ data }) => {
           if (data) setTemplatePlaceholders(data as unknown as TemplatePlaceholderDetail[]);
         });
     } else {
       setTemplatePlaceholders([]);
     }
-  }, [selectedTemplateId, supabase]);
+  }, [selectedTemplateId]);
 
   useEffect(() => {
     if (isEditing && project.id) {
-      supabase
-        .from("project_stakeholder_mappings")
-        .select("*, template_placeholders!inner(*)")
-        .eq("project_id", project.id)
+      listProjectStakeholderMappingsByProjectId(project.id, "*, template_placeholders!inner(*)")
         .then(({ data }) => {
           if (data && data.length > 0) {
             const templateId = (data[0] as unknown as { template_placeholders: { template_id: string } }).template_placeholders.template_id;
@@ -224,16 +216,13 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
           }
         });
     }
-  }, [isEditing, project?.id, supabase]);
+  }, [isEditing, project?.id]);
 
   // Load stakeholder staff when mappings exist
   useEffect(() => {
     const ids = Object.values(mappings).filter(Boolean) as string[];
     if (ids.length > 0) {
-      supabase
-        .from("stakeholder_staff")
-        .select("id, stakeholder_id, full_name, job_title")
-        .in("stakeholder_id", ids)
+      listStakeholderStaffByStakeholderIds(ids)
         .then(({ data }) => {
           if (data) {
             const grouped: Record<string, { id: string; full_name: string; job_title: string | null }[]> = {};
@@ -245,15 +234,12 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
           }
         });
     }
-  }, [mappings, supabase]);
+  }, [mappings]);
 
   // Load existing team members when editing
   useEffect(() => {
     if (isEditing && project.id && selectedTemplateId) {
-      supabase
-        .from("project_team_members")
-        .select("*, project_stakeholder_teams!inner(*)")
-        .eq("project_stakeholder_teams.project_id", project.id)
+      listProjectTeamMembersByProjectId(project.id)
         .then(({ data }) => {
           if (data && data.length > 0) {
             const grouped: Record<string, TeamAssignment[]> = {};
@@ -277,7 +263,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
           }
         });
     }
-  }, [isEditing, project?.id, selectedTemplateId, supabase]);
+  }, [isEditing, project?.id, selectedTemplateId]);
 
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -317,7 +303,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
 
     let projectId: string;
     if (isEditing) {
-      const { error } = await supabase.from("projects").update(payload).eq("id", project.id).select().single();
+      const { error } = await updateProjectByIdReturning(payload, project.id);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -326,7 +312,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
       toast.success("Project updated");
       projectId = project.id;
     } else {
-      const { data, error } = await supabase.from("projects").insert(payload).select().single();
+      const { data, error } = await insertProjectsReturning(payload);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -338,45 +324,41 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
 
     // Save stakeholder mappings
     if (selectedTemplateId && Object.values(mappings).some(Boolean)) {
-      await supabase.from("project_stakeholder_mappings").delete().eq("project_id", projectId);
-      await supabase.from("project_stakeholders").delete().eq("project_id", projectId);
-      await supabase.from("project_stakeholder_teams").delete().eq("project_id", projectId);
+      await deleteProjectStakeholderMappingsByProjectId(projectId);
+      await deleteProjectStakeholdersByProjectId(projectId);
+      await deleteProjectStakeholderTeamsByProjectId(projectId);
 
       for (const [placeholderId, stakeholderId] of Object.entries(mappings)) {
         if (!stakeholderId) continue;
         const placeholder = templatePlaceholders.find((ph) => ph.id === placeholderId);
         if (!placeholder) continue;
 
-        await supabase.from("project_stakeholder_mappings").insert({
+        await insertProjectStakeholderMapping({
           project_id: projectId,
           placeholder_id: placeholderId,
           stakeholder_id: stakeholderId,
         });
 
-        await supabase.from("project_stakeholders").insert({
+        await insertProjectStakeholder({
           project_id: projectId,
           stakeholder_id: stakeholderId,
           role_in_project: placeholder.label,
         });
 
         for (const team of placeholder.teams) {
-          const { data: teamData } = await supabase
-            .from("project_stakeholder_teams")
-            .insert({
+          const { data: teamData } = await insertProjectStakeholderTeamReturning({
               project_id: projectId,
               stakeholder_id: stakeholderId,
               placeholder_id: placeholderId,
               team_name: team.name,
               description: team.description,
-            })
-            .select()
-            .single();
+            });
 
           if (teamData) {
             const teamKey = `${placeholderId}::${team.name}`;
             const members = teamAssignments[teamKey] ?? [];
             for (const member of members) {
-              await supabase.from("project_team_members").insert({
+              await insertProjectTeamMember({
                 project_stakeholder_team_id: teamData.id,
                 stakeholder_staff_id: member.staffId,
                 role_on_project: member.roleOnProject || null,

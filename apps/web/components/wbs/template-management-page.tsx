@@ -13,6 +13,7 @@ import { TemplateNodeTree } from "@/components/wbs/template-node-tree";
 import { TemplateNodeEditSheet } from "@/components/wbs/template-node-edit-sheet";
 import { TemplateUpsertDialog } from "@/components/wbs/template-upsert-dialog";
 import type { WbsTemplateRecord, WbsTemplateNodeRecord } from "@/components/wbs/wbs-types";
+import { deleteWbsTemplateById, deleteWbsTemplateNodeById, getProfileByIdOfRole, listWbsTemplateNodesByTemplateId, listWbsTemplates, updateWbsTemplateById } from "@/lib/wbs/wbs-queries";
 
 const CATEGORY_META: Record<string, { label: string; color: string; icon: typeof Building2 }> = {
   building:       { label: "Building",       color: "bg-blue-100 text-blue-700",   icon: Building2 },
@@ -42,10 +43,7 @@ export function TemplateManagementPage() {
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("wbs_templates")
-      .select("*")
-      .order("template_name");
+    const { data, error } = await listWbsTemplates();
     if (error) toast.error(error.message);
     else setTemplates(data ?? []);
     setLoading(false);
@@ -53,11 +51,7 @@ export function TemplateManagementPage() {
 
   const loadNodes = useCallback(async (templateId: string) => {
     setNodesLoading(true);
-    const { data, error } = await supabase
-      .from("wbs_template_nodes")
-      .select("*")
-      .eq("template_id", templateId)
-      .order("sort_order");
+    const { data, error } = await listWbsTemplateNodesByTemplateId(templateId);
     if (error) toast.error(error.message);
     else setNodes(data ?? []);
     setNodesLoading(false);
@@ -67,7 +61,7 @@ export function TemplateManagementPage() {
     loadTemplates();
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
-        supabase.from("profiles").select("role").eq("id", data.user.id).single()
+        getProfileByIdOfRole(data.user.id)
           .then(({ data: p }) => setIsAdmin(p?.role === "admin"));
       }
     });
@@ -82,7 +76,7 @@ export function TemplateManagementPage() {
 
   async function toggleActive(t: WbsTemplateRecord) {
     if (!isAdmin) return;
-    const { error } = await supabase.from("wbs_templates").update({ is_active: !t.is_active }).eq("id", t.id);
+    const { error } = await updateWbsTemplateById({ is_active: !t.is_active }, t.id);
     if (error) toast.error(error.message);
     else {
       toast.success(t.is_active ? "Template deactivated" : "Template activated");
@@ -93,7 +87,7 @@ export function TemplateManagementPage() {
   async function handleDeleteTemplate(t: WbsTemplateRecord) {
     if (!isAdmin) return;
     if (!confirm(`Delete template "${t.template_name}"? This will also delete all its nodes.`)) return;
-    const { error } = await supabase.from("wbs_templates").delete().eq("id", t.id);
+    const { error } = await deleteWbsTemplateById(t.id);
     if (error) toast.error(error.message);
     else {
       toast.success("Template deleted");
@@ -105,7 +99,7 @@ export function TemplateManagementPage() {
   async function handleDeleteNode(nodeId: string) {
     if (!isAdmin) return;
     if (!confirm("Delete this node and all its children?")) return;
-    const { error } = await supabase.from("wbs_template_nodes").delete().eq("id", nodeId);
+    const { error } = await deleteWbsTemplateNodeById(nodeId);
     if (error) toast.error(error.message);
     else {
       toast.success("Node deleted");

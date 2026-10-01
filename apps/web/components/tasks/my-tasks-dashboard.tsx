@@ -28,6 +28,7 @@ import {
   resolveViewer,
   type TaskViewer,
 } from "@/lib/task-scope";
+import { getDepartmentById, listWbsAuditLog, listWbsTasks, updateWbsTaskById } from "@/lib/tasks/tasks-queries";
 
 interface ProjectRef {
   id: string;
@@ -69,16 +70,8 @@ export function MyTasksDashboard() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const [tasksRes, logRes] = await Promise.all([
-      supabase
-        .from("wbs_tasks")
-        .select("*, projects(project_code, project_name)")
-        .order("end_date", { ascending: true, nullsFirst: false })
-        .limit(500),
-      supabase
-        .from("wbs_audit_log")
-        .select("id, action, new_value, created_at, wbs_task_id")
-        .order("created_at", { ascending: false })
-        .limit(150),
+      listWbsTasks(),
+      listWbsAuditLog(),
     ]);
     setTasks((tasksRes.data ?? []) as TaskRow[]);
     setActivity(
@@ -180,15 +173,12 @@ export function MyTasksDashboard() {
       if (!viewer) return;
       setDeciding(true);
       const note: string | null = decision === "rejected" ? rejectNote.trim() || null : null;
-      const { error } = await supabase
-        .from("wbs_tasks")
-        .update({
+      const { error } = await updateWbsTaskById({
           cross_dept_status: decision,
           cross_dept_note: note,
           cross_dept_decided_by: viewer.userId,
           cross_dept_decided_at: new Date().toISOString(),
-        })
-        .eq("id", task.id);
+        }, task.id);
       setDeciding(false);
       if (error) {
         toast.error(error.message);
@@ -196,11 +186,7 @@ export function MyTasksDashboard() {
       }
 
       // Notify the requesting department head.
-      const headRes = await supabase
-        .from("departments")
-        .select("department_head")
-        .eq("id", task.requesting_department_id as string)
-        .maybeSingle();
+      const headRes = await getDepartmentById(task.requesting_department_id as string);
       await createTaskAlert(supabase, {
         projectId: task.project_id,
         taskId: task.id,

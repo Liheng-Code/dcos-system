@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { CompanyProfilePage } from "@/components/settings/company-profile-page";
 import { NamingConventionAdminPage } from "@/components/naming/naming-convention-admin-page";
 import { ModuleSettingsPage } from "@/components/settings/module-settings-page";
+import { getProfileById } from "@/lib/settings/settings-queries";
 
 // 02-USR Phase 4: Roles & Permissions moved wholesale to
 // /dashboard/administration/roles-permissions (00-Master.md §6 / 06-UI-UX-Design.md §1) —
@@ -35,7 +36,7 @@ export default function SettingsPage() {
         router.push("/");
         return;
       }
-      supabase.from("profiles").select("role").eq("id", data.session.user.id).single().then(({ data: profile }) => {
+      getProfileById(data.session.user.id, "role").then(({ data: profile }) => {
         if (profile && profile.role !== "admin") {
           router.push("/dashboard");
         } else {

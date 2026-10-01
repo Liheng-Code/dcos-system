@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { MASTER_LIBRARY_DEFINITIONS, WBS_MASTER_LIBRARY_DEFINITIONS, listMasterLibraryItems } from "@/lib/master-libraries";
 import { createClient } from "@/lib/supabase/client";
 import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord, WbsNodeRecord } from "@/components/wbs/wbs-types";
+import { generateWbsFromMasterLibraryItems, listWbsNodesByProjectIdOrderedBySortOrder } from "@/lib/wbs/wbs-queries";
 
 interface MasterWbsGeneratorDialogProps {
   projectId: string;
@@ -178,11 +179,7 @@ export function MasterWbsGeneratorDialog({ projectId, onClose, onGenerated }: Ma
     if (wbsNodes.length > 0) return; // already loaded
     setWbsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("wbs_nodes")
-        .select("*")
-        .eq("project_id", projectId)
-        .order("sort_order");
+      const { data, error } = await listWbsNodesByProjectIdOrderedBySortOrder(projectId);
       if (error) throw error;
       setWbsNodes((data as WbsNodeRecord[]) ?? []);
     } catch (err) {
@@ -218,7 +215,7 @@ export function MasterWbsGeneratorDialog({ projectId, onClose, onGenerated }: Ma
     }
 
     setStep("placing");
-    const { data, error } = await supabase.rpc("generate_wbs_from_master_library_items", {
+    const { data, error } = await generateWbsFromMasterLibraryItems({
       p_project_id: projectId,
       p_target_node_id: selectedTargetId ?? null,
       p_selections: buildGenerationPayload(selections),

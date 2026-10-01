@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertStakeholderAbbreviation, listStakeholderAbbreviations, listStakeholders, updateStakeholderAbbreviationById } from "@/lib/naming/naming-queries";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ interface StakeholderAbbr {
 }
 
 export function NamingStakeholderAbbreviations() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
@@ -28,8 +27,8 @@ export function NamingStakeholderAbbreviations() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("stakeholders").select("id, organization_name, stakeholder_type").order("organization_name"),
-      supabase.from("stakeholder_abbreviations").select("*"),
+      listStakeholders(),
+      listStakeholderAbbreviations(),
     ]).then(([sRes, aRes]) => {
       if (sRes.data) setStakeholders(sRes.data as Stakeholder[]);
       if (aRes.data) {
@@ -40,7 +39,7 @@ export function NamingStakeholderAbbreviations() {
       if (sRes.error) toast.error("Failed to load stakeholders");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function validateAbbr(abbr: string): string | null {
     if (!/^[A-Z0-9]{3,4}$/.test(abbr)) return "3–4 uppercase alphanumeric characters";
@@ -56,9 +55,9 @@ export function NamingStakeholderAbbreviations() {
     const existing = abbrs[stakeholderId];
     let error;
     if (existing) {
-      ({ error } = await supabase.from("stakeholder_abbreviations").update({ abbreviation: abbr }).eq("id", existing.id));
+      ({ error } = await updateStakeholderAbbreviationById({ abbreviation: abbr }, existing.id));
     } else {
-      const { error: insErr } = await supabase.from("stakeholder_abbreviations").insert({
+      const { error: insErr } = await insertStakeholderAbbreviation({
         stakeholder_id: stakeholderId,
         abbreviation: abbr,
       });

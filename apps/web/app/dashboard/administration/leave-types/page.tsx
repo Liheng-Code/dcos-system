@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteLeaveTypeById, insertLeaveTypes, listLeaveTypes, updateLeaveTypeById } from "@/lib/administration/administration-queries";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -79,7 +79,7 @@ export default function LeaveTypesAdminPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const refresh = async () => {
-    const { data } = await createClient().from("leave_types").select("*").order("leave_name");
+    const { data } = await listLeaveTypes();
     setLeaveTypes(data || []);
   };
 
@@ -110,11 +110,10 @@ export default function LeaveTypesAdminPage() {
     if (!form.leave_name.trim()) { setFormError("Name is required."); return; }
     if (!form.leave_code.trim()) { setFormError("Code is required."); return; }
     setSaving(true); setFormError(null);
-    const supabase = createClient();
     const payload = { ...form, deduct_from_type_id: form.deduct_from_type_id || null };
     const { error } = editingType
-      ? await supabase.from("leave_types").update(payload).eq("id", editingType.id)
-      : await supabase.from("leave_types").insert(payload);
+      ? await updateLeaveTypeById(payload, editingType.id)
+      : await insertLeaveTypes(payload);
     if (error) { setFormError(error.message); } else { await refresh(); setShowForm(false); }
     setSaving(false);
   };
@@ -123,7 +122,7 @@ export default function LeaveTypesAdminPage() {
   const doDelete = async () => {
     if (!deletingType) return;
     setDeleteLoading(true); setDeleteError(null);
-    const { error } = await createClient().from("leave_types").delete().eq("id", deletingType.id);
+    const { error } = await deleteLeaveTypeById(deletingType.id);
     if (error) { setDeleteError(error.message); }
     else { setLeaveTypes((p) => p.filter((t) => t.id !== deletingType.id)); setDeletingType(null); }
     setDeleteLoading(false);

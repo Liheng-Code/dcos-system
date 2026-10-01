@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Loader2, RefreshCw, Timer, TrendingUp, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { listWbsTasksByProjectId } from "@/lib/dashboard/dashboard-queries";
 import { getProgressSnapshots, captureProgressSnapshot, type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
 import { cn } from "@/lib/utils";
 import {
@@ -33,9 +33,7 @@ export function ProgressDashboard({ projectId, projectName, projectProgress = 0 
     setLoading(true);
     try {
       const [tasksResult, snapshotsResult] = await Promise.all([
-        createClient().from("wbs_tasks")
-          .select("id, task_code, task_name, status, progress, priority, discipline, start_date, end_date, delay_status, owner_name")
-          .eq("project_id", projectId).order("end_date", { ascending: true, nullsFirst: false }),
+        listWbsTasksByProjectId(projectId),
         getProgressSnapshots(projectId),
       ]);
       if (tasksResult.error) throw tasksResult.error;

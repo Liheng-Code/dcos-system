@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { X, Loader2, Send, Save, Sparkles, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
+import { getProfileById, getTransmittalRunningNumberByProjectId, insertTransmittalDocuments, insertTransmittalsReturning, listCompaniesOrderedByCode, listDocumentsByProjectId, listStakeholderAbbreviationsOrderedByAbbreviation, upsertTransmittalRunningNumber } from "@/lib/naming/naming-queries";
 
 interface TransmittalCreateProps {
   onClose: () => void;
@@ -57,15 +58,12 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
   useEffect(() => {
     if (!selectedProjectId) { setLoading(false); return; }
     Promise.all([
-      supabase.from("companies").select("id, code, name").order("code"),
-      supabase
-        .from("stakeholder_abbreviations")
-        .select("stakeholder_id, abbreviation, stakeholders!inner(organization_name)")
-        .order("abbreviation"),
-      supabase.from("documents").select("id, document_number, title").eq("project_id", selectedProjectId).order("document_number"),
+      listCompaniesOrderedByCode(),
+      listStakeholderAbbreviationsOrderedByAbbreviation(),
+      listDocumentsByProjectId(selectedProjectId),
       supabase.auth.getUser().then(({ data }) => data.user?.id).then((uid) => {
         if (!uid) return null;
-        return supabase.from("profiles").select("company_id").eq("id", uid).single();
+        return getProfileById(uid);
       }),
     ]).then(([compRes, recRes, docRes, userRes]) => {
       if (compRes.data) setCompanies(compRes.data as Company[]);
@@ -91,11 +89,7 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
 
   useEffect(() => {
     if (!selectedProjectId) return;
-    supabase
-      .from("transmittal_running_numbers")
-      .select("last_sequence")
-      .eq("project_id", selectedProjectId)
-      .maybeSingle()
+    getTransmittalRunningNumberByProjectId(selectedProjectId)
       .then(({ data }) => {
         setNextSeq(data ? (data.last_sequence as number) + 1 : 1);
       });
@@ -132,7 +126,7 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
       created_by: uid,
     };
 
-    const { data, error } = await supabase.from("transmittals").insert(payload).select().single();
+    const { data, error } = await insertTransmittalsReturning(payload);
     if (error) { toast.error(error.message); setSaving(false); return; }
 
     if (selectedDocIds.length > 0) {
@@ -140,13 +134,10 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
         transmittal_id: data.id,
         document_id: docId,
       }));
-      await supabase.from("transmittal_documents").insert(docLinks);
+      await insertTransmittalDocuments(docLinks);
     }
 
-    await supabase.from("transmittal_running_numbers").upsert(
-      { project_id: selectedProjectId, last_sequence: nextSeq },
-      { onConflict: "project_id" }
-    );
+    await upsertTransmittalRunningNumber({ project_id: selectedProjectId, last_sequence: nextSeq });
 
     toast.success(`Transmittal ${status === "sent" ? "sent" : "saved as draft"}`);
     setSaving(false);

@@ -24,6 +24,7 @@ import {
   type TaskViewer,
 } from "@/lib/task-scope";
 import { TeamPlannerGrid } from "@/components/tasks/team-planner-grid";
+import { deleteWbsTaskByIdReturning, listProfilesByDepartmentIds, listWbsAuditLogWithFieldNameOwnerName, listWbsNodesByProjectId, listWbsTasksByDepartmentIds } from "@/lib/tasks/tasks-queries";
 
 interface MemberRecord {
   id: string;
@@ -87,29 +88,17 @@ export function DepartmentWorkspace() {
     }
 
     setLoading(true);
-    let query = supabase
-      .from("wbs_tasks")
-      .select("*")
-      .in("department_id", viewer.managedDepartmentIds);
+    let query = listWbsTasksByDepartmentIds(viewer.managedDepartmentIds);
     if (!effectiveAllProjects && selectedProjectId) {
       query = query.eq("project_id", selectedProjectId);
     }
     const [tasksRes, membersRes, nodesRes, logsRes] = await Promise.all([
       query.order("sort_order", { ascending: true, nullsFirst: false }).limit(1000),
-      supabase
-        .from("profiles")
-        .select("id, full_name, job_title, avatar_url")
-        .in("department_id", viewer.managedDepartmentIds)
-        .order("full_name"),
+      listProfilesByDepartmentIds(viewer.managedDepartmentIds),
       effectiveAllProjects || !selectedProjectId
         ? Promise.resolve({ data: [] as WbsNodeRecord[] })
-        : supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId),
-      supabase
-        .from("wbs_audit_log")
-        .select("*")
-        .eq("field_name", "owner_name")
-        .order("created_at", { ascending: false })
-        .limit(500),
+        : listWbsNodesByProjectId(selectedProjectId),
+      listWbsAuditLogWithFieldNameOwnerName(),
     ]);
 
     const taskRecords = (tasksRes.data ?? []) as WbsTaskRecord[];
@@ -305,7 +294,7 @@ export function DepartmentWorkspace() {
                   toast.error("Only department managers can delete team tasks");
                   return;
                 }
-                const { data, error } = await supabase.from("wbs_tasks").delete().eq("id", task.id).select("id").maybeSingle();
+                const { data, error } = await deleteWbsTaskByIdReturning(task.id);
                 if (error) toast.error(error.message);
                 else if (!data) toast.error("Task was not deleted. You may not have delete permission.");
                 else { toast.success("Task deleted"); refresh(); }

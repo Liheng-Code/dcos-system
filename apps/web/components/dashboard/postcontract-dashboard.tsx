@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getContractRegisterByProjectIdWithStatusActive } from "@/lib/dashboard/dashboard-queries";
 import {
   DollarSign,
   FileText,
@@ -36,7 +36,6 @@ interface ContractInfo {
 }
 
 export function PostcontractDashboard({ projectId }: PostcontractDashboardProps) {
-  const supabase = createClient();
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [snapshot, setSnapshot] = useState<ContractSnapshot | null>(null);
   const [contract, setContract] = useState<ContractInfo | null>(null);
@@ -47,13 +46,7 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
       const [kpisData, snapshotData, contractData] = await Promise.all([
         getPostcontractKpis(projectId),
         getContractSnapshot(projectId),
-        supabase
-          .from("contract_register")
-          .select("contract_no, party_name, contract_value, status")
-          .eq("project_id", projectId)
-          .eq("status", "active")
-          .limit(1)
-          .maybeSingle(),
+        getContractRegisterByProjectIdWithStatusActive(projectId),
       ]);
 
       setKpis(kpisData);
@@ -62,7 +55,7 @@ export function PostcontractDashboard({ projectId }: PostcontractDashboardProps)
       setLoading(false);
     }
     load();
-  }, [projectId, supabase]);
+  }, [projectId]);
 
   if (loading) {
     return (

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WbsTaskEditSheet } from "@/components/wbs/wbs-task-edit-sheet";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
+import { getWbsTaskById } from "@/lib/tasks/tasks-queries";
 
 export default function TaskDetailPage() {
   const params = useParams();
@@ -26,7 +27,7 @@ export default function TaskDetailPage() {
   useEffect(() => {
     if (!taskId || checking) return;
     setLoading(true);
-    supabase.from("wbs_tasks").select("*").eq("id", taskId).single().then(({ data, error }) => {
+    getWbsTaskById(taskId).then(({ data, error }) => {
       if (error || !data) { router.push("/dashboard/tasks"); return; }
       setTask(data as WbsTaskRecord);
       setLoading(false);

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ShieldAlert, ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EVENT_LABELS, formatRelative, type AccountSummary } from "@/components/administration/security-overview-page";
+import { getProfileById, listUserRolesByUserId } from "@/lib/administration/administration-queries";
 
 const HR_ROLE_CODES = new Set(["HR_Manager", "admin"]);
 
@@ -32,8 +33,8 @@ export function AdminDashboardWidget() {
     supabase.auth.getUser().then(async ({ data: userData }) => {
       if (!userData.user) { setChecked(true); return; }
       const [{ data: profile }, { data: roleRows }] = await Promise.all([
-        supabase.from("profiles").select("role").eq("id", userData.user.id).maybeSingle(),
-        supabase.from("user_roles").select("role_code").eq("user_id", userData.user.id),
+        getProfileById(userData.user.id),
+        listUserRolesByUserId(userData.user.id),
       ]);
       const codes = new Set((roleRows ?? []).map((r: { role_code: string }) => r.role_code));
       if (profile?.role) codes.add(profile.role as string);

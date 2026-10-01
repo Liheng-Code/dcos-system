@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { closeWeeklyPlan, deleteWeeklyPlanById, insertWeeklyPlanReturning, insertWeeklyPlanTasks, listWbsTasksByProjectIdOrderedByTaskCode, listWeeklyPlanTasksByWeeklyPlanId, listWeeklyPlansByProjectId, updateWeeklyPlanById } from "@/lib/wbs/wbs-queries";
 import { ClipboardList, Plus, Loader2, ChevronDown, ChevronRight, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -65,7 +65,6 @@ function statusBadge(status: string) {
 
 export function WbsWeeklyPlan() {
   const { selectedProjectId: projectId } = useProject();
-  const supabase = useMemo(() => createClient(), []);
   const [plans, setPlans] = useState<WeeklyPlan[]>([]);
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [planTasks, setPlanTasks] = useState<Record<string, WeeklyPlanTask[]>>({});
@@ -86,40 +85,24 @@ export function WbsWeeklyPlan() {
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("weekly_plans")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("week_start_date", { ascending: false });
+    const { data } = await listWeeklyPlansByProjectId(projectId);
     if (data) setPlans(data as WeeklyPlan[]);
     setLoading(false);
-  }, [projectId, supabase]);
+  }, [projectId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loadPlans() flips its own loading flag
     void loadPlans();
     // Load available tasks for this project
-    supabase
-      .from("wbs_tasks")
-      .select("id, task_code, task_name, owner_name, progress, status")
-      .eq("project_id", projectId)
-      .not("status", "in", "(closed,completed,cancelled)")
-      .order("task_code")
-      .limit(500)
+    listWbsTasksByProjectIdOrderedByTaskCode(projectId)
       .then(({ data }) => {
         if (data) setAvailableTasks(data as AvailableTask[]);
       });
-  }, [projectId, supabase, loadPlans]);
+  }, [projectId, loadPlans]);
 
   async function loadPlanTasks(planId: string) {
     if (planTasks[planId]) return;
-    const { data } = await supabase
-      .from("weekly_plan_tasks")
-      .select(`
-        id, weekly_plan_id, wbs_task_id, target_progress, responsible_name, notes, actual_progress, met,
-        wbs_tasks (task_code, task_name, progress)
-      `)
-      .eq("weekly_plan_id", planId);
+    const { data } = await listWeeklyPlanTasksByWeeklyPlanId(planId);
     if (data) {
       type RawRow = Omit<WeeklyPlanTask, "task_code" | "task_name" | "current_progress"> & {
         wbs_tasks: { task_code: string; task_name: string; progress: number } | null;
@@ -154,17 +137,13 @@ export function WbsWeeklyPlan() {
     }
     setCreating(true);
     try {
-      const { data: plan, error: planErr } = await supabase
-        .from("weekly_plans")
-        .insert({
+      const { data: plan, error: planErr } = await insertWeeklyPlanReturning({
           project_id: projectId,
           week_start_date: newPlan.week_start_date,
           title: newPlan.title.trim() || null,
           notes: newPlan.notes.trim() || null,
           status: "draft",
-        })
-        .select("id")
-        .single();
+        });
 
       if (planErr) throw planErr;
 
@@ -175,7 +154,7 @@ export function WbsWeeklyPlan() {
         responsible_name: responsibleName[taskId]?.trim() || null,
       }));
 
-      const { error: tasksErr } = await supabase.from("weekly_plan_tasks").insert(taskRows);
+      const { error: tasksErr } = await insertWeeklyPlanTasks(taskRows);
       if (tasksErr) throw tasksErr;
 
       toast.success("Weekly plan created");
@@ -194,7 +173,7 @@ export function WbsWeeklyPlan() {
 
   async function handleDeletePlan(planId: string) {
     setSaving(true);
-    const { error } = await supabase.from("weekly_plans").delete().eq("id", planId);
+    const { error } = await deleteWeeklyPlanById(planId);
     if (error) toast.error(error.message);
     else {
       toast.success("Plan deleted");
@@ -205,7 +184,7 @@ export function WbsWeeklyPlan() {
   }
 
   async function handleSubmitPlan(planId: string) {
-    const { error } = await supabase.from("weekly_plans").update({ status: "submitted" }).eq("id", planId);
+    const { error } = await updateWeeklyPlanById({ status: "submitted" }, planId);
     if (error) toast.error(error.message);
     else {
       toast.success("Plan submitted");
@@ -216,7 +195,7 @@ export function WbsWeeklyPlan() {
   /** Completion Plan 1.8 — freezes actual progress against target and computes PCR at close time. */
   async function handleCloseWeek(planId: string) {
     setSaving(true);
-    const { data: pcr, error } = await supabase.rpc("close_weekly_plan", { p_plan_id: planId });
+    const { data: pcr, error } = await closeWeeklyPlan({ p_plan_id: planId });
     if (error) {
       toast.error(error.message);
     } else {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteBudgetPackageSectionById, insertBudgetPackageSectionReturning, listBudgetPackageSections, updateBudgetPackageSectionById } from "@/lib/naming/naming-queries";
 import { Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,6 @@ const GROUP_NAMES: Record<string, string> = {
 };
 
 export function NamingBudgetSectionsEditor() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sections, setSections] = useState<BudgetSection[]>([]);
@@ -36,12 +35,12 @@ export function NamingBudgetSectionsEditor() {
   const [newSection, setNewSection] = useState({ group_code: "A" as string, section: "", section_name: "", description: "" });
 
   useEffect(() => {
-    supabase.from("budget_package_sections").select("*").order("sort_order").then(({ data, error }) => {
+    listBudgetPackageSections().then(({ data, error }) => {
       if (data) setSections(data as BudgetSection[]);
       if (error) toast.error("Failed to load budget sections");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function updateField(id: string, field: keyof BudgetSection, value: string | boolean) {
     setEditMap((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
@@ -51,7 +50,7 @@ export function NamingBudgetSectionsEditor() {
     const changes = editMap[id];
     if (!changes) return;
     setSaving(true);
-    const { error } = await supabase.from("budget_package_sections").update(changes).eq("id", id);
+    const { error } = await updateBudgetPackageSectionById(changes, id);
     if (error) {
       toast.error(error.message);
     } else {
@@ -73,14 +72,14 @@ export function NamingBudgetSectionsEditor() {
       .filter((s) => s.group_code === newSection.group_code)
       .reduce((max, s) => Math.max(max, s.sort_order), 0);
     const baseOrder = sections.reduce((max, s) => Math.max(max, s.sort_order), 0) + 1;
-    const { data, error } = await supabase.from("budget_package_sections").insert({
+    const { data, error } = await insertBudgetPackageSectionReturning({
       group_code: newSection.group_code,
       group_name: GROUP_NAMES[newSection.group_code],
       section: fullSection,
       section_name: newSection.section_name,
       description: newSection.description || null,
       sort_order: baseOrder,
-    }).select().single();
+    });
     if (error) {
       toast.error(error.message);
     } else if (data) {
@@ -93,14 +92,14 @@ export function NamingBudgetSectionsEditor() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this budget section?")) return;
-    const { error } = await supabase.from("budget_package_sections").delete().eq("id", id);
+    const { error } = await deleteBudgetPackageSectionById(id);
     if (error) { toast.error(error.message); return; }
     setSections((prev) => prev.filter((s) => s.id !== id));
     toast.success("Section deleted");
   }
 
   async function handleToggleActive(id: string, current: boolean) {
-    const { error } = await supabase.from("budget_package_sections").update({ is_active: !current }).eq("id", id);
+    const { error } = await updateBudgetPackageSectionById({ is_active: !current }, id);
     if (error) { toast.error(error.message); return; }
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, is_active: !current } : s)));
   }

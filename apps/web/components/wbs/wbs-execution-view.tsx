@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { differenceInDays } from "date-fns";
 import { Users, UserCheck, GitBranch, FileText, Camera, MoreHorizontal, Copy, Pencil, Trash2, Bell, Loader2 } from "lucide-react";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
-import { createClient } from "@/lib/supabase/client";
+import { insertWbsAuditLog, insertWbsTask, listWbsTasksByProjectId, updateWbsTaskById } from "@/lib/wbs/wbs-queries";
 import { toast } from "sonner";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import {
@@ -81,19 +81,18 @@ function QuickProgressEditor({ task, onRefresh }: { task: WbsTaskRecord; onRefre
       return;
     }
     setSaving(true);
-    const supabase = createClient();
     const updates: Record<string, unknown> = { progress: next, updated_at: new Date().toISOString() };
     if (next === 100 && task.status !== "closed" && task.status !== "cancelled") {
       updates.status = "submitted";
     } else if (next > 0 && task.status === "open") {
       updates.status = "in_progress";
     }
-    const { error } = await supabase.from("wbs_tasks").update(updates).eq("id", task.id);
+    const { error } = await updateWbsTaskById(updates, task.id);
     if (error) {
       toast.error(error.message);
       setValue(String(task.progress));
     } else {
-      await supabase.from("wbs_audit_log").insert({
+      await insertWbsAuditLog({
         wbs_task_id: task.id,
         wbs_node_id: task.wbs_node_id,
         project_id: task.project_id,
@@ -148,11 +147,7 @@ export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, o
   const { unreadTaskIds } = useTaskAlerts();
 
   async function handleDuplicate(task: WbsTaskRecord) {
-    const supabase = createClient();
-    const { data: projectTasks, error: codeError } = await supabase
-      .from("wbs_tasks")
-      .select("task_code")
-      .eq("project_id", task.project_id);
+    const { data: projectTasks, error: codeError } = await listWbsTasksByProjectId(task.project_id, "task_code");
 
     if (codeError) {
       toast.error(codeError.message);
@@ -161,7 +156,7 @@ export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, o
 
     const existingCodes = new Set((projectTasks ?? []).map((item) => item.task_code as string));
     const copyCode = nextCopyCode(task.task_code, existingCodes);
-    const { error } = await supabase.from("wbs_tasks").insert({
+    const { error } = await insertWbsTask({
       wbs_node_id: task.wbs_node_id,
       project_id: task.project_id,
       task_code: copyCode,

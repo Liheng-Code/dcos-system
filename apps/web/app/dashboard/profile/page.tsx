@@ -9,6 +9,7 @@ import { NotificationPreferencesPanel } from "@/components/settings/notification
 import { ChangePasswordCard } from "@/components/settings/change-password-card";
 import { ProfileAccountInfoCard, type AccountInfoFields } from "@/components/settings/profile-account-info-card";
 import { PersonalInfoCard, type PersonalInfoFields } from "@/components/settings/personal-info-card";
+import { getProfileById, listDepartments } from "@/lib/profile/profile-queries";
 
 interface DepartmentOption {
   id: string;
@@ -31,14 +32,8 @@ export default function ProfilePage() {
     setError(null);
     const supabase = createClient();
     const [{ data, error: err }, { data: depts }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "id, employee_id, full_name, email, department_id, job_title, role, account_status, last_login_at, phone, current_address, gender, date_of_birth, nationality, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone",
-        )
-        .eq("id", uid)
-        .single(),
-      supabase.from("departments").select("id, department_name").order("department_name", { ascending: true }),
+      getProfileById(uid),
+      listDepartments(),
     ]);
     if (err) {
       setError(err.message);

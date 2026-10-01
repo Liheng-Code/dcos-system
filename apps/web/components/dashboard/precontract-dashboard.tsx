@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countTenderBoqItemsByTenderId, countTenderPreliminariesItemsByTenderId, countTenderSubQuotesByTenderId, getProjectPrecontractDetailByProjectId, listTenderRiskItemsByTenderId } from "@/lib/dashboard/dashboard-queries";
 import { Clock, TrendingUp, AlertTriangle, Users, Calculator, FileSearch, Send, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +35,6 @@ interface CostProgress {
 }
 
 export function PrecontractDashboard({ projectId, projectName }: PrecontractDashboardProps) {
-  const supabase = createClient();
   const [details, setDetails] = useState<PrecontractDetails | null>(null);
   const [riskSummary, setRiskSummary] = useState<RiskSummary>({ critical: 0, high: 0, medium: 0, low: 0 });
   const [costProgress, setCostProgress] = useState<CostProgress>({ boqItems: 0, prelimItems: 0, subQuoteItems: 0, totalBoq: 0, totalPrelim: 0 });
@@ -44,21 +43,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
   useEffect(() => {
     async function load() {
       // Load precontract details
-      const { data: pcDetails } = await supabase
-        .from("project_precontract_details")
-        .select("*")
-        .eq("project_id", projectId)
-        .single();
+      const { data: pcDetails } = await getProjectPrecontractDetailByProjectId(projectId);
 
       if (pcDetails) {
         setDetails(pcDetails as PrecontractDetails);
 
         // Load risk summary for this tender
         if (pcDetails.tender_register_id) {
-          const { data: risks } = await supabase
-            .from("tender_risk_items")
-            .select("risk_score")
-            .eq("tender_id", pcDetails.tender_register_id);
+          const { data: risks } = await listTenderRiskItemsByTenderId(pcDetails.tender_register_id);
 
           if (risks) {
             const summary: RiskSummary = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -71,9 +63,9 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
 
           // Load cost progress
           const [boqRes, prelimRes, subQuoteRes] = await Promise.all([
-            supabase.from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", pcDetails.tender_register_id),
-            supabase.from("tender_preliminaries_items").select("id", { count: "exact", head: true }).eq("tender_id", pcDetails.tender_register_id),
-            supabase.from("tender_sub_quotes").select("id", { count: "exact", head: true }).eq("tender_id", pcDetails.tender_register_id),
+            countTenderBoqItemsByTenderId(pcDetails.tender_register_id),
+            countTenderPreliminariesItemsByTenderId(pcDetails.tender_register_id),
+            countTenderSubQuotesByTenderId(pcDetails.tender_register_id),
           ]);
 
           setCostProgress({
@@ -88,7 +80,7 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
       setLoading(false);
     }
     load();
-  }, [projectId, supabase]);
+  }, [projectId]);
 
   const daysUntilDeadline = useMemo(() => {
     if (!details?.submission_deadline) return null;

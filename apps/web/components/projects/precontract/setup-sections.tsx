@@ -38,6 +38,7 @@ import {
   toastResult,
   type PrecontractCtx,
 } from "./shared";
+import { listStakeholdersByIds, updateProjectPrecontractDetailsByProjectId, updateTenderWorkstreamById } from "@/lib/projects/projects-queries";
 
 const label = (v: string | null | undefined) => (v ? v.replace(/_/g, " ") : "—");
 
@@ -50,10 +51,7 @@ export function RegistrationSection({ ctx }: { ctx: PrecontractCtx }) {
   useEffect(() => {
     const ids = [project.client_id, project.consultant_id].filter((v): v is string => !!v);
     if (!ids.length) return;
-    createClient()
-      .from("stakeholders")
-      .select("id, organization_name")
-      .in("id", ids)
+    listStakeholdersByIds(ids)
       .then(({ data }) => setNames(Object.fromEntries((data ?? []).map((s) => [s.id, s.organization_name]))));
   }, [project.client_id, project.consultant_id]);
 
@@ -103,10 +101,7 @@ export function TenderManagementSection({ ctx }: { ctx: PrecontractCtx }) {
     ctx.patchWorkstream(w.id, patch);
     const r = patch.required !== undefined
       ? await setWorkstreamRequired(w, patch.required)
-      : await createClient()
-          .from("tender_workstreams")
-          .update({ ...patch, updated_at: new Date().toISOString() })
-          .eq("id", w.id)
+      : await updateTenderWorkstreamById({ ...patch, updated_at: new Date().toISOString() }, w.id)
           .then(({ error }) => ({ error: error?.message ?? null }));
     if (r.error) {
       toast.error(r.error);
@@ -282,10 +277,7 @@ export function GoNoGoSection({ ctx }: { ctx: PrecontractCtx }) {
   }
 
   async function saveCriteria() {
-    const { error } = await createClient()
-      .from("project_precontract_details")
-      .update({ go_no_go_criteria: criteria, updated_at: new Date().toISOString() })
-      .eq("project_id", ctx.project.id);
+    const { error } = await updateProjectPrecontractDetailsByProjectId({ go_no_go_criteria: criteria, updated_at: new Date().toISOString() }, ctx.project.id);
     if (error) toast.error(error.message);
     else toast.success("Review saved");
     return !error;

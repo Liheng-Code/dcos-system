@@ -30,6 +30,7 @@ import {
   OutcomeSection,
   SubmissionSection,
 } from "@/components/projects/precontract/control-sections";
+import { getProjectPrecontractDetailByProjectId, getTenderRegisterById, listProfiles, listTenderWorkstreamsByTenderId } from "@/lib/projects/projects-queries";
 
 interface PrecontractDetailProps {
   project: Project;
@@ -144,8 +145,8 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
   const load = useCallback(async () => {
     const supabase = createClient();
     const [{ data: pc }, { data: people }, { data: { user } }] = await Promise.all([
-      supabase.from("project_precontract_details").select("*").eq("project_id", project.id).maybeSingle(),
-      supabase.from("profiles").select("id, full_name").order("full_name"),
+      getProjectPrecontractDetailByProjectId(project.id, "*"),
+      listProfiles(),
       supabase.auth.getUser(),
     ]);
     setStaff((people ?? []) as StaffOption[]);
@@ -154,8 +155,8 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
     setDetails(d);
     if (d?.tender_register_id) {
       const [{ data: t }, { data: ws }] = await Promise.all([
-        supabase.from("tender_register").select("id, tender_no, title, status, issue_date").eq("id", d.tender_register_id).maybeSingle(),
-        supabase.from("tender_workstreams").select("*").eq("tender_id", d.tender_register_id).order("sort_order"),
+        getTenderRegisterById(d.tender_register_id, "id, tender_no, title, status, issue_date"),
+        listTenderWorkstreamsByTenderId(d.tender_register_id),
       ]);
       setTender((t as TenderRecord | null) ?? null);
       setWorkstreams((ws ?? []) as Workstream[]);

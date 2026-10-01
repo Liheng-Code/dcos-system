@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteStakeholderStaffById, deleteStakeholderTeamById, insertStakeholderStaffRow, insertStakeholderTeam, insertStakeholdersReturning, listProfiles, listStakeholderStaffByStakeholderIdOrderedByIsPrimaryContactAndFullName, listStakeholderTeamsByStakeholderId, updateStakeholderById, updateStakeholderStaffById, updateStakeholderStaffByStakeholderIdAndExceptId, updateStakeholderTeamById } from "@/lib/stakeholders/stakeholders-queries";
 import {
   X, Loader2, Save, Trash2, Pencil, Plus, Check, XCircle,
   Users, Building2, CreditCard, ShieldCheck, UsersRound, AlertTriangle,
@@ -257,23 +257,16 @@ export function StakeholderEditSheet({
     if (!stakeholder) return;
     setStaffLoading(true);
     setTeamsLoading(true);
-    const supabase = createClient();
-    supabase.from("stakeholder_staff").select("*")
-      .eq("stakeholder_id", stakeholder.id)
-      .order("is_primary_contact", { ascending: false })
-      .order("full_name")
+    listStakeholderStaffByStakeholderIdOrderedByIsPrimaryContactAndFullName(stakeholder.id)
       .then(({ data }) => { if (data) setStaffList(data as StakeholderStaff[]); setStaffLoading(false); });
-    supabase.from("stakeholder_teams").select("*")
-      .eq("stakeholder_id", stakeholder.id)
-      .order("team_name")
+    listStakeholderTeamsByStakeholderId(stakeholder.id)
       .then(({ data }) => { if (data) setTeams(data as StakeholderTeam[]); setTeamsLoading(false); });
   }, [stakeholder?.id]);
 
   // ── Load HR profiles for internal member picker
   useEffect(() => {
     if (!isInternal) return;
-    createClient().from("profiles").select("id, full_name, job_title, email, department")
-      .order("full_name")
+    listProfiles()
       .then(({ data }) => { if (data) setHRProfiles(data as HRProfile[]); });
   }, [isInternal]);
 
@@ -285,7 +278,6 @@ export function StakeholderEditSheet({
   async function handleSave() {
     if (!form.organization_name.trim()) { toast.error("Organization name is required"); return; }
     setSaving(true);
-    const supabase = createClient();
 
     const payload = {
       organization_name: form.organization_name.trim(),
@@ -318,12 +310,12 @@ export function StakeholderEditSheet({
     };
 
     if (isEditing) {
-      const { error } = await supabase.from("stakeholders").update(payload).eq("id", stakeholder.id);
+      const { error } = await updateStakeholderById(payload, stakeholder.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Stakeholder updated");
       onSave({ ...stakeholder, ...payload } as Stakeholder);
     } else {
-      const { data, error } = await supabase.from("stakeholders").insert(payload).select().single();
+      const { data, error } = await insertStakeholdersReturning(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Stakeholder created");
       onSave(data as Stakeholder);
@@ -363,7 +355,6 @@ export function StakeholderEditSheet({
   async function saveStaff() {
     if (!staffForm.full_name.trim()) return;
     setSavingStaff(true);
-    const supabase = createClient();
     const payload = {
       full_name: staffForm.full_name.trim(),
       job_title: staffForm.job_title.trim() || null,
@@ -375,21 +366,16 @@ export function StakeholderEditSheet({
     };
 
     if (staffForm.is_primary_contact) {
-      await supabase.from("stakeholder_staff")
-        .update({ is_primary_contact: false })
-        .eq("stakeholder_id", stakeholder!.id)
-        .neq("id", editingStaffId ?? "");
+      await updateStakeholderStaffByStakeholderIdAndExceptId({ is_primary_contact: false }, stakeholder!.id, editingStaffId ?? "");
     }
 
     const { error } = editingStaffId
-      ? await supabase.from("stakeholder_staff").update(payload).eq("id", editingStaffId)
-      : await supabase.from("stakeholder_staff").insert({ ...payload, stakeholder_id: stakeholder!.id });
+      ? await updateStakeholderStaffById(payload, editingStaffId)
+      : await insertStakeholderStaffRow({ ...payload, stakeholder_id: stakeholder!.id });
 
     if (error) { toast.error(error.message); setSavingStaff(false); return; }
 
-    const { data } = await supabase.from("stakeholder_staff").select("*")
-      .eq("stakeholder_id", stakeholder!.id)
-      .order("is_primary_contact", { ascending: false }).order("full_name");
+    const { data } = await listStakeholderStaffByStakeholderIdOrderedByIsPrimaryContactAndFullName(stakeholder!.id);
     if (data) setStaffList(data as StakeholderStaff[]);
     setSavingStaff(false);
     setShowStaffForm(false);
@@ -398,7 +384,7 @@ export function StakeholderEditSheet({
   }
 
   async function removeStaff(id: string) {
-    const { error } = await createClient().from("stakeholder_staff").delete().eq("id", id);
+    const { error } = await deleteStakeholderStaffById(id);
     if (error) { toast.error(error.message); return; }
     setStaffList((prev) => prev.filter((s) => s.id !== id));
     onStaffChange?.();
@@ -423,7 +409,6 @@ export function StakeholderEditSheet({
   async function saveTeam() {
     if (!teamForm.team_name.trim()) return;
     setSavingTeam(true);
-    const supabase = createClient();
     const payload = {
       team_name: teamForm.team_name.trim(),
       team_code: teamForm.team_code.trim() || null,
@@ -432,13 +417,12 @@ export function StakeholderEditSheet({
     };
 
     const { error } = editingTeamId
-      ? await supabase.from("stakeholder_teams").update(payload).eq("id", editingTeamId)
-      : await supabase.from("stakeholder_teams").insert({ ...payload, stakeholder_id: stakeholder!.id });
+      ? await updateStakeholderTeamById(payload, editingTeamId)
+      : await insertStakeholderTeam({ ...payload, stakeholder_id: stakeholder!.id });
 
     if (error) { toast.error(error.message); setSavingTeam(false); return; }
 
-    const { data } = await supabase.from("stakeholder_teams").select("*")
-      .eq("stakeholder_id", stakeholder!.id).order("team_name");
+    const { data } = await listStakeholderTeamsByStakeholderId(stakeholder!.id);
     if (data) setTeams(data as StakeholderTeam[]);
     setSavingTeam(false);
     setShowTeamForm(false);
@@ -446,7 +430,7 @@ export function StakeholderEditSheet({
   }
 
   async function removeTeam(id: string) {
-    const { error } = await createClient().from("stakeholder_teams").delete().eq("id", id);
+    const { error } = await deleteStakeholderTeamById(id);
     if (error) { toast.error(error.message); return; }
     setTeams((prev) => prev.filter((t) => t.id !== id));
   }

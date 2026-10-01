@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getProjectCodeSequenceWithPrefixP } from "@/lib/naming/naming-queries";
 import { Loader2, Sparkles } from "lucide-react";
 import { Label } from "@/components/ui/label";
 
@@ -20,17 +20,16 @@ export function NamingProjectCodeGen({
   onProjectCodeChange,
   onShortNameChange,
 }: NamingProjectCodeGenProps) {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [override, setOverride] = useState(false);
   const [nextSeq, setNextSeq] = useState(0);
 
   useEffect(() => {
-    supabase.from("project_code_sequences").select("last_sequence").eq("prefix", "P").single().then(({ data }) => {
+    getProjectCodeSequenceWithPrefixP().then(({ data }) => {
       if (data) setNextSeq((data.last_sequence as number) + 1);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (!override) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listCompaniesByIds, listStakeholderAbbreviationsByStakeholderIds, listTransmittalsByProjectId } from "@/lib/naming/naming-queries";
 import { Loader2, Search, X, Plus, Inbox, Send, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,6 @@ interface TransmittalRow {
 }
 
 export function TransmittalListPage() {
-  const supabase = createClient();
   const { selectedProjectId } = useProject();
   const [loading, setLoading] = useState(true);
   const [transmittals, setTransmittals] = useState<TransmittalRow[]>([]);
@@ -36,11 +35,7 @@ export function TransmittalListPage() {
 
   function fetchTransmittals() {
     if (!selectedProjectId) return;
-    supabase
-      .from("transmittals")
-      .select("*")
-      .eq("project_id", selectedProjectId)
-      .order("created_at", { ascending: false })
+    listTransmittalsByProjectId(selectedProjectId)
       .then(async ({ data }) => {
         if (!data) { setLoading(false); return; }
         const rows = data as TransmittalRow[];
@@ -48,11 +43,8 @@ export function TransmittalListPage() {
         const stakeholderIds = [...new Set(rows.map((r) => r.receiver_stakeholder_id))];
 
         const [compRes, stakeRes] = await Promise.all([
-          supabase.from("companies").select("id, code").in("id", companyIds),
-          supabase
-            .from("stakeholder_abbreviations")
-            .select("stakeholder_id, abbreviation")
-            .in("stakeholder_id", stakeholderIds),
+          listCompaniesByIds(companyIds),
+          listStakeholderAbbreviationsByStakeholderIds(stakeholderIds),
         ]);
 
         const compMap: Record<string, string> = {};

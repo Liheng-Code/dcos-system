@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { insertStakeholderStaff, updateStakeholderStaffByStakeholderIdWithId } from "@/lib/stakeholders/stakeholders-queries";
 import { toast } from "sonner";
 import { Sparkline } from "@/components/stakeholders/sparkline";
 import {
@@ -85,13 +85,9 @@ export function StakeholderCompanyCard({
       return;
     }
     setMemberSaving(true);
-    const supabase = createClient();
 
     if (memberForm.is_primary_contact) {
-      await supabase.from("stakeholder_staff")
-        .update({ is_primary_contact: false })
-        .eq("stakeholder_id", stakeholder.id)
-        .neq("id", "");
+      await updateStakeholderStaffByStakeholderIdWithId({ is_primary_contact: false }, stakeholder.id);
     }
 
     const payload = {
@@ -103,7 +99,7 @@ export function StakeholderCompanyCard({
       is_primary_contact: memberForm.is_primary_contact,
     };
 
-    const { error } = await supabase.from("stakeholder_staff").insert(payload);
+    const { error } = await insertStakeholderStaff(payload);
     setMemberSaving(false);
     if (error) {
       toast.error(error.message);

@@ -14,6 +14,7 @@ import {
   type Workstream,
   type WorkstreamCode,
 } from "@/lib/qs/tender-lifecycle";
+import { updateTenderWorkstreamById } from "@/lib/projects/projects-queries";
 
 // Shared context for the Pre-Contract project view sections (components/projects/precontract-detail.tsx).
 
@@ -203,10 +204,7 @@ export function WorkstreamStrip({ ctx, codes }: { ctx: PrecontractCtx; codes: Wo
 
   async function setStatus(w: Workstream, status: Workstream["status"]) {
     ctx.patchWorkstream(w.id, { status });
-    const { error } = await createClient()
-      .from("tender_workstreams")
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", w.id);
+    const { error } = await updateTenderWorkstreamById({ status, updated_at: new Date().toISOString() }, w.id);
     if (error) {
       toast.error(error.message);
       await ctx.refresh();

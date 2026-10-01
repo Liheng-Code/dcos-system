@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { updateWbsNodeById } from "@/lib/wbs/wbs-queries";
 import { CalendarDays, Edit3, Lock, Save, TrendingUp } from "lucide-react";
 import { WbsCostTab } from "@/components/wbs/wbs-cost-tab";
 import { toast } from "sonner";
@@ -30,7 +30,6 @@ function dateRange(tasks: WbsTaskRecord[], field: "start_date" | "end_date") {
 }
 
 export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = false }: WbsNodeWorkspaceProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<(typeof TABS)[number]>("details");
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -66,16 +65,13 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from("wbs_nodes")
-      .update({
+    const { error } = await updateWbsNodeById({
         wbs_code: form.wbs_code,
         wbs_name: form.wbs_name,
         node_type: form.node_type,
         status: form.status,
         sort_order: parseInt(form.sort_order) || 0,
-      })
-      .eq("id", nodeRecord.id);
+      }, nodeRecord.id);
 
     if (error) toast.error(error.message);
     else {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listBuildingCodesWithIsActive } from "@/lib/naming/naming-queries";
 import { Loader2, Building2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 
@@ -25,21 +25,16 @@ export function WbsBuildingConfig({
   onBuildingCodeChange,
   onBuildingNameChange,
 }: WbsBuildingConfigProps) {
-  const supabase = createClient();
   const [codes, setCodes] = useState<BuildingCode[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("building_codes")
-      .select("code, name, description, is_reserved")
-      .eq("is_active", true)
-      .order("sort_order")
+    listBuildingCodesWithIsActive("code, name, description, is_reserved")
       .then(({ data }) => {
         if (data) setCodes(data as BuildingCode[]);
         setLoading(false);
       });
-  }, [supabase]);
+  }, []);
 
   const selected = codes.find((c) => c.code === buildingCode);
 

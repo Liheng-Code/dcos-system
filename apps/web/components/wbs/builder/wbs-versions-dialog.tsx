@@ -23,6 +23,7 @@ import {
   type WbsVersionSnapshotNode,
   type WbsVersionSummary,
 } from "@/lib/wbs-version-service";
+import { getProfileById } from "@/lib/wbs/wbs-queries";
 
 interface WbsVersionsDialogProps {
   onClose: () => void;
@@ -132,11 +133,7 @@ export function WbsVersionsDialog({
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id;
       if (!uid) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", uid)
-        .maybeSingle();
+      const { data: profile } = await getProfileById(uid, "role");
       if (!cancelled) setIsAdmin((profile as { role?: string } | null)?.role === "admin");
     })();
 

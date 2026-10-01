@@ -1,21 +1,20 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { countMobileDeviceRegistrations, countMobileDeviceRegistrationsWithIsActive, countMobileSyncQueueWithStatusPending, countMobileSyncSessionsByStartedAtFrom } from "@/lib/mobile/mobile-queries";
 import { Loader2, Smartphone, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function MobileDashboardPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [stats, setStats] = useState({ devices: 0, activeDevices: 0, pendingSync: 0, recentSessions: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      supabase.from("mobile_device_registrations").select("id", { count: "exact", head: true }),
-      supabase.from("mobile_device_registrations").select("id", { count: "exact", head: true }).eq("is_active", true),
-      supabase.from("mobile_sync_queue").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("mobile_sync_sessions").select("id", { count: "exact", head: true }).gte("started_at", new Date(Date.now() - 86400000).toISOString()),
+      countMobileDeviceRegistrations(),
+      countMobileDeviceRegistrationsWithIsActive(),
+      countMobileSyncQueueWithStatusPending(),
+      countMobileSyncSessionsByStartedAtFrom(new Date(Date.now() - 86400000).toISOString()),
     ]).then(([d, a, q, s]) => {
       setStats({
         devices: d.count ?? 0,
@@ -25,7 +24,7 @@ export default function MobileDashboardPage() {
       });
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 

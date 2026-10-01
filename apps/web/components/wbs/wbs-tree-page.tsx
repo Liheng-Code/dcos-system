@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteWbsNodeById, listWbsNodeQuantitiesByWbsNodeIds, listWbsNodeQuantitiesByWbsNodeIdsWithMetricCodeGFA, listWbsNodesByProjectIdNullsLast } from "@/lib/wbs/wbs-queries";
 import { Tree, type NodeApi } from "react-arborist";
 import {
   Loader2,
@@ -178,7 +178,6 @@ function updateNodeInTree(
 }
 
 export function WbsTreePage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, loading: projectsLoading } = useProject();
   const [nodes, setNodes] = useState<WbsNodeRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,18 +197,11 @@ export function WbsTreePage() {
       const nodeIds = levelNodes.map((n) => n.id);
 
       // Try with metric_code filter first
-      let { data, error } = await supabase
-        .from("wbs_node_quantities")
-        .select("wbs_node_id, value")
-        .eq("metric_code", "GFA")
-        .in("wbs_node_id", nodeIds);
+      let { data, error } = await listWbsNodeQuantitiesByWbsNodeIdsWithMetricCodeGFA(nodeIds);
 
       // Fallback: try without metric_code filter
       if (error) {
-        const retry = await supabase
-          .from("wbs_node_quantities")
-          .select("wbs_node_id, value")
-          .in("wbs_node_id", nodeIds);
+        const retry = await listWbsNodeQuantitiesByWbsNodeIds(nodeIds);
         data = retry.data;
       }
 
@@ -225,7 +217,7 @@ export function WbsTreePage() {
       // Table may not have expected schema yet — silently skip
     }
     return gfaMap;
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -235,7 +227,7 @@ export function WbsTreePage() {
       return;
     }
     setLoading(true);
-    supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false }).then(async ({ data }) => {
+    listWbsNodesByProjectIdNullsLast(selectedProjectId).then(async ({ data }) => {
       const records = (data ?? []) as WbsNodeRecord[];
       setNodes(records);
       const gfaMap = await fetchGfaData(records);
@@ -244,11 +236,11 @@ export function WbsTreePage() {
       setTreeData(tree);
       setLoading(false);
     });
-  }, [selectedProjectId, supabase, fetchGfaData]);
+  }, [selectedProjectId, fetchGfaData]);
 
   async function refreshTree() {
     if (!selectedProjectId) return;
-    const { data } = await supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false });
+    const { data } = await listWbsNodesByProjectIdNullsLast(selectedProjectId);
     const records = (data ?? []) as WbsNodeRecord[];
     setNodes(records);
     const gfaMap = await fetchGfaData(records);
@@ -269,7 +261,7 @@ export function WbsTreePage() {
       : "Delete this node?";
     if (!confirm(msg)) return;
 
-    const { error } = await supabase.from("wbs_nodes").delete().eq("id", id);
+    const { error } = await deleteWbsNodeById(id);
     if (error) {
       toast.error(error.message);
     } else {

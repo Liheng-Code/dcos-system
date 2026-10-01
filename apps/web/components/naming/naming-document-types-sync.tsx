@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertDocumentTypes, listDocumentTypes } from "@/lib/naming/naming-queries";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -59,14 +59,13 @@ const CONVENTION_DOC_TYPES = [
 ];
 
 export function NamingDocumentTypesSync() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [existing, setExisting] = useState<DocType[]>([]);
   const [diff, setDiff] = useState<{ code: string; name: string; action: "add" | "exists" }[]>([]);
 
   useEffect(() => {
-    supabase.from("document_types").select("*").order("code").then(({ data, error }) => {
+    listDocumentTypes().then(({ data, error }) => {
       if (data) {
         setExisting(data as DocType[]);
         computeDiff(data as DocType[]);
@@ -74,7 +73,7 @@ export function NamingDocumentTypesSync() {
       if (error) toast.error("Failed to load document types");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function computeDiff(existingTypes: DocType[]) {
     const existingCodes = new Set(existingTypes.map((d) => d.code));
@@ -95,14 +94,12 @@ export function NamingDocumentTypesSync() {
       return;
     }
     setSyncing(true);
-    const { error } = await supabase.from("document_types").insert(
-      toAdd.map((t) => ({ code: t.code, name: t.name }))
-    );
+    const { error } = await insertDocumentTypes(toAdd.map((t) => ({ code: t.code, name: t.name })));
     if (error) {
       toast.error(error.message);
     } else {
       toast.success(`${toAdd.length} document type(s) added`);
-      const { data } = await supabase.from("document_types").select("*").order("code");
+      const { data } = await listDocumentTypes();
       if (data) {
         setExisting(data as DocType[]);
         computeDiff(data as DocType[]);

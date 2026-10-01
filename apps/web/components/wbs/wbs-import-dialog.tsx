@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { createClient } from "@/lib/supabase/client";
+import { insertWbsNodes, listWbsNodesByProjectIdOfIdAndWbsCode } from "@/lib/wbs/wbs-queries";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -155,11 +155,7 @@ export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDia
           return;
         }
 
-        const supabase = createClient();
-        const { data } = await supabase
-          .from("wbs_nodes")
-          .select("id, wbs_code, parent_id, sort_order")
-          .eq("project_id", projectId);
+        const { data } = await listWbsNodesByProjectIdOfIdAndWbsCode(projectId, "id, wbs_code, parent_id, sort_order");
         const existing = (data ?? []) as ExistingNode[];
         const existingByCode = new Map(existing.map((n) => [n.wbs_code.toUpperCase(), n]));
 
@@ -307,9 +303,7 @@ export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDia
     };
     for (const r of validRows) visit(r);
 
-    const supabase = createClient();
-    const { error } = await supabase.from("wbs_nodes").insert(
-      ordered.map((r) => ({
+    const { error } = await insertWbsNodes(ordered.map((r) => ({
         id: r._uid,
         project_id: projectId,
         parent_id: r.parentUid ?? r.existingParentId ?? null,
@@ -318,8 +312,7 @@ export function WbsImportDialog({ projectId, onClose, onImported }: WbsImportDia
         wbs_name: r.wbs_name,
         status: r.status,
         sort_order: r.sortOrder,
-      })),
-    );
+      })));
 
     if (error) {
       toast.error("Import failed: " + error.message);

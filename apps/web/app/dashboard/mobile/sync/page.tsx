@@ -1,27 +1,26 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { listMobileSyncQueue, listMobileSyncSessions } from "@/lib/mobile/mobile-queries";
 import { Loader2, Clock, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default function SyncStatusPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [sessions, setSessions] = useState<any[]>([]);
   const [queue, setQueue] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      supabase.from("mobile_sync_sessions").select("*").order("started_at", { ascending: false }).limit(20),
-      supabase.from("mobile_sync_queue").select("*").order("created_at", { ascending: false }).limit(20),
+      listMobileSyncSessions(),
+      listMobileSyncQueue(),
     ]).then(([s, q]) => {
       if (s.data) setSessions(s.data);
       if (q.data) setQueue(q.data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 

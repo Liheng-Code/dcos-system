@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useEffect } from "react";
+import { deleteProjectStakeholderMappingsByProjectId, deleteProjectStakeholderTeamsByProjectId, deleteProjectStakeholdersByProjectId, insertProjectStakeholder, insertProjectStakeholderMapping, insertProjectStakeholderTeamsReturning, insertProjectTeamMembers, listProjectStakeholderMappingsByProjectId, listProjectStakeholderTeamsByProjectId, listProjectStakeholdersByProjectId, listProjectTeamMembersByProjectStakeholderTeamIds, listRolesOrderedByTypeAndLevel, listStakeholderStaffByStakeholderId, listStakeholderTemplatesWithTemplatePlaceholders, listStakeholders } from "@/lib/projects/projects-queries";
 
 export interface StakeholderEntry {
   id: string;
@@ -36,7 +36,6 @@ export interface StakeholderTemplate {
 }
 
 export function useStakeholderSteps(projectId: string | null) {
-  const supabase = useMemo(() => createClient(), []);
 
   const [stakeholders, setStakeholders] = useState<StakeholderEntry[]>([]);
   const [roles, setRoles] = useState<{ code: string; name: string; type: string }[]>([]);
@@ -57,23 +56,19 @@ export function useStakeholderSteps(projectId: string | null) {
 
   // Load reference data
   useEffect(() => {
-    supabase.from("stakeholders").select("id, organization_name, stakeholder_type").order("organization_name")
+    listStakeholders()
       .then(({ data }) => { if (data) setStakeholders(data as StakeholderEntry[]); });
-    supabase.from("roles").select("code, name, type").order("type").order("level")
+    listRolesOrderedByTypeAndLevel()
       .then(({ data }) => { if (data) setRoles(data as { code: string; name: string; type: string }[]); });
-    supabase.from("stakeholder_templates")
-      .select("id, name, description, template_placeholders(id, label, description, sort_order)")
+    listStakeholderTemplatesWithTemplatePlaceholders()
       .then(({ data }) => { if (data) setTemplates(data as StakeholderTemplate[]); });
-  }, [supabase]);
+  }, []);
 
   // Load existing assignments when editing a project (waits for stakeholders list to be ready)
   useEffect(() => {
     if (!projectId || stakeholders.length === 0) return;
     (async () => {
-      const { data: rows } = await supabase
-        .from("project_stakeholders")
-        .select("stakeholder_id")
-        .eq("project_id", projectId);
+      const { data: rows } = await listProjectStakeholdersByProjectId(projectId, "stakeholder_id");
       if (!rows || rows.length === 0) return;
 
       const ids = (rows as { stakeholder_id: string }[]).map((r) => r.stakeholder_id);
@@ -81,25 +76,16 @@ export function useStakeholderSteps(projectId: string | null) {
 
       const staffMap: Record<string, StakeholderStaffEntry[]> = {};
       for (const id of ids) {
-        const { data: staffRows } = await supabase
-          .from("stakeholder_staff")
-          .select("id, full_name, job_title")
-          .eq("stakeholder_id", id);
+        const { data: staffRows } = await listStakeholderStaffByStakeholderId(id);
         if (staffRows) staffMap[id] = staffRows as StakeholderStaffEntry[];
       }
       setStakeholderStaff(staffMap);
 
-      const { data: teams } = await supabase
-        .from("project_stakeholder_teams")
-        .select("id, stakeholder_id")
-        .eq("project_id", projectId);
+      const { data: teams } = await listProjectStakeholderTeamsByProjectId(projectId, "id, stakeholder_id");
       if (teams && teams.length > 0) {
         const teamMap: Record<string, string> = {};
         for (const t of teams as { id: string; stakeholder_id: string }[]) teamMap[t.id] = t.stakeholder_id;
-        const { data: members } = await supabase
-          .from("project_team_members")
-          .select("project_stakeholder_team_id, stakeholder_staff_id, role_on_project")
-          .in("project_stakeholder_team_id", (teams as { id: string }[]).map((t) => t.id));
+        const { data: members } = await listProjectTeamMembersByProjectStakeholderTeamIds((teams as { id: string }[]).map((t) => t.id), "project_stakeholder_team_id, stakeholder_staff_id, role_on_project");
         if (members) {
           const assignments: Record<string, TeamAssignment[]> = {};
           for (const m of members as { project_stakeholder_team_id: string; stakeholder_staff_id: string; role_on_project: string | null }[]) {
@@ -114,10 +100,7 @@ export function useStakeholderSteps(projectId: string | null) {
       }
 
       // Load template mappings if they exist
-      const { data: mappingRows } = await supabase
-        .from("project_stakeholder_mappings")
-        .select("placeholder_id, stakeholder_id")
-        .eq("project_id", projectId);
+      const { data: mappingRows } = await listProjectStakeholderMappingsByProjectId(projectId, "placeholder_id, stakeholder_id");
       if (mappingRows && mappingRows.length > 0) {
         const map: Record<string, string> = {};
         for (const m of mappingRows as { placeholder_id: string; stakeholder_id: string }[]) {
@@ -132,7 +115,7 @@ export function useStakeholderSteps(projectId: string | null) {
 
   function loadStaffForStakeholder(id: string) {
     if (stakeholderStaff[id]) return;
-    supabase.from("stakeholder_staff").select("id, full_name, job_title").eq("stakeholder_id", id).then(({ data }) => {
+    listStakeholderStaffByStakeholderId(id).then(({ data }) => {
       if (data) setStakeholderStaff((prev) => ({ ...prev, [id]: data as StakeholderStaffEntry[] }));
     });
   }
@@ -176,13 +159,13 @@ export function useStakeholderSteps(projectId: string | null) {
   async function saveStakeholderAssignments(targetProjectId: string) {
     if (selectedStakeholderIds.size === 0) return;
 
-    await supabase.from("project_stakeholders").delete().eq("project_id", targetProjectId);
-    await supabase.from("project_stakeholder_teams").delete().eq("project_id", targetProjectId);
-    await supabase.from("project_stakeholder_mappings").delete().eq("project_id", targetProjectId);
+    await deleteProjectStakeholdersByProjectId(targetProjectId);
+    await deleteProjectStakeholderTeamsByProjectId(targetProjectId);
+    await deleteProjectStakeholderMappingsByProjectId(targetProjectId);
 
     for (const stakeholderId of selectedStakeholderIds) {
       const stakeholder = stakeholders.find((s) => s.id === stakeholderId);
-      await supabase.from("project_stakeholders").insert({
+      await insertProjectStakeholder({
         project_id: targetProjectId,
         stakeholder_id: stakeholderId,
         role_in_project: stakeholder?.stakeholder_type ?? null,
@@ -194,7 +177,7 @@ export function useStakeholderSteps(projectId: string | null) {
         : null;
 
       if (useTemplate && placeholderId) {
-        await supabase.from("project_stakeholder_mappings").insert({
+        await insertProjectStakeholderMapping({
           project_id: targetProjectId,
           placeholder_id: placeholderId,
           stakeholder_id: stakeholderId,
@@ -211,20 +194,14 @@ export function useStakeholderSteps(projectId: string | null) {
       };
       if (placeholderId) teamInsert.placeholder_id = placeholderId;
 
-      const { data: team } = await supabase
-        .from("project_stakeholder_teams")
-        .insert(teamInsert)
-        .select()
-        .single();
+      const { data: team } = await insertProjectStakeholderTeamsReturning(teamInsert);
       if (!team) continue;
 
-      await supabase.from("project_team_members").insert(
-        members.map((m) => ({
+      await insertProjectTeamMembers(members.map((m) => ({
           project_stakeholder_team_id: team.id,
           stakeholder_staff_id: m.staffId,
           role_on_project: m.roleOnProject,
-        }))
-      );
+        })));
     }
   }
 

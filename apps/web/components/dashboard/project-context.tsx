@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listProjects } from "@/lib/dashboard/dashboard-queries";
 
 interface Project {
   id: string;
@@ -53,9 +53,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }
 
   function fetchProjects() {
-    const supabase = createClient();
     setLoading(true);
-    supabase.from("projects").select("id, project_code, project_name, project_type, project_status, progress_percentage, contract_type").order("project_name", { ascending: true }).then(({ data }) => {
+    listProjects().then(({ data }) => {
       if (data) setProjects(data as Project[]);
       setLoading(false);
     });

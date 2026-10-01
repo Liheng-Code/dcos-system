@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listRolePermissions, listRolePermissionsByRoleCode, listRoles, upsertRolePermissions } from "@/lib/settings/settings-queries";
 import { Loader2, ChevronDown, ChevronRight, Save, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,6 @@ const PERM_COLS: { key: string; label: string }[] = [
 ];
 
 export function RolePermissionsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Map<string, Permission>>(new Map());
@@ -76,14 +75,14 @@ export function RolePermissionsPage() {
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set(["admin_config"]));
 
   useEffect(() => {
-    supabase.from("roles").select("*").order("level", { ascending: true, nullsFirst: false }).then(({ data }) => {
+    listRoles().then(({ data }) => {
       if (data) setRoles(data as Role[]);
     });
-  }, [supabase]);
+  }, []);
 
   // Fetch all distinct (module, action) pairs across all roles as the matrix template
   useEffect(() => {
-    supabase.from("role_permissions").select("module, action").then(({ data }) => {
+    listRolePermissions().then(({ data }) => {
       const map = new Map<string, Set<string>>();
       if (data) {
         for (const row of data as { module: string; action: string }[]) {
@@ -93,12 +92,12 @@ export function RolePermissionsPage() {
       }
       setAllActions(map);
     });
-  }, [supabase]);
+  }, []);
 
   // Fetch permissions for the selected role
   useEffect(() => {
     if (!selectedRole) return;
-    supabase.from("role_permissions").select("*").eq("role_code", selectedRole).then(({ data }) => {
+    listRolePermissionsByRoleCode(selectedRole).then(({ data }) => {
       const map = new Map<string, Permission>();
       if (data) {
         for (const p of data as Permission[]) {
@@ -108,17 +107,14 @@ export function RolePermissionsPage() {
       setPermissions(map);
       setDirty(false);
     });
-  }, [selectedRole, supabase]);
+  }, [selectedRole]);
 
   async function handleSave() {
     if (!selectedRole) return;
     setSaving(true);
     const rows = Array.from(permissions.values());
 
-    const { error } = await supabase.from("role_permissions").upsert(
-      rows.map((p) => ({ ...p, role_code: selectedRole })),
-      { onConflict: "role_code, module, action" },
-    );
+    const { error } = await upsertRolePermissions(rows.map((p) => ({ ...p, role_code: selectedRole })));
 
     if (error) {
       toast.error(error.message);

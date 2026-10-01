@@ -22,6 +22,7 @@ import { BulkHrAssignDialog } from "@/components/stakeholders/bulk-hr-assign-dia
 import {
   ALL_TYPE_LABELS, EXTERNAL_TYPE_OPTIONS, INTERNAL_TYPE_OPTIONS, ALL_TYPE_OPTIONS,
 } from "@/components/stakeholders/constants";
+import { deleteStakeholderById, getProfileById, listProjectStakeholders, listStakeholderStaff, listStakeholders } from "@/lib/stakeholders/stakeholders-queries";
 
 type CategoryFilter = "all" | "internal" | "external";
 
@@ -66,9 +67,9 @@ export function StakeholderListPage() {
   const loadData = useCallback(() => {
     const supabase = createClient();
     Promise.all([
-      supabase.from("stakeholders").select("*").order("organization_name"),
-      supabase.from("stakeholder_staff").select("*"),
-      supabase.from("project_stakeholders").select("stakeholder_id, project_id, created_at"),
+      listStakeholders(),
+      listStakeholderStaff(),
+      listProjectStakeholders(),
     ]).then(([stRes, sfRes, plRes]) => {
       if (stRes.data) setStakeholders(stRes.data as Stakeholder[]);
       if (sfRes.data) setStaff(sfRes.data as StakeholderStaff[]);
@@ -82,7 +83,7 @@ export function StakeholderListPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      supabase.from("profiles").select("role").eq("id", data.user.id).single()
+      getProfileById(data.user.id)
         .then(({ data: p }) => { if (p) setIsAdmin(p.role === "admin"); });
     });
   }, [loadData]);
@@ -171,7 +172,7 @@ export function StakeholderListPage() {
 
   async function handleDelete(stakeholder: Stakeholder) {
     if (!confirm(`Delete "${stakeholder.organization_name}"? This also removes all associated staff and teams.`)) return;
-    const { error } = await createClient().from("stakeholders").delete().eq("id", stakeholder.id);
+    const { error } = await deleteStakeholderById(stakeholder.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Stakeholder deleted");
     setStakeholders((prev) => prev.filter((s) => s.id !== stakeholder.id));

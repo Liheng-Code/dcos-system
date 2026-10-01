@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteDisciplineCodeById, insertDisciplineCodeReturning, listDisciplineCodes, updateDisciplineCodeById } from "@/lib/naming/naming-queries";
 import { Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ interface DisciplineCode {
 }
 
 export function NamingDisciplineCodes() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [codes, setCodes] = useState<DisciplineCode[]>([]);
@@ -24,12 +23,12 @@ export function NamingDisciplineCodes() {
   const [newCode, setNewCode] = useState({ code: "", name: "" });
 
   useEffect(() => {
-    supabase.from("discipline_codes").select("*").order("sort_order").then(({ data, error }) => {
+    listDisciplineCodes().then(({ data, error }) => {
       if (data) setCodes(data as DisciplineCode[]);
       if (error) toast.error("Failed to load discipline codes");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function updateField(id: string, field: keyof DisciplineCode, value: string | boolean) {
     setEditMap((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
@@ -39,7 +38,7 @@ export function NamingDisciplineCodes() {
     const changes = editMap[id];
     if (!changes) return;
     setSaving(true);
-    const { error } = await supabase.from("discipline_codes").update(changes).eq("id", id);
+    const { error } = await updateDisciplineCodeById(changes, id);
     if (error) {
       toast.error(error.message);
     } else {
@@ -51,7 +50,7 @@ export function NamingDisciplineCodes() {
   }
 
   async function handleToggleActive(id: string, current: boolean) {
-    const { error } = await supabase.from("discipline_codes").update({ is_active: !current }).eq("id", id);
+    const { error } = await updateDisciplineCodeById({ is_active: !current }, id);
     if (error) { toast.error(error.message); return; }
     setCodes((prev) => prev.map((c) => (c.id === id ? { ...c, is_active: !current } : c)));
   }
@@ -59,12 +58,12 @@ export function NamingDisciplineCodes() {
   async function handleAdd() {
     if (!newCode.code || !newCode.name) { toast.error("Code and name are required"); return; }
     setSaving(true);
-    const { data, error } = await supabase.from("discipline_codes").insert({
+    const { data, error } = await insertDisciplineCodeReturning({
       code: newCode.code.toUpperCase(),
       name: newCode.name,
       source: "frontend",
       sort_order: codes.length + 1,
-    }).select().single();
+    });
     if (error) {
       toast.error(error.message);
     } else if (data) {
@@ -77,7 +76,7 @@ export function NamingDisciplineCodes() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this discipline code?")) return;
-    const { error } = await supabase.from("discipline_codes").delete().eq("id", id);
+    const { error } = await deleteDisciplineCodeById(id);
     if (error) { toast.error(error.message); return; }
     setCodes((prev) => prev.filter((c) => c.id !== id));
     toast.success("Discipline code deleted");

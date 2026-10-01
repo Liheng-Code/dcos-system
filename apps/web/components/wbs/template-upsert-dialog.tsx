@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertWbsTemplateReturning, updateWbsTemplateById } from "@/lib/wbs/wbs-queries";
 import { X, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -42,7 +42,6 @@ export function TemplateUpsertDialog({ template, onClose, onSave }: TemplateUpse
       return;
     }
     setSaving(true);
-    const supabase = createClient();
 
     const payload = {
       template_name: form.template_name.trim(),
@@ -52,14 +51,12 @@ export function TemplateUpsertDialog({ template, onClose, onSave }: TemplateUpse
     };
 
     if (template) {
-      const { error } = await supabase.from("wbs_templates").update(payload).eq("id", template.id);
+      const { error } = await updateWbsTemplateById(payload, template.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Template updated");
       onSave(template.id);
     } else {
-      const { data, error } = await supabase
-        .from("wbs_templates")
-        .insert({
+      const { data, error } = await insertWbsTemplateReturning({
           ...payload,
           node_type_chain: ["phase", "building", "level", "zone", "room", "element", "discipline", "task_group"],
           generator_config: {
@@ -69,9 +66,7 @@ export function TemplateUpsertDialog({ template, onClose, onSave }: TemplateUpse
             default_zone_count: 2,
             default_room_count: 2,
           },
-        })
-        .select("id")
-        .single();
+        });
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Template created");
       onSave(data.id);

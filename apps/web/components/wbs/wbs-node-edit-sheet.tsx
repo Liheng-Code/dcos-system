@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/wbs-area-service";
+import { insertWbsNode, listWbsNodesByProjectIdAndParentId, updateWbsNodeById } from "@/lib/wbs/wbs-queries";
 
 export interface WbsNodeRecord {
   id: string;
@@ -71,9 +72,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
     const supabase = createClient();
 
     if (node) {
-      const { error } = await supabase
-        .from("wbs_nodes")
-        .update({
+      const { error } = await updateWbsNodeById({
           wbs_code: form.wbs_code,
           wbs_name: form.wbs_name,
           node_type: form.node_type,
@@ -81,8 +80,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
           sort_order: parseInt(form.sort_order) || 0,
           is_below_ground: form.is_below_ground,
           is_external_works: form.is_external_works,
-        })
-        .eq("id", node.id);
+        }, node.id);
 
       if (error) {
         toast.error(error.message);
@@ -98,7 +96,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
         ? parseInt(form.sort_order) || 0
         : await computeCreateSortOrder(supabase, projectId, parentId, form.wbs_code);
 
-      const { error } = await supabase.from("wbs_nodes").insert({
+      const { error } = await insertWbsNode({
         project_id: projectId,
         parent_id: parentId,
         wbs_code: form.wbs_code,
@@ -420,11 +418,7 @@ async function computeCreateSortOrder(
   parentId: string | null,
   wbsCode: string,
 ): Promise<number> {
-  const { data } = await supabase
-    .from("wbs_nodes")
-    .select("wbs_code, sort_order")
-    .eq("project_id", projectId)
-    .eq("parent_id", parentId);
+  const { data } = await listWbsNodesByProjectIdAndParentId(projectId, parentId);
 
   const siblings = (data ?? []) as Array<{ wbs_code: string; sort_order: number }>;
   return computeInsertSortOrder(siblings, wbsCode.toUpperCase());

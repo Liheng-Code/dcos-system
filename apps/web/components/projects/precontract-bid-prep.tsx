@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { WORKSTREAMS, workstreamLabel } from "@/lib/qs/tender-lifecycle";
+import { deleteTenderClarificationById, deleteTenderReturnableById, insertTenderClarification, insertTenderReturnableReturning, listTenderClarificationsByTenderId, listTenderReturnablesByTenderId, updateTenderClarificationById, updateTenderReturnableById } from "@/lib/projects/projects-queries";
 
 // Contractor-side bid preparation registers used by the Pre-Contract project view
 // (migrations 20260925000005_tender_bid_preparation.sql, 20260928000002_tender_gates.sql).
@@ -46,12 +47,7 @@ export function ClarificationsRegister({ tenderId, readOnly = false }: { tenderI
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from("tender_clarifications")
-        .select("*")
-        .eq("tender_id", tenderId)
-        .order("raised_date", { ascending: false })
-        .order("query_no", { ascending: false });
+      const { data } = await listTenderClarificationsByTenderId(tenderId);
       if (data) setRows(data as Clarification[]);
       setLoading(false);
     }
@@ -65,7 +61,7 @@ export function ClarificationsRegister({ tenderId, readOnly = false }: { tenderI
     // Next number after the highest existing one, so a deleted query never causes a reused number.
     const lastNo = rows.reduce((max, r) => Math.max(max, parseInt(r.query_no.replace(/\D/g, ""), 10) || 0), 0);
     const queryNo = `Q-${String(lastNo + 1).padStart(3, "0")}`;
-    const { error } = await supabase.from("tender_clarifications").insert({
+    const { error } = await insertTenderClarification({
       tender_id: tenderId,
       query_no: queryNo,
       category: form.category,
@@ -85,15 +81,12 @@ export function ClarificationsRegister({ tenderId, readOnly = false }: { tenderI
 
   async function handleAnswer(id: string) {
     if (!response.trim()) return;
-    const { error } = await supabase
-      .from("tender_clarifications")
-      .update({
+    const { error } = await updateTenderClarificationById({
         client_response: response.trim(),
         response_date: new Date().toISOString().slice(0, 10),
         status: "answered",
         updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+      }, id);
     if (error) {
       toast.error(error.message);
       return;
@@ -104,7 +97,7 @@ export function ClarificationsRegister({ tenderId, readOnly = false }: { tenderI
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("tender_clarifications").delete().eq("id", id);
+    const { error } = await deleteTenderClarificationById(id);
     if (error) {
       toast.error(error.message);
       return;
@@ -265,12 +258,7 @@ export function ReturnablesChecklist({ tenderId, onChange, readOnly = false }: {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from("tender_returnables")
-        .select("*")
-        .eq("tender_id", tenderId)
-        .order("sort_order")
-        .order("created_at");
+      const { data } = await listTenderReturnablesByTenderId(tenderId);
       update((data ?? []) as Returnable[]);
       setLoading(false);
     }
@@ -279,18 +267,14 @@ export function ReturnablesChecklist({ tenderId, onChange, readOnly = false }: {
 
   async function handleAdd() {
     if (!newItem.trim()) return;
-    const { data, error } = await supabase
-      .from("tender_returnables")
-      .insert({
+    const { data, error } = await insertTenderReturnableReturning({
         tender_id: tenderId,
         item: newItem.trim(),
         category: newCategory,
         workstream_code: newWorkstream,
         is_mandatory: newMandatory,
         sort_order: items.length,
-      })
-      .select()
-      .single();
+      });
     if (error) {
       toast.error(error.message);
       return;
@@ -300,10 +284,7 @@ export function ReturnablesChecklist({ tenderId, onChange, readOnly = false }: {
   }
 
   async function patch(item: Returnable, fields: Partial<Returnable>) {
-    const { error } = await supabase
-      .from("tender_returnables")
-      .update({ ...fields, updated_at: new Date().toISOString() })
-      .eq("id", item.id);
+    const { error } = await updateTenderReturnableById({ ...fields, updated_at: new Date().toISOString() }, item.id);
     if (error) {
       toast.error(error.message);
       return false;
@@ -322,7 +303,7 @@ export function ReturnablesChecklist({ tenderId, onChange, readOnly = false }: {
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase.from("tender_returnables").delete().eq("id", id);
+    const { error } = await deleteTenderReturnableById(id);
     if (error) {
       toast.error(error.message);
       return;

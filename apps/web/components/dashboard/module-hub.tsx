@@ -7,6 +7,7 @@ import { useModuleSettings } from "@/contexts/module-settings-context";
 import { useProject } from "@/components/dashboard/project-context";
 import { createClient } from "@/lib/supabase/client";
 import { HUB_MODULES } from "@/lib/modules/registry";
+import { getProfileById } from "@/lib/dashboard/dashboard-queries";
 
 export function ModuleHub() {
   const { isModuleActive, loading: modulesLoading } = useModuleSettings();
@@ -17,11 +18,7 @@ export function ModuleHub() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", data.user.id)
-        .single()
+      getProfileById(data.user.id, "role")
         .then(({ data: profile }) => {
           if (profile) setIsAdmin(profile.role === "admin");
         });

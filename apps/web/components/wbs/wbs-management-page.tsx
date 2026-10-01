@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listWbsNodesByProjectIdNullsLast, listWbsTasksByProjectIdOrderedBySortOrder } from "@/lib/wbs/wbs-queries";
 import { Loader2, FileSpreadsheet, FolderTree, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
@@ -31,7 +31,6 @@ function toWbsNodeData(n: WbsNodeRecord): WbsNodeData {
 }
 
 export function WbsManagementPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId, selectedProject, loading: projectsLoading } = useProject();
 
   const [nodes, setNodes] = useState<WbsNodeRecord[]>([]);
@@ -49,20 +48,12 @@ export function WbsManagementPage() {
   const refreshAll = useCallback(async () => {
     if (!selectedProjectId) return;
     const [nodesRes, tasksRes] = await Promise.all([
-      supabase
-        .from("wbs_nodes")
-        .select("*")
-        .eq("project_id", selectedProjectId)
-        .order("sort_order", { ascending: true, nullsFirst: false }),
-      supabase
-        .from("wbs_tasks")
-        .select("*")
-        .eq("project_id", selectedProjectId)
-        .order("sort_order", { ascending: true, nullsFirst: false }),
+      listWbsNodesByProjectIdNullsLast(selectedProjectId),
+      listWbsTasksByProjectIdOrderedBySortOrder(selectedProjectId),
     ]);
     setNodes((nodesRes.data ?? []) as WbsNodeRecord[]);
     setTasks((tasksRes.data ?? []) as WbsTaskRecord[]);
-  }, [selectedProjectId, supabase]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) {

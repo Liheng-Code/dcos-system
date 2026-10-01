@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { listApprovalThresholds, upsertApprovalThresholds } from "@/lib/settings/settings-queries";
 import { Loader2, ChevronDown, ChevronRight, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,6 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 export function ApprovalThresholdPanel() {
-  const supabase = useMemo(() => createClient(), []);
   const [thresholds, setThresholds] = useState<Threshold[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -37,11 +36,11 @@ export function ApprovalThresholdPanel() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    supabase.from("approval_thresholds").select("*").order("module").order("tier").then(({ data }) => {
+    listApprovalThresholds().then(({ data }) => {
       if (data) setThresholds(data as Threshold[]);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function updateThreshold(id: string, field: string, value: unknown) {
     setThresholds((prev) =>
@@ -52,17 +51,14 @@ export function ApprovalThresholdPanel() {
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("approval_thresholds").upsert(
-      thresholds.map((t) => ({
+    const { error } = await upsertApprovalThresholds(thresholds.map((t) => ({
         id: t.id,
         module: t.module,
         tier: t.tier,
         min_amount: t.min_amount,
         max_amount: t.max_amount,
         approver_roles: t.approver_roles,
-      })),
-      { onConflict: "module, tier" },
-    );
+      })));
     if (error) {
       toast.error(error.message);
     } else {

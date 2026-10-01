@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { listWbsAuditLogByProjectIdWithActionProgressUpdatedApprovedRejected, listWbsTasksByProjectId } from "@/lib/wbs/wbs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, CheckCircle2, Clock3, AlertTriangle, ThumbsUp } from "lucide-react";
 
@@ -45,7 +45,6 @@ function KpiCard({
 }
 
 export function WbsTaskKpiPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { selectedProjectId } = useProject();
   const [loading, setLoading] = useState(true);
   const [kpi, setKpi] = useState<KpiData | null>(null);
@@ -56,10 +55,7 @@ export function WbsTaskKpiPage() {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    const { data: tasks } = await supabase
-      .from("wbs_tasks")
-      .select("id, status, end_date, qa_status")
-      .eq("project_id", selectedProjectId);
+    const { data: tasks } = await listWbsTasksByProjectId(selectedProjectId, "id, status, end_date, qa_status");
 
     if (!tasks) { setLoading(false); return; }
 
@@ -75,12 +71,7 @@ export function WbsTaskKpiPage() {
     const approvedTasks = tasks.filter((t) => ["approved", "completed", "closed"].includes(t.status));
     const totalApproved = approvedTasks.length;
 
-    const { data: auditLogs } = await supabase
-      .from("wbs_audit_log")
-      .select("wbs_task_id, action, created_at")
-      .eq("project_id", selectedProjectId)
-      .in("action", ["Progress Updated", "Approved", "Rejected"])
-      .order("created_at", { ascending: true });
+    const { data: auditLogs } = await listWbsAuditLogByProjectIdWithActionProgressUpdatedApprovedRejected(selectedProjectId);
 
     let totalDays = 0;
     let approvalCount = 0;
@@ -111,7 +102,7 @@ export function WbsTaskKpiPage() {
 
     setKpi({ completionRate, totalTasks: total, completedTasks: completed, avgApprovalDays, overdueCount, overduePercent, firstTimeApprovalRate, firstTimeApproved, totalApproved });
     setLoading(false);
-  }, [selectedProjectId, supabase]);
+  }, [selectedProjectId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 

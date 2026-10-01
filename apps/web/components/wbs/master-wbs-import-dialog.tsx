@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { differenceInCalendarDays, format as fmtDate, isValid, parse as parseDateFns } from "date-fns";
-import { createClient } from "@/lib/supabase/client";
+import { importMasterWbs, listWbsNodesByProjectIdOfIdAndWbsCode, listWbsTasksByProjectId } from "@/lib/wbs/wbs-queries";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -399,13 +399,9 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
           }
         }
 
-        const supabase = createClient();
         const [nodesRes, tasksRes] = await Promise.all([
-          supabase
-            .from("wbs_nodes")
-            .select("wbs_code, wbs_outline_code, full_path")
-            .eq("project_id", projectId),
-          supabase.from("wbs_tasks").select("task_code").eq("project_id", projectId),
+          listWbsNodesByProjectIdOfIdAndWbsCode(projectId, "wbs_code, wbs_outline_code, full_path"),
+          listWbsTasksByProjectId(projectId, "task_code"),
         ]);
         // A node's dotted key = its ancestor wbs_code chain (== full_path with
         // " / " → "."), matching the sheet's WBS Code. Same rule the RPC uses.
@@ -524,8 +520,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
       })),
     };
 
-    const supabase = createClient();
-    const { data, error } = await supabase.rpc("import_master_wbs", {
+    const { data, error } = await importMasterWbs({
       p_project_id: projectId,
       p_payload: payload,
       p_mode: mode,

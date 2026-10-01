@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getProfileById, updateProfileById } from "@/lib/settings/settings-queries";
 
 interface NotificationPreferences {
   email: boolean;
@@ -34,11 +35,7 @@ export function NotificationPreferencesPanel() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("notification_preferences")
-        .eq("id", user.id)
-        .single();
+      const { data: profile } = await getProfileById(user.id, "notification_preferences");
 
       if (profile?.notification_preferences) {
         setPrefs((p) => ({ ...p, ...(profile.notification_preferences as NotificationPreferences) }));
@@ -50,10 +47,7 @@ export function NotificationPreferencesPanel() {
   async function handleSave() {
     if (!userId) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ notification_preferences: prefs })
-      .eq("id", userId);
+    const { error } = await updateProfileById({ notification_preferences: prefs }, userId);
     if (error) toast.error(error.message);
     else toast.success("Notification preferences saved");
     setSaving(false);

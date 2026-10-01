@@ -6,6 +6,7 @@ import { Loader2, Sparkles, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { getCompanyById, getDocumentRunningNumberByProjectIdAndDisciplineCodeAndDocumentTypeCode, getDocumentTypeByCode, getProfileById, getProjectById, getProjectNumberingRuleByProjectId, insertDocuments, listBuildingCodesWithIsActive, upsertDocumentRunningNumber } from "@/lib/naming/naming-queries";
 
 interface NamingDocumentCreateProps {
   projectId: string;
@@ -41,9 +42,9 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
       const { data: { user } } = await supabase.auth.getUser();
       const uid = user?.id;
       Promise.all([
-        supabase.from("project_numbering_rules").select("*").eq("project_id", projectId).maybeSingle(),
-        supabase.from("projects").select("project_code").eq("id", projectId).single(),
-        supabase.from("building_codes").select("code, name").eq("is_active", true).order("sort_order"),
+        getProjectNumberingRuleByProjectId(projectId),
+        getProjectById(projectId, "project_code"),
+        listBuildingCodesWithIsActive("code, name"),
       ]).then(([ruleRes, projRes, bldRes]) => {
         if (ruleRes.data) {
           const r = ruleRes.data as typeof rules & { format_mask: string; revision_format: string; running_number_scope: string; discipline_codes: string[]; document_types: string[] };
@@ -53,9 +54,9 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
           setSelectedLevel("G00");
 
           if (uid) {
-            supabase.from("profiles").select("company_id").eq("id", uid).single().then(({ data: pd }) => {
+            getProfileById(uid).then(({ data: pd }) => {
               if (pd?.company_id) {
-                supabase.from("companies").select("code").eq("id", pd.company_id).single().then(({ data: cd }) => {
+                getCompanyById(pd.company_id, "code").then(({ data: cd }) => {
                   if (cd) setCompanyCode(cd.code as string);
                 });
               }
@@ -73,13 +74,7 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
     if (!rules || !projectId) return;
     const scopeDisc = rules.running_number_scope === "per_discipline" ? selectedDisc : null;
     const scopeType = rules.running_number_scope === "per_doc_type" ? selectedDocType : null;
-    supabase
-      .from("document_running_numbers")
-      .select("last_sequence")
-      .eq("project_id", projectId)
-      .eq("discipline_code", scopeDisc || "")
-      .eq("document_type_code", scopeType || "")
-      .maybeSingle()
+    getDocumentRunningNumberByProjectIdAndDisciplineCodeAndDocumentTypeCode(projectId, scopeDisc || "", scopeType || "")
       .then(({ data }) => {
         setNextSequence(data ? (data.last_sequence as number) + 1 : 1);
       });
@@ -119,7 +114,7 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
     const title = prompt("Document title:");
     if (!title) { setSaving(false); return; }
 
-    const docType = await supabase.from("document_types").select("id").eq("code", selectedDocType).single();
+    const docType = await getDocumentTypeByCode(selectedDocType);
     if (!docType.data) { toast.error("Document type not found"); setSaving(false); return; }
 
     const payload = {
@@ -131,15 +126,12 @@ export function NamingDocumentCreate({ projectId, onCreated }: NamingDocumentCre
       status: "draft",
     };
 
-    const { error } = await supabase.from("documents").insert(payload);
+    const { error } = await insertDocuments(payload);
     if (error) { toast.error(error.message); setSaving(false); return; }
 
     const scopeDisc = rules?.running_number_scope === "per_discipline" ? selectedDisc : null;
     const scopeType = rules?.running_number_scope === "per_doc_type" ? selectedDocType : null;
-    await supabase.from("document_running_numbers").upsert(
-      { project_id: projectId, discipline_code: scopeDisc, document_type_code: scopeType, last_sequence: nextSequence },
-      { onConflict: "project_id,discipline_code,document_type_code" }
-    );
+    await upsertDocumentRunningNumber({ project_id: projectId, discipline_code: scopeDisc, document_type_code: scopeType, last_sequence: nextSequence });
 
     toast.success(`Document ${currentNumber} created`);
     setSaving(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countWbsNodesByProjectId, getProjectById, insertProjectsReturning, insertWbsNodeReturning, insertWbsNodes, insertWbsNodesReturning, listLevelNamingTemplatesWithIsActive, listProfiles, updateProjectByIdReturning } from "@/lib/naming/naming-queries";
 import { X, Loader2, Save, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -53,7 +53,6 @@ const STATUSES = [
 const CURRENCIES = ["USD", "KHR", "THB", "VND", "SGD", "MYR", "JPY", "EUR"];
 
 export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectWizardProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [activeStep, setActiveStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<WizardFormState>(() => formStateFromProject(project));
@@ -88,13 +87,13 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
   }, [durationMonths, durationManual]);
 
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name, employee_id").order("full_name").then(({ data }) => {
+    listProfiles().then(({ data }) => {
       if (data) setStaff(data as { id: string; full_name: string; employee_id: string | null }[]);
     });
-    supabase.from("level_naming_templates").select("*").eq("is_active", true).order("template_name").then(({ data }) => {
+    listLevelNamingTemplatesWithIsActive().then(({ data }) => {
       if (data) setLevelTemplates(data as LevelNamingTemplateRecord[]);
     });
-  }, [supabase]);
+  }, []);
 
   const handleProjectCodeChange = useCallback((v: string) => {
     setForm((prev) => ({ ...prev, project_code: v }));
@@ -121,10 +120,7 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
   }
 
   async function generateWbsNodes(projectId: string) {
-    const { count } = await supabase
-      .from("wbs_nodes")
-      .select("*", { count: "exact", head: true })
-      .eq("project_id", projectId);
+    const { count } = await countWbsNodesByProjectId(projectId);
     if (count && count > 0) return;
 
     if (!wbsConfig.buildingCode) return;
@@ -133,26 +129,22 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
       projectId, wbsConfig, wbsLevels, wbsZones, wbsRooms,
     );
 
-    const { data: buildingNode, error: bErr } = await supabase
-      .from("wbs_nodes").insert(building).select().single();
+    const { data: buildingNode, error: bErr } = await insertWbsNodesReturning(building);
     if (bErr || !buildingNode) { toast.error("Failed to create building node"); return; }
 
     for (const item of levels) {
-      const { data: levelNode, error: lErr } = await supabase
-        .from("wbs_nodes").insert({ ...item.payload, parent_id: buildingNode.id }).select().single();
+      const { data: levelNode, error: lErr } = await insertWbsNodeReturning({ ...item.payload, parent_id: buildingNode.id });
       if (lErr || !levelNode) { toast.error("Failed to create level node"); continue; }
 
       const levelZones = zonesByLevel[item.levelCode] || [];
       if (levelZones.length > 0) {
-        const { error: zErr } = await supabase
-          .from("wbs_nodes").insert(levelZones.map((z) => ({ ...z, parent_id: levelNode.id })));
+        const { error: zErr } = await insertWbsNodes(levelZones.map((z) => ({ ...z, parent_id: levelNode.id })));
         if (zErr) toast.error("Failed to create zone nodes");
       }
 
       const levelRooms = roomsByLevel[item.levelCode] || [];
       if (levelRooms.length > 0) {
-        const { error: rErr } = await supabase
-          .from("wbs_nodes").insert(levelRooms.map((r) => ({ ...r, parent_id: levelNode.id })));
+        const { error: rErr } = await insertWbsNodes(levelRooms.map((r) => ({ ...r, parent_id: levelNode.id })));
         if (rErr) toast.error("Failed to create room nodes");
       }
     }
@@ -166,12 +158,12 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
     };
     let projectId: string;
     if (isEditing) {
-      const { error } = await supabase.from("projects").update(payload).eq("id", project.id).select().single();
+      const { error } = await updateProjectByIdReturning(payload, project.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Project updated");
       projectId = project.id;
     } else {
-      const { data, error } = await supabase.from("projects").insert(payload).select().single();
+      const { data, error } = await insertProjectsReturning(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Project created");
       setSavedProjectId(data.id);
@@ -182,7 +174,7 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
     await sh.saveStakeholderAssignments(projectId);
 
     setSaving(false);
-    const { data: updated } = await supabase.from("projects").select("*").eq("id", projectId).single();
+    const { data: updated } = await getProjectById(projectId, "*");
     if (updated) onSave(updated as Project);
     else onSave({ ...payload, id: projectId } as unknown as Project);
   }

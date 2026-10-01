@@ -345,6 +345,53 @@ Measured against the local database:
 
 This matches the existing [RLS Security Remediation Tracker](DCOS-RLS-Security-Remediation-Tracker.md), which records that remediation needs an explicit go-ahead.
 
+#### Data access moved out of the screens (2026-10-01): done for every module
+
+Every module's screens now reach the database through a query file in `lib/`, not directly.
+
+| | Before | After |
+|---|---:|---:|
+| Direct database calls in pages and components | 1,691 | 50 |
+| Query files | 0 | 19 (plus Account's hand-written service) |
+| Query functions | 0 | 1,117 |
+
+Scorecard after the move:
+
+| Module | DB calls in UI | Data access in services | UI files over 800 lines | Test files |
+|---|---:|---:|---:|---:|
+| QS | 10 | 99% | 7 | 0 |
+| HR | 5 | 99% | 4 | 3 |
+| Construction | 3 | 96% | 2 | 1 |
+| Design | 2 | 96% | 1 | 0 |
+| Document Control | 2 | 96% | 0 | 0 |
+| Inventory | 0 | 100% | 0 | 0 |
+| Planning | 0 | 100% | 5 | 21 |
+| Account | 0 | 100% | 0 | 0 |
+| Reporting | 0 | 100% | 0 | 0 |
+| Procurement | 0 | 100% | 0 | 0 |
+| Core | 28 | 94% | 6 | 3 |
+
+The 50 calls left are of three kinds: the table or function name is chosen at runtime, the client is passed in as a parameter, or the file is a hook on the sign-in and permission path that was deliberately not touched.
+
+How it was done:
+
+- `scripts/codemods/extract-service.mjs` parses each `supabase.from(...)` chain, turns its variable arguments into parameters, generates one function per distinct query in `lib/<module>/<module>-queries.ts`, and replaces the call site expression for expression. Names it cannot infer well are set in `scripts/codemods/names/<module>.json`. It can be run again on new code.
+- Each module was recorded in the browser before and after with `scripts/ui-snapshot/`: 295 screens in total, all identical apart from fields that show the current time or a frame rate.
+- Typecheck, lint, the unit tests and two new CI checks pass.
+
+What the browser comparison caught, and typecheck and lint did not:
+
+- an unrelated line of code rewritten by the tool's clean-up step (a label showed its internal key);
+- an import placed above a `"use client"` line in 27 files written without semicolons (the app failed to build). `scripts/check-directives.mjs` now checks this in CI.
+
+Typecheck caught a generated function given the same name as a local function in the calling file; the tool now refuses such a name.
+
+Limits:
+
+- The generated functions are thin: one per query, returning the query. They are a single place for data access, not yet a designed service API. Grouping them into purpose-named functions is follow-up work, module by module.
+- The comparison covers what each screen shows on load and on its tabs. Dialogs, wizards and save actions inside pages were only spot-checked (Account, Procurement and HR saves with unchanged values).
+- Large page files were not split in this pass; the count of files over 800 lines is unchanged.
+
 #### Account pilot (2026-10-01): done locally
 
 Account is the first module taken all the way: service layer and database enforcement.

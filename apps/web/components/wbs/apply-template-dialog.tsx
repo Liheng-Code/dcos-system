@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { cloneWbsTemplateToProject, deleteWbsNodesByProjectIdWithStatusActive, listWbsTemplateNodesByTemplateId, listWbsTemplatesWithIsActive } from "@/lib/wbs/wbs-queries";
 import {
   X, Loader2, ChevronRight, LayoutTemplate, Building2,
   Factory, Hospital, TreePine, CheckCircle2, AlertTriangle,
@@ -40,30 +40,21 @@ export function ApplyTemplateDialog({ projectId, existingNodeCount, onClose, onA
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [cloningResult, setCloningResult] = useState<number>(0);
 
-  const supabase = createClient();
 
   useEffect(() => {
-    supabase
-      .from("wbs_templates")
-      .select("*")
-      .eq("is_active", true)
-      .order("template_name")
+    listWbsTemplatesWithIsActive()
       .then(({ data, error }) => {
         if (error) toast.error(error.message);
         else setTemplates(data ?? []);
         setLoadingTemplates(false);
       });
-  }, [supabase]);
+  }, []);
 
   async function handleSelectTemplate(t: WbsTemplateRecord) {
     setSelectedTemplate(t);
     setLoadingPreview(true);
     setStep("preview");
-    const { data, error } = await supabase
-      .from("wbs_template_nodes")
-      .select("*")
-      .eq("template_id", t.id)
-      .order("sort_order");
+    const { data, error } = await listWbsTemplateNodesByTemplateId(t.id);
     if (error) toast.error(error.message);
     else setPreviewNodes(data ?? []);
     setLoadingPreview(false);
@@ -75,10 +66,10 @@ export function ApplyTemplateDialog({ projectId, existingNodeCount, onClose, onA
 
     // Delete existing draft/active nodes first if user confirmed
     if (existingNodeCount > 0) {
-      await supabase.from("wbs_nodes").delete().eq("project_id", projectId).eq("status", "active");
+      await deleteWbsNodesByProjectIdWithStatusActive(projectId);
     }
 
-    const { data, error } = await supabase.rpc("clone_wbs_template_to_project", {
+    const { data, error } = await cloneWbsTemplateToProject({
       p_template_id: selectedTemplate.id,
       p_project_id: projectId,
     });

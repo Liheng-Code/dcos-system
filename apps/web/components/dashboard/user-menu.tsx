@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Loader2, LayoutGrid } from "lucide-react";
+import { getProfileById } from "@/lib/dashboard/dashboard-queries";
 
 interface Profile {
   full_name: string;
@@ -32,11 +33,7 @@ export function UserMenu() {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
 
-      supabase
-        .from("profiles")
-        .select("full_name, email, role")
-        .eq("id", data.user.id)
-        .single()
+      getProfileById(data.user.id, "full_name, email, role")
         .then(({ data: profileData }) => {
           if (profileData) {
             setProfile(profileData);

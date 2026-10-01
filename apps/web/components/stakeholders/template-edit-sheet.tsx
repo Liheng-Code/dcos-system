@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteTemplatePlaceholderById, insertStakeholderTemplatesReturning, insertTemplatePlaceholderTeams, insertTemplatePlaceholdersReturning, updateStakeholderTemplateByIdReturning, updateTemplatePlaceholderById, updateTemplatePlaceholderTeamById } from "@/lib/stakeholders/stakeholders-queries";
 import {
   X, Loader2, Save, Plus, Trash2, Pencil, ChevronDown, ChevronRight,
 } from "lucide-react";
@@ -176,7 +176,6 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
   async function handleSave() {
     if (!form.name.trim()) return;
     setSaving(true);
-    const supabase = createClient();
 
     const payload = {
       name: form.name.trim(),
@@ -186,7 +185,7 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
     let templateId: string;
 
     if (isEditing) {
-      const { error } = await supabase.from("stakeholder_templates").update(payload).eq("id", template.id).select().single();
+      const { error } = await updateStakeholderTemplateByIdReturning(payload, template.id);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -194,7 +193,7 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
       }
       templateId = template.id;
     } else {
-      const { data, error } = await supabase.from("stakeholder_templates").insert(payload).select().single();
+      const { data, error } = await insertStakeholderTemplatesReturning(payload);
       if (error) {
         toast.error(error.message);
         setSaving(false);
@@ -205,7 +204,7 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
 
     // Delete removed placeholders
     for (const phId of removedPlaceholderIds) {
-      await supabase.from("template_placeholders").delete().eq("id", phId);
+      await deleteTemplatePlaceholderById(phId);
     }
 
     // Upsert placeholders and their teams
@@ -223,21 +222,14 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
       let isNew = ph.id.startsWith("new_");
 
       if (isNew) {
-        const { data: phData, error: phErr } = await supabase
-          .from("template_placeholders")
-          .insert(phPayload)
-          .select()
-          .single();
+        const { data: phData, error: phErr } = await insertTemplatePlaceholdersReturning(phPayload);
         if (phErr) {
           toast.error(`Failed to add placeholder: ${phErr.message}`);
           continue;
         }
         phId = phData.id;
       } else {
-        const { error: phErr } = await supabase
-          .from("template_placeholders")
-          .update(phPayload)
-          .eq("id", ph.id);
+        const { error: phErr } = await updateTemplatePlaceholderById(phPayload, ph.id);
         if (phErr) {
           toast.error(`Failed to update placeholder: ${phErr.message}`);
           continue;
@@ -254,12 +246,12 @@ export function TemplateEditSheet({ template, onClose, onSave }: TemplateEditShe
         };
 
         if (team.id.startsWith("new_")) {
-          const { error: teamErr } = await supabase.from("template_placeholder_teams").insert(teamPayload);
+          const { error: teamErr } = await insertTemplatePlaceholderTeams(teamPayload);
           if (teamErr) {
             toast.error(`Failed to add team: ${teamErr.message}`);
           }
         } else {
-          const { error: teamErr } = await supabase.from("template_placeholder_teams").update(teamPayload).eq("id", team.id);
+          const { error: teamErr } = await updateTemplatePlaceholderTeamById(teamPayload, team.id);
           if (teamErr) {
             toast.error(`Failed to update team: ${teamErr.message}`);
           }

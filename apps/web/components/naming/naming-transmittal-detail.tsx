@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getCompanyById, getProjectById, getStakeholderById, getTransmittalById, listDocumentRevisionsByDocumentIdsWithIsLatest, listTransmittalDocumentsByTransmittalId, updateTransmittalById } from "@/lib/naming/naming-queries";
 import {
   Loader2,
   X,
@@ -48,7 +48,6 @@ interface Transmittal {
 }
 
 export function TransmittalDetail({ transmittalId, projectId, onClose }: TransmittalDetailProps) {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [transmittal, setTransmittal] = useState<Transmittal | null>(null);
   const [docs, setDocs] = useState<TransmittalDocItem[]>([]);
@@ -66,12 +65,9 @@ export function TransmittalDetail({ transmittalId, projectId, onClose }: Transmi
   const fetchTransmittalData = useCallback(async () => {
     setLoading(true);
     const [tRes, dRes, pRes] = await Promise.all([
-      supabase.from("transmittals").select("*").eq("id", transmittalId).single(),
-      supabase
-        .from("transmittal_documents")
-        .select("id, document_id, copies_count, media_format, notes, documents!inner(id, document_number, title, current_revision_code)")
-        .eq("transmittal_id", transmittalId),
-      supabase.from("projects").select("project_code, name").eq("id", projectId).single(),
+      getTransmittalById(transmittalId),
+      listTransmittalDocumentsByTransmittalId(transmittalId),
+      getProjectById(projectId, "project_code, name"),
     ]);
 
     if (tRes.data) {
@@ -79,10 +75,10 @@ export function TransmittalDetail({ transmittalId, projectId, onClose }: Transmi
       setTransmittal(t);
       if (t.acknowledged_by_name) setAorReceiverName(t.acknowledged_by_name);
 
-      supabase.from("companies").select("name").eq("id", t.issuer_company_id).single().then(({ data }) => {
+      getCompanyById(t.issuer_company_id, "name").then(({ data }) => {
         if (data) setIssuerName((data as { name: string }).name);
       });
-      supabase.from("stakeholders").select("organization_name").eq("id", t.receiver_stakeholder_id).single().then(({ data }) => {
+      getStakeholderById(t.receiver_stakeholder_id).then(({ data }) => {
         if (data) setReceiverName((data as { organization_name: string }).organization_name);
       });
     }
@@ -97,11 +93,7 @@ export function TransmittalDetail({ transmittalId, projectId, onClose }: Transmi
       let revMap: Record<string, { sheet_size: string; revision_code: string }> = {};
 
       if (docIds.length > 0) {
-        const { data: revs } = await supabase
-          .from("document_revisions")
-          .select("document_id, sheet_size, revision_code")
-          .in("document_id", docIds)
-          .eq("is_latest", true);
+        const { data: revs } = await listDocumentRevisionsByDocumentIdsWithIsLatest(docIds);
 
         if (revs) {
           for (const r of revs as { document_id: string; sheet_size: string; revision_code: string }[]) {
@@ -132,7 +124,7 @@ export function TransmittalDetail({ transmittalId, projectId, onClose }: Transmi
     }
 
     setLoading(false);
-  }, [transmittalId, projectId, supabase]);
+  }, [transmittalId, projectId]);
 
   useEffect(() => {
     fetchTransmittalData();
@@ -146,13 +138,10 @@ export function TransmittalDetail({ transmittalId, projectId, onClose }: Transmi
 
     setSavingAor(true);
     try {
-      const { error } = await supabase
-        .from("transmittals")
-        .update({
+      const { error } = await updateTransmittalById({
           acknowledged_at: new Date().toISOString(),
           acknowledged_by_name: aorReceiverName.trim(),
-        })
-        .eq("id", transmittalId);
+        }, transmittalId);
 
       if (error) throw error;
 

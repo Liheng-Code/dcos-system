@@ -12,6 +12,7 @@ import { useProject } from "@/components/dashboard/project-context";
 import { useModuleSettings } from "@/contexts/module-settings-context";
 import { getActiveModuleGroup } from "@/lib/module-nav";
 import { MODULE_REGISTRY } from "@/lib/modules/registry";
+import { countLeaveRequestsByEmployeeIdWithStatusSubmitted, countOvertimeApprovalsByApproverIdWithStatusPending, countOvertimeNotificationsByRecipientIdWithIsRead, countWbsTasksByDepartmentIdsWithCrossDeptStatusRequested, getProfileById, listDepartmentsByDepartmentHead, listLeaveRequestsByFilterWithStatusSubmittedPendingCancellation, listUserRolesByUserId } from "@/lib/dashboard/dashboard-queries";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -40,7 +41,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      supabase.from("profiles").select("role").eq("id", data.user.id).single().then(({ data: profile }) => {
+      getProfileById(data.user.id, "role").then(({ data: profile }) => {
         if (profile) setIsAdmin(profile.role === "admin");
       });
       // 02-USR Phase 4 — Administration folder gate broadened from isAdmin-only to
@@ -50,16 +51,12 @@ export function Sidebar({ collapsed }: SidebarProps) {
       // profiles.role with user_roles.role_code, matching that same precedent, so a user who
       // only holds the RBAC role_code (no legacy profiles.role="admin") isn't hidden from it.
       const HR_ROLE_CODES = new Set(["HR_Manager", "admin"]);
-      supabase.from("user_roles").select("role_code").eq("user_id", data.user.id).then(({ data: roleRows }) => {
+      listUserRolesByUserId(data.user.id).then(({ data: roleRows }) => {
         const codes = (roleRows ?? []).map((r: { role_code: string }) => r.role_code);
         if (codes.some((c) => HR_ROLE_CODES.has(c))) setIsHr(true);
       });
       const uid = data.user.id;
-      supabase
-        .from("leave_requests")
-        .select("approver_1_id, approver_1_status, approver_2_id, approver_2_status, status")
-        .or(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`)
-        .in("status", ["submitted", "pending_cancellation"])
+      listLeaveRequestsByFilterWithStatusSubmittedPendingCancellation(`approver_1_id.eq."${uid}",approver_2_id.eq."${uid}"`)
         .then(({ data: rows }) => {
           if (!rows) return;
           const count = rows.filter((req: { status: string; approver_1_id: string; approver_1_status: string; approver_2_id: string; approver_2_status: string }) => {
@@ -70,42 +67,23 @@ export function Sidebar({ collapsed }: SidebarProps) {
           }).length;
           setApprovalCount(count);
         });
-      supabase
-        .from("leave_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("employee_id", uid)
-        .eq("status", "submitted")
+      countLeaveRequestsByEmployeeIdWithStatusSubmitted(uid)
         .then(({ count }) => {
           if (count !== null) setMyPendingCount(count);
         });
-      supabase
-        .from("overtime_approvals")
-        .select("id", { count: "exact", head: true })
-        .eq("approver_id", uid)
-        .eq("status", "pending")
+      countOvertimeApprovalsByApproverIdWithStatusPending(uid)
         .then(({ count }) => {
           if (count !== null) setOtApprovalCount(count);
         });
-      supabase
-        .from("overtime_notifications")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", uid)
-        .eq("is_read", false)
+      countOvertimeNotificationsByRecipientIdWithIsRead(uid)
         .then(({ count }) => {
           if (count !== null) setOtNotifCount(count);
         });
-      supabase
-        .from("departments")
-        .select("id")
-        .eq("department_head", uid)
+      listDepartmentsByDepartmentHead(uid)
         .then(({ data: depts }) => {
           const ids = (depts ?? []).map((d: { id: string }) => d.id);
           if (ids.length === 0) return;
-          supabase
-            .from("wbs_tasks")
-            .select("id", { count: "exact", head: true })
-            .in("department_id", ids)
-            .eq("cross_dept_status", "requested")
+          countWbsTasksByDepartmentIdsWithCrossDeptStatusRequested(ids)
             .then(({ count }) => {
               if (count !== null) setCrossRequestCount(count);
             });

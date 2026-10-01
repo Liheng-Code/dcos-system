@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { countHseIncidents, countProjectsWithProjectTypeTender, countProjectsWithProjectTypeTenderOfId, listDocuments, listDocumentsOrderedByCreatedAt, listProcurementPos, listProcurementPrs, listWbsTasks } from "@/lib/dashboard/dashboard-queries";
 import { KPICard } from "@/components/ui/kpi-card";
 import {
   HardHat, ListChecks, FileText, AlertTriangle, Package,
@@ -43,7 +43,6 @@ interface RecentDoc {
 }
 
 export function ExecutiveDashboard() {
-  const supabase = useMemo(() => createClient(), []);
   const [kpi, setKpi]       = useState<KpiData | null>(null);
   const [qsKpi, setQsKpi]   = useState<QsKpi | null>(null);
   const [recentDocs, setRecentDocs] = useState<RecentDoc[]>([]);
@@ -81,15 +80,14 @@ export function ExecutiveDashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("projects").select("id", { count: "exact", head: true }).eq("project_type", "tender"),
-      supabase.from("projects").select("id", { count: "exact", head: true }).neq("project_type", "tender"),
-      supabase.from("wbs_tasks").select("status"),
-      supabase.from("documents").select("status"),
-      supabase.from("hse_incidents").select("id", { count: "exact", head: true }),
-      supabase.from("procurement_prs").select("approval_status"),
-      supabase.from("procurement_pos").select("status"),
-      supabase.from("documents").select("id, document_number, title, status, created_at")
-        .order("created_at", { ascending: false }).limit(10),
+      countProjectsWithProjectTypeTender(),
+      countProjectsWithProjectTypeTenderOfId(),
+      listWbsTasks(),
+      listDocuments(),
+      countHseIncidents(),
+      listProcurementPrs(),
+      listProcurementPos(),
+      listDocumentsOrderedByCreatedAt(),
     ]).then(([preRes, postRes, taskRes, docRes, hseRes, prRes, poRes, recentRes]) => {
       const tasks = taskRes.data ?? [];
       const docs = docRes.data ?? [];
@@ -122,7 +120,7 @@ export function ExecutiveDashboard() {
       setQsKpi({ portfolioBudget, portfolioActual, portfolioEac, atRiskProjects });
     }).catch(() => {/* QS data unavailable — fail silently */});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
+  }, []);
 
   if (loading) {
     return (

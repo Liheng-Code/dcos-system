@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getProjectBudgetSettingByProjectId, listBudgetPackageSectionsWithIsActive, upsertProjectBudgetSettings } from "@/lib/naming/naming-queries";
 import { Loader2, Save, DollarSign, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -33,7 +33,6 @@ const GROUP_NAMES: Record<string, string> = {
 };
 
 export function NamingBudgetPackages({ projectId, contractValue, onSaved }: NamingBudgetPackagesProps) {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sections, setSections] = useState<BudgetSection[]>([]);
@@ -46,8 +45,8 @@ export function NamingBudgetPackages({ projectId, contractValue, onSaved }: Nami
   useEffect(() => {
     if (!projectId) { setLoading(false); return; }
     Promise.all([
-      supabase.from("budget_package_sections").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("project_budget_settings").select("*").eq("project_id", projectId).maybeSingle(),
+      listBudgetPackageSectionsWithIsActive(),
+      getProjectBudgetSettingByProjectId(projectId),
     ]).then(([secRes, settingsRes]) => {
       if (secRes.data) setSections(secRes.data as BudgetSection[]);
       if (settingsRes.data) {
@@ -59,7 +58,7 @@ export function NamingBudgetPackages({ projectId, contractValue, onSaved }: Nami
       }
       setLoading(false);
     });
-  }, [projectId, supabase]);
+  }, [projectId]);
 
   const grouped = useMemo(() => {
     const map: Record<string, BudgetSection[]> = {};
@@ -124,9 +123,7 @@ export function NamingBudgetPackages({ projectId, contractValue, onSaved }: Nami
       approval_limit_rule: approvalLimitRule || null,
       selected_sections: selectedSections,
     };
-    const { error } = await supabase
-      .from("project_budget_settings")
-      .upsert(payload, { onConflict: "project_id" });
+    const { error } = await upsertProjectBudgetSettings(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Budget settings saved");

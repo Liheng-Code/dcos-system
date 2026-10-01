@@ -16,6 +16,7 @@ import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } fr
 import { useProject } from "@/components/dashboard/project-context";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { getDepartmentById, getProfileById, getWbsNodeById, getWbsTaskById, getWbsTaskByProjectIdAndTaskCode, insertTaskRecurrence, insertWbsAuditLogReturning, insertWbsTasksReturning, listDepartments, listProfiles, listWbsAuditLogByWbsTaskId, listWbsNodesByProjectIdOrderedByFullPath, listWbsTasksByProjectIdAndExceptId, updateWbsTaskById } from "@/lib/wbs/wbs-queries";
 
 interface WbsTaskEditSheetProps {
   task: WbsTaskRecord | null;
@@ -180,13 +181,13 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     (async () => {
       const [{ data: { user } }, deptsRes] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from("departments").select("id, department_code, department_name").order("department_name"),
+        listDepartments(),
       ]);
       if (cancelled) return;
       if (deptsRes.data) setDepartmentsList(deptsRes.data as { id: string; department_code: string; department_name: string }[]);
       if (user?.id) {
         setUserId(user.id);
-        const meRes = await supabase.from("profiles").select("department_id").eq("id", user.id).maybeSingle();
+        const meRes = await getProfileById(user.id, "department_id");
         if (!cancelled && meRes.data) setMyDepartmentId((meRes.data.department_id as string | null) ?? null);
       }
     })();
@@ -205,11 +206,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
-    supabase
-      .from("wbs_nodes")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("full_path", { ascending: true, nullsFirst: false })
+    listWbsNodesByProjectIdOrderedByFullPath(projectId)
       .then(({ data }) => {
         if (cancelled || !data) return;
         const fresh = data as WbsNodeRecord[];
@@ -229,13 +226,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   // Load candidate predecessor tasks when the picker opens (lazy, once per mount)
   useEffect(() => {
     if (!depPickerOpen || depTasksLoaded || !task) return;
-    supabase
-      .from("wbs_tasks")
-      .select("id, task_code, task_name")
-      .eq("project_id", projectId)
-      .neq("id", task.id)
-      .order("task_code")
-      .limit(200)
+    listWbsTasksByProjectIdAndExceptId(projectId, task.id)
       .then(({ data }) => {
         if (data) setDepTasks(data as { id: string; task_code: string; task_name: string }[]);
         setDepTasksLoaded(true);
@@ -250,9 +241,9 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       if (!cancelled) setUserId(user?.id ?? null);
 
       const [profilesRes, logsRes, nodeRes] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, role, avatar_url, department").order("full_name"),
-        supabase.from("wbs_audit_log").select("*").eq("wbs_task_id", task.id).order("created_at", { ascending: false }),
-        supabase.from("wbs_nodes").select("wbs_code, wbs_name, full_path").eq("id", task.wbs_node_id).single(),
+        listProfiles(),
+        listWbsAuditLogByWbsTaskId(task.id),
+        getWbsNodeById(task.wbs_node_id),
       ]);
       if (cancelled) return;
       if (profilesRes.data) setProfiles(profilesRes.data as StaffProfile[]);
@@ -330,17 +321,13 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   const currentUserName = profiles.find((p) => p.id === userId)?.full_name ?? null;
 
   async function insertAuditLog(entry: { action: string; field_name: string; old_value: string; new_value: string }) {
-    const { data, error } = await supabase
-      .from("wbs_audit_log")
-      .insert({
+    const { data, error } = await insertWbsAuditLogReturning({
         wbs_task_id: task?.id,
         wbs_node_id: task?.wbs_node_id,
         project_id: task?.project_id,
         user_id: userId,
         ...entry,
-      })
-      .select("id")
-      .single();
+      });
 
     if (error) {
       throw error;
@@ -407,7 +394,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       updates.status = "in_progress";
     }
 
-    const { error: updateErr } = await supabase.from("wbs_tasks").update(updates).eq("id", task.id);
+    const { error: updateErr } = await updateWbsTaskById(updates, task.id);
     if (updateErr) {
       toast.error(updateErr.message);
       setSaving(false);
@@ -464,10 +451,10 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("wbs_tasks").update({
+    const { error } = await updateWbsTaskById({
       status: "approved",
       qa_status: "approved",
-    }).eq("id", task.id);
+    }, task.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     const auditId = await insertAuditLog({
       action: "Approved",
@@ -501,12 +488,12 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     const imgFiles = rejectFiles.filter((f) => f.type.startsWith("image/"));
     const newDocs = await uploadFiles("reject/documents", docFiles);
     const newPhotos = await uploadFiles("reject/photos", imgFiles);
-    const { error } = await supabase.from("wbs_tasks").update({
+    const { error } = await updateWbsTaskById({
       status: "in_progress",
       qa_status: "failed",
       docs_count: task.docs_count + newDocs,
       photos_count: task.photos_count + newPhotos,
-    }).eq("id", task.id);
+    }, task.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     const auditId = await insertAuditLog({
       action: "Rejected",
@@ -545,7 +532,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("wbs_tasks").update({ status: "in_progress" }).eq("id", task.id);
+    const { error } = await updateWbsTaskById({ status: "in_progress" }, task.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     const auditId = await insertAuditLog({
       action: "Task Accepted",
@@ -579,11 +566,11 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     const imgFiles = rejectFiles.filter((f) => f.type.startsWith("image/"));
     const newDocs = await uploadFiles("reject/documents", docFiles);
     const newPhotos = await uploadFiles("reject/photos", imgFiles);
-    const { error } = await supabase.from("wbs_tasks").update({
+    const { error } = await updateWbsTaskById({
       status: "in_progress",
       docs_count: task.docs_count + newDocs,
       photos_count: task.photos_count + newPhotos,
-    }).eq("id", task.id);
+    }, task.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     const auditId = await insertAuditLog({
       action: "Assignment Rejected",
@@ -672,15 +659,12 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     if (!task || !planStart || !planFinish || baselineFinish) return;
     setSettingBaseline(true);
     const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("wbs_tasks")
-      .update({
+    const { error } = await updateWbsTaskById({
         baseline_start_date: planStart,
         baseline_finish_date: planFinish,
         baseline_set_at: now,
         baseline_set_by: userId,
-      })
-      .eq("id", task.id);
+      }, task.id);
     if (error) { toast.error(error.message); setSettingBaseline(false); return; }
     await insertAuditLog({ action: "Baseline Set", field_name: "baseline_finish_date", old_value: "", new_value: planFinish });
     setBaselineStart(planStart);
@@ -696,11 +680,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     while (currentId && !visited.has(currentId)) {
       if (currentId === task!.id) return true;
       visited.add(currentId);
-      const depRes = await supabase
-        .from("wbs_tasks")
-        .select("dependency_task_id")
-        .eq("id", currentId)
-        .maybeSingle();
+      const depRes = await getWbsTaskById(currentId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const depRow = depRes.data as any;
       currentId = depRow?.dependency_task_id ?? null;
@@ -725,12 +705,12 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     const newDepText = selectedTask
       ? `${depType.toUpperCase()}: ${selectedTask.task_code} – ${selectedTask.task_name}`
       : null;
-    const { error } = await supabase.from("wbs_tasks").update({
+    const { error } = await updateWbsTaskById({
       dependency_task_id: depTaskId,
       dependency_type:    depTaskId ? depType : null,
       dependency_text:    newDepText,
       lag_days:           depTaskId ? (parseFloat(depLagDays) || 0) : 0,
-    }).eq("id", task.id);
+    }, task.id);
     if (error) { toast.error(error.message); setSavingDep(false); return; }
     await insertAuditLog({
       action: depTaskId ? "Dependency Set" : "Dependency Removed",
@@ -751,7 +731,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
       timestamp: new Date().toISOString(),
     };
     const updatedComments = [...(task.comments ?? []), newComment];
-    const { error } = await supabase.from("wbs_tasks").update({ comments: updatedComments }).eq("id", task.id);
+    const { error } = await updateWbsTaskById({ comments: updatedComments }, task.id);
     if (error) { toast.error(error.message); setPostingComment(false); return; }
     await insertAuditLog({ action: "Comment Added", field_name: "comment", old_value: "", new_value: commentText.trim() });
     setCommentText("");
@@ -794,12 +774,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     }
 
     const taskCode = form.task_code.trim();
-    const { data: existingTask, error: checkError } = await supabase
-      .from("wbs_tasks")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("task_code", taskCode)
-      .maybeSingle();
+    const { data: existingTask, error: checkError } = await getWbsTaskByProjectIdAndTaskCode(projectId, taskCode);
 
     if (checkError) {
       toast.error(checkError.message);
@@ -835,18 +810,14 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     };
 
     setSaving(true);
-    const { data: newTask, error } = await supabase.from("wbs_tasks").insert(payload).select("id").single();
+    const { data: newTask, error } = await insertWbsTasksReturning(payload);
     if (error) {
       toast.error(isDuplicateTaskCodeError(error.message) ? `Task code "${taskCode}" already exists in this project. Please use a different code.` : error.message);
       setSaving(false);
       return;
     }
     if (crossDeptEnabled && newTask?.id) {
-      const headRes = await supabase
-        .from("departments")
-        .select("department_head")
-        .eq("id", crossDeptId)
-        .maybeSingle();
+      const headRes = await getDepartmentById(crossDeptId);
       await createTaskAlert(supabase, {
         projectId,
         taskId: newTask.id,
@@ -863,7 +834,7 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     }
     if (recurringEnabled && newTask?.id) {
       const startDate = form.end_date || new Date().toISOString().slice(0, 10);
-      const { error: recurErr } = await supabase.from("task_recurrences").insert({
+      const { error: recurErr } = await insertTaskRecurrence({
         project_id: projectId,
         template_task_id: newTask.id,
         frequency: recurFrequency,

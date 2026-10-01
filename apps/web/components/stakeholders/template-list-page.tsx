@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listStakeholderTemplates, listTemplatePlaceholders } from "@/lib/stakeholders/stakeholders-queries";
 import { Search, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,9 @@ export function TemplateListPage() {
 
   function loadData() {
     setLoading(true);
-    const supabase = createClient();
     Promise.all([
-      supabase.from("stakeholder_templates").select("*").order("name", { ascending: true }),
-      supabase.from("template_placeholders").select("id, template_id"),
+      listStakeholderTemplates(),
+      listTemplatePlaceholders(),
     ]).then(([templatesRes, placeholdersRes]) => {
       if (templatesRes.data) setTemplates(templatesRes.data as StakeholderTemplate[]);
       if (placeholdersRes.data) {

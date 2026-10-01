@@ -23,6 +23,7 @@ import {
   type ProjectApprovalFlow,
   type ProjectNotificationRule,
 } from "@/lib/project-setup-service";
+import { getProjectById, insertProjectsReturning, listProfilesOfIdAndFullName, updateProjectById, updateProjectByIdReturning, upsertProjectActivationLog } from "@/lib/projects/projects-queries";
 
 const PROJECT_TYPES = [
   { value: "tender", label: "Tender" },
@@ -89,7 +90,6 @@ function calcMonths(start: string, end: string): string {
 }
 
 export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWizardProps) {
-  const supabase = createClient();
   const [activeStep, setActiveStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -164,7 +164,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
 
   useEffect(() => {
     const s = createClient();
-    s.from("profiles").select("id, full_name, employee_id").then(({ data }) => {
+    listProfilesOfIdAndFullName("id, full_name, employee_id").then(({ data }) => {
       if (data) setStaff(data as StaffProfile[]);
     });
   }, []);
@@ -188,12 +188,12 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
 
     let projectId: string;
     if (isEditing) {
-      const { error } = await supabase.from("projects").update(payload).eq("id", project.id).select().single();
+      const { error } = await updateProjectByIdReturning(payload, project.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Project updated");
       projectId = project.id;
     } else {
-      const { data, error } = await supabase.from("projects").insert(payload).select().single();
+      const { data, error } = await insertProjectsReturning(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Project created");
       projectId = data.id;
@@ -225,7 +225,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
     }
 
     setSaving(false);
-    const { data: updated } = await supabase.from("projects").select("*").eq("id", projectId).single();
+    const { data: updated } = await getProjectById(projectId);
     if (updated) onSave(updated as Project);
     else onSave({ ...payload, id: projectId } as unknown as Project);
   }
@@ -827,7 +827,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
     async function handleActivate() {
       setActivating(true);
       try {
-        await supabase.from("project_activation_log").upsert({
+        await upsertProjectActivationLog({
           project_id: projectId,
           activated_at: new Date().toISOString(),
           steps_completed: JSON.stringify([
@@ -835,8 +835,8 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
             "approval_flows", "budget", "notification_rules"
           ]),
           status: "active",
-        }, { onConflict: "project_id" });
-        await supabase.from("projects").update({ status: "active" }).eq("id", projectId);
+        });
+        await updateProjectById({ status: "active" }, projectId);
         toast.success("Project activated successfully");
       } catch { toast.error("Failed to activate project"); }
       finally { setActivating(false); }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteLevelNamingTemplateById, insertLevelNamingTemplateReturning, listLevelNamingTemplates, updateLevelNamingTemplateById } from "@/lib/naming/naming-queries";
 import { Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { NamingLevelListEditor } from "./naming-level-list-editor";
 import type { LevelNamingTemplateRecord, LevelEntry } from "./naming-wbs-types";
 
 export function NamingLevelTemplateAdmin() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState<LevelNamingTemplateRecord[]>([]);
@@ -21,12 +20,12 @@ export function NamingLevelTemplateAdmin() {
   const [newEntries, setNewEntries] = useState<LevelEntry[]>([]);
 
   useEffect(() => {
-    supabase.from("level_naming_templates").select("*").order("template_name").then(({ data, error }) => {
+    listLevelNamingTemplates().then(({ data, error }) => {
       if (data) setTemplates(data as LevelNamingTemplateRecord[]);
       if (error) toast.error("Failed to load templates");
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   function updateField(id: string, field: string, value: unknown) {
     setEditMap((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value, dirty: true } }));
@@ -50,7 +49,7 @@ export function NamingLevelTemplateAdmin() {
     if (changes.is_active !== undefined) payload.is_active = changes.is_active;
     if (Object.keys(payload).length === 0) return;
     setSaving(true);
-    const { error } = await supabase.from("level_naming_templates").update(payload).eq("id", id);
+    const { error } = await updateLevelNamingTemplateById(payload, id);
     if (error) {
       toast.error(error.message);
     } else {
@@ -64,7 +63,7 @@ export function NamingLevelTemplateAdmin() {
   async function handleDelete(id: string) {
     if (!confirm("Delete this level naming template?")) return;
     setSaving(true);
-    const { error } = await supabase.from("level_naming_templates").delete().eq("id", id);
+    const { error } = await deleteLevelNamingTemplateById(id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     setTemplates((prev) => prev.filter((t) => t.id !== id));
     setSaving(false);
@@ -73,7 +72,7 @@ export function NamingLevelTemplateAdmin() {
 
   async function handleToggleActive(id: string, current: boolean) {
     setSaving(true);
-    const { error } = await supabase.from("level_naming_templates").update({ is_active: !current }).eq("id", id);
+    const { error } = await updateLevelNamingTemplateById({ is_active: !current }, id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, is_active: !current } as LevelNamingTemplateRecord : t)));
     setSaving(false);
@@ -83,11 +82,11 @@ export function NamingLevelTemplateAdmin() {
     if (!newName.trim()) { toast.error("Template name is required"); return; }
     if (newEntries.length === 0) { toast.error("Add at least one level"); return; }
     setSaving(true);
-    const { data, error } = await supabase.from("level_naming_templates").insert({
+    const { data, error } = await insertLevelNamingTemplateReturning({
       template_name: newName.trim(),
       description: newDesc.trim() || null,
       config: newEntries,
-    }).select().single();
+    });
     if (error) {
       toast.error(error.message);
     } else if (data) {

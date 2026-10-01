@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { updateProfileById } from "@/lib/settings/settings-queries";
 import { toast } from "sonner";
 import { Contact, Loader2, Pencil, Save, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
@@ -68,7 +68,6 @@ export function PersonalInfoCard({ userId, initial, onSaved }: PersonalInfoCardP
 
   async function handleSave() {
     setSaving(true);
-    const supabase = createClient();
     const payload: PersonalInfoFields = {
       phone: toNullable(toFormValue(form.phone)),
       current_address: toNullable(toFormValue(form.current_address)),
@@ -78,7 +77,7 @@ export function PersonalInfoCard({ userId, initial, onSaved }: PersonalInfoCardP
       emergency_contact_phone: toNullable(toFormValue(form.emergency_contact_phone)),
     };
 
-    const { error } = await supabase.from("profiles").update(payload).eq("id", userId);
+    const { error } = await updateProfileById(payload, userId);
 
     if (error) {
       toast.error(error.message);

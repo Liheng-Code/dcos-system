@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listDepartments, listLeaveTeamCapacity, upsertLeaveTeamCapacity } from "@/lib/administration/administration-queries";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users } from "lucide-react";
@@ -22,10 +22,9 @@ export default function TeamCapacityAdminPage() {
   const [saving, setSaving] = useState(false);
 
   const refresh = async () => {
-    const supabase = createClient();
     const [capRes, deptRes] = await Promise.all([
-      supabase.from("leave_team_capacity").select("*, departments(department_name)").order("max_percent"),
-      supabase.from("departments").select("id, department_name").order("department_name"),
+      listLeaveTeamCapacity(),
+      listDepartments(),
     ]);
     setTeamCapacity(capRes.data || []);
     setDepartments(deptRes.data || []);
@@ -38,9 +37,7 @@ export default function TeamCapacityAdminPage() {
   const save = async () => {
     if (!newDeptId) return;
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("leave_team_capacity")
-      .upsert({ department_id: newDeptId, max_percent: newPct }, { onConflict: "department_id" });
+    const { error } = await upsertLeaveTeamCapacity({ department_id: newDeptId, max_percent: newPct });
     if (!error) { await refresh(); setNewDeptId(""); setNewPct(50); }
     setSaving(false);
   };

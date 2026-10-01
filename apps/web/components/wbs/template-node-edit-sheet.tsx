@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { insertWbsTemplateNode, updateWbsTemplateNodeById } from "@/lib/wbs/wbs-queries";
 import { X, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -49,24 +49,20 @@ export function TemplateNodeEditSheet({ node, templateId, parentId, onClose, onS
       return;
     }
     setSaving(true);
-    const supabase = createClient();
 
     if (node) {
-      const { error } = await supabase
-        .from("wbs_template_nodes")
-        .update({
+      const { error } = await updateWbsTemplateNodeById({
           wbs_code: form.wbs_code.trim().toUpperCase(),
           wbs_name: form.wbs_name.trim(),
           node_type: form.node_type,
           sort_order: parseInt(form.sort_order) || 0,
           source_library_type: form.source_library_type || null,
           source_library_id: form.source_library_id || null,
-        })
-        .eq("id", node.id);
+        }, node.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Node updated");
     } else {
-      const { error } = await supabase.from("wbs_template_nodes").insert({
+      const { error } = await insertWbsTemplateNode({
         template_id: templateId,
         parent_id: parentId,
         wbs_code: form.wbs_code.trim().toUpperCase(),

@@ -25,6 +25,7 @@ import {
   type WbsBuilderNode,
   type WbsBuilderRow,
 } from "./wbs-builder-types";
+import { deleteWbsNodeByIdReturning, insertWbsNodeReturning, listWbsNodesByProjectId, listWbsNodesByProjectIdOfIdAndWbsCode, updateWbsNodeById } from "@/lib/wbs/wbs-queries";
 
 const MAX_CODE_ATTEMPTS = 5;
 
@@ -142,11 +143,7 @@ export function useWbsBuilderData(
 
   const fetchAll = useCallback(async () => {
     const [nodesRes, gfa] = await Promise.all([
-      supabase
-        .from("wbs_nodes")
-        .select(NODE_COLS)
-        .eq("project_id", projectId)
-        .order("sort_order", { ascending: true, nullsFirst: false }),
+      listWbsNodesByProjectId(NODE_COLS, projectId),
       getProjectGfaMap(projectId).catch(() => new Map<string, number>()),
     ]);
     if (nodesRes.error) {
@@ -320,10 +317,7 @@ export function useWbsBuilderData(
 
   const fetchSiblingCodes = useCallback(
     async (parentId: string | null, excludeId?: string): Promise<Set<string>> => {
-      let q = supabase
-        .from("wbs_nodes")
-        .select("id, wbs_code")
-        .eq("project_id", projectId);
+      let q = listWbsNodesByProjectIdOfIdAndWbsCode(projectId, "id, wbs_code");
       q = parentId === null ? q.is("parent_id", null) : q.eq("parent_id", parentId);
       const { data } = await q;
       const taken = new Set<string>();
@@ -346,7 +340,7 @@ export function useWbsBuilderData(
       const at = new Date().toISOString();
       const ids = [nodeId, ...getDescendantIds(nodesRef.current, nodeId)];
       for (const id of ids) {
-        await supabase.from("wbs_nodes").update({ updated_at: at }).eq("id", id);
+        await updateWbsNodeById({ updated_at: at }, id);
       }
     },
     [supabase],
@@ -377,9 +371,7 @@ export function useWbsBuilderData(
       );
 
       for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
-        const res = await supabase
-          .from("wbs_nodes")
-          .insert({
+        const res = await insertWbsNodeReturning({
             project_id: projectId,
             parent_id: parentId,
             node_type: nodeType,
@@ -387,9 +379,7 @@ export function useWbsBuilderData(
             wbs_name: trimmed,
             status: "active",
             sort_order: sortOrder + attempt,
-          })
-          .select(NODE_COLS)
-          .single();
+          }, NODE_COLS);
 
         if (!res.error && res.data) {
           // Optimistic append. The inserted row already carries its own
@@ -484,7 +474,7 @@ export function useWbsBuilderData(
       const snapshot = node;
       setNodes((p) => p.map((n) => (n.id === nodeId ? { ...n, ...patch } : n)));
 
-      const { error } = await supabase.from("wbs_nodes").update(patch).eq("id", nodeId);
+      const { error } = await updateWbsNodeById(patch, nodeId);
       if (error) {
         setNodes((p) => p.map((n) => (n.id === nodeId ? snapshot : n)));
         toast.error("Failed to save: " + error.message);
@@ -521,12 +511,7 @@ export function useWbsBuilderData(
         `Tasks, quantities and cost lines under ${descIds.length ? "them" : "it"} are also removed. This cannot be undone.`;
       if (!confirm(msg)) return;
 
-      const res = await supabase
-        .from("wbs_nodes")
-        .delete()
-        .eq("id", nodeId)
-        .select("id")
-        .maybeSingle();
+      const res = await deleteWbsNodeByIdReturning(nodeId);
       if (res.error) {
         toast.error(res.error.message);
         return;
@@ -632,7 +617,7 @@ export function useWbsBuilderData(
 
       const results = await Promise.all(
         changed.map((c) =>
-          supabase.from("wbs_nodes").update({ sort_order: c.sort_order }).eq("id", c.id),
+          updateWbsNodeById({ sort_order: c.sort_order }, c.id),
         ),
       );
       if (results.some((r) => r.error)) {
@@ -780,7 +765,7 @@ export function useWbsBuilderData(
         : { is_locked: false, locked_at: null, locked_by: null };
 
       setNodes((p) => p.map((n) => (n.id === nodeId ? { ...n, ...patch } : n)));
-      const { error } = await supabase.from("wbs_nodes").update(patch).eq("id", nodeId);
+      const { error } = await updateWbsNodeById(patch, nodeId);
       if (error) {
         setNodes((p) => p.map((n) => (n.id === nodeId ? node : n)));
         toast.error(

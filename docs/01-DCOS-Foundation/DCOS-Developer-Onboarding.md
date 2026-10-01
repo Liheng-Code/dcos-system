@@ -80,7 +80,15 @@ New pages, and pages you rework, follow the pattern used by HR's employee detail
 | Sections | `components/<module>/<feature>/*.tsx` | One component per tab, section or dialog |
 | Page | `app/dashboard/<module>/.../page.tsx` | Composes the sections |
 
-Components do not call the database directly; they go through the service. Rules that can be written as plain functions (calculations, eligibility, routing) go in `lib/<module>/` with a test beside them in `__tests__/`.
+Components do not call the database directly; they go through the service.
+
+Each module also has a generated `lib/<module>/<module>-queries.ts`, one small function per query, which the existing screens use. When you add a query, add a function there (keep the `// @table` comment above it) or, for a new feature, write a purpose-named service that uses it. If you paste code that calls `supabase.from(...)` in a component, move it with:
+
+```bash
+node scripts/codemods/extract-service.mjs --service apps/web/lib/<module>/<module>-queries.ts --plan <files>
+```
+
+Drop `--plan` to apply it, then check the screens with the snapshot tool described below. Rules that can be written as plain functions (calculations, eligibility, routing) go in `lib/<module>/` with a test beside them in `__tests__/`.
 
 `components/hr/employees/detail/` and `lib/hr/employee-detail-service.ts` are the reference example.
 

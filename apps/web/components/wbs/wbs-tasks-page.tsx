@@ -13,6 +13,7 @@ import { WbsTaskEditSheet } from "@/components/wbs/wbs-task-edit-sheet";
 import { type WbsAuditLogRecord, type WbsNodeRecord, type WbsTaskRecord } from "@/components/wbs/wbs-types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { deleteWbsTaskByIdReturning, listProfilesOfIdAndFullName, listWbsAuditLogByProjectIdWithFieldNameOwnerName, listWbsNodesByProjectIdOrderedByFullPath, listWbsTasksByProjectIdOrderedBySortOrder } from "@/lib/wbs/wbs-queries";
 
 const TASK_TABS = [
   { key: "my_tasks", label: "My Tasks", icon: User },
@@ -56,10 +57,10 @@ export function WbsTasksPage() {
 
     setLoading(true);
     const [tasksRes, nodesRes, logsRes, profilesRes] = await Promise.all([
-      supabase.from("wbs_tasks").select("*").eq("project_id", selectedProjectId).order("sort_order", { ascending: true, nullsFirst: false }),
-      supabase.from("wbs_nodes").select("*").eq("project_id", selectedProjectId).order("full_path", { ascending: true, nullsFirst: false }),
-      supabase.from("wbs_audit_log").select("*").eq("project_id", selectedProjectId).eq("field_name", "owner_name").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("id, full_name"),
+      listWbsTasksByProjectIdOrderedBySortOrder(selectedProjectId),
+      listWbsNodesByProjectIdOrderedByFullPath(selectedProjectId),
+      listWbsAuditLogByProjectIdWithFieldNameOwnerName(selectedProjectId),
+      listProfilesOfIdAndFullName(),
     ]);
     const taskRecords = (tasksRes.data ?? []) as WbsTaskRecord[];
     const nodeRecords = (nodesRes.data ?? []) as WbsNodeRecord[];
@@ -223,7 +224,7 @@ export function WbsTasksPage() {
               onEdit={(task) => { router.push(`/dashboard/tasks/${task.id}`); }}
               onRefresh={refresh}
               onDelete={async (task) => {
-                const { data, error } = await supabase.from("wbs_tasks").delete().eq("id", task.id).select("id").maybeSingle();
+                const { data, error } = await deleteWbsTaskByIdReturning(task.id);
                 if (error) toast.error(error.message);
                 else if (!data) toast.error("Task was not deleted. You may not have delete permission.");
                 else { toast.success("Task deleted"); refresh(); }

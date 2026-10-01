@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { listDepartments, listProfiles } from "@/lib/settings/settings-queries";
 import { Search, Loader2, Filter, X, Plus, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -79,15 +79,9 @@ function StaffListPageInner() {
   async function load() {
     setLoading(true);
     setError(null);
-    const supabase = createClient();
     const [{ data, error: err }, { data: depts }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "id, employee_id, full_name, email, job_title, department, department_id, level, role, status, report_to, account_status, last_login_at, password_changed_at, first_login_at",
-        )
-        .order("employee_id", { ascending: true, nullsFirst: false }),
-      supabase.from("departments").select("id, department_name").order("department_name", { ascending: true }),
+      listProfiles(),
+      listDepartments(),
     ]);
     if (err) {
       setError(err.message);

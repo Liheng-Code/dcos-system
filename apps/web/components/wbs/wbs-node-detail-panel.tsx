@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { type WbsNodeData, type WbsNodeRecord, type WbsTaskRecord, type WbsAuditLogRecord } from "@/components/wbs/wbs-types";
+import { deleteWbsSubscriptionsByWbsNodeIdAndUserId, getWbsSubscriptionByWbsNodeIdAndUserId, insertWbsSubscription } from "@/lib/wbs/wbs-queries";
 
 interface WbsNodeDetailPanelProps {
   node: WbsNodeData | null;
@@ -40,11 +41,11 @@ export function WbsNodeDetailPanel({ node, nodeRecord, tasks, auditLogs, project
     if (!user) { setTogglingSub(false); return; }
 
     if (subscribed) {
-      const { error } = await supabase.from("wbs_subscriptions").delete().eq("wbs_node_id", node.id).eq("user_id", user.id);
+      const { error } = await deleteWbsSubscriptionsByWbsNodeIdAndUserId(node.id, user.id);
       if (error) toast.error(error.message);
       else { setSubscribed(false); toast.success("Unsubscribed"); }
     } else {
-      const { error } = await supabase.from("wbs_subscriptions").insert({ wbs_node_id: node.id, user_id: user.id });
+      const { error } = await insertWbsSubscription({ wbs_node_id: node.id, user_id: user.id });
       if (error) toast.error(error.message);
       else { setSubscribed(true); toast.success("Subscribed to node updates"); }
     }
@@ -55,7 +56,7 @@ export function WbsNodeDetailPanel({ node, nodeRecord, tasks, auditLogs, project
     if (!node) return;
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
-      supabase.from("wbs_subscriptions").select("id").eq("wbs_node_id", node.id).eq("user_id", data.user.id).maybeSingle().then(({ data: sub }) => {
+      getWbsSubscriptionByWbsNodeIdAndUserId(node.id, data.user.id).then(({ data: sub }) => {
         setSubscribed(!!sub);
       });
     });

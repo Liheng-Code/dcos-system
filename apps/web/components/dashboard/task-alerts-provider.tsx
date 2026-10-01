@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { WbsTaskAlertRecord } from "@/components/wbs/wbs-types";
+import { countTaskAlertsByRecipientIdWithReadAt, listTaskAlertsByRecipientId, updateTaskAlertByIdAndRecipientId, updateTaskAlertsByIdsAndRecipientId, updateTaskAlertsByRecipientIdWithReadAt } from "@/lib/dashboard/dashboard-queries";
 
 interface TaskAlertsContextValue {
   alerts: WbsTaskAlertRecord[];
@@ -52,18 +53,9 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
-    const { data, error } = await supabase
-      .from("task_alerts")
-      .select("*")
-      .eq("recipient_id", currentUserId)
-      .order("created_at", { ascending: false })
-      .limit(20);
+    const { data, error } = await listTaskAlertsByRecipientId(currentUserId);
 
-    const { count } = await supabase
-      .from("task_alerts")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_id", currentUserId)
-      .is("read_at", null);
+    const { count } = await countTaskAlertsByRecipientIdWithReadAt(currentUserId);
 
     if (error) {
       if (isMissingTaskAlertsTable(error.message)) {
@@ -88,7 +80,7 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
     const readAt = new Date().toISOString();
     setAlerts((prev) => prev.map((alert) => (alert.id === alertId ? { ...alert, read_at: readAt } : alert)));
     setUnreadCount((prev) => Math.max(0, prev - 1));
-    await supabase.from("task_alerts").update({ read_at: readAt }).eq("id", alertId).eq("recipient_id", userId);
+    await updateTaskAlertByIdAndRecipientId({ read_at: readAt }, alertId, userId);
   }, [supabase, userId]);
 
   const markAllRead = useCallback(async () => {
@@ -96,7 +88,7 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
     const readAt = new Date().toISOString();
     setAlerts((prev) => prev.map((alert) => (alert.read_at ? alert : { ...alert, read_at: readAt })));
     setUnreadCount(0);
-    await supabase.from("task_alerts").update({ read_at: readAt }).eq("recipient_id", userId).is("read_at", null);
+    await updateTaskAlertsByRecipientIdWithReadAt({ read_at: readAt }, userId);
   }, [supabase, unreadCount, userId]);
 
   const markTaskRead = useCallback(async (taskId: string) => {
@@ -107,7 +99,7 @@ export function TaskAlertsProvider({ children }: { children: React.ReactNode }) 
     const ids = unread.map((a) => a.id);
     setAlerts((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, read_at: readAt } : a)));
     setUnreadCount((prev) => Math.max(0, prev - unread.length));
-    await supabase.from("task_alerts").update({ read_at: readAt }).in("id", ids).eq("recipient_id", userId);
+    await updateTaskAlertsByIdsAndRecipientId({ read_at: readAt }, ids, userId);
   }, [alerts, supabase, userId]);
 
   useEffect(() => {
