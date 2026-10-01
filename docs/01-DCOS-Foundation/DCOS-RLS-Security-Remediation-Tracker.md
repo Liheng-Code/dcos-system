@@ -106,7 +106,7 @@ Migrations `20261001000001_account_permissions_and_rls.sql` and `20261001000002_
 | `qs_v_boq_requisition_status` | 926 BOQ lines |
 | `time_bar_alerts` | 0 (no data) |
 
-All ten now run as the caller and are closed to `anon`. One view of this kind remains, `v_plan_client_programme`, which backs the client programme portal and needs a decision on how that portal authenticates.
+All ten now run as the caller and are closed to `anon`. One view of this kind remains, `v_plan_client_programme`, which backs the client programme portal. The project owner confirmed on 2026-10-01 that the portal is meant to be viewable without signing in, so it is left as it is, deliberately.
 
 **Default Account permission matrix** (editable in Administration → Roles & Permissions):
 

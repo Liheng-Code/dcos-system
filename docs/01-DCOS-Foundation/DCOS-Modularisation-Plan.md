@@ -361,8 +361,8 @@ The two migrations are applied to the local database only. Production changes wh
 
 1. **Review the Account permission matrix** in the RLS tracker. It is a default chosen for segregation of duties, not a confirmed business rule; in particular, accountants cannot approve.
 2. **The permission matrix for the four still-unseeded modules**: which roles may view, create, edit, approve in Construction, QA/QC, HSE and Reporting, and whether Design gets its own code. This is a business decision and cannot be inferred from the code.
-3. **How the client programme portal authenticates**, so `v_plan_client_programme` can be closed or deliberately left public.
-4. **Production roll-out.** The work is committed on branch `feat/modularisation` and not pushed. Pushing, merging to `main` and running `/dbpush` are the project owner's steps; the two security migrations are the most urgent part.
+3. ~~How the client programme portal authenticates.~~ Decided 2026-10-01: the portal is public by design, so `v_plan_client_programme` stays readable without signing in.
+4. **Production roll-out.** The work is on branch `feat/modularisation`, pushed to GitHub on 2026-10-01. Opening the pull request, merging to `main` and running `/dbpush` are the project owner's steps; the two security migrations are the most urgent part. Run it as `/dbpush fast`: without `fast` the command wipes and rebuilds the local database first.
 
 Policies are rolled out one module at a time, on the local database first, verified with the snapshot tool as an administrator and through the API as restricted users, as was done for Account.
 
