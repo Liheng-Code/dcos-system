@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
-import { getActiveReportingGroup } from "@/lib/reporting-nav";
+import { getActiveReportingGroup } from "@/lib/reporting/reporting-nav";
 
 // Reporting routes span /dashboard/reports and /dashboard/insights, so this
 // is rendered by a thin layout in each of those directories (it resolves the

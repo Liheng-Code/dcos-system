@@ -19,7 +19,7 @@ import {
   getBoqSections,
   getCostItems,
   updateBoqBaselineStatus,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { RaisePrFromBoqDialog } from "@/components/procurement/raise-pr-from-boq-dialog";
 import { BoqLockDialog } from "@/components/qs/boq-lock-dialog";

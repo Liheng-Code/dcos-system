@@ -145,6 +145,19 @@ export function ProjectListPage() {
     refreshProjects();
   }
 
+  // Edits inside the pre-contract view keep it open; only a type change (award → post-contract)
+  // returns to the list, where the project now appears under Post-Contract.
+  function handlePrecontractUpdate(updated: Project) {
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    if (updated.project_type !== "tender") {
+      setShowPrecontractDetail(false);
+      setSelected(null);
+    } else {
+      setSelected(updated);
+    }
+    refreshProjects();
+  }
+
   function formatValue(value: number | null, currency: string): string {
     if (value === null) return "—";
     return `${currency} ${value.toLocaleString()}`;
@@ -183,7 +196,7 @@ export function ProjectListPage() {
         <PrecontractDetail
           project={selected!}
           onBack={() => { setShowPrecontractDetail(false); setSelected(null); }}
-          onUpdate={handleSave}
+          onUpdate={handlePrecontractUpdate}
         />
       ) : showPostDetail ? (
         <PostcontractDetail

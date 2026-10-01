@@ -26,7 +26,7 @@ import {
   type BoqStatus,
   deleteBoq,
   getBoqList,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 
 const BOQ_TYPE_LABELS: Record<BoqType, string> = {
   preliminary: "Preliminary",

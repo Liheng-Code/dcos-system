@@ -3,7 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
-import { Loader2, Plus, Trash2, Send, FileWarning, HelpCircle, Mail, Check, X, Clock } from "lucide-react";
+import { Loader2, Plus, Trash2, Send, FileWarning, Check, X, Clock } from "lucide-react";
+import { ClarificationsRegister } from "@/components/projects/precontract-bid-prep";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +28,6 @@ export default function TenderManagementPage() {
   // Data state
   const [invitations, setInvitations] = useState<any[]>([]);
   const [addenda, setAddenda] = useState<any[]>([]);
-  const [queries, setQueries] = useState<any[]>([]);
 
   const [selectedTenderId, setSelectedTenderId] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -47,13 +47,6 @@ export default function TenderManagementPage() {
     addendum_no: "", title: "", description: "", issue_date: new Date().toISOString().split("T")[0], attachment_url: "",
   });
 
-  // Query form
-  const [showQForm, setShowQForm] = useState(false);
-  const [qForm, setQForm] = useState({
-    query_no: "", question: "", answer: "", asked_by: "",
-    is_confidential: false, asked_date: new Date().toISOString().split("T")[0], answered_date: "",
-  });
-
   useEffect(() => {
     let query = supabase.from("tender_register").select("id,tender_no,title").order("created_at", { ascending: false });
     if (selectedProjectId) query = query.eq("project_id", selectedProjectId);
@@ -68,7 +61,6 @@ export default function TenderManagementPage() {
       setSelectedTenderId("");
       setInvitations([]);
       setAddenda([]);
-      setQueries([]);
     }
   }, [selectedProjectId, tenders]);
 
@@ -78,11 +70,9 @@ export default function TenderManagementPage() {
     Promise.all([
       supabase.from("tender_invitations").select("*").eq("tender_id", tenderId).order("invited_date", { ascending: false }),
       supabase.from("tender_addenda").select("*").eq("tender_id", tenderId).order("issue_date", { ascending: false }),
-      supabase.from("tender_queries").select("*").eq("tender_id", tenderId).order("asked_date", { ascending: false }),
-    ]).then(([inv, add, q]) => {
+    ]).then(([inv, add]) => {
       if (inv.data) setInvitations(inv.data);
       if (add.data) setAddenda(add.data);
-      if (q.data) setQueries(q.data);
     });
   }
 
@@ -155,49 +145,6 @@ export default function TenderManagementPage() {
     toast.success("Addendum deleted");
     setAddenda(addenda.filter((a: any) => a.id !== id));
     setDeletingId(null);
-  }
-
-  // ── Tender Q&A CRUD ─────────────────────────────────────────────────────────────
-
-  async function handleCreateQuery() {
-    if (!selectedTenderId) return;
-    setSaving(true);
-    const { error } = await supabase.from("tender_queries").insert({
-      tender_id: selectedTenderId,
-      query_no: qForm.query_no,
-      question: qForm.question,
-      answer: qForm.answer || null,
-      asked_by: qForm.asked_by || null,
-      is_confidential: qForm.is_confidential,
-      asked_date: qForm.asked_date || null,
-      answered_date: qForm.answered_date || null,
-    });
-    if (error) { toast.error(error.message); setSaving(false); return; }
-    toast.success("Query added");
-    setShowQForm(false);
-    setQForm({ query_no: "", question: "", answer: "", asked_by: "", is_confidential: false, asked_date: new Date().toISOString().split("T")[0], answered_date: "" });
-    loadData(selectedTenderId);
-    setSaving(false);
-  }
-
-  async function handleDeleteQuery(id: string) {
-    if (!confirm("Delete this query?")) return;
-    setDeletingId(id);
-    const { error } = await supabase.from("tender_queries").delete().eq("id", id);
-    if (error) { toast.error(error.message); setDeletingId(null); return; }
-    toast.success("Query deleted");
-    setQueries(queries.filter((q: any) => q.id !== id));
-    setDeletingId(null);
-  }
-
-  async function handleAnswerQuery(id: string, answer: string) {
-    const { error } = await supabase.from("tender_queries").update({
-      answer,
-      answered_date: new Date().toISOString().split("T")[0],
-    }).eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Answer saved");
-    loadData(selectedTenderId);
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────────
@@ -411,122 +358,8 @@ export default function TenderManagementPage() {
             </div>
           )}
 
-          {/* ── TENDER Q&A TAB ── */}
-          {tab === "qa" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{queries.length} quer{queries.length !== 1 ? "ies" : "y"}</p>
-                <Button size="sm" variant="outline" onClick={() => setShowQForm(!showQForm)}>
-                  <Plus className="mr-1 h-4 w-4" /> Add Query
-                </Button>
-              </div>
-
-              {showQForm && (
-                <Card>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Query No *</label>
-                        <input value={qForm.query_no} onChange={e => setQForm({...qForm, query_no: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Asked Date</label>
-                        <input type="date" value={qForm.asked_date} onChange={e => setQForm({...qForm, asked_date: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Asked By</label>
-                        <input value={qForm.asked_by} onChange={e => setQForm({...qForm, asked_by: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Answered Date</label>
-                        <input type="date" value={qForm.answered_date} onChange={e => setQForm({...qForm, answered_date: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-xs font-medium">Question *</label>
-                        <textarea rows={2} value={qForm.question} onChange={e => setQForm({...qForm, question: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-xs font-medium">Answer</label>
-                        <textarea rows={2} value={qForm.answer} onChange={e => setQForm({...qForm, answer: e.target.value})} className={ROW_CLASS} />
-                      </div>
-                      <div className="col-span-2 flex items-center gap-2 pt-1">
-                        <input type="checkbox" id="confidential" checked={qForm.is_confidential}
-                          onChange={e => setQForm({...qForm, is_confidential: e.target.checked})} className="rounded border-border" />
-                        <label htmlFor="confidential" className="text-sm">Confidential (not shared with bidders)</label>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button variant="outline" size="sm" onClick={() => setShowQForm(false)}>Cancel</Button>
-                      <Button size="sm" onClick={handleCreateQuery} disabled={saving || !qForm.query_no.trim() || !qForm.question.trim()}>
-                        {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Add
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {queries.length === 0 && !showQForm ? (
-                <div className="rounded-lg border px-6 py-8 text-center text-sm text-muted-foreground">No queries recorded</div>
-              ) : (
-                queries.map((q) => (
-                  <Card key={q.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-medium bg-purple-50 text-purple-600">
-                            <HelpCircle className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold">{q.query_no}</p>
-                              {q.is_confidential && (
-                                <span className="text-[10px] bg-red-50 text-red-600 rounded-full px-1.5 py-0.5 font-medium">Confidential</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">Asked by {q.asked_by || "—"} on {q.asked_date || "—"}</p>
-                            <p className="text-sm mt-2">{q.question}</p>
-
-                            {q.answer ? (
-                              <div className="mt-2 flex items-start gap-2 bg-green-50 rounded-lg px-3 py-2">
-                                <Mail className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
-                                <div>
-                                  <p className="text-xs font-medium text-green-700">Answer</p>
-                                  <p className="text-xs text-green-700">{q.answer}</p>
-                                  {q.answered_date && <p className="text-[10px] text-green-500 mt-0.5">{q.answered_date}</p>}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="mt-2 flex items-center gap-2">
-                                <input
-                                  placeholder="Write answer..."
-                                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs"
-                                  id={`answer-${q.id}`}
-                                  onKeyDown={e => {
-                                    if (e.key === "Enter") {
-                                      const val = (e.target as HTMLInputElement).value.trim();
-                                      if (val) handleAnswerQuery(q.id, val);
-                                    }
-                                  }}
-                                />
-                                <Button size="sm" variant="outline" className="text-xs h-7"
-                                  onClick={() => {
-                                    const el = document.getElementById(`answer-${q.id}`) as HTMLInputElement;
-                                    if (el?.value.trim()) handleAnswerQuery(q.id, el.value.trim());
-                                  }}>Answer</Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <button onClick={() => handleDeleteQuery(q.id)} className="text-muted-foreground hover:text-red-600 shrink-0 ml-2" disabled={deletingId === q.id}>
-                          {deletingId === q.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          )}
+          {/* ── TENDER Q&A TAB ── (single clarifications register, shared with the project's Pre-Contract view) */}
+          {tab === "qa" && <ClarificationsRegister tenderId={selectedTenderId} />}
         </>
       )}
 

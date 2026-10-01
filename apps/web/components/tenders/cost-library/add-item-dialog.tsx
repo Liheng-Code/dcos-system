@@ -8,7 +8,7 @@ import {
   type PrelimLibraryItem,
   type PrelimLibraryItemWithComponents,
   createLibraryItem,
-} from "@/lib/prelim-library-service";
+} from "@/lib/qs/prelim-library-service";
 import { toast } from "sonner";
 
 interface AddItemDialogProps {

@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, Send, CheckCircle, XCircle, FileUp, Eye, Clock, History, Users, Link2, Edit3 } from "lucide-react";
+import { X, Loader2, Send, CheckCircle, XCircle, FileUp, Eye, Clock, History, Users, Link2, Edit3, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { DocumentRecord } from "@/components/documents/document-edit-sheet";
+import { DocumentStampModal } from "./document-stamp-modal";
 
 interface AuditEntry {
   id: string;
@@ -89,6 +90,7 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
   const [activeTab, setActiveTab] = useState<"workflow" | "audit" | "distribution" | "tasks">("workflow");
   const [comment, setComment] = useState("");
   const [showAddViewer, setShowAddViewer] = useState(false);
+  const [showStampModal, setShowStampModal] = useState(false);
   const [newViewerEmail, setNewViewerEmail] = useState("");
   const [newViewerPurpose, setNewViewerPurpose] = useState<"info" | "review" | "approval" | "distribution">("info");
 
@@ -173,6 +175,14 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
             <p className="text-xs text-muted-foreground">{document.title}</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowStampModal(true)}
+              title="Stamp & Issue Controlled Copy"
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <Printer className="h-4 w-4" />
+            </button>
             {onEdit && (
               <button
                 type="button"
@@ -267,20 +277,16 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
                 </div>
               )}
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Document Info</p>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-muted-foreground">Project:</span> <span className="font-medium">{document.project_id}</span></div>
-                  <div><span className="text-muted-foreground">Type:</span> <span className="font-medium">{document.document_type_id}</span></div>
-                  <div><span className="text-muted-foreground">Discipline:</span> <span className="font-medium">{document.discipline || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Revision:</span> <span className="font-medium">R{document.current_revision}</span></div>
-                  {document.wbs_node_id && (
-                    <div className="col-span-2"><span className="text-muted-foreground">WBS:</span> <span className="font-medium">{document.wbs_node_id}</span></div>
-                  )}
-                  {document.description && (
-                    <div className="col-span-2"><span className="text-muted-foreground">Description:</span> <span>{document.description}</span></div>
-                  )}
-                </div>
+              <div className="pt-2 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStampModal(true)}
+                  className="w-full flex items-center justify-center gap-2 text-xs border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Stamp Controlled Copy & Jobsite QR Code
+                </Button>
               </div>
             </>
           )}
@@ -407,6 +413,12 @@ export function DocumentWorkflowPanel({ document, onClose, onUpdate, onEdit }: W
           )}
         </div>
       </div>
+      {showStampModal && (
+        <DocumentStampModal
+          document={document}
+          onClose={() => setShowStampModal(false)}
+        />
+      )}
     </div>
   );
 }

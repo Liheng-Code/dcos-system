@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
-import { type ProgressSnapshotRow } from "@/lib/schedule-service";
+import { type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
 
 export interface EvmMetrics {
   bac: number;

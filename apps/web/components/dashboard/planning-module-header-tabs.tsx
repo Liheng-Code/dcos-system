@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useProject } from "@/components/dashboard/project-context";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
 import { filterGroupItems } from "@/lib/module-nav";
-import { getActivePlanningGroup } from "@/lib/planning-nav";
+import { getActivePlanningGroup } from "@/lib/planning/planning-nav";
 
 // Planning routes span /dashboard/planning and /dashboard/wbs/lookahead, so
 // this is rendered by a thin layout in each of those directories (it

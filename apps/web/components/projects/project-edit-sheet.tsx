@@ -15,6 +15,7 @@ export interface Project {
   project_name: string;
   project_type: string;
   client_id: string | null;
+  consultant_id?: string | null;
   contract_type: string | null;
   contract_number: string | null;
   contract_value: number | null;

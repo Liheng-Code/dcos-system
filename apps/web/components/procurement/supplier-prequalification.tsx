@@ -25,7 +25,7 @@ import {
   upsertSupplierApprovedTrade,
   upsertSupplierPqDocument,
   upsertSupplierPqRecord,
-} from "@/lib/supplier-prequalification-service";
+} from "@/lib/procurement/supplier-prequalification-service";
 
 const STATUS_STYLES: Record<SupplierPqStatus, string> = {
   not_started: "bg-slate-500/10 text-slate-600 border-slate-200",

@@ -14,7 +14,7 @@ import {
 import {
   type QsElementLibraryItem,
   type QsDescriptionLibraryItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { cn } from "@/lib/utils";
 import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
 

@@ -54,7 +54,7 @@ import {
   type QtoItem,
   type QtoSummaryRow,
   type RiskItem,
-} from "@/lib/qto-service";
+} from "@/lib/qs/qto-service";
 
 type Tab = "takeoff" | "drawings" | "documents";
 
@@ -516,7 +516,7 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
   useEffect(() => { void load(); }, [load]);
 
   const loadRevisions = async (drawingId: string) => {
-    const { listRevisions } = await import("@/lib/qto-service");
+    const { listRevisions } = await import("@/lib/qs/qto-service");
     const res = await listRevisions(drawingId);
     setRevisions((prev) => ({ ...prev, [drawingId]: res.data ?? [] }));
   };

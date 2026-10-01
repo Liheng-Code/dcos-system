@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, HardHat, Loader2, ShieldCheck, XCircle } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
@@ -18,6 +19,9 @@ interface ReviewRow {
   task_code: string | null;
   task_name: string | null;
   proposer_name: string | null;
+  daily_report_id: string | null;
+  report_date: string | null;
+  weather_conditions: string | null;
 }
 
 /** Completion Plan 2.2 — the planner's queue for pending progress-review requests. */
@@ -36,8 +40,9 @@ export function PlanProgressReviewQueue() {
     const { data, error } = await supabase
       .from("wbs_task_progress_reviews")
       .select(`
-        id, wbs_task_id, proposed_progress, previous_progress, proposed_by, proposed_at, comment,
+        id, wbs_task_id, proposed_progress, previous_progress, proposed_by, proposed_at, comment, daily_report_id,
         wbs_tasks (task_code, task_name),
+        site_daily_reports (report_date, weather_conditions),
         profiles!wbs_task_progress_reviews_proposed_by_fkey (full_name)
       `)
       .eq("project_id", selectedProjectId)
@@ -48,8 +53,9 @@ export function PlanProgressReviewQueue() {
       setLoading(false);
       return;
     }
-    type RawRow = Omit<ReviewRow, "task_code" | "task_name" | "proposer_name"> & {
+    type RawRow = Omit<ReviewRow, "task_code" | "task_name" | "proposer_name" | "report_date" | "weather_conditions"> & {
       wbs_tasks: { task_code: string; task_name: string } | null;
+      site_daily_reports: { report_date: string; weather_conditions: string | null } | null;
       profiles: { full_name: string | null } | null;
     };
     setRows(
@@ -58,6 +64,9 @@ export function PlanProgressReviewQueue() {
         task_code: r.wbs_tasks?.task_code ?? null,
         task_name: r.wbs_tasks?.task_name ?? null,
         proposer_name: r.profiles?.full_name ?? null,
+        daily_report_id: r.daily_report_id ?? null,
+        report_date: r.site_daily_reports?.report_date ?? null,
+        weather_conditions: r.site_daily_reports?.weather_conditions ?? null,
       })),
     );
     setLoading(false);
@@ -124,8 +133,25 @@ export function PlanProgressReviewQueue() {
                     {r.proposer_name ?? "Someone"} proposed changing progress from{" "}
                     <strong className="text-foreground">{r.previous_progress}%</strong> to{" "}
                     <strong className={cn(r.proposed_progress > r.previous_progress ? "text-emerald-600" : "text-amber-600")}>{r.proposed_progress}%</strong>
-                    {" "}· {new Date(r.proposed_at).toLocaleString()}
                   </p>
+                  {r.daily_report_id && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Link
+                        href="/dashboard/site/daily-reports"
+                        target="_blank"
+                        className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                      >
+                        <HardHat className="h-3 w-3 text-blue-600" />
+                        Site Daily Report ({r.report_date ?? "Report"})
+                        <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                      </Link>
+                      {r.weather_conditions && (
+                        <span className="text-[10px] text-muted-foreground">
+                          Weather: {r.weather_conditions}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {r.comment && <p className="mt-1 text-xs italic text-muted-foreground">&ldquo;{r.comment}&rdquo;</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

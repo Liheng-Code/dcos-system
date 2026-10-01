@@ -5,7 +5,7 @@ import { X, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { getProjectSiteArea, updateProjectSiteArea } from "@/lib/qs-service";
+import { getProjectSiteArea, updateProjectSiteArea } from "@/lib/wbs-area-service";
 
 interface ProjectSiteAreaDialogProps {
   projectId: string;

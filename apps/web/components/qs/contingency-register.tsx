@@ -13,7 +13,7 @@ import {
   getBoqItems,
   getContingencyBalance,
   getContingencyDrawdowns,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
 const fmt = (n: number) =>

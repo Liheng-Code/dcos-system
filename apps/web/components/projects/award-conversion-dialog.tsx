@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, ArrowRight, CheckCircle2, Package, FileText, ClipboardList, AlertTriangle } from "lucide-react";
+import { X, Loader2, ArrowRight, CheckCircle2, Package, FileText, AlertTriangle, GanttChartSquare, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { ProjectSetupWizard } from "@/components/projects/project-setup-wizard";
 import {
@@ -14,226 +13,205 @@ import {
   carryOverPriceList,
   carryOverRisks,
   createContractSnapshot,
-  autoCreateContractRegister,
-} from "@/lib/qs-service";
+} from "@/lib/qs/public";
+import { activateBaseline, listBaselines, setBaseline } from "@/lib/planning/baseline-service";
+import { COMMERCIAL_TOPICS, setTenderStage, type TenderStage } from "@/lib/qs/tender-lifecycle";
+
+// Award → Post-Contract, in place (master flow step 16: "Do not create a completely new project").
+// The same project changes from project_type 'tender' to 'awarded'. Tender-keyed records (documents,
+// clarifications, addenda, technical / commercial registers, quotes) stay attached; priced data is
+// carried into the post-contract QS tables as a locked baseline and the tender programme becomes the
+// contract baseline. Projects awarded before this change keep their separate "-PC" project.
 
 interface AwardConversionDialogProps {
   project: Project;
+  tenderId: string;
+  stage: TenderStage;
+  bidPrice: number | null;
   onClose: () => void;
   onConvert: (project: Project) => void;
 }
 
-interface TenderDataCounts {
+interface Counts {
   boqItems: number;
   prelims: number;
   priceList: number;
   risks: number;
   bidSummaries: number;
-  awardRecords: number;
+  tasks: number;
 }
 
-export function AwardConversionDialog({ project, onClose, onConvert }: AwardConversionDialogProps) {
+export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onClose, onConvert }: AwardConversionDialogProps) {
   const supabase = createClient();
-  const [converting, setConverting] = useState(false);
-  const [step, setStep] = useState<"confirm" | "wizard">("confirm");
-  const [convertedProject, setConvertedProject] = useState<Project | null>(null);
-
-  const [newProjectCode, setNewProjectCode] = useState(`${project.project_code}-PC`);
-  const [copyWbs, setCopyWbs] = useState(true);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [awardDate, setAwardDate] = useState(new Date().toISOString().slice(0, 10));
+  const [contractNo, setContractNo] = useState(`HC-${project.project_code}`);
   const [copyBoq, setCopyBoq] = useState(true);
   const [copyPrelims, setCopyPrelims] = useState(true);
   const [copyPriceList, setCopyPriceList] = useState(true);
   const [copyRisks, setCopyRisks] = useState(true);
-  const [autoContract, setAutoContract] = useState(true);
-
-  const [tenderWbsCount, setTenderWbsCount] = useState<number | null>(null);
-  const [tenderData, setTenderData] = useState<TenderDataCounts | null>(null);
-  const [tenderRegister, setTenderRegister] = useState<{ id: string } | null>(null);
-  const [alreadyLinked, setAlreadyLinked] = useState<Project | null>(null);
-  const [checkingGuards, setCheckingGuards] = useState(true);
-  const [conversionLog, setConversionLog] = useState<string[]>([]);
+  const [baselineProgramme, setBaselineProgramme] = useState(true);
+  const [createContract, setCreateContract] = useState(true);
+  const [converting, setConverting] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const [failures, setFailures] = useState<string[]>([]);
+  const [converted, setConverted] = useState<Project | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
-    // Find the tender_register linked to this project via project_precontract_details
-    supabase
-      .from("project_precontract_details")
-      .select("tender_register_id")
-      .eq("project_id", project.id)
-      .maybeSingle()
-      .then(({ data: pcData }) => {
-        if (cancelled || !pcData?.tender_register_id) {
-          setCheckingGuards(false);
-          return;
-        }
-        setTenderRegister({ id: pcData.tender_register_id });
-
-        // Fetch all tender data counts in parallel
-        Promise.all([
-          supabase.from("projects").select("*").eq("source_tender_project_id", project.id).maybeSingle(),
-          supabase.from("wbs_nodes").select("id", { count: "exact", head: true }).eq("project_id", project.id),
-          supabase.from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-          supabase.from("tender_preliminaries_items").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-          supabase.from("tender_price_list").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-          supabase.from("tender_risk_items").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-          supabase.from("tender_bid_summaries").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-          supabase.from("tender_award_records").select("id", { count: "exact", head: true }).eq("tender_id", pcData.tender_register_id),
-        ]).then(([linkedRes, wbsRes, boqRes, prelimRes, plRes, riskRes, bsRes, awardRes]) => {
-          if (cancelled) return;
-          setAlreadyLinked((linkedRes.data as Project | null) ?? null);
-          setTenderWbsCount(wbsRes.count ?? 0);
-          setTenderData({
-            boqItems: boqRes.count ?? 0,
-            prelims: prelimRes.count ?? 0,
-            priceList: plRes.count ?? 0,
-            risks: riskRes.count ?? 0,
-            bidSummaries: bsRes.count ?? 0,
-            awardRecords: awardRes.count ?? 0,
-          });
-          setCheckingGuards(false);
-        });
+    Promise.all([
+      supabase.from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      supabase.from("tender_preliminaries_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      supabase.from("tender_price_list").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      supabase.from("tender_risk_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      supabase.from("tender_bid_summaries").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      supabase.from("wbs_tasks").select("id", { count: "exact", head: true }).eq("project_id", project.id),
+    ]).then(([boq, pre, pl, risk, bs, tasks]) => {
+      if (cancelled) return;
+      setCounts({
+        boqItems: boq.count ?? 0,
+        prelims: pre.count ?? 0,
+        priceList: pl.count ?? 0,
+        risks: risk.count ?? 0,
+        bidSummaries: bs.count ?? 0,
+        tasks: tasks.count ?? 0,
       });
-
+    });
     return () => { cancelled = true; };
-  }, [project.id, supabase]);
+  }, [project.id, tenderId, supabase]);
+
+  const add = (msg: string) => setLog((prev) => [...prev, msg]);
+
+  async function createHeadContract() {
+    const [{ data: client }, { data: terms }] = await Promise.all([
+      project.client_id
+        ? supabase.from("stakeholders").select("organization_name").eq("id", project.client_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from("tender_commercial_items").select("topic, client_requirement, assessment, qualification").eq("tender_id", tenderId).order("sort_order"),
+    ]);
+    const label = (t: string) => COMMERCIAL_TOPICS.find((c) => c.topic === t)?.label ?? t;
+    const rows = (terms ?? []) as { topic: string; client_requirement: string | null; assessment: string; qualification: string | null }[];
+    const payment = rows.find((r) => r.topic === "payment_terms")?.client_requirement ?? null;
+    const notes = rows
+      .filter((r) => r.client_requirement || r.qualification)
+      .map((r) => `${label(r.topic)}: ${r.client_requirement ?? "—"}${r.qualification ? ` (qualified: ${r.qualification})` : ""}`)
+      .join("\n");
+    const { error } = await supabase.from("contract_register").insert({
+      project_id: project.id,
+      contract_no: contractNo.trim(),
+      contract_type: "head_contract",
+      title: project.project_name,
+      party_name: (client as { organization_name: string } | null)?.organization_name ?? "Client",
+      contract_value: bidPrice ?? 0,
+      currency: project.currency ?? "USD",
+      start_date: project.start_date,
+      end_date: project.end_date,
+      status: "draft",
+      payment_terms: payment,
+      notes: notes ? `Commercial terms from the tender review:\n${notes}` : null,
+    });
+    if (error) throw new Error(error.message);
+  }
 
   async function handleConvert() {
-    if (!newProjectCode.trim()) {
-      toast.error("Enter a project code for the post-contract project");
-      return;
-    }
-    if (!tenderRegister?.id) {
-      toast.error("No tender register linked to this project");
+    if (!contractNo.trim() && createContract) {
+      toast.error("Enter the head contract number");
       return;
     }
     setConverting(true);
-    setConversionLog([]);
+    setLog([]);
+    const c = counts!;
+    const carried = { boqItemCount: 0, priceListCount: 0, prelimsCount: 0, riskCount: 0 };
 
-    // 1. Create a brand-new post-contract project row, linked back to the tender.
-    const {
-      id: _oldId, project_code: _oldCode, project_type: _oldType, project_status: _oldStatus,
-      created_at: _createdAt, updated_at: _updatedAt, source_tender_project_id: _oldLink,
-      ...copyable
-    } = project;
-
-    const { data: created, error: insertErr } = await supabase
-      .from("projects")
-      .insert({
-        ...copyable,
-        project_code: newProjectCode.trim(),
-        project_type: "awarded",
-        project_status: "draft",
-        source_tender_project_id: project.id,
-      })
-      .select()
-      .single();
-
-    if (insertErr) {
-      toast.error(insertErr.message);
+    // 1. Record the award. The stage move is conditional on the tender still being submitted /
+    //    awaiting its result, so nothing else runs if someone already recorded the outcome.
+    const staged = await setTenderStage(project.id, stage, "awarded", { award_date: awardDate });
+    if (staged.error) {
+      toast.error(staged.error);
       setConverting(false);
       return;
     }
-    setConversionLog((prev) => [...prev, `Created post-contract project ${created.project_code}`]);
+    add(`Tender recorded as awarded on ${new Date(awardDate).toLocaleDateString()}`);
 
-    // 2. Record the award outcome on the tender's own precontract details.
-    await supabase
-      .from("project_precontract_details")
-      .update({ award_status: "awarded", award_date: new Date().toISOString().slice(0, 10) })
-      .eq("project_id", project.id);
-
-    // 3. Carry over data based on user selections
-    const counts = { boqItemCount: 0, priceListCount: 0, prelimsCount: 0, riskCount: 0 };
-
-    if (copyWbs && (tenderWbsCount ?? 0) > 0) {
-      const { error: cloneErr } = await supabase.rpc("clone_wbs_nodes_between_projects", {
-        p_source_project_id: project.id,
-        p_target_project_id: created.id,
-      });
-      if (cloneErr) {
-        toast.error(`WBS copy failed: ${cloneErr.message}`);
-      } else {
-        setConversionLog((prev) => [...prev, `Copied ${tenderWbsCount} WBS nodes`]);
-      }
+    // 2. The same project becomes post-contract.
+    const { data: updated, error: projErr } = await supabase
+      .from("projects")
+      .update({ project_type: "awarded", contract_value: bidPrice, updated_at: new Date().toISOString() })
+      .eq("id", project.id)
+      .select()
+      .single();
+    if (projErr) {
+      toast.error(`Award recorded, but the project type could not be changed: ${projErr.message}`);
+      setConverting(false);
+      return;
     }
+    add("Project converted to post-contract (same project, same code)");
 
-    if (copyBoq && (tenderData?.boqItems ?? 0) > 0) {
+    // 3. Carry priced tender data into the post-contract QS baseline.
+    const steps: [boolean, string, () => Promise<void>][] = [
+      [copyBoq && c.boqItems > 0, "BOQ", async () => {
+        const r = await carryOverBoq(project.id, tenderId);
+        carried.boqItemCount = r.itemCount;
+        add(`Carried ${r.itemCount} BOQ items into a locked baseline`);
+      }],
+      [copyPrelims && c.prelims > 0, "Preliminaries", async () => {
+        const r = await carryOverPreliminaries(project.id, tenderId);
+        carried.prelimsCount = r.itemCount;
+        add(`Carried ${r.itemCount} preliminaries items into a locked baseline`);
+      }],
+      [copyPriceList && c.priceList > 0, "Price list", async () => {
+        carried.priceListCount = await carryOverPriceList(project.id, tenderId);
+        add(`Carried ${carried.priceListCount} price list rates`);
+      }],
+      [copyRisks && c.risks > 0, "Risks", async () => {
+        carried.riskCount = await carryOverRisks(project.id, tenderId);
+        add(`Carried ${carried.riskCount} risks into the post-contract risk register`);
+      }],
+      [c.bidSummaries > 0, "Contract snapshot", async () => {
+        await createContractSnapshot(project.id, tenderId, project.id, carried);
+        add("Recorded the tender price snapshot");
+      }],
+      [createContract, "Head contract", async () => {
+        await createHeadContract();
+        add(`Created head contract ${contractNo.trim()} (draft) with the commercial terms`);
+      }],
+      [baselineProgramme && c.tasks > 0, "Programme baseline", async () => {
+        const existing = await listBaselines(project.id);
+        const n = existing.length ? Math.max(...existing.map((b) => b.baseline_number)) + 1 : 0;
+        if (n > 10) throw new Error("No free baseline slot (0–10)");
+        await setBaseline(project.id, n, null, { name: "Tender Programme", type: "contract", reason: "Tender programme at award" });
+        await activateBaseline(project.id, n);
+        add(`Tender programme saved as contract baseline ${n}`);
+      }],
+    ];
+    const failed: string[] = [];
+    for (const [run, name, fn] of steps) {
+      if (!run) continue;
       try {
-        const result = await carryOverBoq(created.id, tenderRegister.id);
-        counts.boqItemCount = result.itemCount;
-        setConversionLog((prev) => [...prev, `Carried over ${result.itemCount} BOQ items (locked baseline)`]);
+        await fn();
       } catch (e) {
-        toast.error(`BOQ carry-over failed: ${(e as Error).message}`);
+        failed.push(`${name}: ${(e as Error).message}`);
       }
     }
 
-    if (copyPrelims && (tenderData?.prelims ?? 0) > 0) {
-      try {
-        const result = await carryOverPreliminaries(created.id, tenderRegister.id);
-        counts.prelimsCount = result.itemCount;
-        setConversionLog((prev) => [...prev, `Carried over ${result.itemCount} preliminaries items (locked baseline)`]);
-      } catch (e) {
-        toast.error(`Preliminaries carry-over failed: ${(e as Error).message}`);
-      }
-    }
-
-    if (copyPriceList && (tenderData?.priceList ?? 0) > 0) {
-      try {
-        counts.priceListCount = await carryOverPriceList(created.id, tenderRegister.id);
-        setConversionLog((prev) => [...prev, `Carried over ${counts.priceListCount} price list items`]);
-      } catch (e) {
-        toast.error(`Price list carry-over failed: ${(e as Error).message}`);
-      }
-    }
-
-    if (copyRisks && (tenderData?.risks ?? 0) > 0) {
-      try {
-        counts.riskCount = await carryOverRisks(created.id, tenderRegister.id);
-        setConversionLog((prev) => [...prev, `Carried over ${counts.riskCount} risk items`]);
-      } catch (e) {
-        toast.error(`Risks carry-over failed: ${(e as Error).message}`);
-      }
-    }
-
-    // 4. Create contract snapshot
-    if ((tenderData?.bidSummaries ?? 0) > 0) {
-      try {
-        await createContractSnapshot(created.id, tenderRegister.id, project.id, counts);
-        setConversionLog((prev) => [...prev, "Created bid summary snapshot"]);
-      } catch (e) {
-        toast.error(`Snapshot creation failed: ${(e as Error).message}`);
-      }
-    }
-
-    // 5. Auto-create contract register
-    if (autoContract && (tenderData?.awardRecords ?? 0) > 0) {
-      try {
-        await autoCreateContractRegister(
-          created.id,
-          project.project_name,
-          tenderRegister.id,
-          project.contract_value ?? 0,
-          project.currency ?? "USD",
-          project.start_date,
-          project.end_date,
-        );
-        setConversionLog((prev) => [...prev, "Auto-created head contract register entry"]);
-      } catch (e) {
-        toast.error(`Contract register creation failed: ${(e as Error).message}`);
-      }
-    }
-
-    setConvertedProject(created as Project);
-    toast.success(`Post-contract project ${created.project_code} created with tender data carry-over.`);
-    setStep("wizard");
+    setConverted(updated as Project);
+    setFailures(failed);
     setConverting(false);
+    if (failed.length) {
+      // Stay on the dialog so the gaps are seen before moving on to post-contract setup.
+      toast.error(`${project.project_code} is post-contract, but ${failed.length} carry-over step(s) failed.`);
+    } else {
+      toast.success(`${project.project_code} is now a post-contract project.`);
+      setShowSetup(true);
+    }
   }
 
-  if (step === "wizard" && convertedProject) {
+  if (converted && showSetup) {
     return (
       <ProjectSetupWizard
-        project={convertedProject}
-        onClose={onClose}
+        project={converted}
+        onClose={() => onConvert(converted)}
         onSave={(p) => {
           toast.success("Post-contract project setup completed");
           onConvert(p);
@@ -242,230 +220,108 @@ export function AwardConversionDialog({ project, onClose, onConvert }: AwardConv
     );
   }
 
+  const option = (checked: boolean, set: (v: boolean) => void, icon: React.ReactNode, title: string, detail: string) => (
+    <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => set(e.target.checked)} className="mt-0.5 h-3.5 w-3.5" />
+      <span className="flex items-start gap-2">
+        {icon}
+        <span>{title}<span className="block text-xs text-muted-foreground">{detail}</span></span>
+      </span>
+    </label>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4 sticky top-0 bg-background z-10">
           <div>
-            <h2 className="text-lg font-semibold">Convert to Post-Contract</h2>
-            <p className="text-sm text-muted-foreground">
-              Create a new execution project with tender data carry-over.
-            </p>
+            <h2 className="text-lg font-semibold">Tender Awarded</h2>
+            <p className="text-sm text-muted-foreground">Convert {project.project_code} to post-contract, in place.</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+          <button type="button" onClick={() => (converted ? onConvert(converted) : onClose())} disabled={converting}
+            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {checkingGuards ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : alreadyLinked ? (
-          <div className="px-6 py-5 space-y-4">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm text-emerald-800">
-                This tender has already been assigned to post-contract project{" "}
-                <strong>{alreadyLinked.project_code} — {alreadyLinked.project_name}</strong>.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>Close</Button>
-              <Button onClick={() => onConvert(alreadyLinked)}>
-                <ArrowRight className="h-4 w-4 mr-1.5" /> Back to Project List
-              </Button>
-            </div>
-          </div>
+        {!counts ? (
+          <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
-            {/* Content */}
             <div className="px-6 py-5 space-y-4">
-              {/* Flow diagram */}
-              <div className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                    <span className="text-xs font-bold">T</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Pre-Contract Project</p>
-                    <p className="text-xs text-muted-foreground">{project.project_code} — {project.project_name}</p>
-                  </div>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground mx-auto" />
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Post-Contract Project</p>
-                    <p className="text-xs text-muted-foreground">New linked project with tender data carried over as locked baseline</p>
-                  </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-muted-foreground">Award date
+                  <input type="date" value={awardDate} onChange={(e) => setAwardDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                </label>
+                <div className="text-xs text-muted-foreground">Contract value (approved bid)
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {bidPrice != null ? `${project.currency ?? "USD"} ${Number(bidPrice).toLocaleString()}` : "—"}
+                  </p>
                 </div>
               </div>
 
-              {/* Project code */}
-              <div className="space-y-1.5">
-                <Label htmlFor="new_code">Project Code for Post-Contract Project</Label>
-                <input
-                  id="new_code" value={newProjectCode} onChange={(e) => setNewProjectCode(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-hidden focus:border-primary"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Must be different from the tender&apos;s code ({project.project_code}) — project codes are unique.
-                </p>
-              </div>
-
-              {/* Data carry-over options */}
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Data Carry-Over</p>
-
-                {(tenderWbsCount ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={copyWbs} onChange={(e) => setCopyWbs(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <ClipboardList className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
-                      <span>
-                        Copy WBS structure
-                        <span className="block text-xs text-muted-foreground">
-                          {tenderWbsCount} node{tenderWbsCount !== 1 ? "s" : ""} — structure only, no progress/budget
-                        </span>
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {(tenderData?.boqItems ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={copyBoq} onChange={(e) => setCopyBoq(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <Package className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600" />
-                      <span>
-                        Carry over BOQ items (locked baseline)
-                        <span className="block text-xs text-muted-foreground">
-                          {tenderData?.boqItems} item{tenderData?.boqItems !== 1 ? "s" : ""} — read-only baseline for progress claims
-                        </span>
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {(tenderData?.prelims ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={copyPrelims} onChange={(e) => setCopyPrelims(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <FileText className="h-4 w-4 mt-0.5 shrink-0 text-cyan-600" />
-                      <span>
-                        Carry over preliminaries (locked baseline)
-                        <span className="block text-xs text-muted-foreground">
-                          {tenderData?.prelims} item{tenderData?.prelims !== 1 ? "s" : ""} — locked baseline
-                        </span>
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {(tenderData?.priceList ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={copyPriceList} onChange={(e) => setCopyPriceList(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <Package className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
-                      <span>
-                        Carry over price list
-                        <span className="block text-xs text-muted-foreground">
-                          {tenderData?.priceList} rate{tenderData?.priceList !== 1 ? "s" : ""} — locked rates for BOQ pricing
-                        </span>
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {(tenderData?.risks ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={copyRisks} onChange={(e) => setCopyRisks(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />
-                      <span>
-                        Carry over risk register
-                        <span className="block text-xs text-muted-foreground">
-                          {tenderData?.risks} risk{tenderData?.risks !== 1 ? "s" : ""} — carry to post-contract risk management
-                        </span>
-                      </span>
-                    </span>
-                  </label>
-                )}
-
-                {(tenderData?.awardRecords ?? 0) > 0 && (
-                  <label className="flex items-start gap-2 text-sm rounded-lg border border-border p-3 cursor-pointer">
-                    <input type="checkbox" checked={autoContract} onChange={(e) => setAutoContract(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-foreground" />
-                    <span className="flex items-start gap-2">
-                      <FileText className="h-4 w-4 mt-0.5 shrink-0 text-purple-600" />
-                      <span>
-                        Auto-create contract register entry
-                        <span className="block text-xs text-muted-foreground">
-                          Head contract from award record — {project.contract_value ? `${project.currency} ${project.contract_value.toLocaleString()}` : "value from award"}
-                        </span>
-                      </span>
-                    </span>
-                  </label>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Carry forward</p>
+                {counts.boqItems > 0 && option(copyBoq, setCopyBoq, <Package className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600" />,
+                  "Tender BOQ → locked BOQ baseline", `${counts.boqItems} items, read-only baseline for progress claims`)}
+                {counts.prelims > 0 && option(copyPrelims, setCopyPrelims, <FileText className="h-4 w-4 mt-0.5 shrink-0 text-cyan-600" />,
+                  "Preliminaries → locked baseline", `${counts.prelims} items`)}
+                {counts.priceList > 0 && option(copyPriceList, setCopyPriceList, <Package className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />,
+                  "Price list", `${counts.priceList} rates`)}
+                {counts.risks > 0 && option(copyRisks, setCopyRisks, <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />,
+                  "Risk register", `${counts.risks} risks & opportunities`)}
+                {counts.tasks > 0 && option(baselineProgramme, setBaselineProgramme, <GanttChartSquare className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />,
+                  "Tender programme → contract baseline", `${counts.tasks} activities`)}
+                {option(createContract, setCreateContract, <FileSignature className="h-4 w-4 mt-0.5 shrink-0 text-purple-600" />,
+                  "Head contract in the contract register", "Draft, with the commercial review terms")}
+                {createContract && (
+                  <input value={contractNo} onChange={(e) => setContractNo(e.target.value)} placeholder="Head contract no."
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono" />
                 )}
               </div>
 
-              {/* Warning */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm text-amber-800">
-                  This will create a brand-new post-contract project linked to this awarded tender. The tender project itself
-                  will not be changed, and stays available as a historical record.
-                </p>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                The project keeps its code and id. Tender documents, clarifications, addenda, technical and commercial
+                reviews and quotations stay attached as the tender record. The post-contract setup wizard opens next.
               </div>
 
-              {/* Conversion log (shown during/after conversion) */}
-              {conversionLog.length > 0 && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-1">
-                  <p className="text-xs font-medium text-emerald-800 mb-2">Conversion Progress:</p>
-                  {conversionLog.map((msg, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs text-emerald-700">
-                      <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" />
-                      {msg}
+              {failures.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-1 dark:border-red-900 dark:bg-red-950/40">
+                  <p className="text-xs font-medium text-red-800 dark:text-red-300">Not carried forward — redo these by hand or ask an administrator:</p>
+                  {failures.map((msg) => (
+                    <div key={msg} className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" /> {msg}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* What happens next */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">What happens next:</p>
-                <ul className="space-y-1.5">
-                  {[
-                    "A new post-contract project is created with its own project code",
-                    "The tender project is preserved unchanged as a historical record",
-                    ...(copyWbs && (tenderWbsCount ?? 0) > 0 ? ["Preliminary WBS structure is copied into the new project"] : []),
-                    ...(copyBoq && (tenderData?.boqItems ?? 0) > 0 ? ["BOQ items carried over as locked baseline (read-only)"] : []),
-                    ...(copyPrelims && (tenderData?.prelims ?? 0) > 0 ? ["Preliminaries carried over as locked baseline"] : []),
-                    ...(copyPriceList && (tenderData?.priceList ?? 0) > 0 ? ["Price list rates carried over"] : []),
-                    ...(copyRisks && (tenderData?.risks ?? 0) > 0 ? ["Risk register carried over"] : []),
-                    ...(autoContract && (tenderData?.awardRecords ?? 0) > 0 ? ["Head contract auto-created in contract register"] : []),
-                    "Post-contract setup wizard opens for the new project",
-                    "Configure WBS, calendar, document numbering",
-                    "Set up approval flows and budget",
-                    "Activate for execution",
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0 text-emerald-600" />
-                      {item}
-                    </li>
+              {log.length > 0 && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-1 dark:border-emerald-900 dark:bg-emerald-950/40">
+                  {log.map((msg, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" /> {msg}
+                    </div>
                   ))}
-                </ul>
-              </div>
+                </div>
+              )}
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-end gap-2 border-t px-6 py-4 sticky bottom-0 bg-background">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button onClick={handleConvert} disabled={converting}>
-                {converting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-1.5" />}
-                Create & Assign
-              </Button>
+              {converted ? (
+                <Button onClick={() => setShowSetup(true)}>
+                  <ArrowRight className="h-4 w-4 mr-1.5" /> Continue to Post-Contract Setup
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={onClose} disabled={converting}>Cancel</Button>
+                  <Button onClick={handleConvert} disabled={converting}>
+                    {converting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-1.5" />}
+                    Award & Convert
+                  </Button>
+                </>
+              )}
             </div>
           </>
         )}

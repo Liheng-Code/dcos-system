@@ -76,10 +76,6 @@ export async function toggleNavItem(
   return { success: true };
 }
 
-export function isNavItemActive(settings: NavItemSetting[], navKey: string): boolean {
-  return settings.find((s) => s.nav_key === navKey)?.is_active ?? true;
-}
-
-// NOTE: unlike module_settings' isRouteBlocked, this pass is sidebar-display-only.
-// A future extension could mirror isRouteBlocked here to also block direct URL
-// access to a hidden nav item's route, but that is out of scope for now.
+// Whether a nav item is on is resolved by isFeatureActive in lib/modules/features.ts
+// (a row here wins; with no row the feature's release status decides). The same
+// resolution blocks direct URL access to a switched-off item (isRouteBlocked).

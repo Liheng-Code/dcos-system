@@ -12,7 +12,7 @@ import {
   getInspectionRequests,
   createInspectionRequest,
   generateIrNumber,
-} from "@/lib/qaqc-service";
+} from "@/lib/construction/qaqc-service";
 import { InspectionResultSheet } from "@/components/qaqc/inspection-result-sheet";
 
 const STATUS_COLORS: Record<InspectionRequest["status"], string> = {

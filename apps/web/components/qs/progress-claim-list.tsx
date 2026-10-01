@@ -23,7 +23,7 @@ import {
   submitClaimApprovalDecision,
   updateClaimItem,
   updateClaimStatus,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { printIpcCertificate, printIpcSubmissionPackage } from "@/lib/print-service";

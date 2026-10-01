@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   getPreliminariesItems, createPreliminariesItem, deletePreliminariesItem, getBudgetCodes,
   type TenderPreliminariesItem, type BudgetCode,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import LoadLibraryDialog from "@/components/tenders/cost-estimation/load-library-dialog";
 
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";

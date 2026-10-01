@@ -7,9 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import {
   listCases,
   getCalculatedItemsForCase,
-} from "@/lib/prelim-library-service";
+} from "@/lib/qs/prelim-library-service";
 import { toast } from "sonner";
-import type { PrelimCaseSummary, CalculatedPrelimItem, CalculatedPrelimTree } from "@/lib/prelim-library-service";
+import type { PrelimCaseSummary, CalculatedPrelimItem, CalculatedPrelimTree } from "@/lib/qs/prelim-library-service";
 
 interface LoadLibraryDialogProps {
   tenderId: string;

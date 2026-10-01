@@ -5,7 +5,7 @@ import { AlertTriangle, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { type Ncr, getNcrs } from "@/lib/qaqc-service";
+import { type Ncr, getNcrs } from "@/lib/construction/qaqc-service";
 import { NcrCreateSheet } from "@/components/qaqc/ncr-detail-sheet";
 
 const SEVERITY_COLORS: Record<Ncr["severity"], string> = {

@@ -8,7 +8,7 @@ import { checkHrPermissions, type HrPermissions } from "@/lib/hr/permissions";
 import { cn } from "@/lib/utils";
 import { ModulePageLayout } from "@/components/dashboard/module-page-layout";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
-import { getActiveHrGroup } from "@/lib/hr-nav";
+import { getActiveHrGroup } from "@/lib/hr/hr-nav";
 import {
   LogOut,
   CheckSquare,

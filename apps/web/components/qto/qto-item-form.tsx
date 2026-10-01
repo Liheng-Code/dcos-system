@@ -19,7 +19,7 @@ import {
   type QtoConfidence,
   type QtoItem,
   type QtoSourceType,
-} from "@/lib/qto-service";
+} from "@/lib/qs/qto-service";
 
 export const QTO_BUILDINGS = ["BA", "BB", "BX", "GENERAL"] as const;
 export const QTO_DISCIPLINES = ["STR", "ARC", "CIV", "MEP", "ELE", "OTH"] as const;

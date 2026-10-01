@@ -1,138 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  HardHat,
-  Cog,
-  Users,
-  FolderTree,
-  FileText,
-  FileSearch,
-  Send,
-  ListChecks,
-  ChevronDown,
-  Building2,
-  Clock,
-  TrendingUp,
-  BarChart2,
-  History,
-  PenTool,
-  Wind,
-  GanttChartSquare,
-  ShieldCheck,
-  ShieldAlert,
-  FileClock,
-  Handshake,
-  FileSignature,
-  Layers,
-  Truck,
-  Ruler,
-  UserCheck,
-  Network,
-  Boxes,
-  BookTemplate,
-  Gauge,
-  type LucideIcon,
-} from "lucide-react";
+import { HardHat, ChevronDown, type LucideIcon } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import { useProject } from "@/components/dashboard/project-context";
 import { useModuleSettings } from "@/contexts/module-settings-context";
-import { PROCUREMENT_GROUPS, getActiveProcurementGroup } from "@/lib/procurement-nav";
-import { INVENTORY_GROUPS, getActiveInventoryGroup } from "@/lib/inventory-nav";
-import { QS_GROUPS, getActiveQsGroup } from "@/lib/qs-nav";
-import { DESIGN_GROUPS, getActiveDesignGroup } from "@/lib/design-nav";
-import { ACCOUNT_GROUPS, getActiveAccountGroup } from "@/lib/account-nav";
-import { REPORTING_GROUPS, getActiveReportingGroup } from "@/lib/reporting-nav";
-import { PLANNING_GROUPS, getActivePlanningGroup } from "@/lib/planning-nav";
-import { CONSTRUCTION_GROUPS, getActiveConstructionGroup } from "@/lib/construction-nav";
-import { DOCUMENT_CONTROL_GROUPS, getActiveDocumentControlGroup } from "@/lib/document-control-nav";
-import { HR_GROUPS, getActiveHrGroup } from "@/lib/hr-nav";
-
-
-
-const PROJECT_ITEMS = [
-  { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
-  { href: "/dashboard/wbs",                      label: "WBS",          icon: FolderTree },
-  { href: "/dashboard/my-tasks",                 label: "My Tasks",     icon: UserCheck },
-  { href: "/dashboard/tasks",                    label: "Tasks",        icon: ListChecks },
-  { href: "/dashboard/department",               label: "Department",   icon: Network },
-  { href: "/dashboard/stakeholders",             label: "Stakeholders", icon: Users },
-
-] as const;
-
-const PRECONTRACT_ITEMS = [
-  { href: "/dashboard",                          label: "Dashboard",    icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/projects",                 label: "Projects",     icon: HardHat },
-  { href: "/dashboard/wbs",                      label: "WBS (Preliminary)", icon: FolderTree },
-  { href: "/dashboard/stakeholders",             label: "Stakeholders", icon: Users },
-
-] as const;
-
-const PROCUREMENT_GROUP_ICONS: Record<string, LucideIcon> = {
-  overview: LayoutDashboard,
-  suppliers: Building2,
-  sourcing_receiving: FileText,
-};
-
-const INVENTORY_GROUP_ICONS: Record<string, LucideIcon> = {
-  overview: LayoutDashboard,
-  stock_operations: Truck,
-};
-
-const QS_GROUP_ICONS: Record<string, LucideIcon> = {
-  tendering: FileSearch,
-  cost_rate_library: Boxes,
-  libraries: Layers,
-  cost_control: BarChart2,
-  subcontractor: Handshake,
-  contract_admin: FileSignature,
-  qto: Ruler,
-};
-
-const DESIGN_GROUP_ICONS: Record<string, LucideIcon> = {
-  correspondence: Send,
-  architecture: Building2,
-  structure: PenTool,
-  mep: Wind,
-};
-
-const ACCOUNT_GROUP_ICONS: Record<string, LucideIcon> = {
-  overview: LayoutDashboard,
-  reports: BarChart2,
-};
-
-const REPORTING_GROUP_ICONS: Record<string, LucideIcon> = {
-  reports: BarChart2,
-  insights_automation: TrendingUp,
-};
-
-const PLANNING_GROUP_ICONS: Record<string, LucideIcon> = {
-  schedule: GanttChartSquare,
-  resources_reports: Users,
-  productivity: Gauge,
-};
-
-const CONSTRUCTION_GROUP_ICONS: Record<string, LucideIcon> = {
-  site_quality: HardHat,
-  hse: ShieldCheck,
-};
-
-const DOCUMENT_CONTROL_GROUP_ICONS: Record<string, LucideIcon> = {
-  documents: FileText,
-  controller: History,
-};
-
-const HR_GROUP_ICONS: Record<string, LucideIcon> = {
-  workforce: Users,
-  time_payroll: Clock,
-};
+import { getActiveModuleGroup } from "@/lib/module-nav";
+import { MODULE_REGISTRY } from "@/lib/modules/registry";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -148,20 +27,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const { isModuleActive, isModulePermitted, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isHr, setIsHr] = useState(false);
-  const [projectOpen, setProjectOpen] = useState(false);
-  const [reportingOpen, setReportingOpen] = useState(false);
-  const [docOpen, setDocOpen] = useState(false);
-  const [designOpen, setDesignOpen] = useState(false);
-  const [planningOpen, setPlanningOpen] = useState(false);
-  const [procurementOpen, setProcurementOpen] = useState(false);
-
-  // Inventory (top-level module)
-  const [invModuleOpen, setInvModuleOpen] = useState(false);
-  const [hrOpen, setHrOpen] = useState(false);
-  const [qsGroupOpen, setQsGroupOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [siteOpen, setSiteOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
+  // Open/closed state of each module's sidebar section, keyed by module key.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const { unreadCount } = useTaskAlerts();
   const [approvalCount, setApprovalCount] = useState(0);
   const [myPendingCount, setMyPendingCount] = useState(0);
@@ -251,16 +118,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
-  const activeProcurementKey = getActiveProcurementGroup(pathname)?.key;
-  const activeInventoryKey = getActiveInventoryGroup(pathname)?.key;
-  const activeQsKey = getActiveQsGroup(pathname, isPrecontract)?.key;
-  const activeDesignKey = getActiveDesignGroup(pathname)?.key;
-  const activeAccountKey = getActiveAccountGroup(pathname)?.key;
-  const activeReportingKey = getActiveReportingGroup(pathname)?.key;
-  const activePlanningKey = getActivePlanningGroup(pathname)?.key;
-  const activeConstructionKey = getActiveConstructionGroup(pathname)?.key;
-  const activeDocumentControlKey = getActiveDocumentControlGroup(pathname)?.key;
-  const activeHrKey = getActiveHrGroup(pathname)?.key;
+  // Badge counts keyed by nav item href or nav group navKey.
+  const badges: Record<string, number> = {
+    "/dashboard/department": crossRequestCount,
+    "group:hr:time_payroll": otApprovalCount + otNotifCount,
+  };
 
   type Icon = LucideIcon;
 
@@ -450,294 +312,94 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex flex-col gap-1 overflow-y-auto p-3 flex-1">
 
-        {/* ── PROJECT ── */}
-        {isModulePermitted("project") && (
-        <>
-        <FolderHeader label="Project" open={projectOpen} onToggle={() => setProjectOpen(!projectOpen)} level={1} />
-        {(collapsed || projectOpen) && (isPrecontract ? PRECONTRACT_ITEMS : PROJECT_ITEMS).map((item) => (
-          <NavItem
-            key={item.href}
-            {...item}
-            badge={item.href === "/dashboard/department" ? crossRequestCount : undefined}
-          />
-        ))}
-        </>
-        )}
+        {MODULE_REGISTRY.map((manifest, moduleIndex) => {
+          const allowed = manifest.sidebarGate === "admin_or_hr"
+            ? (isAdmin || isHr) && isModuleActive(manifest.key)
+            : isModulePermitted(manifest.key);
+          if (!allowed) return null;
+          if (manifest.visible && !manifest.visible({ isPrecontract, isDesignTender })) return null;
 
-        {/* ── REPORTING ── */}
-        {isModulePermitted("reporting") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Reporting" open={reportingOpen} onToggle={() => setReportingOpen(!reportingOpen)} level={1} />
-          {(collapsed || reportingOpen) && (
+          const open = !!openSections[manifest.key];
+          const activeGroupKey = manifest.navGroups
+            ? getActiveModuleGroup(manifest.navGroups, pathname, { isPrecontract })?.key
+            : undefined;
+
+          const section = (
             <>
-              {REPORTING_GROUPS.map(group => {
-                const Icon = REPORTING_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeReportingKey === group.key}
-                  />
-                );
-              })}
+              <FolderHeader
+                label={manifest.name}
+                open={open}
+                onToggle={() => setOpenSections((prev) => ({ ...prev, [manifest.key]: !prev[manifest.key] }))}
+                level={1}
+              />
+              {(collapsed || open) && (
+                <>
+                  {manifest.navItems?.map((item) => {
+                    if (isPrecontract && item.executionOnly) return null;
+                    return (
+                      <NavItem
+                        key={item.href}
+                        href={item.href}
+                        label={isPrecontract && item.precontractLabel ? item.precontractLabel : item.label}
+                        icon={item.icon}
+                        exact={item.exact}
+                        badge={badges[item.href]}
+                      />
+                    );
+                  })}
+                  {manifest.navGroups?.map((group, index) => {
+                    const Icon = manifest.groupIcons?.[group.key];
+                    if (!Icon) return null;
+                    if (group.visible && !group.visible({ isPrecontract })) return null;
+                    // A switched-off page is route-blocked, so when the group's own entry page
+                    // is off, open its first enabled page; hide the group if it has none.
+                    const groupHref = isNavItemActive(group.href)
+                      ? group.href
+                      : group.items.find((item) =>
+                          !item.hidden &&
+                          (!item.visible || item.visible({ isPrecontract })) &&
+                          isNavItemActive(item.href),
+                        )?.href;
+                    if (!groupHref) return null;
+                    if (manifest.groupStyle === "animated") {
+                      return (
+                        <QsGroupNavItem
+                          key={group.key}
+                          href={groupHref}
+                          navKey={group.navKey}
+                          label={group.label}
+                          icon={Icon}
+                          active={activeGroupKey === group.key}
+                          tabCount={group.items.filter((item) => !item.hidden).length}
+                          index={index}
+                        />
+                      );
+                    }
+                    return (
+                      <NavItem
+                        key={group.key}
+                        href={groupHref}
+                        label={group.label}
+                        icon={Icon}
+                        navKey={group.navKey}
+                        customActive={activeGroupKey === group.key}
+                        badge={badges[group.navKey]}
+                      />
+                    );
+                  })}
+                </>
+              )}
             </>
-          )}
-        </div>
-        )}
+          );
 
-        {/* ── DOCUMENT CONTROL ── */}
-        {isModulePermitted("document_control") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Document Control" open={docOpen} onToggle={() => setDocOpen(!docOpen)} level={1} />
-          {(collapsed || docOpen) && (
-            <>
-              {DOCUMENT_CONTROL_GROUPS.map(group => {
-                const Icon = DOCUMENT_CONTROL_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeDocumentControlKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── PLANNING ── */}
-        {/* Shown for tender projects too: the tender programme is a bid deliverable; execution-only
-            pages are hidden per item in lib/planning-nav.ts. */}
-        {isModulePermitted("planning") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Planning" open={planningOpen} onToggle={() => setPlanningOpen(!planningOpen)} level={1} />
-          {(collapsed || planningOpen) && (
-            <>
-              {PLANNING_GROUPS.map(group => {
-                const Icon = PLANNING_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activePlanningKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── DESIGN ── */}
-        {isModulePermitted("design") && (!isPrecontract || isDesignTender) && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Design" open={designOpen} onToggle={() => setDesignOpen(!designOpen)} level={1} />
-          {(collapsed || designOpen) && (
-            <>
-              {DESIGN_GROUPS.map(group => {
-                const Icon = DESIGN_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeDesignKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── PROCUREMENT ── */}
-        {isModulePermitted("procurement") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Procurement" open={procurementOpen} onToggle={() => setProcurementOpen(!procurementOpen)} level={1} />
-          {(collapsed || procurementOpen) && (
-            <>
-              {PROCUREMENT_GROUPS.map(group => {
-                const Icon = PROCUREMENT_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeProcurementKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── INVENTORY ── */}
-        {isModulePermitted("inventory") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Inventory" open={invModuleOpen} onToggle={() => setInvModuleOpen(!invModuleOpen)} level={1} />
-          {(collapsed || invModuleOpen) && (
-            <>
-              {INVENTORY_GROUPS.map(group => {
-                const Icon = INVENTORY_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeInventoryKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── QUANTITY SURVEYING ── */}
-        {isModulePermitted("qs") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Quantity Surveying" open={qsGroupOpen} onToggle={() => setQsGroupOpen(!qsGroupOpen)} level={1} />
-          {(collapsed || qsGroupOpen) && (
-            <>
-              {QS_GROUPS.map((group, index) => {
-                const Icon = QS_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                if (group.visible && !group.visible({ isPrecontract })) return null;
-                return (
-                  <QsGroupNavItem
-                    key={group.key}
-                    href={group.href}
-                    navKey={group.navKey}
-                    label={group.label}
-                    icon={Icon}
-                    active={activeQsKey === group.key}
-                    tabCount={group.items.filter((item) => !item.hidden).length}
-                    index={index}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── CONSTRUCTION ── */}
-        {isModulePermitted("construction") && !isPrecontract && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Construction" open={siteOpen} onToggle={() => setSiteOpen(!siteOpen)} level={1} />
-          {(collapsed || siteOpen) && (
-            <>
-              {CONSTRUCTION_GROUPS.map(group => {
-                const Icon = CONSTRUCTION_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeConstructionKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── HR MANAGEMENT ── */}
-        {isModulePermitted("hr") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="HR Management" open={hrOpen} onToggle={() => setHrOpen(!hrOpen)} level={1} />
-          {(collapsed || hrOpen) && (
-            <>
-              {HR_GROUPS.map(group => {
-                const Icon = HR_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeHrKey === group.key}
-                    badge={group.key === "time_payroll" ? otApprovalCount + otNotifCount : undefined}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── ACCOUNT / FINANCE ── */}
-        {isModulePermitted("account") && (
-        <div className={cn(!collapsed && "mt-3")}>
-          <FolderHeader label="Account" open={accountOpen} onToggle={() => setAccountOpen(!accountOpen)} level={1} />
-          {(collapsed || accountOpen) && (
-            <>
-              {ACCOUNT_GROUPS.map(group => {
-                const Icon = ACCOUNT_GROUP_ICONS[group.key];
-                if (!Icon) return null;
-                return (
-                  <NavItem
-                    key={group.key}
-                    href={group.href}
-                    label={group.label}
-                    icon={Icon}
-                    navKey={group.navKey}
-                    customActive={activeAccountKey === group.key}
-                  />
-                );
-              })}
-            </>
-          )}
-        </div>
-        )}
-
-        {/* ── ADMINISTRATION ── */}
-        {(isAdmin || isHr) && isModuleActive("administration") && (
-          <div className={cn(!collapsed && "mt-3")}>
-            <FolderHeader label="Administration" open={adminOpen} onToggle={() => setAdminOpen(!adminOpen)} level={1} />
-            {(collapsed || adminOpen) && (
-              <>
-                <NavItem href="/dashboard/settings"                                  label="Settings"               icon={Cog} />
-                <NavItem href="/dashboard/administration/users"                      label="User Management"        icon={Users} />
-                <NavItem href="/dashboard/administration/roles-permissions"          label="Roles & Permissions"    icon={ShieldCheck} />
-                <NavItem href="/dashboard/administration/departments"                label="Departments"            icon={Building2} />
-                <NavItem href="/dashboard/administration/security"                   label="Security"               icon={ShieldAlert} />
-                <NavItem href="/dashboard/administration/audit-logs"                 label="Audit Logs"             icon={FileClock} />
-                <NavItem href="/dashboard/administration/stakeholder-templates"      label="Stakeholder Templates"   icon={FileText} />
-                <NavItem href="/dashboard/administration/master-libraries"           label="Master Libraries"       icon={BookTemplate} />
-              </>
-            )}
-          </div>
-        )}
+          // The first section's items sit directly in the nav column; later sections are spaced blocks.
+          if (moduleIndex === 0) return <Fragment key={manifest.key}>{section}</Fragment>;
+          return (
+            <div key={manifest.key} className={cn(!collapsed && "mt-3")}>
+              {section}
+            </div>
+          );
+        })}
 
       </nav>
     </aside>

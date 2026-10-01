@@ -17,7 +17,7 @@ import {
   type AiBoqDraftResponse,
   type AiBoqDraftResponseLine,
   type AiBoqLibraryMatch,
-} from "@/lib/ai-boq-draft-schema";
+} from "@/lib/qs/ai-boq-draft-schema";
 
 // AI-assisted BOQ drafting: sends one tender drawing (selected PDF pages, or an
 // uploaded image) to Claude and returns proposed BOQ lines with QS-library

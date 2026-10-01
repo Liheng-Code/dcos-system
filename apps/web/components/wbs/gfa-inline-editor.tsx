@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Loader2, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/qs-service";
+import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/wbs-area-service";
 
 interface GfaInlineEditorProps {
   wbsNodeId: string;

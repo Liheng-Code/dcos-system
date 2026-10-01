@@ -5,7 +5,7 @@ import { Loader2, Printer, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { getTenderCoverSummary, getBidSummaries, getTenderSubmissionData, type TenderCoverSummary, type TenderBidSummary } from "@/lib/tender-cost-service";
+import { getTenderCoverSummary, getBidSummaries, getTenderSubmissionData, type TenderCoverSummary, type TenderBidSummary } from "@/lib/qs/tender-cost-service";
 import { printTenderCoverSummary, printTenderSubmission } from "@/lib/print-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 

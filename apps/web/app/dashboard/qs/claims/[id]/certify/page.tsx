@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { CertificationPage } from "@/components/qs/certification-page";
-import { getProgressClaimById, getClaimItems, type QsProgressClaim, type QsClaimItem } from "@/lib/qs-service";
+import { getProgressClaimById, getClaimItems, type QsProgressClaim, type QsClaimItem } from "@/lib/qs/qs-service";
 import { Loader2 } from "lucide-react";
 
 export default function ClaimCertifyPage() {

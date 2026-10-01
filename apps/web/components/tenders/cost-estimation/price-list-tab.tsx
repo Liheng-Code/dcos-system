@@ -9,7 +9,7 @@ import {
   getPriceList, createPriceListItem, updatePriceListItem, deletePriceListItem, getBudgetCodes, pullFromElementLibrary,
   getTenderMargins, updateTenderMargins,
   type TenderPriceListItem, type BudgetCode, type SelectedElementItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
 import { ElementLibraryPickerDialog } from "./element-library-picker-dialog";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";

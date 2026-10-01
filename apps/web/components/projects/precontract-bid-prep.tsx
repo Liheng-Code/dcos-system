@@ -2,107 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Plus, Trash2, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
+import { WORKSTREAMS, workstreamLabel } from "@/lib/qs/tender-lifecycle";
 
-// Contractor-side bid preparation records shown in the Pre-Contract project view
-// (migration 20260925000005_tender_bid_preparation.sql).
+// Contractor-side bid preparation registers used by the Pre-Contract project view
+// (migrations 20260925000005_tender_bid_preparation.sql, 20260928000002_tender_gates.sql).
 
 const fieldClass =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
-
-// ─── Go/No-Go ────────────────────────────────────────────────────────────────
-
-export interface GoNoGo {
-  go_no_go_decision: "go" | "no_go" | null;
-  go_no_go_date: string | null;
-  go_no_go_rationale: string | null;
-}
-
-export function GoNoGoCard({ projectId, value, onChange }: {
-  projectId: string;
-  value: GoNoGo;
-  onChange: (value: GoNoGo) => void;
-}) {
-  const supabase = createClient();
-  const { can } = useTenderPermissions();
-  const [rationale, setRationale] = useState(value.go_no_go_rationale ?? "");
-  const [saving, setSaving] = useState(false);
-  const canDecide = can("tender_go_no_go", "approve");
-
-  async function decide(decision: "go" | "no_go") {
-    setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const patch = {
-      go_no_go_decision: decision,
-      go_no_go_date: new Date().toISOString().slice(0, 10),
-      go_no_go_by: user?.id ?? null,
-      go_no_go_rationale: rationale.trim() || null,
-    };
-    const { error } = await supabase.from("project_precontract_details").update(patch).eq("project_id", projectId);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    onChange({ go_no_go_decision: decision, go_no_go_date: patch.go_no_go_date, go_no_go_rationale: patch.go_no_go_rationale });
-    toast.success(decision === "go" ? "Decision recorded: bid" : "Decision recorded: do not bid");
-  }
-
-  const decided = value.go_no_go_decision != null;
-  return (
-    <div className={cn(
-      "rounded-xl border p-5",
-      value.go_no_go_decision === "go" ? "border-emerald-200 bg-emerald-50/50" :
-      value.go_no_go_decision === "no_go" ? "border-red-200 bg-red-50/50" :
-      "border-border",
-    )}>
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Go / No-Go Decision</h3>
-        {decided && (
-          <span className={cn(
-            "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-            value.go_no_go_decision === "go" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200",
-          )}>
-            {value.go_no_go_decision === "go" ? "Go — bid" : "No-Go — do not bid"}
-            {value.go_no_go_date && ` · ${new Date(value.go_no_go_date).toLocaleDateString()}`}
-          </span>
-        )}
-      </div>
-      {!decided && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Decide whether to bid before committing estimating effort. Only directors can record the decision.
-        </p>
-      )}
-      {decided && value.go_no_go_rationale && (
-        <p className="mt-2 text-sm text-muted-foreground">{value.go_no_go_rationale}</p>
-      )}
-      {canDecide && (
-        <div className="mt-3 space-y-2">
-          <textarea
-            className={fieldClass}
-            rows={2}
-            placeholder="Rationale (client, margin, capacity, risk, competition)"
-            value={rationale}
-            onChange={(e) => setRationale(e.target.value)}
-          />
-          <div className="flex gap-2">
-            <Button size="sm" disabled={saving} onClick={() => decide("go")}>
-              <ThumbsUp className="h-3.5 w-3.5 mr-1.5" /> {decided ? "Change to Go" : "Go"}
-            </Button>
-            <Button size="sm" variant="outline" disabled={saving} onClick={() => decide("no_go")}>
-              <ThumbsDown className="h-3.5 w-3.5 mr-1.5" /> {decided ? "Change to No-Go" : "No-Go"}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Clarifications register ─────────────────────────────────────────────────
 
@@ -119,7 +31,7 @@ interface Clarification {
 
 const CLARIFICATION_CATEGORIES = ["technical", "commercial", "contractual", "programme", "other"] as const;
 
-export function ClarificationsRegister({ tenderId }: { tenderId: string }) {
+export function ClarificationsRegister({ tenderId, readOnly = false }: { tenderId: string; readOnly?: boolean }) {
   const supabase = createClient();
   const { can } = useTenderPermissions();
   const [rows, setRows] = useState<Clarification[]>([]);
@@ -129,7 +41,6 @@ export function ClarificationsRegister({ tenderId }: { tenderId: string }) {
   const [form, setForm] = useState({ category: "technical", question: "" });
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [response, setResponse] = useState("");
-
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -212,7 +123,7 @@ export function ClarificationsRegister({ tenderId }: { tenderId: string }) {
             {rows.length} {rows.length === 1 ? "query" : "queries"} · {openCount} awaiting response
           </p>
         </div>
-        {can("tender_clarifications", "can_create") && (
+        {!readOnly && can("tender_clarifications", "can_create") && (
           <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Raise Query
           </Button>
@@ -271,7 +182,7 @@ export function ClarificationsRegister({ tenderId }: { tenderId: string }) {
                   )}>
                     {r.status}
                   </span>
-                  {can("tender_clarifications", "delete") && (
+                  {!readOnly && can("tender_clarifications", "delete") && (
                     <button type="button" className="text-muted-foreground hover:text-red-600" onClick={() => handleDelete(r.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -315,7 +226,7 @@ export function ClarificationsRegister({ tenderId }: { tenderId: string }) {
   );
 }
 
-// ─── Returnables checklist ───────────────────────────────────────────────────
+// ─── Returnables checklist (tender compilation) ──────────────────────────────
 
 export interface Returnable {
   id: string;
@@ -325,13 +236,16 @@ export interface Returnable {
   is_ready: boolean;
   notes: string | null;
   sort_order: number;
+  workstream_code: string | null;
+  returned_at: string | null;
 }
 
 const RETURNABLE_CATEGORIES = ["technical", "commercial", "legal", "other"] as const;
 
-export function ReturnablesChecklist({ tenderId, onChange }: {
+export function ReturnablesChecklist({ tenderId, onChange, readOnly = false }: {
   tenderId: string;
   onChange?: (items: Returnable[]) => void;
+  readOnly?: boolean;
 }) {
   const supabase = createClient();
   const { can } = useTenderPermissions();
@@ -339,7 +253,10 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState("");
   const [newCategory, setNewCategory] = useState("technical");
+  const [newWorkstream, setNewWorkstream] = useState("compilation");
   const [newMandatory, setNewMandatory] = useState(true);
+  const [returningId, setReturningId] = useState<string | null>(null);
+  const [returnNote, setReturnNote] = useState("");
 
   const update = useCallback((next: Returnable[]) => {
     setItems(next);
@@ -368,6 +285,7 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
         tender_id: tenderId,
         item: newItem.trim(),
         category: newCategory,
+        workstream_code: newWorkstream,
         is_mandatory: newMandatory,
         sort_order: items.length,
       })
@@ -381,16 +299,26 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
     setNewItem("");
   }
 
-  async function toggleReady(item: Returnable) {
+  async function patch(item: Returnable, fields: Partial<Returnable>) {
     const { error } = await supabase
       .from("tender_returnables")
-      .update({ is_ready: !item.is_ready, updated_at: new Date().toISOString() })
+      .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", item.id);
     if (error) {
       toast.error(error.message);
-      return;
+      return false;
     }
-    update(items.map((i) => (i.id === item.id ? { ...i, is_ready: !i.is_ready } : i)));
+    update(items.map((i) => (i.id === item.id ? { ...i, ...fields } : i)));
+    return true;
+  }
+
+  // Compliance check "NO → return to responsible team": not ready, with the reason on the item.
+  async function returnToTeam(item: Returnable) {
+    if (!returnNote.trim()) return;
+    if (await patch(item, { is_ready: false, returned_at: new Date().toISOString(), notes: returnNote.trim() })) {
+      setReturningId(null);
+      setReturnNote("");
+    }
   }
 
   async function handleDelete(id: string) {
@@ -402,15 +330,15 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
     update(items.filter((i) => i.id !== id));
   }
 
-  const canEdit = can("tender_returnables", "edit");
+  const canEdit = !readOnly && can("tender_returnables", "edit");
   const ready = items.filter((i) => i.is_ready).length;
 
   return (
     <div className="rounded-xl border border-border p-5">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold">Returnables Checklist</h3>
+        <h3 className="text-sm font-semibold">Compliance Checklist</h3>
         <p className="text-xs text-muted-foreground">
-          Documents and schedules the client requires with the bid · {ready}/{items.length} ready
+          Everything the client requires with the bid · {ready}/{items.length} ready
         </p>
       </div>
 
@@ -418,38 +346,55 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
         <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : items.length === 0 ? (
         <p className="text-xs text-muted-foreground mb-3">
-          No returnables listed. Add each document the instructions to tenderers ask for (form of tender, bid bond,
-          method statement, programme, priced BOQ...).
+          No returnables listed. They are created with the Go decision; add any others the instructions to tenderers ask for.
         </p>
       ) : (
         <ul className="mb-3 divide-y divide-border">
           {items.map((i) => (
-            <li key={i.id} className="flex items-center gap-3 py-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-emerald-600"
-                checked={i.is_ready}
-                disabled={!canEdit}
-                onChange={() => toggleReady(i)}
-              />
-              <span className={cn("flex-1 text-sm", i.is_ready && "text-muted-foreground line-through")}>{i.item}</span>
-              <span className="text-[10px] text-muted-foreground capitalize">{i.category}</span>
-              {i.is_mandatory && (
-                <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
-                  mandatory
-                </span>
+            <li key={i.id} className="py-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-emerald-600"
+                  checked={i.is_ready}
+                  disabled={!canEdit}
+                  onChange={() => patch(i, { is_ready: !i.is_ready, returned_at: i.is_ready ? i.returned_at : null })}
+                />
+                <span className={cn("flex-1 min-w-40 text-sm", i.is_ready && "text-muted-foreground line-through")}>{i.item}</span>
+                {i.workstream_code && <span className="text-[10px] text-muted-foreground">{workstreamLabel(i.workstream_code)}</span>}
+                {i.is_mandatory && (
+                  <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                    mandatory
+                  </span>
+                )}
+                {canEdit && i.is_ready && (
+                  <button type="button" title="Return to responsible team" className="text-muted-foreground hover:text-orange-600"
+                    onClick={() => { setReturningId(i.id); setReturnNote(""); }}>
+                    <Undo2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {!readOnly && can("tender_returnables", "delete") && (
+                  <button type="button" className="text-muted-foreground hover:text-red-600" onClick={() => handleDelete(i.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {i.returned_at && !i.is_ready && i.notes && (
+                <p className="ml-7 mt-1 text-xs text-orange-700">Returned {new Date(i.returned_at).toLocaleDateString()}: {i.notes}</p>
               )}
-              {can("tender_returnables", "delete") && (
-                <button type="button" className="text-muted-foreground hover:text-red-600" onClick={() => handleDelete(i.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+              {returningId === i.id && (
+                <div className="ml-7 mt-2 flex gap-2">
+                  <Input className="h-8" placeholder="What must the team fix?" value={returnNote} onChange={(e) => setReturnNote(e.target.value)} />
+                  <Button size="sm" className="h-8" disabled={!returnNote.trim()} onClick={() => returnToTeam(i)}>Return</Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setReturningId(null)}>Cancel</Button>
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
 
-      {can("tender_returnables", "can_create") && (
+      {!readOnly && can("tender_returnables", "can_create") && (
         <div className="flex flex-wrap items-center gap-2">
           <Input
             className="h-8 flex-1 min-w-48"
@@ -464,6 +409,13 @@ export function ReturnablesChecklist({ tenderId, onChange }: {
             onChange={(e) => setNewCategory(e.target.value)}
           >
             {RETURNABLE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            value={newWorkstream}
+            onChange={(e) => setNewWorkstream(e.target.value)}
+          >
+            {WORKSTREAMS.map((w) => <option key={w.code} value={w.code}>{w.label}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input type="checkbox" className="h-3.5 w-3.5" checked={newMandatory} onChange={(e) => setNewMandatory(e.target.checked)} />

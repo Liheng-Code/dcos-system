@@ -5553,6 +5553,13 @@ export type Database = {
             foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -5561,6 +5568,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_crew_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -5650,6 +5664,13 @@ export type Database = {
             foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -5658,6 +5679,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_equipment_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -5797,6 +5825,13 @@ export type Database = {
             foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -5805,6 +5840,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_assembly_layer_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -5972,34 +6014,176 @@ export type Database = {
           },
         ]
       }
-      dwl_labor_rate_attributes: {
+      dwl_equipment_attributes: {
         Row: {
+          capacity_model: string | null
           created_at: string
           created_by: string | null
+          fuel_included: boolean
+          fuel_l_per_day: number | null
+          min_hire_qty: number | null
+          mobilisation_cost: number | null
+          notes: string | null
+          operator_included: boolean
+          ownership: string | null
+          rate_basis: string | null
           resource_id: string
-          skill_level: string | null
-          standard_productivity_note: string | null
           tenant_id: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          capacity_model?: string | null
           created_at?: string
           created_by?: string | null
+          fuel_included?: boolean
+          fuel_l_per_day?: number | null
+          min_hire_qty?: number | null
+          mobilisation_cost?: number | null
+          notes?: string | null
+          operator_included?: boolean
+          ownership?: string | null
+          rate_basis?: string | null
           resource_id: string
-          skill_level?: string | null
-          standard_productivity_note?: string | null
           tenant_id: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          capacity_model?: string | null
           created_at?: string
           created_by?: string | null
+          fuel_included?: boolean
+          fuel_l_per_day?: number | null
+          min_hire_qty?: number | null
+          mobilisation_cost?: number | null
+          notes?: string | null
+          operator_included?: boolean
+          ownership?: string | null
+          rate_basis?: string | null
+          resource_id?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dwl_equipment_attributes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_assembly_material_explosion"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_labor_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_resource_costing_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_subcon_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_equipment_attributes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dwl_labor_rate_attributes: {
+        Row: {
+          accommodation_per_day: number | null
+          all_in_enabled: boolean
+          created_at: string
+          created_by: string | null
+          meal_per_day: number | null
+          nssf_employer_pct: number | null
+          ot_allowance_pct: number | null
+          other_statutory_pct: number | null
+          ppe_tools_per_day: number | null
+          resource_id: string
+          skill_level: string | null
+          standard_productivity_note: string | null
+          tenant_id: string
+          transport_per_day: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          accommodation_per_day?: number | null
+          all_in_enabled?: boolean
+          created_at?: string
+          created_by?: string | null
+          meal_per_day?: number | null
+          nssf_employer_pct?: number | null
+          ot_allowance_pct?: number | null
+          other_statutory_pct?: number | null
+          ppe_tools_per_day?: number | null
+          resource_id: string
+          skill_level?: string | null
+          standard_productivity_note?: string | null
+          tenant_id: string
+          transport_per_day?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          accommodation_per_day?: number | null
+          all_in_enabled?: boolean
+          created_at?: string
+          created_by?: string | null
+          meal_per_day?: number | null
+          nssf_employer_pct?: number | null
+          ot_allowance_pct?: number | null
+          other_statutory_pct?: number | null
+          ppe_tools_per_day?: number | null
           resource_id?: string
           skill_level?: string | null
           standard_productivity_note?: string | null
           tenant_id?: string
+          transport_per_day?: number | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -6029,6 +6213,13 @@ export type Database = {
             foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: true
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -6037,6 +6228,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: true
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_labor_rate_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -6189,6 +6387,13 @@ export type Database = {
             foreignKeyName: "dwl_material_attributes_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: true
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -6197,6 +6402,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: true
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -6317,6 +6529,13 @@ export type Database = {
             foreignKeyName: "dwl_material_photos_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -6325,6 +6544,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_photos_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -6496,6 +6722,13 @@ export type Database = {
             foreignKeyName: "dwl_material_specs_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -6504,6 +6737,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -6794,6 +7034,13 @@ export type Database = {
             foreignKeyName: "dwl_price_submissions_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -6802,6 +7049,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -7084,6 +7338,13 @@ export type Database = {
             foreignKeyName: "dwl_quotation_items_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -7092,6 +7353,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -7347,6 +7615,13 @@ export type Database = {
             foreignKeyName: "dwl_resource_prices_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -7355,6 +7630,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -7505,6 +7787,13 @@ export type Database = {
             foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: true
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -7513,6 +7802,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: true
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_subcon_attributes_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: true
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -7611,6 +7907,13 @@ export type Database = {
             foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -7619,6 +7922,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -7867,6 +8177,13 @@ export type Database = {
             foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -7875,6 +8192,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_work_item_resources_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -9624,6 +9948,7 @@ export type Database = {
           inspection_date: string | null
           inspector_name: string | null
           ir_number: string
+          is_hold_point: boolean | null
           itp_id: string | null
           location: string | null
           notes: string | null
@@ -9631,6 +9956,7 @@ export type Database = {
           request_date: string
           requested_by: string | null
           status: string
+          step_no: number | null
           updated_at: string
           wbs_node_id: string | null
           wbs_task_id: string | null
@@ -9641,6 +9967,7 @@ export type Database = {
           inspection_date?: string | null
           inspector_name?: string | null
           ir_number: string
+          is_hold_point?: boolean | null
           itp_id?: string | null
           location?: string | null
           notes?: string | null
@@ -9648,6 +9975,7 @@ export type Database = {
           request_date?: string
           requested_by?: string | null
           status?: string
+          step_no?: number | null
           updated_at?: string
           wbs_node_id?: string | null
           wbs_task_id?: string | null
@@ -9658,6 +9986,7 @@ export type Database = {
           inspection_date?: string | null
           inspector_name?: string | null
           ir_number?: string
+          is_hold_point?: boolean | null
           itp_id?: string | null
           location?: string | null
           notes?: string | null
@@ -9665,6 +9994,7 @@ export type Database = {
           request_date?: string
           requested_by?: string | null
           status?: string
+          step_no?: number | null
           updated_at?: string
           wbs_node_id?: string | null
           wbs_task_id?: string | null
@@ -15028,6 +15358,7 @@ export type Database = {
           condition_note: string | null
           created_at: string
           created_by: string | null
+          daily_report_activity_id: string | null
           earned_hours: number | null
           headcount: number
           hours_normal: number
@@ -15053,6 +15384,7 @@ export type Database = {
           condition_note?: string | null
           created_at?: string
           created_by?: string | null
+          daily_report_activity_id?: string | null
           earned_hours?: number | null
           headcount: number
           hours_normal?: number
@@ -15078,6 +15410,7 @@ export type Database = {
           condition_note?: string | null
           created_at?: string
           created_by?: string | null
+          daily_report_activity_id?: string | null
           earned_hours?: number | null
           headcount?: number
           hours_normal?: number
@@ -15099,6 +15432,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "plan_productivity_logs_daily_report_activity_id_fkey"
+            columns: ["daily_report_activity_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_report_activities"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "plan_productivity_logs_norm_id_fkey"
             columns: ["norm_id"]
@@ -15206,6 +15546,13 @@ export type Database = {
             foreignKeyName: "plan_productivity_norm_resources_dwl_resource_id_fkey"
             columns: ["dwl_resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "plan_productivity_norm_resources_dwl_resource_id_fkey"
+            columns: ["dwl_resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -15214,6 +15561,13 @@ export type Database = {
             columns: ["dwl_resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "plan_productivity_norm_resources_dwl_resource_id_fkey"
+            columns: ["dwl_resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -15952,6 +16306,13 @@ export type Database = {
             foreignKeyName: "plan_task_cost_lines_dwl_resource_id_fkey"
             columns: ["dwl_resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "plan_task_cost_lines_dwl_resource_id_fkey"
+            columns: ["dwl_resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -15960,6 +16321,13 @@ export type Database = {
             columns: ["dwl_resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "plan_task_cost_lines_dwl_resource_id_fkey"
+            columns: ["dwl_resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -18793,13 +19161,18 @@ export type Database = {
       }
       project_precontract_details: {
         Row: {
+          approval_round: number
+          approved_bid_summary_id: string | null
           award_date: string | null
           award_status: string
+          bid_approved_at: string | null
           bid_currency: string
           bid_price: number | null
+          closed_reason: string | null
           created_at: string
           estimated_value: number | null
           go_no_go_by: string | null
+          go_no_go_criteria: Json | null
           go_no_go_date: string | null
           go_no_go_decision: string | null
           go_no_go_rationale: string | null
@@ -18807,21 +19180,36 @@ export type Database = {
           loss_reason: string | null
           procurement_method: string | null
           project_id: string
+          query_deadline: string | null
+          review_bid_summary_id: string | null
+          site_visit_date: string | null
+          stage_changed_at: string | null
           submission_deadline: string | null
+          submission_method: string | null
+          submission_reference: string | null
+          submitted_at: string | null
+          submitted_bid_summary_id: string | null
+          submitted_by: string | null
           tender_days: number | null
           tender_register_id: string | null
+          tender_stage: string
           tender_type: string | null
           updated_at: string
           winning_bidder: string | null
         }
         Insert: {
+          approval_round?: number
+          approved_bid_summary_id?: string | null
           award_date?: string | null
           award_status?: string
+          bid_approved_at?: string | null
           bid_currency?: string
           bid_price?: number | null
+          closed_reason?: string | null
           created_at?: string
           estimated_value?: number | null
           go_no_go_by?: string | null
+          go_no_go_criteria?: Json | null
           go_no_go_date?: string | null
           go_no_go_decision?: string | null
           go_no_go_rationale?: string | null
@@ -18829,21 +19217,36 @@ export type Database = {
           loss_reason?: string | null
           procurement_method?: string | null
           project_id: string
+          query_deadline?: string | null
+          review_bid_summary_id?: string | null
+          site_visit_date?: string | null
+          stage_changed_at?: string | null
           submission_deadline?: string | null
+          submission_method?: string | null
+          submission_reference?: string | null
+          submitted_at?: string | null
+          submitted_bid_summary_id?: string | null
+          submitted_by?: string | null
           tender_days?: number | null
           tender_register_id?: string | null
+          tender_stage?: string
           tender_type?: string | null
           updated_at?: string
           winning_bidder?: string | null
         }
         Update: {
+          approval_round?: number
+          approved_bid_summary_id?: string | null
           award_date?: string | null
           award_status?: string
+          bid_approved_at?: string | null
           bid_currency?: string
           bid_price?: number | null
+          closed_reason?: string | null
           created_at?: string
           estimated_value?: number | null
           go_no_go_by?: string | null
+          go_no_go_criteria?: Json | null
           go_no_go_date?: string | null
           go_no_go_decision?: string | null
           go_no_go_rationale?: string | null
@@ -18851,14 +19254,31 @@ export type Database = {
           loss_reason?: string | null
           procurement_method?: string | null
           project_id?: string
+          query_deadline?: string | null
+          review_bid_summary_id?: string | null
+          site_visit_date?: string | null
+          stage_changed_at?: string | null
           submission_deadline?: string | null
+          submission_method?: string | null
+          submission_reference?: string | null
+          submitted_at?: string | null
+          submitted_bid_summary_id?: string | null
+          submitted_by?: string | null
           tender_days?: number | null
           tender_register_id?: string | null
+          tender_stage?: string
           tender_type?: string | null
           updated_at?: string
           winning_bidder?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "project_precontract_details_approved_bid_summary_id_fkey"
+            columns: ["approved_bid_summary_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "project_precontract_details_go_no_go_by_fkey"
             columns: ["go_no_go_by"]
@@ -18886,6 +19306,27 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "v_plan_client_programme"
             referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "project_precontract_details_review_bid_summary_id_fkey"
+            columns: ["review_bid_summary_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_precontract_details_submitted_bid_summary_id_fkey"
+            columns: ["submitted_bid_summary_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_precontract_details_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "project_precontract_details_tender_register_id_fkey"
@@ -19180,6 +19621,7 @@ export type Database = {
           category: string | null
           client_id: string | null
           company_code: string | null
+          consultant_id: string | null
           contract_number: string | null
           contract_type: string | null
           contract_value: number | null
@@ -19220,6 +19662,7 @@ export type Database = {
           category?: string | null
           client_id?: string | null
           company_code?: string | null
+          consultant_id?: string | null
           contract_number?: string | null
           contract_type?: string | null
           contract_value?: number | null
@@ -19260,6 +19703,7 @@ export type Database = {
           category?: string | null
           client_id?: string | null
           company_code?: string | null
+          consultant_id?: string | null
           contract_number?: string | null
           contract_type?: string | null
           contract_value?: number | null
@@ -19298,6 +19742,13 @@ export type Database = {
           {
             foreignKeyName: "projects_client_id_fkey"
             columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "stakeholders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_consultant_id_fkey"
+            columns: ["consultant_id"]
             isOneToOne: false
             referencedRelation: "stakeholders"
             referencedColumns: ["id"]
@@ -23027,8 +23478,162 @@ export type Database = {
         }
         Relationships: []
       }
+      site_daily_report_activities: {
+        Row: {
+          activity_status: string
+          actual_finish_date: string | null
+          actual_start_date: string | null
+          created_at: string
+          created_by: string | null
+          daily_report_id: string
+          delay_category: string | null
+          delay_event_id: string | null
+          delay_hours_lost: number | null
+          delay_reason: string | null
+          has_delay: boolean
+          headcount: number | null
+          hours_normal: number | null
+          hours_ot: number | null
+          id: string
+          productivity_log_id: string | null
+          progress_before: number
+          progress_review_id: string | null
+          progress_today: number
+          project_id: string
+          quantity_done: number | null
+          quantity_unit: string | null
+          step_progress: Json | null
+          sync_error: string | null
+          sync_status: string
+          task_id: string
+          trade_code: string | null
+          updated_at: string
+          work_description: string | null
+        }
+        Insert: {
+          activity_status?: string
+          actual_finish_date?: string | null
+          actual_start_date?: string | null
+          created_at?: string
+          created_by?: string | null
+          daily_report_id: string
+          delay_category?: string | null
+          delay_event_id?: string | null
+          delay_hours_lost?: number | null
+          delay_reason?: string | null
+          has_delay?: boolean
+          headcount?: number | null
+          hours_normal?: number | null
+          hours_ot?: number | null
+          id?: string
+          productivity_log_id?: string | null
+          progress_before?: number
+          progress_review_id?: string | null
+          progress_today: number
+          project_id: string
+          quantity_done?: number | null
+          quantity_unit?: string | null
+          step_progress?: Json | null
+          sync_error?: string | null
+          sync_status?: string
+          task_id: string
+          trade_code?: string | null
+          updated_at?: string
+          work_description?: string | null
+        }
+        Update: {
+          activity_status?: string
+          actual_finish_date?: string | null
+          actual_start_date?: string | null
+          created_at?: string
+          created_by?: string | null
+          daily_report_id?: string
+          delay_category?: string | null
+          delay_event_id?: string | null
+          delay_hours_lost?: number | null
+          delay_reason?: string | null
+          has_delay?: boolean
+          headcount?: number | null
+          hours_normal?: number | null
+          hours_ot?: number | null
+          id?: string
+          productivity_log_id?: string | null
+          progress_before?: number
+          progress_review_id?: string | null
+          progress_today?: number
+          project_id?: string
+          quantity_done?: number | null
+          quantity_unit?: string | null
+          step_progress?: Json | null
+          sync_error?: string | null
+          sync_status?: string
+          task_id?: string
+          trade_code?: string | null
+          updated_at?: string
+          work_description?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_daily_report_activities_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_delay_event_id_fkey"
+            columns: ["delay_event_id"]
+            isOneToOne: false
+            referencedRelation: "delay_register"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_productivity_log_id_fkey"
+            columns: ["productivity_log_id"]
+            isOneToOne: false
+            referencedRelation: "plan_productivity_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_progress_review_id_fkey"
+            columns: ["progress_review_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_task_progress_reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "v_plan_client_programme"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "site_daily_report_activities_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_daily_reports: {
         Row: {
+          activities_count: number
           created_at: string
           created_by: string | null
           id: string
@@ -23037,13 +23642,20 @@ export type Database = {
           project_id: string
           report_date: string
           site_conditions: string | null
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
           temperature_high: number | null
           temperature_low: number | null
+          total_manpower_count: number
           updated_at: string
+          verified_at: string | null
+          verified_by: string | null
           weather_conditions: string | null
           work_summary: string | null
         }
         Insert: {
+          activities_count?: number
           created_at?: string
           created_by?: string | null
           id?: string
@@ -23052,13 +23664,20 @@ export type Database = {
           project_id: string
           report_date: string
           site_conditions?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           temperature_high?: number | null
           temperature_low?: number | null
+          total_manpower_count?: number
           updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
           weather_conditions?: string | null
           work_summary?: string | null
         }
         Update: {
+          activities_count?: number
           created_at?: string
           created_by?: string | null
           id?: string
@@ -23067,13 +23686,26 @@ export type Database = {
           project_id?: string
           report_date?: string
           site_conditions?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           temperature_high?: number | null
           temperature_low?: number | null
+          total_manpower_count?: number
           updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
           weather_conditions?: string | null
           work_summary?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_site_daily_reports_created_by_profile"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "site_daily_reports_project_id_fkey"
             columns: ["project_id"]
@@ -23100,53 +23732,91 @@ export type Database = {
       site_equipment: {
         Row: {
           created_at: string
+          daily_report_id: string | null
           date: string
+          delay_event_id: string | null
           equipment_code: string | null
           equipment_name: string
           equipment_type: string | null
           fuel_litres: number | null
+          hourly_cost_rate: number | null
+          hours_breakdown: number | null
           hours_operated: number | null
+          hours_standby: number | null
           id: string
           location: string | null
           notes: string | null
           operator: string | null
+          ownership_type: string | null
           project_id: string
+          standby_reason: string | null
           status: string
           updated_at: string
+          wbs_task_id: string | null
         }
         Insert: {
           created_at?: string
+          daily_report_id?: string | null
           date: string
+          delay_event_id?: string | null
           equipment_code?: string | null
           equipment_name: string
           equipment_type?: string | null
           fuel_litres?: number | null
+          hourly_cost_rate?: number | null
+          hours_breakdown?: number | null
           hours_operated?: number | null
+          hours_standby?: number | null
           id?: string
           location?: string | null
           notes?: string | null
           operator?: string | null
+          ownership_type?: string | null
           project_id: string
+          standby_reason?: string | null
           status?: string
           updated_at?: string
+          wbs_task_id?: string | null
         }
         Update: {
           created_at?: string
+          daily_report_id?: string | null
           date?: string
+          delay_event_id?: string | null
           equipment_code?: string | null
           equipment_name?: string
           equipment_type?: string | null
           fuel_litres?: number | null
+          hourly_cost_rate?: number | null
+          hours_breakdown?: number | null
           hours_operated?: number | null
+          hours_standby?: number | null
           id?: string
           location?: string | null
           notes?: string | null
           operator?: string | null
+          ownership_type?: string | null
           project_id?: string
+          standby_reason?: string | null
           status?: string
           updated_at?: string
+          wbs_task_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "site_equipment_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_equipment_delay_event_id_fkey"
+            columns: ["delay_event_id"]
+            isOneToOne: false
+            referencedRelation: "delay_register"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "site_equipment_project_id_fkey"
             columns: ["project_id"]
@@ -23167,6 +23837,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_plan_client_programme"
             referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "site_equipment_wbs_task_id_fkey"
+            columns: ["wbs_task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -23216,14 +23893,18 @@ export type Database = {
         Row: {
           contractor: string | null
           created_at: string
+          daily_report_id: string | null
           foreman: string | null
           id: string
           notes: string | null
           ot_hours: number | null
+          plan_resource_id: string | null
+          planned_workers: number | null
           project_id: string
           regular_hours: number | null
           report_date: string
           skilled: number | null
+          subcontract_id: string | null
           total_workers: number
           trade: string
           unskilled: number | null
@@ -23234,14 +23915,18 @@ export type Database = {
         Insert: {
           contractor?: string | null
           created_at?: string
+          daily_report_id?: string | null
           foreman?: string | null
           id?: string
           notes?: string | null
           ot_hours?: number | null
+          plan_resource_id?: string | null
+          planned_workers?: number | null
           project_id: string
           regular_hours?: number | null
           report_date: string
           skilled?: number | null
+          subcontract_id?: string | null
           total_workers?: number
           trade: string
           unskilled?: number | null
@@ -23252,14 +23937,18 @@ export type Database = {
         Update: {
           contractor?: string | null
           created_at?: string
+          daily_report_id?: string | null
           foreman?: string | null
           id?: string
           notes?: string | null
           ot_hours?: number | null
+          plan_resource_id?: string | null
+          planned_workers?: number | null
           project_id?: string
           regular_hours?: number | null
           report_date?: string
           skilled?: number | null
+          subcontract_id?: string | null
           total_workers?: number
           trade?: string
           unskilled?: number | null
@@ -23268,6 +23957,20 @@ export type Database = {
           wbs_task_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "site_manpower_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_manpower_plan_resource_id_fkey"
+            columns: ["plan_resource_id"]
+            isOneToOne: false
+            referencedRelation: "plan_resources"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "site_manpower_project_id_fkey"
             columns: ["project_id"]
@@ -23290,6 +23993,13 @@ export type Database = {
             referencedColumns: ["project_id"]
           },
           {
+            foreignKeyName: "site_manpower_subcontract_id_fkey"
+            columns: ["subcontract_id"]
+            isOneToOne: false
+            referencedRelation: "subcontracts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "site_manpower_wbs_node_id_fkey"
             columns: ["wbs_node_id"]
             isOneToOne: false
@@ -23309,37 +24019,65 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string
+          daily_report_id: string | null
+          file_size_bytes: number | null
           id: string
           location: string | null
+          mime_type: string | null
           photo_url: string
           project_id: string
+          storage_path: string | null
+          tags: string[] | null
           taken_at: string | null
           taken_by: string | null
+          updated_at: string
           wbs_node_id: string | null
+          wbs_task_id: string | null
         }
         Insert: {
           caption?: string | null
           created_at?: string
+          daily_report_id?: string | null
+          file_size_bytes?: number | null
           id?: string
           location?: string | null
+          mime_type?: string | null
           photo_url: string
           project_id: string
+          storage_path?: string | null
+          tags?: string[] | null
           taken_at?: string | null
           taken_by?: string | null
+          updated_at?: string
           wbs_node_id?: string | null
+          wbs_task_id?: string | null
         }
         Update: {
           caption?: string | null
           created_at?: string
+          daily_report_id?: string | null
+          file_size_bytes?: number | null
           id?: string
           location?: string | null
+          mime_type?: string | null
           photo_url?: string
           project_id?: string
+          storage_path?: string | null
+          tags?: string[] | null
           taken_at?: string | null
           taken_by?: string | null
+          updated_at?: string
           wbs_node_id?: string | null
+          wbs_task_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "site_progress_photos_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "site_progress_photos_project_id_fkey"
             columns: ["project_id"]
@@ -23366,6 +24104,13 @@ export type Database = {
             columns: ["wbs_node_id"]
             isOneToOne: false
             referencedRelation: "wbs_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_progress_photos_wbs_task_id_fkey"
+            columns: ["wbs_task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -23961,14 +24706,19 @@ export type Database = {
           charge_no: string
           created_at: string
           created_by: string | null
+          daily_report_id: string | null
           deducted_from_ipc: string | null
           description: string
+          evidence_photo_url: string | null
           id: string
+          ncr_id: string | null
           notes: string | null
+          project_id: string | null
           raised_date: string
           status: string
           subcontract_id: string
           updated_at: string
+          wbs_task_id: string | null
         }
         Insert: {
           accepted_date?: string | null
@@ -23977,14 +24727,19 @@ export type Database = {
           charge_no: string
           created_at?: string
           created_by?: string | null
+          daily_report_id?: string | null
           deducted_from_ipc?: string | null
           description: string
+          evidence_photo_url?: string | null
           id?: string
+          ncr_id?: string | null
           notes?: string | null
+          project_id?: string | null
           raised_date?: string
           status?: string
           subcontract_id: string
           updated_at?: string
+          wbs_task_id?: string | null
         }
         Update: {
           accepted_date?: string | null
@@ -23993,14 +24748,19 @@ export type Database = {
           charge_no?: string
           created_at?: string
           created_by?: string | null
+          daily_report_id?: string | null
           deducted_from_ipc?: string | null
           description?: string
+          evidence_photo_url?: string | null
           id?: string
+          ncr_id?: string | null
           notes?: string | null
+          project_id?: string | null
           raised_date?: string
           status?: string
           subcontract_id?: string
           updated_at?: string
+          wbs_task_id?: string | null
         }
         Relationships: [
           {
@@ -24011,10 +24771,52 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "subcontract_back_charges_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontract_back_charges_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: false
+            referencedRelation: "ncrs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontract_back_charges_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "subcontract_back_charges_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontract_back_charges_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "v_plan_client_programme"
+            referencedColumns: ["project_id"]
+          },
+          {
             foreignKeyName: "subcontract_back_charges_subcontract_id_fkey"
             columns: ["subcontract_id"]
             isOneToOne: false
             referencedRelation: "subcontracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontract_back_charges_wbs_task_id_fkey"
+            columns: ["wbs_task_id"]
+            isOneToOne: false
+            referencedRelation: "wbs_tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -25323,33 +26125,57 @@ export type Database = {
       tender_addenda: {
         Row: {
           addendum_no: string
+          affects_boq: boolean
+          affects_cost: boolean
+          affects_drawings: boolean
+          affects_programme: boolean
+          affects_risk: boolean
+          affects_spec: boolean
+          assessed: boolean
           attachment_url: string | null
           created_at: string
           created_by: string | null
           description: string
           id: string
+          impact_notes: string | null
           issue_date: string
           tender_id: string
           title: string
         }
         Insert: {
           addendum_no: string
+          affects_boq?: boolean
+          affects_cost?: boolean
+          affects_drawings?: boolean
+          affects_programme?: boolean
+          affects_risk?: boolean
+          affects_spec?: boolean
+          assessed?: boolean
           attachment_url?: string | null
           created_at?: string
           created_by?: string | null
           description: string
           id?: string
+          impact_notes?: string | null
           issue_date?: string
           tender_id: string
           title: string
         }
         Update: {
           addendum_no?: string
+          affects_boq?: boolean
+          affects_cost?: boolean
+          affects_drawings?: boolean
+          affects_programme?: boolean
+          affects_risk?: boolean
+          affects_spec?: boolean
+          assessed?: boolean
           attachment_url?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
           id?: string
+          impact_notes?: string | null
           issue_date?: string
           tender_id?: string
           title?: string
@@ -25529,6 +26355,64 @@ export type Database = {
           },
         ]
       }
+      tender_bid_approvals: {
+        Row: {
+          bid_summary_id: string | null
+          comments: string | null
+          decided_at: string
+          decision: string
+          id: string
+          round: number
+          step: string
+          tender_id: string
+          user_id: string | null
+        }
+        Insert: {
+          bid_summary_id?: string | null
+          comments?: string | null
+          decided_at?: string
+          decision: string
+          id?: string
+          round: number
+          step: string
+          tender_id: string
+          user_id?: string | null
+        }
+        Update: {
+          bid_summary_id?: string | null
+          comments?: string | null
+          decided_at?: string
+          decision?: string
+          id?: string
+          round?: number
+          step?: string
+          tender_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_bid_approvals_bid_summary_id_fkey"
+            columns: ["bid_summary_id"]
+            isOneToOne: false
+            referencedRelation: "tender_bid_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_bid_approvals_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_bid_approvals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tender_bid_summaries: {
         Row: {
           contingency: number | null
@@ -25651,6 +26535,7 @@ export type Database = {
           rate_source: string
           section: string
           sort_order: number | null
+          source_cost_db_item_id: string | null
           sourcing: string
           sub_element: string | null
           sub_section: string | null
@@ -25693,6 +26578,7 @@ export type Database = {
           rate_source?: string
           section: string
           sort_order?: number | null
+          source_cost_db_item_id?: string | null
           sourcing?: string
           sub_element?: string | null
           sub_section?: string | null
@@ -25735,6 +26621,7 @@ export type Database = {
           rate_source?: string
           section?: string
           sort_order?: number | null
+          source_cost_db_item_id?: string | null
           sourcing?: string
           sub_element?: string | null
           sub_section?: string | null
@@ -25808,6 +26695,13 @@ export type Database = {
             columns: ["price_list_item_id"]
             isOneToOne: false
             referencedRelation: "tender_price_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_boq_items_source_cost_db_item_id_fkey"
+            columns: ["source_cost_db_item_id"]
+            isOneToOne: false
+            referencedRelation: "tender_cost_database_items"
             referencedColumns: ["id"]
           },
           {
@@ -25901,6 +26795,271 @@ export type Database = {
           {
             foreignKeyName: "tender_clarifications_tender_id_fkey"
             columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_commercial_items: {
+        Row: {
+          assessment: string
+          client_requirement: string | null
+          cost_impact: number
+          created_at: string
+          id: string
+          notes: string | null
+          owner_id: string | null
+          qualification: string | null
+          risk_id: string | null
+          sort_order: number
+          tender_id: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          assessment?: string
+          client_requirement?: string | null
+          cost_impact?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id?: string | null
+          qualification?: string | null
+          risk_id?: string | null
+          sort_order?: number
+          tender_id: string
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          assessment?: string
+          client_requirement?: string | null
+          cost_impact?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id?: string | null
+          qualification?: string | null
+          risk_id?: string | null
+          sort_order?: number
+          tender_id?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_commercial_items_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_commercial_items_risk_id_fkey"
+            columns: ["risk_id"]
+            isOneToOne: false
+            referencedRelation: "tender_risk_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_commercial_items_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_cost_database_items: {
+        Row: {
+          budget_code: string | null
+          budget_code_id: string | null
+          building_code: string
+          database_id: string
+          description: string
+          discipline: string | null
+          dwl_assembly_id: string | null
+          dwl_work_item_id: string | null
+          element_group: string | null
+          id: string
+          item_code: string
+          labor_margin_pct: number | null
+          labor_net_cost: number | null
+          level: string
+          material_margin_pct: number | null
+          material_net_cost: number | null
+          notes: string | null
+          quantity: number
+          rate_build_up: Json | null
+          rate_source: string
+          section: string
+          sort_order: number
+          sourcing: string
+          sub_element: string | null
+          sub_section: string | null
+          total_amount: number | null
+          unit: string
+          unit_rate: number
+        }
+        Insert: {
+          budget_code?: string | null
+          budget_code_id?: string | null
+          building_code?: string
+          database_id: string
+          description: string
+          discipline?: string | null
+          dwl_assembly_id?: string | null
+          dwl_work_item_id?: string | null
+          element_group?: string | null
+          id?: string
+          item_code: string
+          labor_margin_pct?: number | null
+          labor_net_cost?: number | null
+          level?: string
+          material_margin_pct?: number | null
+          material_net_cost?: number | null
+          notes?: string | null
+          quantity?: number
+          rate_build_up?: Json | null
+          rate_source?: string
+          section: string
+          sort_order?: number
+          sourcing?: string
+          sub_element?: string | null
+          sub_section?: string | null
+          total_amount?: number | null
+          unit?: string
+          unit_rate?: number
+        }
+        Update: {
+          budget_code?: string | null
+          budget_code_id?: string | null
+          building_code?: string
+          database_id?: string
+          description?: string
+          discipline?: string | null
+          dwl_assembly_id?: string | null
+          dwl_work_item_id?: string | null
+          element_group?: string | null
+          id?: string
+          item_code?: string
+          labor_margin_pct?: number | null
+          labor_net_cost?: number | null
+          level?: string
+          material_margin_pct?: number | null
+          material_net_cost?: number | null
+          notes?: string | null
+          quantity?: number
+          rate_build_up?: Json | null
+          rate_source?: string
+          section?: string
+          sort_order?: number
+          sourcing?: string
+          sub_element?: string | null
+          sub_section?: string | null
+          total_amount?: number | null
+          unit?: string
+          unit_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_cost_database_items_budget_code_id_fkey"
+            columns: ["budget_code_id"]
+            isOneToOne: false
+            referencedRelation: "budget_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_cost_database_items_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "tender_cost_databases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_cost_databases: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          item_count: number
+          name: string
+          notes: string | null
+          project_code: string | null
+          project_name: string | null
+          source_project_id: string | null
+          source_tender_id: string | null
+          tender_no: string | null
+          tender_stage: string | null
+          tender_title: string | null
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_count?: number
+          name: string
+          notes?: string | null
+          project_code?: string | null
+          project_name?: string | null
+          source_project_id?: string | null
+          source_tender_id?: string | null
+          tender_no?: string | null
+          tender_stage?: string | null
+          tender_title?: string | null
+          total_amount?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_count?: number
+          name?: string
+          notes?: string | null
+          project_code?: string | null
+          project_name?: string | null
+          source_project_id?: string | null
+          source_tender_id?: string | null
+          tender_no?: string | null
+          tender_stage?: string | null
+          tender_title?: string | null
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_cost_databases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_cost_databases_source_project_id_fkey"
+            columns: ["source_project_id"]
+            isOneToOne: false
+            referencedRelation: "account_budget_vs_actual"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "tender_cost_databases_source_project_id_fkey"
+            columns: ["source_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_cost_databases_source_project_id_fkey"
+            columns: ["source_project_id"]
+            isOneToOne: false
+            referencedRelation: "v_plan_client_programme"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "tender_cost_databases_source_tender_id_fkey"
+            columns: ["source_tender_id"]
             isOneToOne: false
             referencedRelation: "tender_register"
             referencedColumns: ["id"]
@@ -26564,40 +27723,56 @@ export type Database = {
         Row: {
           category: string
           created_at: string
+          document_id: string | null
           id: string
           is_mandatory: boolean
           is_ready: boolean
           item: string
           notes: string | null
+          returned_at: string | null
           sort_order: number
           tender_id: string
           updated_at: string
+          workstream_code: string | null
         }
         Insert: {
           category?: string
           created_at?: string
+          document_id?: string | null
           id?: string
           is_mandatory?: boolean
           is_ready?: boolean
           item: string
           notes?: string | null
+          returned_at?: string | null
           sort_order?: number
           tender_id: string
           updated_at?: string
+          workstream_code?: string | null
         }
         Update: {
           category?: string
           created_at?: string
+          document_id?: string | null
           id?: string
           is_mandatory?: boolean
           is_ready?: boolean
           item?: string
           notes?: string | null
+          returned_at?: string | null
           sort_order?: number
           tender_id?: string
           updated_at?: string
+          workstream_code?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tender_returnables_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tender_returnables_tender_id_fkey"
             columns: ["tender_id"]
@@ -26610,47 +27785,72 @@ export type Database = {
       tender_risk_items: {
         Row: {
           category: string
+          cause: string | null
           created_at: string
           description: string
+          entry_type: string
           id: string
           impact: string
           likelihood: string
           mitigation: string | null
           owner: string | null
+          owner_id: string | null
           priced_amount: number | null
+          programme_impact_days: number | null
           risk_no: string
           risk_score: string | null
+          status: string
           tender_id: string
+          updated_at: string
         }
         Insert: {
           category: string
+          cause?: string | null
           created_at?: string
           description: string
+          entry_type?: string
           id?: string
           impact: string
           likelihood: string
           mitigation?: string | null
           owner?: string | null
+          owner_id?: string | null
           priced_amount?: number | null
+          programme_impact_days?: number | null
           risk_no: string
           risk_score?: string | null
+          status?: string
           tender_id: string
+          updated_at?: string
         }
         Update: {
           category?: string
+          cause?: string | null
           created_at?: string
           description?: string
+          entry_type?: string
           id?: string
           impact?: string
           likelihood?: string
           mitigation?: string | null
           owner?: string | null
+          owner_id?: string | null
           priced_amount?: number | null
+          programme_impact_days?: number | null
           risk_no?: string
           risk_score?: string | null
+          status?: string
           tender_id?: string
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tender_risk_items_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tender_risk_items_tender_id_fkey"
             columns: ["tender_id"]
@@ -26662,46 +27862,67 @@ export type Database = {
       }
       tender_sub_quotes: {
         Row: {
+          availability: string | null
+          commercial_score: number | null
           company_name: string
           created_at: string
           currency: string
+          enquiry_date: string | null
           id: string
           is_preferred: boolean
+          lead_time_days: number | null
           notes: string | null
           quote_amount: number
+          quote_type: string
           received_date: string
           scope_of_work: string | null
+          status: string
           supplier_id: string | null
+          technical_score: number | null
           tender_id: string
           trade: string
           valid_until: string | null
         }
         Insert: {
+          availability?: string | null
+          commercial_score?: number | null
           company_name: string
           created_at?: string
           currency?: string
+          enquiry_date?: string | null
           id?: string
           is_preferred?: boolean
+          lead_time_days?: number | null
           notes?: string | null
           quote_amount?: number
+          quote_type?: string
           received_date?: string
           scope_of_work?: string | null
+          status?: string
           supplier_id?: string | null
+          technical_score?: number | null
           tender_id: string
           trade: string
           valid_until?: string | null
         }
         Update: {
+          availability?: string | null
+          commercial_score?: number | null
           company_name?: string
           created_at?: string
           currency?: string
+          enquiry_date?: string | null
           id?: string
           is_preferred?: boolean
+          lead_time_days?: number | null
           notes?: string | null
           quote_amount?: number
+          quote_type?: string
           received_date?: string
           scope_of_work?: string | null
+          status?: string
           supplier_id?: string | null
+          technical_score?: number | null
           tender_id?: string
           trade?: string
           valid_until?: string | null
@@ -26823,6 +28044,97 @@ export type Database = {
           },
           {
             foreignKeyName: "tender_submissions_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_technical_items: {
+        Row: {
+          clarification_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          discipline: string
+          id: string
+          item_type: string
+          owner_id: string | null
+          risk_id: string | null
+          source_document_id: string | null
+          status: string
+          tender_id: string
+          updated_at: string
+        }
+        Insert: {
+          clarification_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description: string
+          discipline: string
+          id?: string
+          item_type: string
+          owner_id?: string | null
+          risk_id?: string | null
+          source_document_id?: string | null
+          status?: string
+          tender_id: string
+          updated_at?: string
+        }
+        Update: {
+          clarification_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          discipline?: string
+          id?: string
+          item_type?: string
+          owner_id?: string | null
+          risk_id?: string | null
+          source_document_id?: string | null
+          status?: string
+          tender_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_technical_items_clarification_id_fkey"
+            columns: ["clarification_id"]
+            isOneToOne: false
+            referencedRelation: "tender_clarifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_technical_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_technical_items_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_technical_items_risk_id_fkey"
+            columns: ["risk_id"]
+            isOneToOne: false
+            referencedRelation: "tender_risk_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_technical_items_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "qto_document_register"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_technical_items_tender_id_fkey"
             columns: ["tender_id"]
             isOneToOne: false
             referencedRelation: "tender_register"
@@ -27017,6 +28329,63 @@ export type Database = {
             foreignKeyName: "tender_win_loss_tender_id_fkey"
             columns: ["tender_id"]
             isOneToOne: true
+            referencedRelation: "tender_register"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tender_workstreams: {
+        Row: {
+          code: string
+          created_at: string
+          due_date: string | null
+          id: string
+          notes: string | null
+          owner_id: string | null
+          required: boolean
+          sort_order: number
+          status: string
+          tender_id: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          owner_id?: string | null
+          required?: boolean
+          sort_order?: number
+          status?: string
+          tender_id: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          owner_id?: string | null
+          required?: boolean
+          sort_order?: number
+          status?: string
+          tender_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tender_workstreams_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tender_workstreams_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
             referencedRelation: "tender_register"
             referencedColumns: ["id"]
           },
@@ -28597,6 +29966,8 @@ export type Database = {
       wbs_task_progress_reviews: {
         Row: {
           comment: string | null
+          daily_report_activity_id: string | null
+          daily_report_id: string | null
           decided_at: string | null
           decided_by: string | null
           id: string
@@ -28610,6 +29981,8 @@ export type Database = {
         }
         Insert: {
           comment?: string | null
+          daily_report_activity_id?: string | null
+          daily_report_id?: string | null
           decided_at?: string | null
           decided_by?: string | null
           id?: string
@@ -28623,6 +29996,8 @@ export type Database = {
         }
         Update: {
           comment?: string | null
+          daily_report_activity_id?: string | null
+          daily_report_id?: string | null
           decided_at?: string | null
           decided_by?: string | null
           id?: string
@@ -28635,6 +30010,20 @@ export type Database = {
           wbs_task_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wbs_task_progress_reviews_daily_report_activity_id_fkey"
+            columns: ["daily_report_activity_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_report_activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wbs_task_progress_reviews_daily_report_id_fkey"
+            columns: ["daily_report_id"]
+            isOneToOne: false
+            referencedRelation: "site_daily_reports"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wbs_task_progress_reviews_decided_by_fkey"
             columns: ["decided_by"]
@@ -29798,6 +31187,13 @@ export type Database = {
             foreignKeyName: "dwl_material_specs_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -29806,6 +31202,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_material_specs_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -29865,6 +31268,13 @@ export type Database = {
             foreignKeyName: "dwl_resource_prices_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -29879,25 +31289,72 @@ export type Database = {
             foreignKeyName: "dwl_resource_prices_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_resource_prices_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_subcon_rates"
             referencedColumns: ["resource_id"]
           },
         ]
       }
+      dwl_v_equipment_rates: {
+        Row: {
+          capacity_model: string | null
+          code: string | null
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          fuel_included: boolean | null
+          fuel_l_per_day: number | null
+          is_active: boolean | null
+          is_expired: boolean | null
+          min_hire_qty: number | null
+          mobilisation_cost: number | null
+          notes: string | null
+          operator_included: boolean | null
+          ownership: string | null
+          price_status: string | null
+          quote_valid_until: string | null
+          rate: number | null
+          rate_basis: string | null
+          resource_id: string | null
+          source_type: string | null
+          spec_reference: string | null
+          supplier_name: string | null
+          unit: string | null
+          updated_at: string | null
+          valid_from: string | null
+        }
+        Relationships: []
+      }
       dwl_v_labor_rates: {
         Row: {
+          accommodation_per_day: number | null
+          all_in_daily_rate: number | null
+          all_in_enabled: boolean | null
           code: string | null
+          costing_rate: number | null
           created_at: string | null
           currency: string | null
           daily_basic_rate: number | null
           description: string | null
           is_active: boolean | null
+          meal_per_day: number | null
+          nssf_employer_pct: number | null
+          ot_allowance_pct: number | null
+          other_statutory_pct: number | null
           overtime_rate_per_hr: number | null
+          ppe_tools_per_day: number | null
           price_status: string | null
           resource_id: string | null
           skill_level: string | null
           spec_reference: string | null
           standard_productivity_note: string | null
+          transport_per_day: number | null
           unit: string | null
           updated_at: string | null
           valid_from: string | null
@@ -30057,6 +31514,13 @@ export type Database = {
             foreignKeyName: "dwl_price_submissions_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -30065,6 +31529,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_price_submissions_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -30196,6 +31667,13 @@ export type Database = {
             foreignKeyName: "dwl_quotation_items_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -30204,6 +31682,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_quotation_items_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -30235,6 +31720,19 @@ export type Database = {
             referencedColumns: ["supplier_id"]
           },
         ]
+      }
+      dwl_v_resource_costing_rates: {
+        Row: {
+          all_in_rate: number | null
+          basic_rate: number | null
+          category: string | null
+          code: string | null
+          costing_rate: number | null
+          currency: string | null
+          resource_id: string | null
+          unit: string | null
+        }
+        Relationships: []
       }
       dwl_v_subcon_rates: {
         Row: {
@@ -30303,6 +31801,13 @@ export type Database = {
             foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
             columns: ["resource_id"]
             isOneToOne: false
+            referencedRelation: "dwl_v_equipment_rates"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
             referencedRelation: "dwl_v_labor_rates"
             referencedColumns: ["resource_id"]
           },
@@ -30311,6 +31816,13 @@ export type Database = {
             columns: ["resource_id"]
             isOneToOne: false
             referencedRelation: "dwl_v_materials"
+            referencedColumns: ["resource_id"]
+          },
+          {
+            foreignKeyName: "dwl_supplier_materials_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "dwl_v_resource_costing_rates"
             referencedColumns: ["resource_id"]
           },
           {
@@ -30600,6 +32112,8 @@ export type Database = {
         Returns: number
       }
       build_wbs_full_path: { Args: { p_id: string }; Returns: string }
+      can_award_tender: { Args: { p_uid: string }; Returns: boolean }
+      can_delete_cost_database: { Args: { p_uid: string }; Returns: boolean }
       can_manage_master_libraries: { Args: never; Returns: boolean }
       capture_kpi_snapshot: {
         Args: { p_project_id?: string }
@@ -30612,6 +32126,19 @@ export type Database = {
       capture_schedule_revision: {
         Args: { p_note?: string; p_stream_id: string }
         Returns: number
+      }
+      check_task_quality_holdpoints: {
+        Args: { p_task_ids: string[] }
+        Returns: {
+          failed_inspections: number
+          has_blocking_holdpoint: boolean
+          holdpoint_message: string
+          open_ncrs: number
+          passed_inspections: number
+          pending_inspections: number
+          task_id: string
+          total_inspections: number
+        }[]
       }
       clear_baseline: {
         Args: { p_number: number; p_project_id: string; p_task_ids: string[] }
@@ -30718,6 +32245,28 @@ export type Database = {
           task_code: string
           task_name: string
           total_float_days: number
+        }[]
+      }
+      get_daily_report_planning_context: {
+        Args: { p_date?: string; p_project_id: string }
+        Returns: {
+          actual_finish_date: string
+          actual_start_date: string
+          current_progress: number
+          discipline: string
+          end_date: string
+          norm_code: string
+          norm_id: string
+          quantity: number
+          quantity_unit: string
+          start_date: string
+          status: string
+          steps_count: number
+          steps_json: Json
+          suggested_trade: string
+          task_code: string
+          task_id: string
+          task_name: string
         }[]
       }
       get_landing_stats: {
@@ -30855,6 +32404,42 @@ export type Database = {
         }[]
       }
       get_scurve_series: { Args: { p_project_id: string }; Returns: Json }
+      get_site_manpower_variance: {
+        Args: { p_date?: string; p_project_id: string }
+        Returns: {
+          actual_workers: number
+          contractor: string
+          mobilization_pct: number
+          ot_hours: number
+          planned_workers: number
+          regular_hours: number
+          status: string
+          trade: string
+          variance: number
+        }[]
+      }
+      get_task_site_diary_history: {
+        Args: { p_task_id: string }
+        Returns: {
+          activity_status: string
+          author_id: string
+          created_at: string
+          daily_report_id: string
+          delay_hours_lost: number
+          delay_reason: string
+          has_delay: boolean
+          headcount: number
+          hours_total: number
+          progress_before: number
+          progress_today: number
+          quantity_done: number
+          quantity_unit: string
+          report_date: string
+          trade_code: string
+          weather_conditions: string
+          work_description: string
+        }[]
+      }
       get_tasks_by_level: {
         Args: { p_level?: number; p_project_id: string }
         Returns: {
@@ -30982,6 +32567,10 @@ export type Database = {
           status: string
         }[]
       }
+      push_equipment_standby_to_delay: {
+        Args: { p_equipment_id: string }
+        Returns: Json
+      }
       qs_library_search_refresh: {
         Args: { p_id: string; p_type: string }
         Returns: undefined
@@ -31000,6 +32589,10 @@ export type Database = {
         Returns: undefined
       }
       run_task_escalation: { Args: never; Returns: number }
+      save_tender_cost_database: {
+        Args: { p_name: string; p_notes?: string; p_tender_id: string }
+        Returns: string
+      }
       search_qs_library: {
         Args: {
           p_embedding?: string
@@ -31035,6 +32628,10 @@ export type Database = {
         Args: { p_note?: string; p_progress: number; p_task_id: string }
         Returns: Json
       }
+      sync_daily_report_to_planning: {
+        Args: { p_daily_report_id: string }
+        Returns: Json
+      }
       sync_document_to_constraint: {
         Args: { p_document_id: string }
         Returns: undefined
@@ -31045,6 +32642,7 @@ export type Database = {
           task_id: string
         }[]
       }
+      tender_is_locked: { Args: { p_tender_id: string }; Returns: boolean }
       transition_revision: {
         Args: { p_action: string; p_comment?: string; p_revision_id: string }
         Returns: Json

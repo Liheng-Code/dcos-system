@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   getBudgetCodeTree, createBudgetCode, deleteBudgetCode, updateBudgetCode,
   type BudgetCodeGroupTree,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { BudgetCodeExternalRefs } from "@/components/tenders/budget-code-external-refs";
 

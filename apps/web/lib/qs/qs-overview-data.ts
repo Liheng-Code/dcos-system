@@ -10,7 +10,7 @@ import {
  * Data for the QS Overview "at a glance" infographic
  * (`qs-overview-infographic.tsx`) — modeled on
  * `lib/planning/planning-overview-data.ts`, built from this app's actual
- * routes/modules (verified against `lib/qs-nav.ts` and
+ * routes/modules (verified against `lib/qs/qs-nav.ts` and
  * `components/dashboard/module-hub.tsx`) rather than generic placeholders.
  */
 

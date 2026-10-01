@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { type QsAuditEntry, getQsAuditLog } from "@/lib/qs-service";
+import { type QsAuditEntry, getQsAuditLog } from "@/lib/qs/qs-service";
 
 const TABLE_LABELS: Record<string, string> = {
   qs_variation_orders:     "Variation Orders",

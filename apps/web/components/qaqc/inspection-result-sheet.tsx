@@ -13,7 +13,7 @@ import {
   getInspectionResults,
   upsertInspectionResult,
   updateInspectionRequestStatus,
-} from "@/lib/qaqc-service";
+} from "@/lib/construction/qaqc-service";
 
 const TYPE_COLORS = {
   hold:    "bg-red-100 text-red-700",

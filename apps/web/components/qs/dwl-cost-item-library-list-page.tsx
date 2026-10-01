@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { AlertTriangle, Blocks, FileDown, FileSpreadsheet, Plus, Scale, Search, Upload } from "lucide-react";
+import { AlertTriangle, Blocks, ClipboardList, FileDown, FileSpreadsheet, Plus, Scale, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,8 @@ import { DwlCostItemDetail } from "@/components/qs/dwl-cost-item-detail";
 import { DwlCostItemCreateDialog } from "@/components/qs/dwl-cost-item-create-dialog";
 import { DwlCostItemImportDialog } from "@/components/qs/dwl-cost-item-import-dialog";
 import type { DwlAssemblyCostingSummaryRow } from "@/components/qs/dwl-types";
+import { useTenderPermissions } from "@/hooks/use-tender-permissions";
+import { AssignLibraryToBoqDialog } from "@/components/tenders/cost-estimation/assign-library-to-boq-dialog";
 
 const V_COLUMNS =
   "assembly_id, code, element_group, description, unit, daily_output, overhead_pct, risk_pct, profit_pct, vat_pct, " +
@@ -96,15 +98,34 @@ export default function DwlCostItemLibraryListPage() {
 
   const canView = !permsLoaded || can("qs_libraries", "view");
   const canCreate = can("qs_libraries", "can_create");
+  const { can: canTender } = useTenderPermissions();
+  const canAssign = canTender("tender_boq", "can_create");
+  const [showAssign, setShowAssign] = useState(false);
 
+  // One selection drives both Compare (2–3 items) and Assign to Tender BOQ (any number).
   function toggleCompare(id: string) {
     setCompareIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else if (next.size < 3) next.add(id);
+      else next.add(id);
       return next;
     });
   }
+
+  const allVisibleSelected = filtered.length > 0 && filtered.every((r) => compareIds.has(r.assembly_id));
+  function toggleAllVisible() {
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      for (const r of filtered) {
+        if (allVisibleSelected) next.delete(r.assembly_id);
+        else next.add(r.assembly_id);
+      }
+      return next;
+    });
+  }
+
+  // Assign the ticked items, or the item open in the detail panel when nothing is ticked.
+  const assignIds = compareIds.size > 0 ? [...compareIds] : selectedId ? [selectedId] : [];
 
   const compareRows = useMemo(() => rows.filter((r) => compareIds.has(r.assembly_id)), [rows, compareIds]);
 
@@ -168,8 +189,19 @@ export default function DwlCostItemLibraryListPage() {
         </h1>
         <div className="flex flex-wrap items-center gap-2">
           {compareIds.size > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowCompare(true)} disabled={compareIds.size < 2}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCompare(true)}
+              disabled={compareIds.size < 2 || compareIds.size > 3}
+              title={compareIds.size > 3 ? "Compare up to 3 items" : undefined}
+            >
               <Scale className="h-3.5 w-3.5" /> Compare ({compareIds.size})
+            </Button>
+          )}
+          {canAssign && (
+            <Button size="sm" variant="outline" onClick={() => setShowAssign(true)} disabled={assignIds.length === 0}>
+              <ClipboardList className="h-3.5 w-3.5" /> Assign to Tender BOQ ({assignIds.length})
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={filtered.length === 0}>
@@ -202,6 +234,19 @@ export default function DwlCostItemLibraryListPage() {
             <option value="all">All Categories ({rows.length})</option>
             {groups.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <label className="flex items-center gap-1.5">
+                <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAllVisible} aria-label="Select all shown" />
+                Select all shown
+              </label>
+              {compareIds.size > 0 && (
+                <button type="button" className="hover:text-foreground" onClick={() => setCompareIds(new Set())}>
+                  Clear ({compareIds.size})
+                </button>
+              )}
+            </div>
+          )}
 
           {loading ? (
             <div className="flex flex-col gap-2">
@@ -233,7 +278,7 @@ export default function DwlCostItemLibraryListPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={compareIds.has(r.assembly_id)} onCheckedChange={() => toggleCompare(r.assembly_id)} aria-label="Compare" />
+                      <Checkbox checked={compareIds.has(r.assembly_id)} onCheckedChange={() => toggleCompare(r.assembly_id)} aria-label={`Select ${r.code}`} />
                       <Badge variant="outline" className="font-mono text-[10px]">{r.code}</Badge>
                     </div>
                     <span className="text-[10px] text-muted-foreground">{r.version_label}</span>
@@ -305,6 +350,13 @@ export default function DwlCostItemLibraryListPage() {
           void loadList();
           setSelectedId(newAssemblyId);
         }}
+      />
+
+      <AssignLibraryToBoqDialog
+        open={showAssign}
+        onOpenChange={setShowAssign}
+        preselectedIds={assignIds}
+        onAssigned={() => setCompareIds(new Set())}
       />
 
       <DwlCostItemImportDialog

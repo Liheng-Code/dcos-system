@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { BoqBuilder } from "@/components/qs/boq-builder";
 import { UpdateBoqSlideIn } from "@/components/qs/update-boq-slidein";
-import { getBoq, type QsBoq } from "@/lib/qs-service";
+import { getBoq, type QsBoq } from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
 const BOQ_TYPE_LABELS: Record<string, string> = {

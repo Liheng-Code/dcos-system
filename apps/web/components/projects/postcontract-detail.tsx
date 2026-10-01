@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
 import type { Project } from "@/components/projects/project-edit-sheet";
 import { PostcontractDashboard } from "@/components/dashboard/postcontract-dashboard";
 import { ProjectSetupWizard } from "@/components/projects/project-setup-wizard";
-import { getContractSnapshot, type ContractSnapshot } from "@/lib/qs-service";
+import { getContractSnapshot, type ContractSnapshot } from "@/lib/qs/public";
+import { PrecontractDetail } from "@/components/projects/precontract-detail";
 
 interface PostcontractDetailProps {
   project: Project;
@@ -25,6 +26,8 @@ const TABS = [
   { id: "claims", label: "Claims" },
   { id: "payments", label: "Payments" },
   { id: "snapshot", label: "Snapshot" },
+  // Only for projects awarded in place: the pre-contract view, read-only (every section is frozen once awarded).
+  { id: "tender", label: "Tender Record" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -64,16 +67,19 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [risks, setRisks] = useState<RiskItem[]>([]);
   const [snapshot, setSnapshot] = useState<ContractSnapshot | null>(null);
+  const [hasTenderRecord, setHasTenderRecord] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [contractRes, risksRes, snapshotRes] = await Promise.all([
+      const [contractRes, risksRes, snapshotRes, tenderRes] = await Promise.all([
+        // A contract awarded in place starts as a draft head contract until it is signed; prefer the active one.
         supabase
           .from("contract_register")
           .select("*")
           .eq("project_id", project.id)
-          .eq("status", "active")
+          .in("status", ["active", "draft"])
+          .order("status")
           .limit(1)
           .maybeSingle(),
         supabase
@@ -82,8 +88,10 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
           .eq("project_id", project.id)
           .order("created_at"),
         getContractSnapshot(project.id),
+        supabase.from("project_precontract_details").select("project_id").eq("project_id", project.id).maybeSingle(),
       ]);
 
+      setHasTenderRecord(!!tenderRes.data);
       if (contractRes.data) setContract(contractRes.data as ContractRecord);
       if (risksRes.data) setRisks(risksRes.data as RiskItem[]);
       setSnapshot(snapshotRes);
@@ -101,6 +109,9 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
     switch (activeTab) {
       case "overview":
         return <PostcontractDashboard projectId={project.id} />;
+
+      case "tender":
+        return <PrecontractDetail project={project} onBack={() => setActiveTab("overview")} onUpdate={onUpdate} embedded />;
 
       case "contract":
         if (!contract) {
@@ -434,7 +445,7 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
       {/* Tabs */}
       <div className="overflow-x-auto border-b px-6">
         <div className="flex gap-1 min-w-max">
-          {TABS.map((tab) => (
+          {TABS.filter((tab) => tab.id !== "tender" || hasTenderRecord).map((tab) => (
             <button
               key={tab.id}
               type="button"

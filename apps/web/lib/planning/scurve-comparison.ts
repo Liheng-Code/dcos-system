@@ -1,4 +1,4 @@
-import type { ScurvePoint } from "@/lib/schedule-service";
+import type { ScurvePoint } from "@/lib/planning/schedule-service";
 import type { TaskSnapshot } from "@/lib/planning/schedule-comparison-service";
 import { parseISO, toISO } from "@/lib/planning/work-calendar";
 

@@ -2,9 +2,16 @@
 // pattern (sidebar shows one item per group, the module header shows the
 // group's child pages as tabs). Used by procurement, inventory and QS.
 
+// Release status of a feature (a nav group or a page under it), declared in code.
+// "released" (the default) is visible unless an admin switches it off.
+// "development" is hidden and its route blocked until it is switched on for that
+// environment (see lib/modules/features.ts).
+export type FeatureStatus = "development" | "released";
+
 export interface ModuleNavTabItem {
   label: string;
   href: string;
+  status?: FeatureStatus;
   // Optional sub-items shown in a hover dropdown under this tab (e.g. the QS
   // Cost Control tab exposes Cost Dashboard / Budget & Variance / etc. this way
   // instead of a second nested tab control on the page itself).
@@ -23,6 +30,7 @@ export interface ModuleNavGroup {
   navKey: string;
   label: string;
   href: string;
+  status?: FeatureStatus;
   items: ModuleNavTabItem[];
   // When provided the group is only considered while the predicate returns
   // true (e.g. QS groups that only exist during the pre-contract phase).

@@ -8,7 +8,7 @@ import { MetricCard } from "@/components/qs/cost-control";
 import {
   getCostPerM2Summary, getElementalBreakdown, getFinalCostSummary, getGfaDataQualityWarnings,
   type CostPerM2Summary, type ElementalBreakdownLine, type FinalCostSummaryLine, type GfaDataQualityWarning,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { cn } from "@/lib/utils";
 
 interface Props { projectId: string; projectName?: string }

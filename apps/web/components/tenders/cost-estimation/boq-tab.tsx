@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment, useRef, useMemo } from "react";
-import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles, Blocks, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,18 +19,22 @@ import {
   flattenBoqItemsGrouped, getBoqLibraryCurrentRates, getBoqItemStaleness,
   buildBoqLibraryRefreshPreview, commitBoqLibraryRefresh,
   EQUIPMENT_SUBCON_GUARDRAIL_PCT, getWbsProjectNodes,   getQsElementLibrary,
-  getQsDescriptionLibrary, getPriceList, getTenderMargins,
+  getQsDescriptionLibrary, getPriceList, getTenderMargins, isInstalledCostSnapshot,
   type BoqItemsGrouped, type BudgetCode, type TenderBoqItem,
   type BoqLibraryCurrentRates, type BoqLibraryRefreshPreview, type WbsProjectNode,
   type QsElementLibraryItem, type QsDescriptionLibraryItem, type TenderPriceListItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { BoqElementLibraryPickerDialog, type BoqElementLibrarySelection } from "./boq-element-library-picker-dialog";
 import { PriceListPickerDialog } from "./price-list-picker-dialog";
 import { AiBoqDraftDialog } from "./ai-boq-draft-dialog";
+import { AssignLibraryToBoqDialog } from "./assign-library-to-boq-dialog";
+import { AssignCostDatabaseDialog } from "./assign-cost-database-dialog";
+import { SaveToCostDatabaseDialog } from "./save-to-cost-database-dialog";
+import { useQsPermissions } from "@/hooks/use-qs-permissions";
 
-import { BOQ_UNITS } from "@/lib/boq-units";
+import { BOQ_UNITS } from "@/lib/qs/boq-units";
 
 const emptyForm = {
   budget_code: "", section: "", sub_section: "", sub_element: "", level: "All", building_code: "", discipline: "", description: "", unit: "m",
@@ -39,7 +43,7 @@ const emptyForm = {
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function BoqTab({ tenderId }: { tenderId: string }) {
+export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLocked?: boolean }) {
   const [grouped, setGrouped] = useState<BoqItemsGrouped | null>(null);
   const [budgetCodes, setBudgetCodes] = useState<BudgetCode[]>([]);
   const [wbsLevels, setWbsLevels] = useState<WbsProjectNode[]>([]);
@@ -52,6 +56,9 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAiDraft, setShowAiDraft] = useState(false);
+  const [showCostLibrary, setShowCostLibrary] = useState(false);
+  const [showCostDatabase, setShowCostDatabase] = useState(false);
+  const [showSaveDatabase, setShowSaveDatabase] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -252,6 +259,7 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
   const [currentRates, setCurrentRates] = useState<BoqLibraryCurrentRates>({
     workItemRates: new Map(),
     assemblyRates: new Map(),
+    installedRates: new Map(),
   });
 
   // "Refresh from Library" (§7.3, BR7) — preview-then-confirm flow. Opening
@@ -263,6 +271,11 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
   const [committingRefresh, setCommittingRefresh] = useState(false);
 
   const { can } = useTenderPermissions();
+  // Pricing is frozen from Internal Review onward (tender_lock_guard); hide the add actions.
+  const canAdd = can("tender_boq", "can_create") && !isLocked;
+  // Saving only reads the BOQ, so it stays available on locked (submitted / awarded) tenders.
+  const { can: canQs } = useQsPermissions();
+  const canSaveDatabase = canQs("qs_cost_database", "can_create");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -618,9 +631,9 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{(filteredGrouped ?? grouped)?.groups.reduce((n, g) => n + g.budgetCodes.reduce((m, b) => m + b.sections.reduce((k, s) => k + s.subSections.reduce((j, ss) => j + ss.items.length, 0), 0), 0), 0) ?? 0} item(s) · Direct Works ${fmt((filteredGrouped ?? grouped)?.grandTotal ?? 0)}</p>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center justify-end">
           <div className="flex rounded-md border border-border overflow-hidden mr-2">
             <button
               onClick={() => setViewLevel("main")}
@@ -668,27 +681,45 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
               )}
             </div>
           )}
-          {can("tender_boq", "can_create") && (
+          {isLocked && can("tender_boq", "can_create") && (
+            <span className="text-xs text-amber-700">Pricing locked — adding items (incl. Assign from Cost Library) is disabled</span>
+          )}
+          {canSaveDatabase && (
+          <Button size="sm" variant="outline" onClick={() => setShowSaveDatabase(true)} disabled={!grouped || flattenBoqItemsGrouped(grouped).length === 0} title="Save a frozen copy of this BOQ to Quantity Surveying → Cost Database">
+            <Database className="mr-1 h-4 w-4" /> Save to Cost Database
+          </Button>
+          )}
+          {canAdd && (
+          <Button size="sm" variant="outline" onClick={() => setShowCostDatabase(true)} disabled={saving}>
+            <Database className="mr-1 h-4 w-4" /> Assign from Cost Database
+          </Button>
+          )}
+          {canAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
             <Upload className="mr-1 h-4 w-4" /> Import
           </Button>
           )}
-          {can("tender_boq", "can_create") && (
+          {canAdd && (
+          <Button size="sm" onClick={() => setShowCostLibrary(true)} disabled={saving}>
+            <Blocks className="mr-1 h-4 w-4" /> Assign from Cost Library
+          </Button>
+          )}
+          {canAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowElementPicker(true)} disabled={saving}>
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Library className="mr-1 h-4 w-4" />} Add from Element Library
           </Button>
           )}
-          {can("tender_boq", "can_create") && (
+          {canAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowAiDraft(true)} disabled={saving}>
             <Sparkles className="mr-1 h-4 w-4" /> AI Draft from Drawing
           </Button>
           )}
-          {can("tender_boq", "can_create") && (
+          {canAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowPriceListPicker(true)} disabled={saving}>
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Tag className="mr-1 h-4 w-4" />} Add from Price List
           </Button>
           )}
-          {can("tender_boq", "can_create") && (
+          {canAdd && (
           <Button size="sm" variant="outline" onClick={openManualForm}>
             <Plus className="mr-1 h-4 w-4" /> Add Item
           </Button>
@@ -929,7 +960,7 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
                         sub_element: { text: item.sub_element || "" },
                         discipline: { text: item.discipline || "" },
                         item_code: { text: item.item_code },
-                        rate_source: { text: item.rate_source },
+                        rate_source: { text: isInstalledCostSnapshot(item.rate_build_up) ? "Cost Library" : item.rate_source },
                         building_code: { text: item.building_code },
                       };
                       const v = valueMap[col.id];
@@ -1103,6 +1134,28 @@ export function BoqTab({ tenderId }: { tenderId: string }) {
         onClose={() => setShowPriceListPicker(false)}
         priceList={priceList}
         onConfirm={handlePriceListSelect}
+      />
+
+      <AssignLibraryToBoqDialog
+        open={showCostLibrary}
+        onOpenChange={setShowCostLibrary}
+        tenderId={tenderId}
+        onAssigned={() => void load()}
+      />
+
+      <AssignCostDatabaseDialog
+        open={showCostDatabase}
+        onOpenChange={setShowCostDatabase}
+        tenderId={tenderId}
+        onAssigned={() => void load()}
+      />
+
+      <SaveToCostDatabaseDialog
+        open={showSaveDatabase}
+        onOpenChange={setShowSaveDatabase}
+        tenderId={tenderId}
+        itemCount={grouped ? flattenBoqItemsGrouped(grouped).length : 0}
+        total={grouped?.grandTotal ?? 0}
       />
 
       {showAiDraft && (

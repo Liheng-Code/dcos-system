@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PRIORITY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS, type SheetField, type SheetTask } from "./sheet-types";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
 
 interface StaffProfile {
   id: string;
@@ -57,6 +58,7 @@ export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }:
   // needed: the parent remounts this panel with key={task.id} per task).
   const [dragProgress, setDragProgress] = useState<number | null>(null);
   const [hasActivitySteps, setHasActivitySteps] = useState(false);
+  const [fieldSection, setFieldSection] = useState<"steps" | "site_diary">("steps");
   const [showPicker, setShowPicker] = useState(false);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
@@ -260,19 +262,54 @@ export function PlanSheetDetailPanel({ task, wbsPath, onUpdateField, onAssign }:
           )}
         </div>
 
-        {/* Activity Steps */}
-        <WbsActivityStepsPanel
-          taskId={task.id}
-          taskStart={task.start_date}
-          taskEnd={task.end_date}
-          canEdit={true}
-          onStepsChange={(hasSteps, computed) => {
-            setHasActivitySteps(hasSteps);
-            if (hasSteps && computed != null && computed !== task.progress) {
-              void onUpdateField(task.id, "progress", String(computed));
-            }
-          }}
-        />
+        {/* Sub-tabs: Steps vs Site Diary */}
+        <div className="flex items-center gap-1 border-b border-border pb-1">
+          <button
+            type="button"
+            onClick={() => setFieldSection("steps")}
+            className={cn(
+              "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
+              fieldSection === "steps"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            Activity Steps
+          </button>
+          <button
+            type="button"
+            onClick={() => setFieldSection("site_diary")}
+            className={cn(
+              "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
+              fieldSection === "site_diary"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            Site Diary & Actuals
+          </button>
+        </div>
+
+        {fieldSection === "steps" ? (
+          <WbsActivityStepsPanel
+            taskId={task.id}
+            taskStart={task.start_date}
+            taskEnd={task.end_date}
+            canEdit={true}
+            onStepsChange={(hasSteps, computed) => {
+              setHasActivitySteps(hasSteps);
+              if (hasSteps && computed != null && computed !== task.progress) {
+                void onUpdateField(task.id, "progress", String(computed));
+              }
+            }}
+          />
+        ) : (
+          <PlanActivitySiteDiaryPanel
+            taskId={task.id}
+            taskCode={task.task_code}
+            taskName={task.task_name}
+          />
+        )}
 
         {/* Priority */}
         <label className="block">

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { QtoMeasureType, QtoMeasurement } from "@/lib/qto-service";
+import type { QtoMeasureType, QtoMeasurement } from "@/lib/qs/qto-service";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 

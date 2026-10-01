@@ -12,7 +12,7 @@ import {
   recalculateClaimForCertification,
   updateClaimItemCertification,
   updateClaimStatus,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { printIpcCertificate } from "@/lib/print-service";
 
 const fmt = (n: number) =>

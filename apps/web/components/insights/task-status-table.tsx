@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { type DisciplineSummary } from "@/lib/insights-service";
+import { type DisciplineSummary } from "@/lib/reporting/insights-service";
 
 interface Props {
   disciplines: DisciplineSummary[];

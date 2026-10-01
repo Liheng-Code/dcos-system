@@ -13,7 +13,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getPostcontractKpis, getContractSnapshot, type ContractSnapshot } from "@/lib/qs-service";
+import { getPostcontractKpis, getContractSnapshot, type ContractSnapshot } from "@/lib/qs/public";
 
 interface PostcontractDashboardProps {
   projectId: string;

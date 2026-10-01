@@ -33,8 +33,8 @@ import {
   type TenderOption,
   type BoqItemOption,
 } from "@/lib/bim/bim-boq-promotion-service";
-import type { QsBoqSummary, QsBoqSection } from "@/lib/qs-service";
-import type { BudgetCode } from "@/lib/tender-cost-service";
+import type { QsBoqSummary, QsBoqSection } from "@/lib/qs/public";
+import type { BudgetCode } from "@/lib/qs/public-tender";
 
 interface BimReviewPromoteDialogProps {
   open: boolean;

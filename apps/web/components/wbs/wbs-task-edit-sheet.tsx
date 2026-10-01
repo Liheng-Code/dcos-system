@@ -12,7 +12,7 @@ import { type WbsTaskRecord, type WbsAuditLogRecord, type WbsNodeRecord, type Wb
 import { getUserPermissions, hasPermission, type UserPermissions } from "@/lib/permissions";
 import { createTaskAlert } from "@/lib/task-alerts";
 import { assignTaskToProfile } from "@/lib/tasks/assign-task";
-import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } from "@/lib/planning/resource-service";
+import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } from "@/lib/planning/public";
 import { useProject } from "@/components/dashboard/project-context";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";

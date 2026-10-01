@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { searchQsLibrary, type QsLibrarySourceType, type QsLibrarySearchResult } from "@/lib/qs-library-search";
+import { searchQsLibrary, type QsLibrarySourceType, type QsLibrarySearchResult } from "@/lib/qs/qs-library-search";
 
 export interface QsLibrarySearchState {
   // Ranked matches keyed by source_id (lower index = better), or null when the

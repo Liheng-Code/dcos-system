@@ -14,7 +14,7 @@ import {
   type QsElementLibraryItem,
   type QsDescriptionLibraryItem,
   type SelectedElementItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 
 interface Props {
   open: boolean;

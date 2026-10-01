@@ -11,7 +11,7 @@ import {
   getPreliminariesItems,
   type TenderBoqItem,
   type TenderPreliminariesItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 
 const fmt = (n: number) =>
   `$ ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

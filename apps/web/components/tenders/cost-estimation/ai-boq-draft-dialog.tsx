@@ -16,9 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { BOQ_UNITS } from "@/lib/boq-units";
-import type { BudgetCode } from "@/lib/tender-cost-service";
-import type { AiBoqDraftResponse, AiBoqDraftResponseLine } from "@/lib/ai-boq-draft-schema";
+import { BOQ_UNITS } from "@/lib/qs/boq-units";
+import type { BudgetCode } from "@/lib/qs/tender-cost-service";
+import type { AiBoqDraftResponse, AiBoqDraftResponseLine } from "@/lib/qs/ai-boq-draft-schema";
 import {
   acceptAiBoqLines,
   listTenderDrawingRevisions,
@@ -27,7 +27,7 @@ import {
   runAiBoqDraftFromImage,
   AiDraftError,
   type TenderDrawingRevisionOption,
-} from "@/lib/tender-ai-boq-draft";
+} from "@/lib/qs/tender-ai-boq-draft";
 
 interface Props {
   tenderId: string;

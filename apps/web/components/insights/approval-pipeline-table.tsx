@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { type ApprovalSummaryRow } from "@/lib/insights-service";
+import { type ApprovalSummaryRow } from "@/lib/reporting/insights-service";
 
 interface Props {
   approvals: ApprovalSummaryRow[];

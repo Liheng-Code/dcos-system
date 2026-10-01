@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@/lib/qs-element-library-shared";
+import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@/lib/qs/qs-element-library-shared";
 
 interface ElementLibraryTreeProps {
   grouped: Map<string, Map<string, QsElementRow[]>>;

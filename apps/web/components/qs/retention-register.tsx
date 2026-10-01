@@ -12,7 +12,7 @@ import {
   createRetentionRelease,
   getRetentionBalance,
   getRetentionLedger,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { printRetentionStatement } from "@/lib/print-service";
 

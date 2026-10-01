@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   getBidSummaries, createBidSummaryRevision, updateBidSummary, deleteBidSummary, recalculateBidSummaryFromBoq,
   type TenderBidSummary,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });

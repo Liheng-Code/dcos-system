@@ -18,6 +18,8 @@ interface BackCharge {
   category: string;
   status: string;
   raised_date: string;
+  ncr_id?: string | null;
+  ncrs?: { ncr_number?: string } | null;
 }
 
 export default function BackChargesPage() {
@@ -35,7 +37,7 @@ export default function BackChargesPage() {
   });
 
   const itemsQuery = useCallback(() => {
-    let q = supabase.from("subcontract_back_charges").select("*, subcontracts!inner(project_id)").order("raised_date", { ascending: false });
+    let q = supabase.from("subcontract_back_charges").select("*, ncrs(ncr_number), subcontracts!inner(project_id)").order("raised_date", { ascending: false });
     if (selectedProjectId) q = q.eq("subcontracts.project_id", selectedProjectId);
     return q;
   }, [supabase, selectedProjectId]);
@@ -190,7 +192,14 @@ export default function BackChargesPage() {
                   bc.status === "disputed" ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-600"
                 )}>{bc.status.charAt(0).toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">{bc.charge_no}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold">{bc.charge_no}</p>
+                    {bc.ncrs?.ncr_number && (
+                      <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                        From {bc.ncrs.ncr_number}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground truncate">{bc.description} · {bc.category.replace(/_/g, " ")}</p>
                 </div>
                 <p className="text-sm font-semibold text-red-600">-${Number(bc.amount).toLocaleString()}</p>

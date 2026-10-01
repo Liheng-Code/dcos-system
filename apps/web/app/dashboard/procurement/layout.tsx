@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { ModulePageLayout } from "@/components/dashboard/module-page-layout";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
-import { getActiveProcurementGroup } from "@/lib/procurement-nav";
+import { getActiveProcurementGroup } from "@/lib/procurement/procurement-nav";
 
 export default function ProcurementLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

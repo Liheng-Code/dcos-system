@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   getExcludeItems, createExcludeItem, updateExcludeItem, deleteExcludeItem,
   type TenderExcludeItem,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 export function ExcludeItemsTab({ tenderId }: { tenderId: string }) {

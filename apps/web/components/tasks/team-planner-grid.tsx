@@ -15,7 +15,7 @@ import {
   toWeekStartDate,
   type WeeklyPlanAssignment,
   type WeeklyPlanRecord,
-} from "@/lib/team-planning-store";
+} from "@/lib/tasks/team-planning-store";
 import { cn } from "@/lib/utils";
 import { isActiveTask } from "@/lib/task-scope";
 

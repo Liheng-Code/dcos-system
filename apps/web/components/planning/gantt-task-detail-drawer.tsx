@@ -10,6 +10,7 @@ import { ACTIVITY_TYPE_OPTIONS } from "./gantt-types";
 import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-utils";
 import { cn } from "@/lib/utils";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
 import {
   addAssignment,
   findOrCreateResourceForProfile,
@@ -39,7 +40,7 @@ interface GanttTaskDetailDrawerProps {
   onEditLink?: (index: number) => void;
 }
 
-type TabKey = "properties" | "links" | "progress" | "resources";
+type TabKey = "properties" | "links" | "progress" | "resources" | "site_diary";
 
 const RESOURCE_TYPE_LABEL: Record<string, string> = {
   labor: "Labor",
@@ -377,6 +378,7 @@ export function GanttTaskDetailDrawer({
     { key: "links", label: `Links (${linkCount})` },
     { key: "progress", label: "Progress" },
     { key: "resources", label: `Resources (${assignments.length})` },
+    { key: "site_diary", label: "Site Diary" },
   ];
 
   return (
@@ -899,6 +901,16 @@ export function GanttTaskDetailDrawer({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {tab === "site_diary" && task && (
+            <div className="space-y-4">
+              <PlanActivitySiteDiaryPanel
+                taskId={task.id}
+                taskCode={task.task_code}
+                taskName={task.task_name}
+              />
             </div>
           )}
         </div>

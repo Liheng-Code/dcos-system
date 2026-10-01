@@ -8,7 +8,7 @@ import {
   type Ncr,
   createNcr,
   generateNcrNumber,
-} from "@/lib/qaqc-service";
+} from "@/lib/construction/qaqc-service";
 
 interface Props {
   projectId: string;

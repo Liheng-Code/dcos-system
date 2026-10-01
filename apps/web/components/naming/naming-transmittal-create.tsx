@@ -46,6 +46,9 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
   const [issuerCompanyId, setIssuerCompanyId] = useState("");
   const [receiverStakeholderId, setReceiverStakeholderId] = useState("");
   const [subject, setSubject] = useState("");
+  const [issueReason, setIssueReason] = useState("for_review");
+  const [physicalCopiesSummary, setPhysicalCopiesSummary] = useState("");
+  const [courierTrackingNo, setCourierTrackingNo] = useState("");
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
 
   const issuerCode = companies.find((c) => c.id === issuerCompanyId)?.code ?? "CMED";
@@ -121,6 +124,9 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
       issuer_company_id: issuerCompanyId,
       receiver_stakeholder_id: receiverStakeholderId,
       subject: subject || null,
+      issue_reason: issueReason,
+      physical_copies_summary: physicalCopiesSummary || null,
+      courier_tracking_no: courierTrackingNo || null,
       status,
       sent_at: status === "sent" ? new Date().toISOString() : null,
       created_by: uid,
@@ -209,14 +215,54 @@ export function TransmittalCreate({ onClose, onCreated }: TransmittalCreateProps
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Subject</Label>
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary"
-          placeholder="e.g. Transmittal of Architectural & Structural drawings"
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>Issue Reason / Purpose *</Label>
+          <select
+            value={issueReason}
+            onChange={(e) => setIssueReason(e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary"
+          >
+            <option value="for_review">For Review & Comment</option>
+            <option value="for_approval">For Formal Approval</option>
+            <option value="for_construction">Issued for Construction (IFC)</option>
+            <option value="for_information">For Information Only (FIO)</option>
+            <option value="for_record">For Record / Archive</option>
+            <option value="for_tender">For Tender / Procurement</option>
+            <option value="for_fabrication">For Shop / Fabrication</option>
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Subject</Label>
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary"
+            placeholder="e.g. Transmittal of Architectural & Structural drawings"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>Physical Hardcopies Summary (Optional)</Label>
+          <input
+            value={physicalCopiesSummary}
+            onChange={(e) => setPhysicalCopiesSummary(e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary"
+            placeholder="e.g. 2x A1 Prints + 1x USB Drive"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Courier / Despatch Tracking No. (Optional)</Label>
+          <input
+            value={courierTrackingNo}
+            onChange={(e) => setCourierTrackingNo(e.target.value)}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary"
+            placeholder="e.g. DHL-882910482 or Hand-Delivered"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

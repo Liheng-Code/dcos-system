@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useProject } from "@/components/dashboard/project-context";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
-import { getActiveQsGroup } from "@/lib/qs-nav";
+import { getActiveQsGroup } from "@/lib/qs/qs-nav";
 
 // QS routes span /dashboard/qs, /dashboard/tenders, /dashboard/subcontractors
 // and /dashboard/contracts, so this is rendered by a thin layout in each of

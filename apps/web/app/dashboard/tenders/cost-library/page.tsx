@@ -19,7 +19,7 @@ import {
   calculatePrelimTree,
   exportPrelimTreeToExcel,
   DEFAULT_SITE_DATA,
-} from "@/lib/prelim-library-service";
+} from "@/lib/qs/prelim-library-service";
 
 export default function CostLibraryPage() {
   const { can, loaded: permsLoaded } = useQsPermissions();

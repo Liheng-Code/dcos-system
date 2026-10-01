@@ -7,7 +7,7 @@ import { X, Loader2, Save, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/qs-service";
+import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/wbs-area-service";
 
 export interface WbsNodeRecord {
   id: string;

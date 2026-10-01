@@ -1,3 +1,5 @@
+import { MODULE_REGISTRY } from "@/lib/modules/registry";
+
 /**
  * Sidebar module key -> RBAC module code mapping (Phase A — Sidebar/Nav Visibility Fix).
  *
@@ -40,21 +42,13 @@
  * hierarchy levels L0-L6 in `20260624000001_master_libraries.sql`, not specific to one sidebar
  * section). `commissioning_handover` has no corresponding top-level sidebar section today, so
  * it is not mapped to anything here either.
+ *
+ * The mapping itself now lives on each module's manifest (`rbacModules` in
+ * `apps/web/lib/modules/manifests/*`); this map is derived from the registry.
  */
-export const MODULE_KEY_MAP: Record<string, string[]> = {
-  project: ["task_management"],
-  reporting: ["reporting_kpi"],
-  document_control: ["document_control"],
-  planning: ["planning"],
-  design: [],
-  procurement: ["procurement"],
-  inventory: ["inventory"],
-  qs: ["qs", "tender"],
-  construction: ["construction", "qa_qc", "hse"],
-  hr: ["hr"],
-  account: ["account_finance"],
-  administration: ["admin_config"],
-};
+export const MODULE_KEY_MAP: Record<string, string[]> = Object.fromEntries(
+  MODULE_REGISTRY.map((m) => [m.key, m.rbacModules]),
+);
 
 /** Every distinct RBAC module code referenced anywhere in `MODULE_KEY_MAP`. */
 export const ALL_MAPPED_RBAC_MODULES: string[] = Array.from(

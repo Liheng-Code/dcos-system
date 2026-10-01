@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
+import { getModuleForPath } from "@/lib/modules/registry";
+import { isFeatureRouteBlocked, type FeatureSetting } from "@/lib/modules/features";
 
 export interface ModuleSetting {
   module_key: string;
@@ -72,79 +74,47 @@ export function isModuleActive(modules: ModuleSetting[], key: string): boolean {
   return modules.find((m) => m.module_key === key)?.is_active ?? true;
 }
 
-/**
- * Module keys that get a direct-URL role gate. Module *visibility* is a sidebar
- * + module-hub concern only (see `isRouteBlocked` below): globally disabling a
- * module hides it from navigation but never blocks its routes. The only remaining
- * direct-URL gate is the RBAC role check — a disabled-per-role section redirects to
- * /dashboard for users whose role can't see it.
- *
- * Deliberately excludes `"administration"`: that folder keeps its own, unrelated
- * `(isAdmin || isHr)` gate in the sidebar, so it is never role-blocked here (and, per
- * the module-visibility rule above, also never toggle-blocked) — its own gate is the
- * single source of truth for who enters those routes.
- */
-const ROLE_GOVERNED_MODULE_KEYS = new Set([
-  "project",
-  "reporting",
-  "document_control",
-  "planning",
-  "design",
-  "procurement",
-  "inventory",
-  "qs",
-  "construction",
-  "hr",
-  "account",
-]);
+export interface RouteToggleState {
+  // module_settings keys that are switched on.
+  activeModuleKeys: string[];
+  navItemSettings: FeatureSetting[];
+}
 
-// Module visibility is a sidebar + module-hub concern only: a globally disabled
-// module hides it from navigation, but the routes themselves remain reachable via
-// direct URL (per user decision — "Hide in sidebar + hub only"). The remaining
-// direct-URL gate is the RBAC role check below (ROLE_GOVERNED_MODULE_KEYS), which is
-// a separate mechanism and deliberately untouched here.
+// Direct-URL gate for /dashboard routes. A route is blocked (the layout redirects
+// to /dashboard) when any of these holds:
+//   1. its module is switched off in module_settings;
+//   2. its feature, or the feature's nav group, is off (see lib/modules/features.ts)
+//      — this is what keeps "development" features unreachable until released;
+//   3. the user's role is not permitted to see the module (RBAC).
+// Checks 1 and 2 need `toggles`; without it only the role check runs. This
+// supersedes the earlier "hide in sidebar + hub only" rule (changed 2026-10-01).
+//
+// Which routes belong to which module (`routePrefixes`) and whether the guard
+// applies at all (`roleGoverned`) come from the module manifests in
+// lib/modules/manifests. Administration is deliberately not governed: it keeps its
+// own `(isAdmin || isHr)` sidebar gate and must stay reachable so an admin can
+// always undo a toggle.
 export function isRouteBlocked(
   pathname: string,
   permittedModuleKeys?: string[],
+  toggles?: RouteToggleState,
 ): boolean {
-  const routeModuleMap: Record<string, string> = {
-    "/dashboard/projects": "project",
-    "/dashboard/wbs": "project",
-    "/dashboard/tasks": "project",
-    "/dashboard/stakeholders": "project",
-    "/dashboard/reports": "reporting",
-    "/dashboard/insights": "reporting",
-    "/dashboard/documents": "document_control",
-    "/dashboard/transmittals": "document_control",
-    "/dashboard/planning": "planning",
-    "/dashboard/design": "design",
-    "/dashboard/procurement": "procurement",
-    "/dashboard/qs": "qs",
-    "/dashboard/tenders": "qs",
-    "/dashboard/subcontractors": "qs",
-    "/dashboard/contracts": "qs",
-    "/dashboard/qto": "qs",
-    "/dashboard/site": "construction",
-    "/dashboard/qaqc": "construction",
-    "/dashboard/hse": "construction",
-    "/dashboard/hr": "hr",
-    "/dashboard/account": "account",
-    "/dashboard/administration": "administration",
-    "/dashboard/settings": "administration",
-  };
+  const routeModule = getModuleForPath(pathname);
+  if (routeModule && !routeModule.roleGoverned) return false;
 
-  for (const [prefix, moduleKey] of Object.entries(routeModuleMap)) {
-    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
-      if (
-        permittedModuleKeys &&
-        ROLE_GOVERNED_MODULE_KEYS.has(moduleKey) &&
-        !permittedModuleKeys.includes(moduleKey)
-      ) {
-        return true;
-      }
-      return false;
+  if (toggles) {
+    // An empty list means the settings could not be loaded (Administration is
+    // always on), so fail open rather than lock every route.
+    if (
+      routeModule &&
+      toggles.activeModuleKeys.length > 0 &&
+      !toggles.activeModuleKeys.includes(routeModule.key)
+    ) {
+      return true;
     }
+    if (isFeatureRouteBlocked(pathname, toggles.navItemSettings)) return true;
   }
 
-  return false;
+  if (!routeModule || !permittedModuleKeys) return false;
+  return !permittedModuleKeys.includes(routeModule.key);
 }

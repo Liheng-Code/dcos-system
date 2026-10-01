@@ -12,7 +12,7 @@ import {
   getProjectBaseCurrency,
   setProjectBaseCurrency,
   upsertExchangeRate,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 
 const COMMON_CURRENCIES = [
   { code: "USD", name: "US Dollar" },

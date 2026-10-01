@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { AlertTriangle, FileSpreadsheet, Pencil, Plus, Search, Upload, Users, Wallet, Wrench } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  AlertTriangle, Calculator, FileSpreadsheet, History, MoreHorizontal, Pencil, Plus, Search, Upload, Users, Wallet, Wrench,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +14,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlLaborRateFormDialog } from "@/components/qs/dwl-labor-rate-form-dialog";
 import { DwlLaborRateImportDialog } from "@/components/qs/dwl-labor-rate-import-dialog";
-import { dwlDisplayResourceDescription, type DwlLaborRateRow } from "@/components/qs/dwl-types";
+import { DWL_LABOR_BUILD_UP_DEFAULTS, dwlDisplayResourceDescription, type DwlLaborRateRow } from "@/components/qs/dwl-types";
 
 const V_COLUMNS =
   "resource_id, code, description, unit, spec_reference, is_active, created_at, updated_at, " +
-  "skill_level, standard_productivity_note, daily_basic_rate, overtime_rate_per_hr, currency, valid_from, price_status";
+  "skill_level, standard_productivity_note, daily_basic_rate, overtime_rate_per_hr, currency, valid_from, price_status, " +
+  "all_in_enabled, ot_allowance_pct, nssf_employer_pct, other_statutory_pct, meal_per_day, transport_per_day, " +
+  "accommodation_per_day, ppe_tools_per_day, all_in_daily_rate, costing_rate";
 
 const SKILL_BADGE_CLASS: Record<string, string> = {
   "General Helper": "bg-slate-50 text-slate-700 border-slate-200",
@@ -44,7 +53,9 @@ function shiftUnitLabel(unit: string) {
 
 export default function DwlLaborRatesListPage() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const { can, loaded: permsLoaded } = useQsPermissions();
+  const [applyingDefaults, setApplyingDefaults] = useState(false);
 
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -105,6 +116,38 @@ export default function DwlLaborRatesListPage() {
 
   const canView = !permsLoaded || can("qs_libraries", "view");
   const canCreate = can("qs_libraries", "can_create");
+  const canEdit = can("qs_libraries", "edit") || canCreate;
+  const allInCount = useMemo(() => rows.filter((r) => r.all_in_enabled).length, [rows]);
+  const pendingDefaults = useMemo(() => rows.filter((r) => r.unit === "day" && !r.all_in_enabled && r.daily_basic_rate != null), [rows]);
+
+  // Bulk: switch every day-rate trade without a build-up to the Cambodia defaults.
+  async function applyDefaultsToAll() {
+    if (!tenantId || pendingDefaults.length === 0) return;
+    const d = DWL_LABOR_BUILD_UP_DEFAULTS;
+    const ok = window.confirm(
+      `Apply the Cambodia all-in build-up (OT ${d.ot_allowance_pct * 100}%, NSSF ${d.nssf_employer_pct * 100}%, seniority ${d.other_statutory_pct * 100}%, ` +
+      `meals $${d.meal_per_day}, transport $${d.transport_per_day}, PPE $${d.ppe_tools_per_day}/day) to ${pendingDefaults.length} day-rate trade(s)?\n\n` +
+      "Cost items that use these trades will be re-priced with the all-in rate. Trades that already have a build-up are not changed."
+    );
+    if (!ok) return;
+    setApplyingDefaults(true);
+    const { error } = await supabase.from("dwl_labor_rate_attributes").upsert(
+      pendingDefaults.map((r) => ({
+        resource_id: r.resource_id,
+        tenant_id: tenantId,
+        skill_level: r.skill_level,
+        standard_productivity_note: r.standard_productivity_note,
+        all_in_enabled: true,
+        ...d,
+        updated_by: userId,
+      })),
+      { onConflict: "resource_id" }
+    );
+    setApplyingDefaults(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`All-in build-up applied to ${pendingDefaults.length} trade(s)`);
+    void loadData();
+  }
 
   function handleExcelExport() {
     const data = filtered.map((r) => ({
@@ -150,6 +193,12 @@ export default function DwlLaborRatesListPage() {
           <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={filtered.length === 0}>
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel Export
           </Button>
+          {canEdit && pendingDefaults.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => void applyDefaultsToAll()} disabled={!tenantId || applyingDefaults}
+              title="Apply the Cambodia all-in build-up to every day-rate trade that has none">
+              <Calculator className="h-3.5 w-3.5" /> Apply all-in defaults ({pendingDefaults.length})
+            </Button>
+          )}
           {canCreate && (
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)} disabled={!tenantId}>
               <Upload className="h-3.5 w-3.5" /> Import (Excel/CSV)
@@ -167,7 +216,7 @@ export default function DwlLaborRatesListPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">Total Trades</p>
@@ -191,6 +240,14 @@ export default function DwlLaborRatesListPage() {
           </div>
           <p className="mt-1 text-xl font-semibold text-emerald-700">{avgDailyWage != null ? formatMoney(avgDailyWage, "USD") : "—"}</p>
           <p className="text-xs text-muted-foreground">8-hour standard shift</p>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">All-in Costing</p>
+            <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <p className="mt-1 text-xl font-semibold">{allInCount}</p>
+          <p className="text-xs text-muted-foreground">Trades costed at the all-in rate</p>
         </div>
       </div>
 
@@ -227,9 +284,10 @@ export default function DwlLaborRatesListPage() {
                 <TableHead className="w-28">Shift Unit</TableHead>
                 <TableHead className="w-28 text-right">Daily Basic Rate</TableHead>
                 <TableHead className="w-28 text-right">Overtime Rate / hr</TableHead>
+                <TableHead className="w-28 text-right" title="Rate cost items use: all-in when the build-up is on, else basic">Costing Rate</TableHead>
                 <TableHead>Standard Productivity</TableHead>
                 <TableHead className="w-24">Status</TableHead>
-                <TableHead className="w-16 text-center">Action</TableHead>
+                <TableHead className="w-16 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -247,6 +305,10 @@ export default function DwlLaborRatesListPage() {
                   <TableCell className="text-xs text-muted-foreground">{shiftUnitLabel(r.unit)}</TableCell>
                   <TableCell className="text-right font-mono text-xs font-medium">{formatMoney(r.daily_basic_rate, r.currency)}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-muted-foreground">{formatMoney(r.overtime_rate_per_hr, r.currency)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">
+                    <span className={cn(r.all_in_enabled && "font-medium text-emerald-700")}>{formatMoney(r.costing_rate, r.currency)}</span>
+                    <span className="block text-[10px] text-muted-foreground">{r.all_in_enabled ? "all-in" : "basic"}</span>
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.standard_productivity_note ?? "—"}</TableCell>
                   <TableCell>
                     {r.price_status ? (
@@ -254,11 +316,21 @@ export default function DwlLaborRatesListPage() {
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    {canCreate && (
-                      <Button variant="outline" size="sm" title="Edit labor rate" onClick={() => { setEditRow(r); setShowForm(true); }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Actions for ${r.code}`} />}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/qs/dwl-resources?q=${encodeURIComponent(r.code)}`)}>
+                          <History /> Price history
+                        </DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem onClick={() => { setEditRow(r); setShowForm(true); }}>
+                            <Pencil /> Edit rate &amp; build-up
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}

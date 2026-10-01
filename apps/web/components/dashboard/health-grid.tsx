@@ -17,7 +17,7 @@ import {
 import { Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChartCard } from "@/components/dashboard/chart-card";
-import { captureProgressSnapshot } from "@/lib/schedule-service";
+import { captureProgressSnapshot } from "@/lib/planning/schedule-service";
 import { currency, percent, ratio } from "@/lib/evm-service";
 import type { ProjectCostAnalytics } from "@/lib/evm-service";
 import type { HealthMetrics } from "@/components/dashboard/project-health-strip";

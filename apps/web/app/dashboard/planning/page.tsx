@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
-import { captureProgressSnapshot, getProgressSnapshots } from "@/lib/schedule-service";
+import { captureProgressSnapshot, getProgressSnapshots } from "@/lib/planning/schedule-service";
 import { useSheetData } from "@/components/planning/use-sheet-data";
 import type { SheetProject, SheetRow, SheetTask } from "@/components/planning/sheet-types";
 import type { TaskFloat } from "@/lib/planning/schedule-engine";

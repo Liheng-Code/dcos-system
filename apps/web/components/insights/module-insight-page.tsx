@@ -7,7 +7,7 @@ import {
   pivotTaskSummary,
   type DisciplineSummary,
   type ApprovalSummaryRow,
-} from "@/lib/insights-service";
+} from "@/lib/reporting/insights-service";
 import { ModuleOverviewCards } from "@/components/insights/module-overview-cards";
 import { TaskStatusTable } from "@/components/insights/task-status-table";
 import { ApprovalPipelineTable } from "@/components/insights/approval-pipeline-table";

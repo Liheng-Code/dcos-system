@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ProgressClaimList } from "@/components/qs/progress-claim-list";
 import { RetentionRegister } from "@/components/qs/retention-register";
 import { AdvanceRecoveryRegister } from "@/components/qs/advance-recovery-register";
-import { getQsPaymentVouchers, type QsPaymentVoucher } from "@/lib/qs-service";
+import { getQsPaymentVouchers, type QsPaymentVoucher } from "@/lib/qs/qs-service";
 
 const SUB_TAB_IDS = ["claims", "subipcs", "retention", "advance", "payments"] as const;
 type SubTab = (typeof SUB_TAB_IDS)[number];

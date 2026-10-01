@@ -37,6 +37,9 @@ export interface DocumentRecord {
   discipline: string | null;
   status: string;
   current_revision: number;
+  current_revision_code?: string;
+  review_code?: string | null;
+  package_code?: string | null;
   description: string | null;
   created_by: string;
 }
@@ -81,6 +84,10 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
     title: document?.title ?? "",
     discipline: document?.discipline ?? "",
     status: document?.status ?? "draft",
+    current_revision_code: document?.current_revision_code ?? "R00",
+    package_code: document?.package_code ?? "",
+    suitability_code: "S0",
+    sheet_size: "A1",
     description: document?.description ?? "",
   });
 
@@ -152,6 +159,8 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
       discipline: form.discipline || null,
       status: form.status,
       current_revision: document?.current_revision ?? 0,
+      current_revision_code: form.current_revision_code || "R00",
+      package_code: form.package_code || null,
       description: form.description || null,
       created_by: document?.created_by ?? userId,
     };
@@ -166,20 +175,29 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
       toast.success("Document updated");
 
       if (fileUrl) {
+        const nextRevNum = (document.current_revision ?? 0) + 1;
+        const nextRevCode = form.current_revision_code || `R${String(nextRevNum).padStart(2, "0")}`;
         const { error: revErr } = await supabase.from("document_revisions").insert({
           document_id: document.id,
-          revision_number: document.current_revision + 1,
+          revision_number: nextRevNum,
+          revision_code: nextRevCode,
+          suitability_code: form.suitability_code || "S0",
+          sheet_size: form.sheet_size || null,
           file_url: fileUrl,
           file_name: selectedFile?.name ?? null,
           file_size: selectedFile?.size ?? null,
           uploaded_by: payload.created_by,
           status: form.status,
-          notes: `Revision ${document.current_revision + 1}`,
+          notes: `Revision ${nextRevCode}`,
         });
         if (revErr) toast.error("Revision save failed: " + revErr.message);
         else {
-          const { error: updErr } = await supabase.from("documents").update({ current_revision: document.current_revision + 1 }).eq("id", document.id);
-          if (!updErr) payload.current_revision = document.current_revision + 1;
+          await supabase.from("documents").update({
+            current_revision: nextRevNum,
+            current_revision_code: nextRevCode,
+          }).eq("id", document.id);
+          payload.current_revision = nextRevNum;
+          payload.current_revision_code = nextRevCode;
         }
       }
 
@@ -194,15 +212,19 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
       const newDoc = data as DocumentRecord;
 
       if (fileUrl) {
+        const initRevCode = form.current_revision_code || "R00";
         await supabase.from("document_revisions").insert({
           document_id: newDoc.id,
           revision_number: 0,
+          revision_code: initRevCode,
+          suitability_code: form.suitability_code || "S0",
+          sheet_size: form.sheet_size || null,
           file_url: fileUrl,
           file_name: selectedFile?.name ?? null,
           file_size: selectedFile?.size ?? null,
           uploaded_by: payload.created_by,
           status: form.status,
-          notes: "Initial revision",
+          notes: `Initial revision ${initRevCode}`,
         });
       }
 
@@ -316,6 +338,65 @@ export function DocumentEditSheet({ document, onClose, onSave }: DocumentEditShe
                   {STATUSES.map((s) => (
                     <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>
                   ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="revision_code">Revision Code</Label>
+                <input
+                  id="revision_code"
+                  value={form.current_revision_code}
+                  onChange={(e) => update("current_revision_code", e.target.value)}
+                  placeholder="e.g. R00, P01, C01"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-hidden focus:border-primary"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="package_code">Package Code</Label>
+                <input
+                  id="package_code"
+                  value={form.package_code}
+                  onChange={(e) => update("package_code", e.target.value)}
+                  placeholder="e.g. P01, ARC-01"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="suitability">ISO 19650 Suitability</Label>
+                <select
+                  id="suitability"
+                  value={form.suitability_code}
+                  onChange={(e) => update("suitability_code", e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                >
+                  <option value="S0">S0 — Work In Progress</option>
+                  <option value="S1">S1 — Suitable for Coordination</option>
+                  <option value="S2">S2 — Suitable for Information</option>
+                  <option value="S3">S3 — Review &amp; Comment</option>
+                  <option value="S4">S4 — Stage Approval</option>
+                  <option value="F">F — Issued for Construction (IFC)</option>
+                  <option value="AB">AB — As-Built Record</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sheet_size">Sheet Size</Label>
+                <select
+                  id="sheet_size"
+                  value={form.sheet_size}
+                  onChange={(e) => update("sheet_size", e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                >
+                  <option value="A0">A0</option>
+                  <option value="A1">A1</option>
+                  <option value="A2">A2</option>
+                  <option value="A3">A3</option>
+                  <option value="A4">A4</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
             </div>

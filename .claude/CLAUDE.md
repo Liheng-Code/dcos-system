@@ -53,10 +53,17 @@ cd apps/web && pnpm start
 cd apps/web && pnpm lint
 
 # ESLint config: apps/web/eslint.config.mjs (includes Next.js and React plugin rules)
+# Pre-existing errors are baselined in apps/web/eslint-suppressions.json, so only new errors fail.
+# After fixing baselined errors, shrink the baseline:
+cd apps/web && pnpm lint:prune
 ```
 
-### Testing
-No test runner is currently configured. Tests should be added before major refactoring.
+### Typecheck & Testing
+```bash
+cd apps/web && pnpm typecheck   # tsc --noEmit
+cd apps/web && pnpm test        # Vitest, pure-function unit tests (lib/**/__tests__)
+```
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, test and build on `main`. See `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md` for the phased modularisation plan.
 
 ### Local Supabase (Docker Desktop) — the only database Claude works with
 
@@ -153,11 +160,8 @@ dcos-system/
 │   │   ├── lib/            # Utilities, Supabase client, helpers
 │   │   ├── public/         # Static assets
 │   │   └── package.json
-│   └── api/                # API configuration (holds .env for API keys)
-├── packages/               # Shared packages
-│   ├── ui/                 # Shared UI components (if any)
-│   ├── shared/             # Shared utilities and types
-│   └── config/             # Shared configuration
+├── supabase/               # Migrations, seeds, edge functions
+├── scripts/                # DB backup/restore and guard scripts
 └── docs/                   # Documentation and design files
 ```
 
@@ -183,7 +187,16 @@ dcos-system/
 **apps/web/lib/** - Utilities and service layer
 - `supabase/` - Supabase client initialization and helpers
 - `utils.ts` - General utilities (cn() for class merging, etc.)
-- Additional helper functions for API calls and data transformations
+- `<module>/` - each business module's services and nav file (`hr/`, `qs/`, `planning/`, `procurement/`, `inv/`, `design/` + `bim/`, `construction/` + `site/`, `documents/`, `account/`, `reporting/`)
+- `modules/` - module registry: one manifest per module in `modules/manifests/`, listed in `modules/registry.ts`; feature release status in `modules/features.ts`
+- Files left at the `lib/` root are core (shared by every module)
+
+### Modules & boundaries
+- The sidebar, module hub, route guard and permission map all derive from the module manifests. To add a module: write a manifest, add it to `registry.ts`, add its paths to `module-boundaries.mjs`.
+- A nav item with `status: "development"` is hidden and route-blocked until switched on in Module Settings (or `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true` locally).
+- `apps/web/module-boundaries.mjs` maps every folder to its owning module and lists each module's public API. The `dcos/module-boundaries` ESLint rule fails on an import of another module's internals. Anything not listed there is core, which any module may import.
+- Do not add to the boundary baseline in `eslint-suppressions.json` to get an import through; add the file to `PUBLIC_API` (a deliberate contract) or move the shared code to core.
+- Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
 
 **apps/web/hooks/** - Custom React hooks
 - `useAuth()` - Authentication and session management

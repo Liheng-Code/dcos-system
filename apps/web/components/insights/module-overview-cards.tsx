@@ -15,7 +15,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
-import { type DisciplineSummary } from "@/lib/insights-service";
+import { type DisciplineSummary } from "@/lib/reporting/insights-service";
 
 interface Props {
   disciplines: DisciplineSummary[];

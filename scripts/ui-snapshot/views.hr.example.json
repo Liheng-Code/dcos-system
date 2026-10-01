@@ -1,0 +1,17 @@
+[
+  { "name": "hub", "url": "/modules", "waitFor": "text=Open Module" },
+  { "name": "sidebar", "url": "/dashboard", "waitFor": "aside nav button", "scope": "aside" },
+  {
+    "name": "employee",
+    "url": "/dashboard/hr/employees/REPLACE-WITH-AN-EMPLOYEE-ID",
+    "waitFor": "[role=tablist]",
+    "tabs": true
+  },
+  {
+    "name": "leave-admin",
+    "url": "/dashboard/hr/leave/admin",
+    "waitFor": "text=Leave Admin Setup",
+    "clicks": ["Team Capacity", "Seniority Rules", "Year-End", "Public Holidays"],
+    "freshClicks": ["Add Leave Type"]
+  }
+]

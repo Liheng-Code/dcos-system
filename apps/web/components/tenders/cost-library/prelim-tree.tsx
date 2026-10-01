@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, ListTree, Wrench, Users, Palette, AlertTriangle, HardHat, ChevronsUpDown } from "lucide-react";
-import { type CalculatedPrelimItem, type CalculatedPrelimTree } from "@/lib/prelim-library-service";
+import { type CalculatedPrelimItem, type CalculatedPrelimTree } from "@/lib/qs/prelim-library-service";
 
 interface PrelimTreeProps {
   tree: CalculatedPrelimTree;

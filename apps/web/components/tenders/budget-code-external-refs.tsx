@@ -12,7 +12,7 @@ import {
   updateBudgetCodeExternalRef,
   type BudgetCodeExternalRef,
   type ExternalStandard,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 
 interface Props {
   budgetCodeId: string;

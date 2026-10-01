@@ -6,7 +6,7 @@ import {
   getScurveSeries,
   type ScurvePoint,
   type ScurveSeries,
-} from "@/lib/schedule-service";
+} from "@/lib/planning/schedule-service";
 import { currency, percent, ratio } from "@/lib/evm-service";
 import { TrendingUp, Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

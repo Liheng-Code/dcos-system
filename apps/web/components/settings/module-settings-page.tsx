@@ -2,23 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  LayoutDashboard,
-  BarChart2,
-  FileText,
-  CalendarRange,
-  PenTool,
-  ShoppingCart,
-  Calculator,
-  HardHat,
-  Users,
-  Landmark,
-  Settings,
-  Loader2,
-  Lock,
-  Info,
-  ListTree,
-} from "lucide-react";
+import { Settings, Loader2, Lock, Info, ListTree } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -40,21 +24,8 @@ import { cn } from "@/lib/utils";
 import type { ModuleSetting } from "@/lib/module-settings-service";
 import { getModuleSettings } from "@/lib/module-settings-service";
 import { NAV_ITEM_CATALOG, type NavCatalogEntry } from "@/lib/nav-item-catalog";
+import { getModule } from "@/lib/modules/registry";
 import { useModuleSettings } from "@/contexts/module-settings-context";
-
-const MODULE_ICONS: Record<string, typeof LayoutDashboard> = {
-  project: LayoutDashboard,
-  reporting: BarChart2,
-  document_control: FileText,
-  planning: CalendarRange,
-  design: PenTool,
-  procurement: ShoppingCart,
-  qs: Calculator,
-  construction: HardHat,
-  hr: Users,
-  account: Landmark,
-  administration: Settings,
-};
 
 export function ModuleSettingsPage() {
   const [modules, setModules] = useState<ModuleSetting[]>([]);
@@ -111,7 +82,7 @@ export function ModuleSettingsPage() {
           <h2 className="text-lg font-semibold tracking-tight">Module Visibility</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Toggle modules on or off globally. Disabled modules are hidden from the sidebar
-            and the module hub for all users; their routes remain reachable by direct URL.
+            and the module hub for all users, and their pages cannot be opened by direct URL.
           </p>
         </div>
         <Badge variant="outline" className="text-xs">
@@ -121,7 +92,7 @@ export function ModuleSettingsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {modules.map((mod) => {
-          const Icon = MODULE_ICONS[mod.module_key] ?? Settings;
+          const Icon = getModule(mod.module_key)?.hub.icon ?? Settings;
           const isToggling = toggling === mod.module_key;
           const isProtected = mod.module_key === "administration";
           const isActive = isModuleActive(mod.module_key);
@@ -168,7 +139,7 @@ export function ModuleSettingsPage() {
                     {!isProtected && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Info className="h-3 w-3" />
-                        {isActive ? "Visible in sidebar & hub" : "Hidden from sidebar & hub"}
+                        {isActive ? "Visible in sidebar & hub" : "Hidden and blocked"}
                       </span>
                     )}
                   </div>
@@ -212,7 +183,7 @@ export function ModuleSettingsPage() {
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-        <strong>Note:</strong> Disabling a module hides it from the navigation sidebar and the module hub. Direct URL access to a disabled module still works — this control affects visibility, not access. Admins will still see disabled modules in this settings page. The Administration module is always active and cannot be turned off.
+        <strong>Note:</strong> Disabling a module, or a navigation item inside it, hides it from the sidebar and the module hub and blocks its pages for every user, including by direct URL. This is a release switch, not a permission: who may use an enabled module is still set under Roles &amp; Permissions. Items marked &quot;In development&quot; stay off until you switch them on. The Administration module is always active and cannot be turned off.
       </div>
     </div>
   );
@@ -221,9 +192,9 @@ export function ModuleSettingsPage() {
 // ── Per-module "Manage navigation items" dialog ──────────────────────────────
 // Lists this module's sub-group headings and leaf links (from the static
 // NAV_ITEM_CATALOG) with the same raw pill-switch markup used above, scaled
-// down slightly to fit a denser list. Checked state is joined against
-// navItemSettings from context — absent from that array means visible by
-// default, exactly mirroring isNavItemActive's `?? true` fallback.
+// down slightly to fit a denser list. Checked state comes from the context's
+// isNavItemActive: a settings row wins, and with no row a released item is on
+// and an "In development" item is off.
 function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; displayName: string }) {
   const { isNavItemActive, toggleNavItem } = useModuleSettings();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
@@ -245,7 +216,7 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
     setToggling(null);
 
     if (result.success) {
-      toast.success(`${next ? "Shown" : "Hidden"} "${entry.label}" in sidebar`);
+      toast.success(`${next ? "Enabled" : "Disabled"} "${entry.label}"`);
     } else {
       setOverrides((prev) => ({ ...prev, [entry.navKey]: current }));
       toast.error(result.error ?? "Failed to update navigation item.");
@@ -257,7 +228,8 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
       <DialogHeader>
         <DialogTitle>Navigation items — {displayName}</DialogTitle>
         <DialogDescription>
-          Hide or show individual sub-groups and links within this module&apos;s sidebar section.
+          Switch individual sub-groups and pages of this module on or off. A page that is off is
+          hidden and cannot be opened by direct URL.
         </DialogDescription>
       </DialogHeader>
 
@@ -284,11 +256,14 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
             >
               <span
                 className={cn(
-                  "truncate text-sm",
+                  "flex min-w-0 items-center gap-2 text-sm",
                   isGroup ? "font-semibold text-foreground" : "text-muted-foreground",
                 )}
               >
-                {entry.label}
+                <span className="truncate">{entry.label}</span>
+                {entry.status === "development" && (
+                  <Badge variant="outline" className="shrink-0 text-[10px]">In development</Badge>
+                )}
               </span>
               <button
                 type="button"

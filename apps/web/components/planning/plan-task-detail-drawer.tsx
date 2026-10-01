@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { X } from "lucide-react";
 import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
+import { cn } from "@/lib/utils";
 import type { SheetTask } from "./sheet-types";
 
 interface Props {
@@ -13,12 +16,12 @@ interface Props {
 
 /**
  * A focused slide-over for the Gantt Chart page — just enough context (name,
- * code, dates, current %) plus Activity Steps. Full field editing (dates,
- * links, resources) stays on Planning ▸ Sheet's docked detail panel; this
- * drawer deliberately doesn't duplicate that so there's only one write path
- * for those fields.
+ * code, dates, current %) plus Activity Steps and Site Diary actuals. Full field editing (dates,
+ * links, resources) stays on Planning ▸ Sheet's docked detail panel.
  */
 export function PlanTaskDetailDrawer({ task, formatDate, onClose, onSyncProgress }: Props) {
+  const [tab, setTab] = useState<"steps" | "site_diary">("steps");
+
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -52,17 +55,53 @@ export function PlanTaskDetailDrawer({ task, formatDate, onClose, onSyncProgress
             Editing dates, predecessors, or resources? Use the Sheet grid on the left, or Planning ▸ Sheet.
           </p>
 
-          <WbsActivityStepsPanel
-            taskId={task.id}
-            taskStart={task.start_date}
-            taskEnd={task.end_date}
-            canEdit={true}
-            onStepsChange={(hasSteps, computed) => {
-              if (hasSteps && computed != null && computed !== task.progress) {
-                onSyncProgress(task.id, computed);
-              }
-            }}
-          />
+          {/* Sub-tabs: Steps vs Site Diary */}
+          <div className="mb-3 flex items-center gap-1 border-b border-border pb-1">
+            <button
+              type="button"
+              onClick={() => setTab("steps")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
+                tab === "steps"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Activity Steps
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("site_diary")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
+                tab === "site_diary"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Site Diary & Actuals
+            </button>
+          </div>
+
+          {tab === "steps" ? (
+            <WbsActivityStepsPanel
+              taskId={task.id}
+              taskStart={task.start_date}
+              taskEnd={task.end_date}
+              canEdit={true}
+              onStepsChange={(hasSteps, computed) => {
+                if (hasSteps && computed != null && computed !== task.progress) {
+                  onSyncProgress(task.id, computed);
+                }
+              }}
+            />
+          ) : (
+            <PlanActivitySiteDiaryPanel
+              taskId={task.id}
+              taskCode={task.task_code}
+              taskName={task.task_name}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -19,7 +19,7 @@ import { CostPerM2Dashboard } from "@/components/qs/cost-per-m2-dashboard";
 import {
   getBudgetSummary, getCostTransactions, getProgressClaims, getVariationOrders,
   type BudgetSummary, type QsCostTransaction, type QsProgressClaim, type QsVariationOrder,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { cn } from "@/lib/utils";
 
 const SUB_TABS = [

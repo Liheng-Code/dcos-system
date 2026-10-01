@@ -11,7 +11,7 @@ import {
   getDirectWorksTotal,
   getPreliminariesTotal,
   type TenderBidSummary,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 
 const fmt = (n: number) =>

@@ -21,7 +21,7 @@ import {
   submitVoApprovalDecision,
   updateVoStatus,
   voApprovalThreshold,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { printVoRegister } from "@/lib/print-service";

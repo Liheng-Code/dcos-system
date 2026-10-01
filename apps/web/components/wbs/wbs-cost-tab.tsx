@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { WbsEvmPanel } from "@/components/wbs/wbs-evm-panel";
 import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
 import { currency, getWbsNodeCostBreakdown, toNumber } from "@/lib/evm-service";
-import { getWbsCommercialSummary, getWbsBudgetRollup, type CommercialSummary } from "@/lib/qs-service";
+import { getWbsCommercialSummary, getWbsBudgetRollup, type CommercialSummary } from "@/lib/qs/public";
 import { cn } from "@/lib/utils";
 
 interface Props {

@@ -14,7 +14,8 @@
 		"dev": "pnpm --dir apps/web dev",
 		"build": "pnpm --dir apps/web build",
 		"lint": "pnpm --dir apps/web lint",
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"typecheck": "pnpm --dir apps/web typecheck",
+		"test": "pnpm --dir apps/web test"
 	},
 	"repository": {
 		"type": "git",

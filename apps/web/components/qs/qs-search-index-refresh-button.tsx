@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { refreshQsSearchIndex } from "@/lib/qs-library-search";
+import { refreshQsSearchIndex } from "@/lib/qs/qs-library-search";
 
 // Fills missing embeddings for the QS library search index (rows added or
 // edited since the last refresh). Keyword search works without it; this only

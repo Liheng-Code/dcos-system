@@ -266,6 +266,25 @@ Enter (minimum) the resources below with one price row each, from real quotation
 4. Every actual purchase entered by Procurement uses `source_type = 'purchase'` monthly.
 5. Description must contain the price-driving spec (grade, size, class). "Concrete" alone is rejected.
 
+### Step 1.4a — One resource table, one tab per resource type (2026-09-28)
+
+`dwl_resources` stays the single resource table with one append-only price history. Each resource type is created and maintained in its own tab, and each tab has a 1:1 detail table for the fields that type needs:
+
+| Tab (Cost & Rate Library) | Category | Detail table | Type-specific fields |
+|---|---|---|---|
+| Material Master | material | `dwl_material_attributes` | name, category, spec, standard, grade, brand, cost code, photos |
+| Labor Rates | labor | `dwl_labor_rate_attributes` | skill level, productivity, **all-in build-up** |
+| Equipment Rates | equipment | `dwl_equipment_attributes` | owned/hired, rate basis (hour/day/week/month/unit of output), operator & fuel included, fuel L/day, minimum hire, mobilisation, capacity |
+| Subcontractor Rates | subcon | `dwl_subcon_attributes` | trade, subcontractor, rate type, year |
+| **All Resources** (price register) | all | — | cross-type search, current price, add new price; paged in the database |
+
+Rules:
+1. Create a resource in its typed tab, never generically. "Add Resource" on All Resources opens the right tab, so every material gets its material record.
+2. New codes follow the locked spine: `M-`/`L-`/`E-`/`S-` + `GRP-NNN` (Equipment: `E-EXC-001`).
+3. **Labour all-in day rate.** For a day-rate trade, all-in = basic × (1 + routine OT % + NSSF employer % + seniority/other %) + meals + transport + accommodation + PPE & tools per day. Cambodia defaults: OT 5%, NSSF 5.4% (occupational risk 0.8% + health 2.6% + pension 2.0%), seniority 4.2%, meals $1.50, transport $1.00, PPE $0.50/day. Costing switches to the all-in rate only when *Use all-in day rate for costing* is on for that trade.
+4. `dwl_v_resource_costing_rates.costing_rate` is the one rate every costing view uses (cost-item summary crew/equipment, work-item rate build-ups, cost-item detail). Planning (`plan_resolve_labor_rate`) still uses the basic day rate.
+5. The 54 legacy "-RATE" placeholder resources from the old rate libraries were removed or renamed by `20260928000010_dwl_rate_placeholder_cleanup.sql`: 42 true duplicates deleted, 12 distinct resources kept under proper codes.
+
 ### Step 1.5 — Phase 1 acceptance test
 
 | # | Test | Pass Criteria |

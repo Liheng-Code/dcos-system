@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createUserClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   try {
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { requestId, reason } = await req.json();
     if (!requestId) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
@@ -18,6 +24,11 @@ export async function POST(req: NextRequest) {
 
     if (fetchError || !leaveReq) {
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
+    }
+
+    // Only the employee who made the request may ask to cancel it.
+    if (leaveReq.employee_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (leaveReq.status !== "approved") {

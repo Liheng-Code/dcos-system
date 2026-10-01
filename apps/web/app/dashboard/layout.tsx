@@ -17,14 +17,17 @@ import { Loader2 } from "lucide-react";
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { loading, permittedModuleKeys, permittedLoading } = useModuleSettings();
-  const isLoading = loading || permittedLoading;
+  const { loading, permittedModuleKeys, permittedLoading, activeKeys, navItemSettings, navLoading } = useModuleSettings();
+  const isLoading = loading || permittedLoading || navLoading;
+  const blocked =
+    !isLoading &&
+    isRouteBlocked(pathname, permittedModuleKeys, { activeModuleKeys: activeKeys, navItemSettings });
 
   useEffect(() => {
-    if (!isLoading && isRouteBlocked(pathname, permittedModuleKeys)) {
+    if (blocked) {
       router.replace("/dashboard");
     }
-  }, [pathname, permittedModuleKeys, isLoading, router]);
+  }, [blocked, router]);
 
   if (isLoading) {
     return (
@@ -34,7 +37,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isRouteBlocked(pathname, permittedModuleKeys)) {
+  if (blocked) {
     return null;
   }
 

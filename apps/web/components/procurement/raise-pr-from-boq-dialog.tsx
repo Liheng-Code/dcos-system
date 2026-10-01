@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { BoqItemForPr } from "@/lib/qs-service";
+import type { BoqItemForPr } from "@/lib/qs/public";
 
 interface Props {
   projectId: string;

@@ -6,9 +6,9 @@ import { getActiveModuleKeys, toggleModule as toggleModuleService } from "@/lib/
 import {
   getNavItemSettings,
   toggleNavItem as toggleNavItemService,
-  isNavItemActive as isNavItemActiveService,
   type NavItemSetting,
 } from "@/lib/nav-item-settings-service";
+import { isFeatureActive } from "@/lib/modules/features";
 import { createClient } from "@/lib/supabase/client";
 import { usePermittedModules } from "@/hooks/use-permitted-modules";
 
@@ -146,8 +146,10 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
     [fetchKeys],
   );
 
+  // A settings row wins; with no row a "released" feature is on and a
+  // "development" feature is off (see lib/modules/features.ts).
   const isNavItemActive = useCallback(
-    (navKey: string) => isNavItemActiveService(navItemSettings, navKey),
+    (navKey: string) => isFeatureActive(navKey, navItemSettings),
     [navItemSettings],
   );
 

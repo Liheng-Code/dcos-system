@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUp, CheckCircle2, Compass } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { QS_GROUPS } from "@/lib/qs-nav";
+import { QS_GROUPS } from "@/lib/qs/qs-nav";
 import {
   QS_GLANCE_STAGES, QS_RELATED_MODULES, QS_PROJECT_DATA_ITEMS,
   QS_OUTPUT_ITEMS, QS_DATA_FLOW_MODULES, QS_KEY_BENEFITS,

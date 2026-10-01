@@ -221,7 +221,8 @@ export function DwlCostItemDetail({ assemblyId, onChanged }: DwlCostItemDetailPr
 
     const [priceRes, supRes, workItemsRes, rawLinesRes, layerMatRes, layerMatViewRes, layerSpecRes, priceHistRes] = await Promise.all([
       laborEquipIds.length > 0
-        ? supabase.from("dwl_v_current_prices").select("resource_id, code, unit_price, currency").in("resource_id", laborEquipIds)
+        // Same rate the costing summary uses: labour all-in day rate when enabled, else the current price.
+        ? supabase.from("dwl_v_resource_costing_rates").select("resource_id, code, unit_price:costing_rate, currency").in("resource_id", laborEquipIds)
         : Promise.resolve({ data: [] as { resource_id: string; code: string; unit_price: number; currency: string }[] }),
       resourceIds.length > 0
         ? supabase.from("dwl_v_supplier_materials").select("id, tenant_id, supplier_id, supplier_name, supplier_code, resource_id, material_code, material_name, material_unit, supplier_product_code, supplier_product_name, brand, manufacturer, specification, standard, package_size, moq, lead_time_days, is_active, notes, created_at, updated_at").in("resource_id", resourceIds).eq("is_active", true)

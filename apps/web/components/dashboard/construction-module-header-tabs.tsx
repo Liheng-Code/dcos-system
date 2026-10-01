@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { ModuleHeaderTabs } from "@/components/dashboard/module-header-tabs";
-import { getActiveConstructionGroup } from "@/lib/construction-nav";
+import { getActiveConstructionGroup } from "@/lib/construction/construction-nav";
 
 // Construction routes span /dashboard/site, /dashboard/qaqc and
 // /dashboard/hse, so this is rendered by a thin layout in each of those

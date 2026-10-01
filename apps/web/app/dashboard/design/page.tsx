@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Loader2, PenTool, Building2, Wind, GitBranch } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { DESIGN_GROUPS } from "@/lib/design-nav";
+import { DESIGN_GROUPS } from "@/lib/design/design-nav";
 
 const CORRESPONDENCE_ITEMS = DESIGN_GROUPS.find((g) => g.key === "correspondence")!.items;
 

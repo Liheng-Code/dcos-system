@@ -3,11 +3,12 @@
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import React from "react";
-import { Search, Loader2, Filter, X, Plus, FileText, ChevronDown, ChevronRight, Download, Clock, Edit3 } from "lucide-react";
+import { Search, Loader2, Filter, X, Plus, FileText, ChevronDown, ChevronRight, Download, Clock, Edit3, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DocumentEditSheet, type DocumentRecord } from "@/components/documents/document-edit-sheet";
 import { DocumentWorkflowPanel } from "@/components/documents/document-workflow-panel";
+import { DocumentStampModal } from "@/components/documents/document-stamp-modal";
 
 interface DocumentType {
   id: string;
@@ -25,6 +26,10 @@ interface Revision {
   id: string;
   document_id: string;
   revision_number: number;
+  revision_code?: string;
+  suitability_code?: string;
+  sheet_size?: string | null;
+  review_code?: string | null;
   file_url: string | null;
   file_name: string | null;
   file_size: number | null;
@@ -40,6 +45,14 @@ interface DocWithRelations extends DocumentRecord {
   project_name?: string;
   revisions?: Revision[];
 }
+
+const REVIEW_CODE_BADGES: Record<string, { label: string; color: string }> = {
+  code_a: { label: "Code A", color: "bg-emerald-500/10 text-emerald-700 border-emerald-300" },
+  code_b: { label: "Code B", color: "bg-teal-500/10 text-teal-700 border-teal-300" },
+  code_c: { label: "Code C", color: "bg-amber-500/10 text-amber-700 border-amber-300" },
+  code_d: { label: "Code D", color: "bg-red-500/10 text-red-700 border-red-300" },
+  code_e: { label: "Code E", color: "bg-blue-500/10 text-blue-700 border-blue-300" },
+};
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-500/10 text-gray-500 border-gray-200",
@@ -71,6 +84,7 @@ export function DocumentListPage() {
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editDoc, setEditDoc] = useState<DocWithRelations | null>(null);
+  const [stampDoc, setStampDoc] = useState<DocWithRelations | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<Map<string, Revision[]>>(new Map());
 
@@ -254,12 +268,13 @@ export function DocumentListPage() {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Discipline</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Rev</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Status</th>
+                <th className="px-3 py-2.5 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Stamp / QR</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
                     No documents found
                   </td>
                 </tr>
@@ -303,20 +318,43 @@ export function DocumentListPage() {
                         {d.discipline || "—"}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                        R{d.current_revision}
+                        {d.current_revision_code || `R${d.current_revision}`}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className={cn(
-                          "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize",
-                          STATUS_COLORS[d.status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
-                        )}>
-                          {d.status.replace(/_/g, " ")}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={cn(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize",
+                            STATUS_COLORS[d.status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
+                          )}>
+                            {d.status.replace(/_/g, " ")}
+                          </span>
+                          {d.review_code && REVIEW_CODE_BADGES[d.review_code] && (
+                            <span className={cn(
+                              "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
+                              REVIEW_CODE_BADGES[d.review_code].color
+                            )}>
+                              {REVIEW_CODE_BADGES[d.review_code].label}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <button
+                          type="button"
+                          title="Issue Stamped Controlled Copy & QR Code"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStampDoc(d);
+                          }}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors inline-flex items-center gap-1"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                     {expandedDoc === d.id && (
                       <tr key={`rev-${d.id}`}>
-                        <td colSpan={7} className="bg-muted/20 px-3 py-3">
+                        <td colSpan={8} className="bg-muted/20 px-3 py-3">
                           <div className="flex flex-col gap-2 pl-8">
                             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Revision History</p>
                             {(revisions.get(d.id) ?? []).length === 0 ? (
@@ -325,8 +363,20 @@ export function DocumentListPage() {
                               (revisions.get(d.id) ?? []).map((rev) => (
                                 <div key={rev.id} className="flex items-center gap-3 text-xs">
                                   <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                  <span className="font-mono font-medium">R{rev.revision_number}</span>
-                                  <span className="text-muted-foreground">{rev.file_name || "—"}</span>
+                                  <span className="font-mono font-medium">
+                                    {rev.revision_code || `R${rev.revision_number}`}
+                                  </span>
+                                  {rev.suitability_code && (
+                                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                                      {rev.suitability_code}
+                                    </span>
+                                  )}
+                                  {rev.sheet_size && (
+                                    <span className="rounded border border-border px-1 py-0.5 text-[10px] text-muted-foreground">
+                                      {rev.sheet_size}
+                                    </span>
+                                  )}
+                                  <span className="text-muted-foreground truncate max-w-xs">{rev.file_name || "—"}</span>
                                   {rev.file_url && (
                                     <a
                                       href={rev.file_url}
@@ -339,12 +389,22 @@ export function DocumentListPage() {
                                       Download
                                     </a>
                                   )}
-                                  <span className={cn(
-                                    "ml-auto inline-flex items-center rounded-full border px-1.5 py-0.5 capitalize",
-                                    STATUS_COLORS[rev.status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
-                                  )}>
-                                    {rev.status.replace(/_/g, " ")}
-                                  </span>
+                                  <div className="ml-auto flex items-center gap-1.5">
+                                    {rev.review_code && REVIEW_CODE_BADGES[rev.review_code] && (
+                                      <span className={cn(
+                                        "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
+                                        REVIEW_CODE_BADGES[rev.review_code].color
+                                      )}>
+                                        {REVIEW_CODE_BADGES[rev.review_code].label}
+                                      </span>
+                                    )}
+                                    <span className={cn(
+                                      "inline-flex items-center rounded-full border px-1.5 py-0.5 capitalize",
+                                      STATUS_COLORS[rev.status] ?? "bg-gray-500/10 text-gray-500 border-gray-200",
+                                    )}>
+                                      {rev.status.replace(/_/g, " ")}
+                                    </span>
+                                  </div>
                                 </div>
                               ))
                             )}
@@ -386,6 +446,15 @@ export function DocumentListPage() {
           document={null}
           onClose={() => setShowCreate(false)}
           onSave={handleSave}
+        />
+      )}
+
+      {stampDoc && (
+        <DocumentStampModal
+          document={stampDoc}
+          projectCode={stampDoc.project_code}
+          projectName={stampDoc.project_name}
+          onClose={() => setStampDoc(null)}
         />
       )}
     </>

@@ -13,8 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { checkBoqForLock, updateBoqBaselineStatus } from "@/lib/qs-service";
-import { BoqLockValidationError, sortBoqIssues, summarizeBoqIssues, type BoqIssue } from "@/lib/qs-boq-validation";
+import { checkBoqForLock, updateBoqBaselineStatus } from "@/lib/qs/qs-service";
+import { BoqLockValidationError, sortBoqIssues, summarizeBoqIssues, type BoqIssue } from "@/lib/qs/qs-boq-validation";
 import { cn } from "@/lib/utils";
 
 const MAX_ROWS = 200;

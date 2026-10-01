@@ -13,7 +13,7 @@ import {
   friendlyError,
   friendlyDescError,
   inputClass,
-} from "@/lib/qs-element-library-shared";
+} from "@/lib/qs/qs-element-library-shared";
 
 interface ElementDetailPanelProps {
   item: QsElementRow;

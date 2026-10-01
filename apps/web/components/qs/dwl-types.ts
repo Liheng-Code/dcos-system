@@ -708,6 +708,69 @@ export interface DwlLaborRateRow {
   currency: string | null;
   valid_from: string | null;
   price_status: DwlPriceStatus | null;
+  // All-in build-up (20260928000011). all_in_daily_rate is null unless the
+  // build-up is enabled on a day-rate trade; costing_rate is what cost items use.
+  all_in_enabled: boolean;
+  ot_allowance_pct: number | null;
+  nssf_employer_pct: number | null;
+  other_statutory_pct: number | null;
+  meal_per_day: number | null;
+  transport_per_day: number | null;
+  accommodation_per_day: number | null;
+  ppe_tools_per_day: number | null;
+  all_in_daily_rate: number | null;
+  costing_rate: number | null;
+}
+
+// Cambodia defaults offered by the labour build-up form (employer side).
+// NSSF: occupational risk 0.8% + health care 2.6% + pension 2.0%.
+export const DWL_LABOR_BUILD_UP_DEFAULTS = {
+  ot_allowance_pct: 0.05,
+  nssf_employer_pct: 0.054,
+  other_statutory_pct: 0.042, // seniority indemnity ~15 days/yr
+  meal_per_day: 1.5,
+  transport_per_day: 1.0,
+  accommodation_per_day: 0,
+  ppe_tools_per_day: 0.5,
+} as const;
+
+export const DWL_EQUIPMENT_RATE_BASES = ["hour", "day", "week", "month", "unit_output"] as const;
+export type DwlEquipmentRateBasis = (typeof DWL_EQUIPMENT_RATE_BASES)[number];
+export const DWL_EQUIPMENT_RATE_BASIS_LABEL: Record<DwlEquipmentRateBasis, string> = {
+  hour: "Per hour",
+  day: "Per day",
+  week: "Per week",
+  month: "Per month",
+  unit_output: "Per unit of output",
+};
+
+// public.dwl_v_equipment_rates row — the Equipment Rates page's browse view.
+export interface DwlEquipmentRateRow {
+  resource_id: string;
+  code: string;
+  description: string;
+  unit: string;
+  spec_reference: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  ownership: "owned" | "hired" | null;
+  rate_basis: DwlEquipmentRateBasis | null;
+  operator_included: boolean;
+  fuel_included: boolean;
+  fuel_l_per_day: number | null;
+  min_hire_qty: number | null;
+  mobilisation_cost: number | null;
+  capacity_model: string | null;
+  notes: string | null;
+  rate: number | null;
+  currency: string | null;
+  valid_from: string | null;
+  quote_valid_until: string | null;
+  is_expired: boolean | null;
+  source_type: string | null;
+  supplier_name: string | null;
+  price_status: DwlPriceStatus | null;
 }
 
 // public.dwl_material_attributes row (1:1 companion to dwl_resources).

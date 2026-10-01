@@ -47,7 +47,17 @@ const CONTRACT_TYPES = [
   { value: "reimbursable", label: "Reimbursable" },
 ];
 
-const CURRENCIES = ["USD", "KHR", "THB", "VND", "SGD", "MYR", "JPY", "EUR"];
+// <input type="datetime-local"> works in local time without a zone; timestamptz columns need an
+// absolute instant. Convert both ways so a 17:00 deadline stays 17:00 for the user.
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+const fromLocalInput = (local: string) => (local ? new Date(local).toISOString() : null);
+
+const CURRENCIES =["USD", "KHR", "THB", "VND", "SGD", "MYR", "JPY", "EUR"];
 
 const RISK_CATEGORIES = [
   "technical", "commercial", "schedule", "geotechnical", "market", "regulatory", "environmental", "other",
@@ -85,6 +95,8 @@ interface PrecontractForm {
   category: string;
   building_type: string;
   client_id: string;
+  consultant_id: string;
+  tender_reference: string;
   tender_type: string;
   procurement_method: string;
   contract_type: string;
@@ -93,8 +105,11 @@ interface PrecontractForm {
   estimated_value: string;
   // Step 2: Schedule
   issue_date: string;
+  site_visit_date: string;
+  query_deadline: string;
   submission_deadline: string;
   tender_days: string;
+  duration: string;
   start_date: string;
   end_date: string;
   // Step 3: Team
@@ -120,6 +135,8 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     category: project?.category ?? "",
     building_type: project?.building_type ?? "",
     client_id: project?.client_id ?? "",
+    consultant_id: project?.consultant_id ?? "",
+    tender_reference: "",
     tender_type: "selective",
     procurement_method: "limited_bid",
     contract_type: project?.contract_type ?? "",
@@ -127,8 +144,11 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     currency: project?.currency ?? "USD",
     estimated_value: "",
     issue_date: "",
+    site_visit_date: "",
+    query_deadline: "",
     submission_deadline: "",
     tender_days: "30",
+    duration: project?.duration ?? "",
     start_date: project?.start_date ?? "",
     end_date: project?.end_date ?? "",
     project_manager_id: project?.project_manager_id ?? "",
@@ -155,23 +175,32 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       });
   }, [supabase]);
 
-  // Load existing precontract details when editing
+  // Load existing precontract details (and the linked tender record) when editing
+  const editingProjectId = project?.id;
   useEffect(() => {
-    if (!project?.id) return;
-    supabase.from("project_precontract_details").select("*").eq("project_id", project.id).single().then(({ data }) => {
-      if (data) {
-        setForm((prev) => ({
-          ...prev,
-          tender_type: data.tender_type ?? prev.tender_type,
-          procurement_method: data.procurement_method ?? prev.procurement_method,
-          budget_range: data.budget_range != null ? String(data.budget_range) : prev.budget_range,
-          estimated_value: data.estimated_value != null ? String(data.estimated_value) : prev.estimated_value,
-          submission_deadline: data.submission_deadline ? String(data.submission_deadline).slice(0, 16) : prev.submission_deadline,
-          tender_days: data.tender_days != null ? String(data.tender_days) : prev.tender_days,
-        }));
-      }
-    });
-  }, [project?.id, supabase]);
+    if (!editingProjectId) return;
+    async function load() {
+      const { data } = await supabase.from("project_precontract_details").select("*").eq("project_id", editingProjectId!).maybeSingle();
+      if (!data) return;
+      const { data: tender } = data.tender_register_id
+        ? await supabase.from("tender_register").select("tender_no, issue_date, budget_range").eq("id", data.tender_register_id).maybeSingle()
+        : { data: null };
+      setForm((prev) => ({
+        ...prev,
+        tender_type: data.tender_type ?? prev.tender_type,
+        procurement_method: data.procurement_method ?? prev.procurement_method,
+        estimated_value: data.estimated_value != null ? String(data.estimated_value) : prev.estimated_value,
+        submission_deadline: data.submission_deadline ? toLocalInput(data.submission_deadline) : prev.submission_deadline,
+        query_deadline: data.query_deadline ? toLocalInput(data.query_deadline) : prev.query_deadline,
+        site_visit_date: data.site_visit_date ?? prev.site_visit_date,
+        tender_days: data.tender_days != null ? String(data.tender_days) : prev.tender_days,
+        tender_reference: tender?.tender_no ?? prev.tender_reference,
+        issue_date: tender?.issue_date ?? prev.issue_date,
+        budget_range: tender?.budget_range != null ? String(tender.budget_range) : prev.budget_range,
+      }));
+    }
+    void load();
+  }, [editingProjectId, supabase]);
 
   function update(field: keyof PrecontractForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -183,7 +212,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     { label: "Sector selected", ok: !!form.category },
     { label: "Client assigned", ok: !!form.client_id },
     { label: "Submission deadline set", ok: !!form.submission_deadline },
-    { label: "Project manager assigned", ok: !!form.project_manager_id },
+    { label: "Person in charge assigned", ok: !!form.project_manager_id },
   ], [form]);
 
   const allOk = validationItems.every((v) => v.ok);
@@ -197,6 +226,8 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       project_name: form.project_name,
       project_type: "tender",
       client_id: form.client_id || null,
+      consultant_id: form.consultant_id || null,
+      duration: form.duration || null,
       description: form.description || null,
       location: form.location || null,
       category: form.category || null,
@@ -220,25 +251,24 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       projectId = data.id;
     }
 
-    // 2. Create/update tender_register
+    // 2. Create/update tender_register. The client's tender reference defaults to the project code.
     const days = parseInt(form.tender_days) || 30;
     const tenderPayload = {
       project_id: projectId,
-      tender_no: form.project_code.toUpperCase(),
+      tender_no: (form.tender_reference.trim() || form.project_code).toUpperCase(),
       title: form.project_name,
       description: form.description || null,
       tender_type: form.tender_type,
       budget_range: parseFloat(form.budget_range) || null,
       currency: form.currency,
       issue_date: form.issue_date || null,
-      submission_deadline: form.submission_deadline || null,
+      submission_deadline: fromLocalInput(form.submission_deadline),
       tender_days: days,
       procurement_method: form.procurement_method,
       estimated_value: parseFloat(form.estimated_value) || null,
-      status: "draft",
     };
 
-    // Check if tender already exists for this project or by tender_no
+    // Reuse this project's tender; a tender_no match is only reused when no other project owns it.
     const { data: existingByProject } = await supabase
       .from("tender_register")
       .select("id")
@@ -247,33 +277,46 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
 
     const { data: existingByNo } = await supabase
       .from("tender_register")
-      .select("id")
+      .select("id, project_id")
       .eq("tender_no", tenderPayload.tender_no)
       .maybeSingle();
 
+    if (existingByNo && existingByNo.project_id && existingByNo.project_id !== projectId && existingByNo.id !== existingByProject?.id) {
+      toast.error(`Tender reference ${tenderPayload.tender_no} is already used by another project.`);
+      setSaving(false);
+      return;
+    }
     const existingId = existingByProject?.id ?? existingByNo?.id;
 
     let tenderId: string;
     if (existingId) {
-      await supabase.from("tender_register").update(tenderPayload).eq("id", existingId);
+      // Status is not touched here: tender_register.status is the client-side procurement status.
+      const { error: tenderErr } = await supabase.from("tender_register").update(tenderPayload).eq("id", existingId);
+      if (tenderErr) { toast.error(tenderErr.message); setSaving(false); return; }
       tenderId = existingId;
     } else {
-      const { data: newTender, error: tenderErr } = await supabase.from("tender_register").insert(tenderPayload).select().single();
+      const { data: newTender, error: tenderErr } = await supabase
+        .from("tender_register")
+        .insert({ ...tenderPayload, status: "draft" })
+        .select()
+        .single();
       if (tenderErr) { toast.error(tenderErr.message); setSaving(false); return; }
       tenderId = newTender.id;
     }
 
-    // 3. Create/update precontract details
+    // 3. Create/update precontract details. The lifecycle stage and award status are owned by
+    // lib/qs/tender-lifecycle.ts, so an edit here never resets them (new rows start at 'opportunity').
     const precontractPayload = {
       project_id: projectId,
       tender_register_id: tenderId,
       tender_type: form.tender_type,
       procurement_method: form.procurement_method,
-      submission_deadline: form.submission_deadline || null,
+      submission_deadline: fromLocalInput(form.submission_deadline),
+      query_deadline: fromLocalInput(form.query_deadline),
+      site_visit_date: form.site_visit_date || null,
       tender_days: days,
       estimated_value: parseFloat(form.estimated_value) || null,
       bid_currency: form.currency,
-      award_status: "pending",
     };
 
     const { error: pcErr } = await supabase
@@ -281,19 +324,20 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       .upsert(precontractPayload, { onConflict: "project_id" });
     if (pcErr) { toast.error(pcErr.message); setSaving(false); return; }
 
-    // 4. Create initial risk items (if any with titles)
+    // 4. Initial risks, on creation only (afterwards they are managed in Risk & Opportunity).
     const validRisks = risks.filter((r) => r.title.trim());
-    if (validRisks.length > 0) {
-      const riskPayload = validRisks.map((r) => ({
+    if (!isEditing && validRisks.length > 0) {
+      const riskPayload = validRisks.map((r, i) => ({
         tender_id: tenderId,
-        title: r.title,
-        description: r.description || null,
+        risk_no: `R-${String(i + 1).padStart(3, "0")}`,
+        description: r.description.trim() ? `${r.title.trim()} — ${r.description.trim()}` : r.title.trim(),
         category: r.category,
         likelihood: r.likelihood,
         impact: r.impact,
         mitigation: r.mitigation || null,
       }));
-      await supabase.from("tender_risk_items").insert(riskPayload);
+      const { error: riskErr } = await supabase.from("tender_risk_items").insert(riskPayload);
+      if (riskErr) toast.error(`Project saved, but the initial risks were not: ${riskErr.message}`);
     }
 
     toast.success(isEditing ? "Pre-contract project updated" : "Pre-contract project created");
@@ -391,6 +435,22 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
           </select>
         </div>
         <div className="space-y-1">
+          <Label className="text-xs font-medium">Consultant</Label>
+          <select value={form.consultant_id} onChange={(e) => update("consultant_id", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+            <option value="">— Select consultant —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.organization_name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Tender Reference</Label>
+          <input value={form.tender_reference} onChange={(e) => update("tender_reference", e.target.value)}
+            placeholder={form.project_code ? `Defaults to ${form.project_code.toUpperCase()}` : "Client's tender reference"}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        </div>
+        <div className="space-y-1">
           <Label className="text-xs font-medium">Tender Type</Label>
           <select value={form.tender_type} onChange={(e) => update("tender_type", e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
@@ -437,8 +497,18 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     return (
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs font-medium">Issue Date</Label>
+          <Label className="text-xs font-medium">Invitation Date</Label>
           <input type="date" value={form.issue_date} onChange={(e) => update("issue_date", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Site Visit</Label>
+          <input type="date" value={form.site_visit_date} onChange={(e) => update("site_visit_date", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Query Deadline</Label>
+          <input type="datetime-local" value={form.query_deadline} onChange={(e) => update("query_deadline", e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
@@ -449,6 +519,11 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
         <div className="space-y-1">
           <Label className="text-xs font-medium">Tender Days</Label>
           <input type="number" value={form.tender_days} onChange={(e) => update("tender_days", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">Estimated Construction Duration (months)</Label>
+          <input type="number" value={form.duration} onChange={(e) => update("duration", e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
@@ -469,15 +544,16 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     return (
       <div className="grid gap-4 md:grid-cols-2">
         <div className="col-span-2 space-y-1">
-          <Label className="text-xs font-medium">Project Manager *</Label>
+          <Label className="text-xs font-medium">Tender Manager / Person in Charge *</Label>
           <select value={form.project_manager_id} onChange={(e) => update("project_manager_id", e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-            <option value="">Select project manager</option>
+            <option value="">Select person in charge</option>
             {staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
           </select>
         </div>
         <p className="col-span-2 text-xs text-muted-foreground">
-          Additional team members and stakeholders can be configured after project creation.
+          Workstream owners (technical, QS, planning, procurement, commercial…) are assigned in
+          <strong> Tender Management</strong> once the Go decision is made.
         </p>
       </div>
     );
@@ -501,6 +577,13 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   }
 
   function renderRisks() {
+    if (isEditing) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Risks for this tender are managed in the project&apos;s <strong>Risk &amp; Opportunity</strong> section.
+        </p>
+      );
+    }
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
@@ -642,7 +725,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
                   <p className="text-sm text-muted-foreground">
                     {activeStep === 1 && "Define the tender opportunity details."}
                     {activeStep === 2 && "Set key dates and submission timeline."}
-                    {activeStep === 3 && "Assign the project manager."}
+                    {activeStep === 3 && "Assign the person in charge of the tender."}
                     {activeStep === 4 && "Prepare cost estimation (optional during setup)."}
                     {activeStep === 5 && "Identify and assess tender risks."}
                     {activeStep === 6 && "Review and activate the pre-contract project."}

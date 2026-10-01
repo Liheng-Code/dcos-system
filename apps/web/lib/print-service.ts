@@ -1,5 +1,5 @@
-import type { QsProgressClaim, QsClaimItem } from "@/lib/qs-service";
-import type { TenderCoverSummary, TenderSubmissionData } from "@/lib/tender-cost-service";
+import type { QsProgressClaim, QsClaimItem } from "@/lib/qs/public";
+import type { TenderCoverSummary, TenderSubmissionData } from "@/lib/qs/public-tender";
 import { amountInWords } from "@/lib/number-to-words";
 
 const BASE_STYLE = `

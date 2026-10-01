@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, Loader2, Plus, RefreshCw, Settings, Trash2, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { captureProgressSnapshot, type ProgressSnapshotRow } from "@/lib/schedule-service";
+import { captureProgressSnapshot, type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
 import { currency, getCostSnapshots, percent } from "@/lib/evm-service";
 import {
   type QsCostBaselineEntry,
   deleteCostBaselineEntry,
   getCostBaseline,
   upsertCostBaselineEntries,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { cn } from "@/lib/utils";
 
 interface Props { projectId: string }

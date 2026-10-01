@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
-import { type QsElementRow, type BudgetCodeOption, friendlyError } from "@/lib/qs-element-library-shared";
+import { type QsElementRow, type BudgetCodeOption, friendlyError } from "@/lib/qs/qs-element-library-shared";
 
 interface AddElementDialogProps {
   disciplines: string[];

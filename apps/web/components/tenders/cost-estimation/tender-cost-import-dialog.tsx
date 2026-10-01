@@ -5,7 +5,7 @@ import { X, Upload, Download, FileSpreadsheet, Loader2, CheckCircle2, AlertCircl
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import * as XLSX from "xlsx";
-import { getBudgetCodes, bulkInsertPriceList, bulkInsertBoqItems } from "@/lib/tender-cost-service";
+import { getBudgetCodes, bulkInsertPriceList, bulkInsertBoqItems } from "@/lib/qs/tender-cost-service";
 
 type Mode = "price_list" | "boq";
 type Step = "upload" | "preview" | "importing" | "done";

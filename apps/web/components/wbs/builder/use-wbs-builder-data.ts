@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { clearWbsNodeGfa, getProjectGfaMap, setWbsNodeGfaValue } from "@/lib/qs-service";
+import { clearWbsNodeGfa, getProjectGfaMap, setWbsNodeGfaValue } from "@/lib/wbs-area-service";
 import { isAutoCode, nextWbsCode, resolveCodeCollision } from "@/lib/wbs-code";
 import {
   computeInsertSortOrder,

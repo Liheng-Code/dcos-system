@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createUserClient } from "@/lib/supabase/server";
+import {
+  applyRounding,
+  findRule,
+  formatDate,
+  includeLeaveTypeInGeneratedPreview,
+  leaveTypeAppliesToProfile,
+  numeric,
+  serviceYears,
+} from "@/lib/hr/leave-year-end-rules";
 
 interface ProfileRow {
   id: string;
@@ -88,42 +97,6 @@ const ADMIN_LEVELS = ["HR_Manager", "HR_Admin", "Super_Admin", "Admin"];
 const ADMIN_ROLES = ["admin", "HR_Manager", "hr_manager"];
 const ADMIN_ROLE_CODES = ["admin", "HR_Manager"];
 
-function numeric(value: number | string | null | undefined) {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function applyRounding(value: number, rule: string | null | undefined): number {
-  switch (rule) {
-    case "nearest_half":
-      return Math.round(value * 2) / 2;
-    case "nearest_whole":
-      return Math.round(value);
-    case "round_up":
-      return Math.ceil(value);
-    case "round_down":
-      return Math.floor(value);
-    default:
-      return value;
-  }
-}
-
-function formatDate(year: number, month: number, day: number): string {
-  const mm = String(month).padStart(2, "0");
-  const dd = String(day).padStart(2, "0");
-  return `${year}-${mm}-${dd}`;
-}
-
-function serviceYears(joinDate: string, closingYear: number) {
-  const joined = new Date(`${joinDate}T00:00:00`);
-  const closing = new Date(closingYear, 11, 31);
-  let years = closing.getFullYear() - joined.getFullYear();
-  const closingMonthDay = (closing.getMonth() + 1) * 100 + closing.getDate();
-  const joinedMonthDay = (joined.getMonth() + 1) * 100 + joined.getDate();
-  if (closingMonthDay < joinedMonthDay) years -= 1;
-  return Math.max(years, 0);
-}
-
 async function requireHrAdmin() {
   const userClient = await createUserClient();
   const { data: { user } } = await userClient.auth.getUser();
@@ -147,26 +120,6 @@ async function requireHrAdmin() {
   }
 
   return { error: null, status: 200, supabase, userId: user.id };
-}
-
-function findRule(rules: SeniorityRuleRow[], leaveTypeId: string, years: number) {
-  return rules.find((rule) => {
-    const minYears = numeric(rule.min_years);
-    const maxYears = rule.max_years == null ? null : numeric(rule.max_years);
-    return rule.leave_type_id === leaveTypeId && years >= minYears && (maxYears == null || years <= maxYears);
-  }) ?? null;
-}
-
-function leaveTypeAppliesToProfile(leaveType: LeaveTypeRow, profile: ProfileRow) {
-  const restriction = leaveType.gender_restriction ?? "all";
-  if (restriction === "all") return true;
-  if (!profile.gender) return false;
-  return restriction === profile.gender;
-}
-
-function includeLeaveTypeInGeneratedPreview(leaveType: LeaveTypeRow) {
-  if (leaveType.is_active === false) return false;
-  return leaveType.seniority_based === true || numeric(leaveType.max_days_per_year) > 0 || leaveType.carryover_allowed === true;
 }
 
 async function buildPreview(supabase: ReturnType<typeof createAdminClient>, currentYear: number) {

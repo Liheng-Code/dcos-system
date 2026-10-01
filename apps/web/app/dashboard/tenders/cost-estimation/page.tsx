@@ -72,6 +72,32 @@ function CostEstimationContent() {
     if (tenderParam) setSelectedTenderId(tenderParam);
   }, [tenderParam]);
 
+  // Pricing is frozen by the DB from Internal Review onward (tender_is_locked, migration
+  // 20260928000002_tender_gates.sql); say so up front rather than failing on every save.
+  const [locked, setLocked] = useState<{ tenderId: string; locked: boolean; stage: string | null } | null>(null);
+  useEffect(() => {
+    if (!selectedTenderId) return;
+    void (async () => {
+      const [{ data }, { data: tender }] = await Promise.all([
+        supabase.rpc("tender_is_locked", { p_tender_id: selectedTenderId }),
+        supabase.from("tender_register").select("project_id").eq("id", selectedTenderId).single(),
+      ]);
+      let stage: string | null = null;
+      if (tender?.project_id) {
+        const { data: pd } = await supabase
+          .from("project_precontract_details")
+          .select("tender_stage")
+          .eq("project_id", tender.project_id)
+          .maybeSingle();
+        stage = pd?.tender_stage ?? null;
+      }
+      setLocked({ tenderId: selectedTenderId, locked: data === true, stage });
+    })();
+  }, [supabase, selectedTenderId]);
+  const isLocked = locked?.tenderId === selectedTenderId && locked.locked;
+  const lockedStage = isLocked ? locked?.stage ?? null : null;
+  const isClosedOut = lockedStage === "awarded" || lockedStage === "unsuccessful" || lockedStage === "closed";
+
   useEffect(() => {
     if (selectedTenderId && tenders.length > 0 && !tenders.find(t => t.id === selectedTenderId)) {
       setSelectedTenderId("");
@@ -98,6 +124,21 @@ function CostEstimationContent() {
 
       {selectedTenderId ? (
         <>
+          {isLocked && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              {isClosedOut ? (
+                <>
+                  Pricing for this tender is locked — the tender is {lockedStage === "awarded" ? "Awarded" : lockedStage === "unsuccessful" ? "Unsuccessful" : "Closed"},
+                  so its bid is a frozen record. {lockedStage === "awarded" ? "Price changes now belong in the post-contract project's BOQ and Variations." : ""}
+                </>
+              ) : (
+                <>
+                  Pricing for this tender is locked — it is under internal review, approved or submitted. Return the bid to
+                  Tendering (project → Bid Approval) or record an addendum to change it.
+                </>
+              )}
+            </div>
+          )}
           <div className="flex gap-1 border-b border-border overflow-x-auto">
             {visibleTabs.map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)}
@@ -110,7 +151,7 @@ function CostEstimationContent() {
           </div>
 
           {tab === "bid" && <BidSummaryTab tenderId={selectedTenderId} />}
-          {tab === "boq" && <BoqTab tenderId={selectedTenderId} />}
+          {tab === "boq" && <BoqTab tenderId={selectedTenderId} isLocked={isLocked} />}
           {tab === "price_list" && <PriceListTab tenderId={selectedTenderId} />}
           {tab === "preliminaries" && <PreliminariesTab tenderId={selectedTenderId} />}
           {tab === "cover" && <CoverSummaryTab tenderId={selectedTenderId} />}

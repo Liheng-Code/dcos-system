@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
-import { createBoqItem as createTenderBoqItem, getBudgetCodes, type BudgetCode } from "@/lib/tender-cost-service";
-import { createBoqItem as createQsBoqItem, getBoqList, getBoqSections, type QsBoqSummary, type QsBoqSection } from "@/lib/qs-service";
+import { createTenderBoqItem, getBudgetCodes, type BudgetCode } from "@/lib/qs/public-tender";
+import { createQsBoqItem, getBoqList, getBoqSections, type QsBoqSummary, type QsBoqSection } from "@/lib/qs/public";
 import type { BimElementTakeoff } from "./bim-types";
 
 // Bridges the BIM "Extract for Takeoff" staging table (bim_element_takeoff,

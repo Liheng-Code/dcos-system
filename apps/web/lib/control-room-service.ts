@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { getProgressSnapshots, type ProgressSnapshotRow } from "@/lib/schedule-service";
+import { getProgressSnapshots, type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
 import { getProjectCostAnalytics, type ProjectCostAnalytics } from "@/lib/evm-service";
 
 export interface ControlRoomTask {

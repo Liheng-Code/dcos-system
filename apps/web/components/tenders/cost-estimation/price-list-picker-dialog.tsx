@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { type TenderPriceListItem } from "@/lib/tender-cost-service";
+import { type TenderPriceListItem } from "@/lib/qs/tender-cost-service";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

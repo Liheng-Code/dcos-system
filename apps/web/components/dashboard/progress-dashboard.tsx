@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Loader2, RefreshCw, Timer, TrendingUp, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { getProgressSnapshots, captureProgressSnapshot, type ProgressSnapshotRow } from "@/lib/schedule-service";
+import { getProgressSnapshots, captureProgressSnapshot, type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
 import { cn } from "@/lib/utils";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, Area, ComposedChart,

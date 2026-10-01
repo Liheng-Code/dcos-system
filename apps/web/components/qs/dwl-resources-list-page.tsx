@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import * as XLSX from "xlsx";
-import { AlertTriangle, DollarSign, Download, FileSpreadsheet, Package, Plus, Search, Pencil, Trash2, Loader2, Upload } from "lucide-react";
+import {
+  AlertTriangle, ChevronLeft, ChevronRight, DollarSign, Download, ExternalLink, FileSpreadsheet, Loader2, MoreHorizontal,
+  Package, Pencil, Plus, Search, Trash2, Upload,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,6 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlResourceFormDialog } from "@/components/qs/dwl-resource-form-dialog";
@@ -56,10 +62,25 @@ function formatDate(value: string | null) {
 
 const cleanDescription = dwlDisplayResourceDescription;
 
+// Each resource type is created and maintained in its own tab; this page is
+// the cross-type register (search, current price, add price).
+const TYPED_TAB: Record<DwlCategory, { label: string; href: string }> = {
+  material: { label: "Material Master", href: "/dashboard/qs/dwl-materials" },
+  labor: { label: "Labor Rates", href: "/dashboard/qs/dwl-labor-rates" },
+  equipment: { label: "Equipment Rates", href: "/dashboard/qs/dwl-equipment-rates" },
+  subcon: { label: "Subcontractor Rates", href: "/dashboard/qs/dwl-subcontractor-rates" },
+};
+
+// Server-side paging: the register holds every resource type and would
+// otherwise hit PostgREST's 1000-row cap.
+const PAGE_SIZE = 50;
+const RESOURCE_COLUMNS = "id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at";
+
 export default function DwlResourcesListPage() {
   const supabase = useMemo(() => createClient(), []);
   const { can, loaded: permsLoaded } = useQsPermissions();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [tenantId, setTenantId] = useState<string>("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -105,74 +126,81 @@ export default function DwlResourcesListPage() {
     });
   }, [supabase]);
 
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const id = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  // Filters, search and paging run in the database; prices are fetched for the visible page only.
+  const buildQuery = useCallback((columns: string, opts?: { count?: boolean }) => {
+    let q = supabase.from("dwl_resources").select(columns, opts?.count ? { count: "exact" } : undefined);
+    if (categoryFilter !== "all") q = q.eq("category", categoryFilter);
+    if (activeFilter === "active") q = q.eq("is_active", true);
+    if (activeFilter === "inactive") q = q.eq("is_active", false);
+    const term = debouncedSearch.trim().replace(/[%,()]/g, " ");
+    if (term) q = q.or(`code.ilike.%${term}%,description.ilike.%${term}%`);
+    return q.order("code");
+  }, [supabase, categoryFilter, activeFilter, debouncedSearch]);
+
+  const withPrices = useCallback(async (resources: DwlResource[]): Promise<DwlResourceRow[]> => {
+    const ids = resources.map((r) => r.id);
+    const priceByResource = new Map<string, DwlCurrentPrice>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await supabase
+        .from("dwl_v_current_prices")
+        .select("resource_id, code, description, unit, unit_price, currency, valid_from, quote_valid_until, source_type, supplier_name, is_expired")
+        .in("resource_id", ids.slice(i, i + 200));
+      if (error) throw new Error(error.message);
+      for (const p of (data ?? []) as DwlCurrentPrice[]) priceByResource.set(p.resource_id, p);
+    }
+    return resources.map((r) => ({ resource: r, price: priceByResource.get(r.id) ?? null }));
+  }, [supabase]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
-    const [resResult, priceResult] = await Promise.all([
-      supabase
-        .from("dwl_resources")
-        .select("id, tenant_id, code, category, description, unit, spec_reference, is_active, created_by, created_at, updated_at")
-        .order("code"),
-      supabase
-        .from("dwl_v_current_prices")
-        .select("resource_id, code, description, unit, unit_price, currency, valid_from, quote_valid_until, source_type, supplier_name, is_expired"),
-    ]);
-
-    if (resResult.error) {
-      setErrorMsg(resResult.error.message);
+    try {
+      const { data, error, count } = await buildQuery(RESOURCE_COLUMNS, { count: true })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+      setRows(await withPrices((data ?? []) as unknown as DwlResource[]));
+      setTotal(count ?? 0);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Failed to load resources");
+    } finally {
       setLoading(false);
-      return;
     }
-    if (priceResult.error) {
-      setErrorMsg(priceResult.error.message);
-      setLoading(false);
-      return;
-    }
-
-    const priceByResource = new Map<string, DwlCurrentPrice>();
-    for (const p of (priceResult.data ?? []) as DwlCurrentPrice[]) {
-      priceByResource.set(p.resource_id, p);
-    }
-
-    const merged: DwlResourceRow[] = (resResult.data ?? []).map((r) => ({
-      resource: r as DwlResource,
-      price: priceByResource.get((r as DwlResource).id) ?? null,
-    }));
-
-    setRows(merged);
-    setLoading(false);
-  }, [supabase]);
+  }, [buildQuery, withPrices, page]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadData(); }, [loadData]);
 
-  const filtered = useMemo(() => {
-    let result = rows;
-    if (categoryFilter !== "all") {
-      result = result.filter((r) => r.resource.category === categoryFilter);
-    }
-    if (activeFilter === "active") result = result.filter((r) => r.resource.is_active);
-    if (activeFilter === "inactive") result = result.filter((r) => !r.resource.is_active);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.resource.code.toLowerCase().includes(q) ||
-          cleanDescription(r.resource.description).toLowerCase().includes(q) ||
-          r.resource.description.toLowerCase().includes(q) ||
-          (r.price?.supplier_name && r.price.supplier_name.toLowerCase().includes(q))
-      );
-    }
-    return result;
-  }, [rows, categoryFilter, activeFilter, search]);
+  const filtered = rows;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const canView = !permsLoaded || can("qs_libraries", "view");
   const canCreate = can("qs_libraries", "can_create");
   const canEdit = can("qs_libraries", "edit");
   const canDelete = can("qs_libraries", "delete");
 
-  function exportRows() {
-    return filtered.map(({ resource, price }) => ({
+  // Exports cover every row matching the filters, not just the visible page.
+  async function loadAllMatching(): Promise<DwlResourceRow[]> {
+    const all: DwlResource[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await buildQuery(RESOURCE_COLUMNS).range(from, from + 999);
+      if (error) throw new Error(error.message);
+      all.push(...((data ?? []) as unknown as DwlResource[]));
+      if (!data || data.length < 1000) break;
+    }
+    return withPrices(all);
+  }
+
+  async function exportRows() {
+    const list = await loadAllMatching();
+    return list.map(({ resource, price }) => ({
       Code: resource.code,
       Category: resource.category,
       Description: cleanDescription(resource.description),
@@ -186,8 +214,8 @@ export default function DwlResourcesListPage() {
     }));
   }
 
-  function handleExcelExport() {
-    const data = exportRows();
+  async function handleExcelExport() {
+    const data = await exportRows();
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data);
     ws["!cols"] = Object.keys(data[0] ?? {}).map((k) => ({ wch: Math.max(k.length, 12) }));
@@ -195,8 +223,8 @@ export default function DwlResourcesListPage() {
     XLSX.writeFile(wb, `Price_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
-  function handleCsvExport() {
-    const data = exportRows();
+  async function handleCsvExport() {
+    const data = await exportRows();
     const header = Object.keys(data[0] ?? {});
     const dataRows = data.map((r) => header.map((h) => {
       const v = (r as Record<string, string | number>)[h];
@@ -214,8 +242,8 @@ export default function DwlResourcesListPage() {
         throw new Error("Delete was blocked by row-level security. Contact your administrator.");
       }
       toast.success("Resource deleted");
-      setRows((prev) => prev.filter((r) => r.resource.id !== id));
       setConfirmDeleteId(null);
+      void loadData();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete resource");
     } finally {
@@ -237,16 +265,17 @@ export default function DwlResourcesListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Resource Master</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">All Resources — Price Register</h1>
           <p className="text-sm text-muted-foreground">
-            Level 1: materials, labor, equipment &amp; subcontract resources with their current price. Full price history is in Price Analytics.
+            Every material, labour, equipment and subcontract resource with its current price. Search across types and add
+            new prices here; create and maintain each type in its own tab. Full price history is in Price Analytics.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={filtered.length === 0}>
+          <Button variant="outline" size="sm" onClick={() => void handleExcelExport()} disabled={total === 0}>
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel Export
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCsvExport} disabled={filtered.length === 0}>
+          <Button variant="outline" size="sm" onClick={() => void handleCsvExport()} disabled={total === 0}>
             <Download className="h-3.5 w-3.5" /> CSV Export
           </Button>
           {canCreate && (
@@ -254,14 +283,21 @@ export default function DwlResourcesListPage() {
               <Upload className="h-3.5 w-3.5" /> Import (Excel/CSV)
             </Button>
           )}
-          <Button
-            onClick={() => setShowResourceForm(true)}
-            size="sm"
-            disabled={!tenantLoaded || !tenantId || !canCreate}
-            title={!canCreate ? "You do not have permission to add resources" : undefined}
-          >
-            <Plus className="h-4 w-4" /> Add Resource
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button size="sm" disabled={!tenantLoaded || !tenantId || !canCreate} title={!canCreate ? "You do not have permission to add resources" : undefined} />}
+            >
+              <Plus className="h-4 w-4" /> Add Resource
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel>Create in its own tab</DropdownMenuLabel>
+              {DWL_CATEGORIES.map((c) => (
+                <DropdownMenuItem key={c.value} onClick={() => router.push(TYPED_TAB[c.value].href)}>
+                  <ExternalLink /> {c.label} → {TYPED_TAB[c.value].label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -278,7 +314,7 @@ export default function DwlResourcesListPage() {
         </div>
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+          onChange={(e) => { setCategoryFilter(e.target.value as CategoryFilter); setPage(0); }}
           className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
         >
           <option value="all">All Categories</option>
@@ -290,14 +326,24 @@ export default function DwlResourcesListPage() {
         </select>
         <select
           value={activeFilter}
-          onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+          onChange={(e) => { setActiveFilter(e.target.value as ActiveFilter); setPage(0); }}
           className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
         >
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="all">All Status</option>
         </select>
-        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} resources</span>
+        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            {total === 0 ? "0 resources" : `${page * PAGE_SIZE + 1}–${Math.min(total, (page + 1) * PAGE_SIZE)} of ${total} resources`}
+          </span>
+          <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page === 0 || loading} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page + 1 >= pageCount || loading} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -319,15 +365,10 @@ export default function DwlResourcesListPage() {
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
           <Package className="h-8 w-8 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">
-            {rows.length === 0
-              ? "No resources in the cost library yet."
-              : "No resources match your search or filters."}
+            {debouncedSearch.trim() || categoryFilter !== "all" || activeFilter !== "active"
+              ? "No resources match your search or filters."
+              : "No resources in the cost library yet."}
           </p>
-          {rows.length === 0 && canCreate && (
-            <Button size="sm" onClick={() => setShowResourceForm(true)} disabled={!tenantId}>
-              <Plus className="h-4 w-4" /> Add the first resource
-            </Button>
-          )}
         </div>
       ) : (
         <div className="rounded-lg border border-border">
@@ -343,7 +384,7 @@ export default function DwlResourcesListPage() {
                 <TableHead className="w-40">Supplier</TableHead>
                 <TableHead className="w-24">Valid From</TableHead>
                 <TableHead className="w-24">Status</TableHead>
-                <TableHead className="w-24 text-center">Actions</TableHead>
+                <TableHead className="w-16 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -385,44 +426,41 @@ export default function DwlResourcesListPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-center">
-                    <div className="flex gap-1 justify-center">
-                      {canEdit && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Edit resource"
-                          onClick={() => setEditResource(resource)}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={<Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Actions for ${resource.code}`} />}
+                        disabled={deletingId === resource.id}
+                      >
+                        {deletingId === resource.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        {canCreate && (
+                          <DropdownMenuItem disabled={!tenantId} onClick={() => setPriceFormResource(resource)}>
+                            <DollarSign /> Add new price
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={() => router.push(resource.category === "material"
+                            ? `/dashboard/qs/dwl-materials/${resource.id}`
+                            : TYPED_TAB[resource.category].href)}
                         >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Delete resource"
-                          disabled={deletingId === resource.id}
-                          onClick={() => setConfirmDeleteId(resource.id)}
-                        >
-                          {deletingId === resource.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      )}
-                      {canCreate && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!tenantId}
-                          title="Add a new price (append-only)"
-                          onClick={() => setPriceFormResource(resource)}
-                        >
-                          <DollarSign className="h-3.5 w-3.5" /> Price
-                        </Button>
-                      )}
-                    </div>
+                          <ExternalLink /> Open in {TYPED_TAB[resource.category].label}
+                        </DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem onClick={() => setEditResource(resource)}>
+                            <Pencil /> Edit code / description / unit
+                          </DropdownMenuItem>
+                        )}
+                        {canDelete && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onClick={() => setConfirmDeleteId(resource.id)}>
+                              <Trash2 /> Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}

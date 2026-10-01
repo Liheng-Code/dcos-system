@@ -7,7 +7,7 @@ import { downloadCsv, fmtCsvNum } from "@/lib/csv-export";
 import { printBudgetReport } from "@/lib/print-service";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { type BudgetSummary, getBudgetSummary } from "@/lib/qs-service";
+import { type BudgetSummary, getBudgetSummary } from "@/lib/qs/qs-service";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

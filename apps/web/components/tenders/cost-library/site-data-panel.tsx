@@ -16,7 +16,7 @@ import {
   deleteCase,
   renameCase,
   duplicateCase,
-} from "@/lib/prelim-library-service";
+} from "@/lib/qs/prelim-library-service";
 
 interface SiteDataPanelProps {
   params: SiteDataParams;

@@ -1,0 +1,132 @@
+# Code owners for DCOS. GitHub requests a review from the owner of every file a
+# pull request touches; with "Require review from Code Owners" enabled on main,
+# that review is required before merge.
+#
+# The LAST matching pattern wins, so the order of the three sections matters.
+# Module paths mirror apps/web/module-boundaries.mjs (a test keeps them in sync).
+#
+# To assign a module, replace the owner on that module's lines with the team
+# member's GitHub username, e.g. "@their-username". Several owners may be
+# listed on one line.
+
+# ── 1. Default: everything belongs to the project owner ──────────────────────
+*                                                   @Liheng-Code
+
+# ── 2. Business modules ──────────────────────────────────────────────────────
+
+# HR
+/apps/web/components/hr/                            @Liheng-Code
+/apps/web/components/telegram/                      @Liheng-Code
+/apps/web/lib/hr/                                   @Liheng-Code
+/apps/web/lib/telegram/                             @Liheng-Code
+/apps/web/app/dashboard/hr/                         @Liheng-Code
+/apps/web/app/api/hr/                               @Liheng-Code
+/apps/web/app/api/telegram/                         @Liheng-Code
+/apps/web/app/telegram-app/                         @Liheng-Code
+/apps/web/app/dashboard/administration/year-end/    @Liheng-Code
+/apps/web/lib/modules/manifests/hr.ts               @Liheng-Code
+
+# Quantity Surveying
+/apps/web/components/qs/                            @Liheng-Code
+/apps/web/components/tenders/                       @Liheng-Code
+/apps/web/components/qto/                           @Liheng-Code
+/apps/web/lib/qs/                                   @Liheng-Code
+/apps/web/app/dashboard/qs/                         @Liheng-Code
+/apps/web/app/dashboard/tenders/                    @Liheng-Code
+/apps/web/app/dashboard/qto/                        @Liheng-Code
+/apps/web/app/dashboard/contracts/                  @Liheng-Code
+/apps/web/app/dashboard/subcontractors/             @Liheng-Code
+/apps/web/app/api/tenders/                          @Liheng-Code
+/apps/web/hooks/use-qs-permissions.ts               @Liheng-Code
+/apps/web/hooks/use-qto-permissions.ts              @Liheng-Code
+/apps/web/hooks/use-tender-permissions.ts           @Liheng-Code
+/apps/web/hooks/use-qs-library-search.ts            @Liheng-Code
+/apps/web/lib/modules/manifests/qs.ts               @Liheng-Code
+
+# Planning
+/apps/web/components/planning/                      @Liheng-Code
+/apps/web/lib/planning/                             @Liheng-Code
+/apps/web/app/dashboard/planning/                   @Liheng-Code
+/apps/web/app/api/planning/                         @Liheng-Code
+/apps/web/app/portal/programme/                     @Liheng-Code
+/apps/web/app/dashboard/wbs/lookahead/              @Liheng-Code
+/apps/web/components/wbs/wbs-lookahead-view.tsx     @Liheng-Code
+/apps/web/components/wbs/wbs-lookahead-timeline.tsx @Liheng-Code
+/apps/web/components/wbs/wbs-scurve-chart.tsx       @Liheng-Code
+/apps/web/components/wbs/wbs-gantt-view.tsx         @Liheng-Code
+/apps/web/hooks/use-planning-permissions.ts         @Liheng-Code
+/apps/web/contexts/planning-permissions-context.tsx @Liheng-Code
+/apps/web/lib/modules/manifests/planning.ts         @Liheng-Code
+
+# Procurement
+/apps/web/components/procurement/                   @Liheng-Code
+/apps/web/lib/procurement/                          @Liheng-Code
+/apps/web/app/dashboard/procurement/                @Liheng-Code
+/apps/web/lib/modules/manifests/procurement.ts      @Liheng-Code
+
+# Inventory
+/apps/web/components/inv/                           @Liheng-Code
+/apps/web/lib/inv/                                  @Liheng-Code
+/apps/web/app/dashboard/inventory/                  @Liheng-Code
+/apps/web/app/api/inv/                              @Liheng-Code
+/apps/web/lib/modules/manifests/inventory.ts        @Liheng-Code
+
+# Design and BIM
+/apps/web/components/design/                        @Liheng-Code
+/apps/web/components/bim/                           @Liheng-Code
+/apps/web/lib/design/                               @Liheng-Code
+/apps/web/lib/bim/                                  @Liheng-Code
+/apps/web/app/dashboard/design/                     @Liheng-Code
+/apps/web/app/api/bim/                              @Liheng-Code
+/apps/web/hooks/use-bim-viewer.ts                   @Liheng-Code
+/apps/web/lib/modules/manifests/design.ts           @Liheng-Code
+
+# Construction (site, QA/QC, HSE)
+/apps/web/components/site/                          @Liheng-Code
+/apps/web/components/qaqc/                          @Liheng-Code
+/apps/web/components/hse/                           @Liheng-Code
+/apps/web/lib/site/                                 @Liheng-Code
+/apps/web/lib/construction/                         @Liheng-Code
+/apps/web/app/dashboard/site/                       @Liheng-Code
+/apps/web/app/dashboard/qaqc/                       @Liheng-Code
+/apps/web/app/dashboard/hse/                        @Liheng-Code
+/apps/web/lib/modules/manifests/construction.ts     @Liheng-Code
+
+# Document Control
+/apps/web/components/documents/                     @Liheng-Code
+/apps/web/lib/documents/                            @Liheng-Code
+/apps/web/app/dashboard/documents/                  @Liheng-Code
+/apps/web/app/verify/doc/                           @Liheng-Code
+/apps/web/lib/modules/manifests/document-control.ts @Liheng-Code
+
+# Account
+/apps/web/components/account/                       @Liheng-Code
+/apps/web/lib/account/                              @Liheng-Code
+/apps/web/app/dashboard/account/                    @Liheng-Code
+/apps/web/lib/modules/manifests/account.ts          @Liheng-Code
+
+# Reporting
+/apps/web/components/insights/                      @Liheng-Code
+/apps/web/lib/reporting/                            @Liheng-Code
+/apps/web/app/dashboard/reports/                    @Liheng-Code
+/apps/web/app/dashboard/insights/                   @Liheng-Code
+/apps/web/lib/modules/manifests/reporting.ts        @Liheng-Code
+
+# ── 3. Protected: always the project owner, whatever matched above ───────────
+# Database changes, the module contract, the lint baseline and the build setup.
+/supabase/                                          @Liheng-Code
+/.github/                                           @Liheng-Code
+/.claude/                                           @Liheng-Code
+/scripts/                                           @Liheng-Code
+/apps/web/module-boundaries.mjs                     @Liheng-Code
+/apps/web/lib/*/public*.ts                          @Liheng-Code
+/apps/web/eslint-rules/                             @Liheng-Code
+/apps/web/eslint.config.mjs                         @Liheng-Code
+/apps/web/eslint-suppressions.json                  @Liheng-Code
+/apps/web/lib/modules/registry.ts                   @Liheng-Code
+/apps/web/lib/modules/types.ts                      @Liheng-Code
+/apps/web/lib/modules/features.ts                   @Liheng-Code
+/apps/web/lib/supabase/                             @Liheng-Code
+/apps/web/package.json                              @Liheng-Code
+/package.json                                       @Liheng-Code
+/pnpm-lock.yaml                                     @Liheng-Code

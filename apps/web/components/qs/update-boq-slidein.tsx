@@ -9,8 +9,8 @@ import {
   type QsBoq,
   type BoqType,
   type BoqStatus,
-} from "@/lib/qs-service";
-import { BoqLockValidationError } from "@/lib/qs-boq-validation";
+} from "@/lib/qs/qs-service";
+import { BoqLockValidationError } from "@/lib/qs/qs-boq-validation";
 
 const BOQ_TYPES: { value: BoqType; label: string }[] = [
   { value: "main_works", label: "Main Works" },

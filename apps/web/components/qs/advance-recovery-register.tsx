@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   getAdvanceRecoveryBalance,
   getAdvanceRecoveryLedger,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

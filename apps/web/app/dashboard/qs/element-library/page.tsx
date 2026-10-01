@@ -11,7 +11,7 @@ import { QsSearchIndexRefreshButton } from "@/components/qs/qs-search-index-refr
 import ElementLibraryTree from "@/components/tenders/element-library/element-library-tree";
 import ElementDetailPanel from "@/components/tenders/element-library/element-detail-panel";
 import AddElementDialog from "@/components/tenders/element-library/add-element-dialog";
-import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@/lib/qs-element-library-shared";
+import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@/lib/qs/qs-element-library-shared";
 
 export default function QsElementLibraryPage() {
   const { can } = useQsPermissions();

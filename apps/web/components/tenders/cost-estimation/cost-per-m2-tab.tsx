@@ -8,7 +8,7 @@ import { CostPerM2Footnote } from "@/components/qs/cost-per-m2-dashboard";
 import {
   getTenderCostPerM2Summary, getTenderCostPerM2ByFloor,
   type TenderCostPerM2Summary, type FloorCostLine,
-} from "@/lib/tender-cost-service";
+} from "@/lib/qs/tender-cost-service";
 import { cn } from "@/lib/utils";
 
 const money = (value: number) => new Intl.NumberFormat("en-US", {

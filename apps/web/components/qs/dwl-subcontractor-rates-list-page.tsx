@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { useRouter } from "next/navigation";
 import {
-  AlertTriangle, FileSpreadsheet, HardHat, Plus, Search, Upload,
+  AlertTriangle, FileSpreadsheet, HardHat, History, MoreHorizontal, Plus, Search, Upload,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +40,7 @@ function formatDate(value: string) {
 
 export default function DwlSubcontractorRatesListPage() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const { can, loaded: permsLoaded } = useQsPermissions();
 
   const [tenantId, setTenantId] = useState<string>("");
@@ -242,6 +247,7 @@ export default function DwlSubcontractorRatesListPage() {
                 <TableHead className="w-16">Unit</TableHead>
                 <TableHead className="w-28 text-right">Commercial Rate</TableHead>
                 <TableHead className="w-28">Effective Date</TableHead>
+                <TableHead className="w-16 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -265,6 +271,18 @@ export default function DwlSubcontractorRatesListPage() {
                   <TableCell className="text-sm text-muted-foreground">{r.unit}</TableCell>
                   <TableCell className="text-right font-mono text-sm font-medium">{formatMoney(r.rate, r.currency)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(r.effective_date)}</TableCell>
+                  <TableCell className="text-center">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Actions for ${r.resource_code}`} />}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => router.push(`/dashboard/qs/dwl-resources?q=${encodeURIComponent(r.resource_code)}`)}>
+                          <History /> Price history
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

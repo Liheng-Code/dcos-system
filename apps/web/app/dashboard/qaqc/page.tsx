@@ -4,22 +4,10 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, ClipboardCheck } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useProject } from "@/components/dashboard/project-context";
 import { ItpManager } from "@/components/qaqc/itp-manager";
 import { InspectionRequestList } from "@/components/qaqc/inspection-request-list";
 import { NcrList } from "@/components/qaqc/ncr-list";
-
-interface Project {
-  id: string;
-  project_name: string;
-  project_code: string | null;
-}
 
 const SUB_TAB_IDS = ["itps", "inspections", "ncrs"] as const;
 type SubTab = (typeof SUB_TAB_IDS)[number];
@@ -30,9 +18,8 @@ function QaqcPageContent() {
   const subParam = searchParams.get("sub") as SubTab | null;
   const tab: SubTab = subParam && SUB_TAB_IDS.includes(subParam) ? subParam : "itps";
 
+  const { selectedProjectId: projectId, selectedProject } = useProject();
   const [checking, setChecking] = useState(true);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState("");
   const [pendingNcrIrId, setPendingNcrIrId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,16 +28,6 @@ function QaqcPageContent() {
       if (!data.session) { router.push("/"); return; }
       setChecking(false);
     });
-    supabase
-      .from("projects")
-      .select("id, project_name, project_code")
-      .order("project_name")
-      .then(({ data }) => {
-        if (data) {
-          setProjects(data as Project[]);
-          if (data.length > 0) setProjectId(data[0].id);
-        }
-      });
   }, [router]);
 
   function handleRaiseNcr(irId: string) {
@@ -80,19 +57,11 @@ function QaqcPageContent() {
               <p className="text-sm text-muted-foreground">Inspection plans, requests, and non-conformances</p>
             </div>
           </div>
-
-          <Select value={projectId} onValueChange={(v) => { if (v) setProjectId(v); }}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Select project…" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.project_code ? `[${p.project_code}] ` : ""}{p.project_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {selectedProject && (
+            <div className="text-xs text-muted-foreground font-medium bg-muted/60 px-3 py-1.5 rounded-md border border-border/50">
+              Project: <span className="text-foreground font-semibold">{selectedProject.project_name}</span>
+            </div>
+          )}
         </div>
       </div>
 

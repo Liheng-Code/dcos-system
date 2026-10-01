@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { createBoq, type BoqType } from "@/lib/qs-service";
+import { createBoq, type BoqType } from "@/lib/qs/qs-service";
 
 const BOQ_TYPES: { value: BoqType; label: string }[] = [
   { value: "main_works", label: "Main Works" },

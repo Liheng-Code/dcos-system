@@ -28,7 +28,7 @@ import {
   type QsProgressClaim,
   type BudgetSummary,
   type QsAuditEntry,
-} from "@/lib/qs-service";
+} from "@/lib/qs/qs-service";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 

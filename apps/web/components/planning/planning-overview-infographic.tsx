@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUp, CheckCircle2, Compass } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { PLANNING_GROUPS } from "@/lib/planning-nav";
+import { PLANNING_GROUPS } from "@/lib/planning/planning-nav";
 import {
   PLANNING_GLANCE_STAGES, PLANNING_RELATED_MODULES, PLANNING_PROJECT_DATA_ITEMS,
   PLANNING_OUTPUT_ITEMS, PLANNING_DATA_FLOW_MODULES, PLANNING_KEY_BENEFITS,
