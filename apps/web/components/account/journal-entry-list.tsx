@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createJournalEntry, createJournalLines, deleteJournalLines, listCoaPostingOptions, listJournalEntries, updateJournalEntry } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, Eye, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ interface JeEntry {
 }
 
 export function JournalEntryList() {
-  const supabase = createClient();
   const [entries, setEntries] = useState<JeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -25,7 +24,7 @@ export function JournalEntryList() {
   const [editing, setEditing] = useState<JeEntry | null>(null);
 
   useEffect(() => {
-    supabase.from("account_journal_entries").select("*").order("entry_date", { ascending: false }).then(({ data }) => {
+    listJournalEntries().then(({ data }) => {
       if (data) setEntries(data as JeEntry[]);
       setLoading(false);
     });
@@ -93,7 +92,6 @@ export function JournalEntryList() {
 }
 
 function JournalEntryForm({ entry: raw, onSaved, onCancel }: { entry: JeEntry | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !raw?.id;
   const [entryNo, setEntryNo] = useState(raw?.entry_no ?? `JE-${Date.now()}`);
   const [entryDate, setEntryDate] = useState(raw?.entry_date ?? new Date().toISOString().slice(0, 10));
@@ -104,7 +102,7 @@ function JournalEntryForm({ entry: raw, onSaved, onCancel }: { entry: JeEntry | 
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    supabase.from("account_coa").select("id, code, name").order("code").then(({ data }) => {
+    listCoaPostingOptions().then(({ data }) => {
       if (data) setAccounts(data as { id: string; code: string; name: string }[]);
     });
   }, []);
@@ -139,7 +137,7 @@ function JournalEntryForm({ entry: raw, onSaved, onCancel }: { entry: JeEntry | 
     };
 
     if (isNew) {
-      const { data, error } = await supabase.from("account_journal_entries").insert([payload]).select().single();
+      const { data, error } = await createJournalEntry(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
 
       const linePayload = lines.map(l => ({
@@ -149,14 +147,14 @@ function JournalEntryForm({ entry: raw, onSaved, onCancel }: { entry: JeEntry | 
         credit_amount: l.credit,
         description: l.line_desc.trim() || null,
       }));
-      const { error: lineErr } = await supabase.from("account_journal_lines").insert(linePayload);
+      const { error: lineErr } = await createJournalLines(linePayload);
       if (lineErr) { toast.error(lineErr.message); setSaving(false); return; }
       toast.success("Journal entry created");
     } else {
-      const { error } = await supabase.from("account_journal_entries").update(payload).eq("id", raw!.id);
+      const { error } = await updateJournalEntry(raw!.id, payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
 
-      await supabase.from("account_journal_lines").delete().eq("entry_id", raw!.id);
+      await deleteJournalLines(raw!.id);
       const linePayload = lines.map(l => ({
         entry_id: raw!.id,
         account_id: l.account_id,
@@ -164,7 +162,7 @@ function JournalEntryForm({ entry: raw, onSaved, onCancel }: { entry: JeEntry | 
         credit_amount: l.credit,
         description: l.line_desc.trim() || null,
       }));
-      const { error: lineErr } = await supabase.from("account_journal_lines").insert(linePayload);
+      const { error: lineErr } = await createJournalLines(linePayload);
       if (lineErr) { toast.error(lineErr.message); setSaving(false); return; }
       toast.success("Journal entry updated");
     }

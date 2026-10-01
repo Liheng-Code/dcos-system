@@ -1,0 +1,20 @@
+[
+  { "name": "account / coa", "url": "/dashboard/account?sub=coa", "waitFor": "text=Account & Finance" },
+  { "name": "account / ap", "url": "/dashboard/account?sub=ap", "waitFor": "text=Account & Finance" },
+  { "name": "account / ar", "url": "/dashboard/account?sub=ar", "waitFor": "text=Account & Finance" },
+  { "name": "account / payments", "url": "/dashboard/account?sub=payments", "waitFor": "text=Account & Finance" },
+  { "name": "account / journals", "url": "/dashboard/account?sub=journals", "waitFor": "text=Account & Finance" },
+  { "name": "account / gl", "url": "/dashboard/account?sub=gl", "waitFor": "text=Account & Finance" },
+  { "name": "account / bank", "url": "/dashboard/account?sub=bank", "waitFor": "text=Account & Finance" },
+  { "name": "account / payment-runs", "url": "/dashboard/account?sub=payment-runs", "waitFor": "text=Account & Finance" },
+  { "name": "account / wht", "url": "/dashboard/account?sub=wht", "waitFor": "text=Account & Finance" },
+  { "name": "account / currencies", "url": "/dashboard/account/currencies", "waitFor": "main" },
+  { "name": "account / reports", "url": "/dashboard/account/reports", "waitFor": "main" },
+  { "name": "account / trial-balance", "url": "/dashboard/account/reports/trial-balance", "waitFor": "main" },
+  { "name": "account / profit-loss", "url": "/dashboard/account/reports/profit-loss", "waitFor": "main" },
+  { "name": "account / balance-sheet", "url": "/dashboard/account/reports/balance-sheet", "waitFor": "main" },
+  { "name": "account / cash-flow", "url": "/dashboard/account/reports/cash-flow", "waitFor": "main" },
+  { "name": "account / ap-aging", "url": "/dashboard/account/reports/ap-aging", "waitFor": "main" },
+  { "name": "account / ar-aging", "url": "/dashboard/account/reports/ar-aging", "waitFor": "main" },
+  { "name": "account / budget-vs-actual", "url": "/dashboard/account/reports/budget-vs-actual", "waitFor": "main" }
+]

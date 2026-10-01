@@ -81,11 +81,48 @@ Total ≈ 231 tables (see §2). Full per-table list is reproducible with the gre
 |---|---|---|
 | Confirm this tracker's scope/priority with stakeholder | You | ✅ Done (2026-07-21) |
 | ADR: canonical RLS pattern | system-architect | ⬜ Not started |
-| Finance/Contracts/Tender/HSE/HR remediation (high priority) | database-engineer | ⬜ Not started |
+| Finance/Contracts/Tender/HSE/HR remediation (high priority) | database-engineer | 🟡 Finance done locally (2026-10-01); Contracts, Tender, HSE, HR not started |
 | QS/Procurement/Subcontracts/Design/Site remediation | database-engineer | ⬜ Not started |
 | Documents/WBS/Stakeholders/reference-table remediation | database-engineer | ⬜ Not started |
 | CI guard against future `USING (true)` | database-engineer | ⬜ Not started |
-| Audit other service-role proxy routes | backend-engineer | ⬜ Not started |
+| Audit other service-role proxy routes | backend-engineer | 🟡 Partly done (2026-10-01): two leave routes with no caller check fixed, and no other route lacks one; about 90 routes identify the user but check no role |
+
+## 7. Finance pilot (2026-10-01)
+
+Migrations `20261001000001_account_permissions_and_rls.sql` and `20261001000002_close_anon_view_access.sql`, applied to the local database only. Production is unchanged until they are pushed.
+
+**The pattern used, in place of a separate ADR.** It is the model for the remaining domains:
+
+- Seed `role_permissions` for the module, one action per kind of record.
+- Per table, four policies `TO authenticated`: select, insert, update, delete, each calling `has_permission(module, action, field)` wrapped in `(select ...)` so it is evaluated once per statement. Update is allowed for `edit` or `approve`.
+- Where another module legitimately writes the table, add an explicit, narrow clause for it. Finance has one: QS raises the AR invoice and receipt voucher when a claim is certified and paid, allowed for users who may approve QS claims and only for claim-linked rows.
+- Views get `security_invoker = true`, and `anon` loses all grants on the tables and views.
+
+**A second finding, worse than `USING (true)`.** Views created without `security_invoker` run with their owner's rights and ignore row-level security. Ten such views were granted to `anon`, and the API returned their rows with no session at all:
+
+| View | Rows readable without signing in (local data) |
+|---|---|
+| `account_trial_balance`, `account_profit_loss`, `account_balance_sheet`, `account_ar_aging` and four more `account_*` report views | 34, 15, 19, 1 |
+| `qs_v_boq_requisition_status` | 926 BOQ lines |
+| `time_bar_alerts` | 0 (no data) |
+
+All ten now run as the caller and are closed to `anon`. One view of this kind remains, `v_plan_client_programme`, which backs the client programme portal and needs a decision on how that portal authenticates.
+
+**Default Account permission matrix** (editable in Administration → Roles & Permissions):
+
+| Role | Access |
+|---|---|
+| L0, L1 | Everything |
+| L2 | Everything except delete and configure |
+| AC (accountants) | View, create, edit, submit, export on transactions and the chart of accounts; view only on bank accounts and financial periods; no approve, no delete |
+| All four | Reports: view and export |
+| Everyone else | None |
+
+**Verified locally, through the API as real users:** not signed in, 401 on every table and view; L6 staff, zero rows and a refused insert (403); L3 project manager, only the claim-linked AR invoice and client receipts; accountant and management, everything. All 18 Account screens are unchanged for an administrator.
+
+**Not exercised:** an allowed write as an accountant, and the QS claim certification path as a non-Account user. Both follow from the policies but were not run, to avoid creating finance records.
+
+**Side effect to expect in production.** The sidebar's check for "which permission codes are configured" was capped by the API's 1,000-row limit and has been fixed. Before the fix, codes beyond the first 1,000 permission rows were treated as unconfigured and their modules shown to everyone. Some users may therefore lose sight of a module they could previously open but hold no permission for.
 
 ---
 

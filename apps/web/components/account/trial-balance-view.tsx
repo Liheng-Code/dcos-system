@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getTrialBalance } from "@/lib/account/account-service";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ReportExport } from "@/components/reports/layout/report-export";
@@ -14,13 +14,12 @@ interface TbRow {
 }
 
 export function TrialBalanceView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<TbRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase.from("account_trial_balance").select("*").order("code").then(({ data }) => {
+    getTrialBalance().then(({ data }) => {
       if (data) setRows(data as TbRow[]);
       setLoading(false);
     });

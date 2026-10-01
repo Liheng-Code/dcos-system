@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getGeneralLedger } from "@/lib/account/account-service";
 import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +15,12 @@ interface GlLine {
 }
 
 export function GlLedgerView() {
-  const supabase = createClient();
   const [lines, setLines] = useState<GlLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase.from("account_gl_ledger").select("*").order("entry_date", { ascending: false }).limit(500).then(({ data }) => {
+    getGeneralLedger().then(({ data }) => {
       if (data) setLines(data as GlLine[]);
       setLoading(false);
     });

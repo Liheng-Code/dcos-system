@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listApInvoices } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ApInvoiceList() {
-  const supabase = createClient();
   const [invoices, setInvoices] = useState<ApInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -43,7 +42,7 @@ export function ApInvoiceList() {
   const [editing, setEditing] = useState<ApInvoice | null>(null);
 
   useEffect(() => {
-    supabase.from("account_ap_invoices").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listApInvoices().then(({ data }) => {
       if (data) setInvoices(data as ApInvoice[]);
       setLoading(false);
     });

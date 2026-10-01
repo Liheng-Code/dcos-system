@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createPaymentRun, listPaymentRuns, updatePaymentRun } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ interface PaymentRun {
 }
 
 export function PaymentRunList() {
-  const supabase = createClient();
   const [runs, setRuns] = useState<PaymentRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -25,7 +24,7 @@ export function PaymentRunList() {
 
   function load() {
     setLoading(true);
-    supabase.from("account_payment_runs").select("*").order("run_date", { ascending: false }).then(({ data }) => {
+    listPaymentRuns().then(({ data }) => {
       if (data) setRuns(data as PaymentRun[]);
       setLoading(false);
     });
@@ -39,14 +38,14 @@ export function PaymentRunList() {
   );
 
   async function handleApprove(run: PaymentRun) {
-    const { error } = await supabase.from("account_payment_runs").update({ status: "approved" }).eq("id", run.id);
+    const { error } = await updatePaymentRun(run.id, { status: "approved" });
     if (error) { toast.error(error.message); return; }
     toast.success("Payment run approved");
     load();
   }
 
   async function handleComplete(run: PaymentRun) {
-    const { error } = await supabase.from("account_payment_runs").update({ status: "completed" }).eq("id", run.id);
+    const { error } = await updatePaymentRun(run.id, { status: "completed" });
     if (error) { toast.error(error.message); return; }
     toast.success("Payment run completed");
     load();
@@ -118,7 +117,6 @@ export function PaymentRunList() {
 }
 
 function PaymentRunForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const [runNo, setRunNo] = useState(`PR-${Date.now()}`);
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10));
   const [description, setDescription] = useState("");
@@ -128,13 +126,13 @@ function PaymentRunForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("account_payment_runs").insert([{
+    const { error } = await createPaymentRun({
       run_no: runNo, run_date: runDate,
       description: description.trim() || null,
       notes: notes.trim() || null,
       total_amount: 0, voucher_count: 0,
       status: "draft",
-    }]);
+    });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Payment run created");
     setSaving(false);

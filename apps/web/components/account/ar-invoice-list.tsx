@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listArInvoices } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ArInvoiceList() {
-  const supabase = createClient();
   const [invoices, setInvoices] = useState<ArInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -42,7 +41,7 @@ export function ArInvoiceList() {
   const [editing, setEditing] = useState<ArInvoice | null>(null);
 
   useEffect(() => {
-    supabase.from("account_ar_invoices").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listArInvoices().then(({ data }) => {
       if (data) setInvoices(data as ArInvoice[]);
       setLoading(false);
     });

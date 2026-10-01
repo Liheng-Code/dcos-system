@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createCoaAccount, listCoaParentOptions, updateCoaAccount } from "@/lib/account/account-service";
 import { Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,6 @@ interface CoaNode {
 }
 
 export function CoaForm({ account: raw, onSaved, onCancel }: { account: CoaNode | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !raw?.id;
   const [parents, setParents] = useState<CoaNode[]>([]);
   const [code, setCode] = useState(raw?.code ?? "");
@@ -34,7 +33,7 @@ export function CoaForm({ account: raw, onSaved, onCancel }: { account: CoaNode 
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    supabase.from("account_coa").select("id, code, name, type").order("sort_order").then(({ data }) => {
+    listCoaParentOptions().then(({ data }) => {
       if (data) setParents(data as CoaNode[]);
     });
   }, []);
@@ -55,11 +54,11 @@ export function CoaForm({ account: raw, onSaved, onCancel }: { account: CoaNode 
     };
 
     if (isNew) {
-      const { error } = await supabase.from("account_coa").insert([payload]);
+      const { error } = await createCoaAccount(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Account created");
     } else {
-      const { error } = await supabase.from("account_coa").update(payload).eq("id", raw!.id);
+      const { error } = await updateCoaAccount(raw!.id, payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Account updated");
     }

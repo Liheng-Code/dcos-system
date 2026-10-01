@@ -73,14 +73,19 @@ export function usePermittedModules(): UsePermittedModulesResult {
     // confirmed zero rows) to every currently-unseeded code the investigation found
     // (construction, qa_qc, hse, account_finance, planning, reporting_kpi are all unseeded
     // today too) without hardcoding that list here.
-    let seededCodes = new Set<string>();
-    if (ALL_MAPPED_RBAC_MODULES.length > 0) {
-      const { data: seededRows } = await supabase
-        .from("role_permissions")
-        .select("module")
-        .in("module", ALL_MAPPED_RBAC_MODULES);
-      seededCodes = new Set(((seededRows ?? []) as { module: string }[]).map((r) => r.module));
-    }
+    // Counted per code: one query for every row of every mapped code is cut off at the
+    // API's 1,000-row limit once the permission table grows past it, which silently
+    // dropped the most recently seeded codes and showed their modules to everyone.
+    const seededCodes = new Set<string>();
+    await Promise.all(
+      ALL_MAPPED_RBAC_MODULES.map(async (code) => {
+        const { count } = await supabase
+          .from("role_permissions")
+          .select("module", { count: "exact", head: true })
+          .eq("module", code);
+        if ((count ?? 0) > 0) seededCodes.add(code);
+      }),
+    );
 
     // Per-user: for each unique RBAC code in the map, does this user's role(s) have at least
     // one permission row for it (any action, any scope — presence alone is enough for

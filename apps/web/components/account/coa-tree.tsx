@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { deleteCoaAccount, listCoaAccounts } from "@/lib/account/account-service";
 import { Loader2, Plus, Pencil, ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,6 @@ const BALANCE_LABELS: Record<string, string> = {
 };
 
 export function CoaTree() {
-  const supabase = createClient();
   const [accounts, setAccounts] = useState<CoaNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -45,7 +44,7 @@ export function CoaTree() {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    supabase.from("account_coa").select("*").order("sort_order").then(({ data }) => {
+    listCoaAccounts().then(({ data }) => {
       if (data) {
         const nodes = data as CoaNode[];
         const map = new Map(nodes.map(n => [n.id, { ...n, children: [] as CoaNode[] }]));
@@ -87,7 +86,7 @@ export function CoaTree() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this account? Children will be unlinked.")) return;
-    const { error } = await supabase.from("account_coa").delete().eq("id", id);
+    const { error } = await deleteCoaAccount(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Account deleted");
     setAccounts(prev => removeNode(prev, id));

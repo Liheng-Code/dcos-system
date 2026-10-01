@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getArAging } from "@/lib/account/account-service";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +15,12 @@ interface ArAging {
 }
 
 export function ArAgingView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<ArAging[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase.from("account_ar_aging").select("*").order("due_date").then(({ data }) => {
+    getArAging().then(({ data }) => {
       if (data) setRows(data as ArAging[]);
       setLoading(false);
     });

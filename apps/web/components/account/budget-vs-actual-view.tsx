@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getBudgetVsActual } from "@/lib/account/account-service";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -12,13 +12,12 @@ interface BvaRow {
 }
 
 export function BudgetVsActualView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<BvaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase.from("account_budget_vs_actual").select("*").order("project_name").then(({ data }) => {
+    getBudgetVsActual().then(({ data }) => {
       if (data) setRows(data as BvaRow[]);
       setLoading(false);
     });

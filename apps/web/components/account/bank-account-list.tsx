@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createBankAccount, deleteBankAccount, listBankAccounts, updateBankAccount } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, Pencil, Trash2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,6 @@ interface BankAccount {
 }
 
 export function BankAccountList() {
-  const supabase = createClient();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,7 +26,7 @@ export function BankAccountList() {
 
   function load() {
     setLoading(true);
-    supabase.from("account_bank_accounts").select("*").order("bank_name").then(({ data }) => {
+    listBankAccounts().then(({ data }) => {
       if (data) setAccounts(data as BankAccount[]);
       setLoading(false);
     });
@@ -43,7 +42,7 @@ export function BankAccountList() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this bank account?")) return;
-    const { error } = await supabase.from("account_bank_accounts").delete().eq("id", id);
+    const { error } = await deleteBankAccount(id);
     if (error) { toast.error(error.message); return; }
     toast.success("Bank account deleted");
     load();
@@ -111,7 +110,6 @@ export function BankAccountList() {
 }
 
 function BankAccountForm({ account, onSaved, onCancel }: { account: BankAccount | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !account?.id;
   const [bankName, setBankName] = useState(account?.bank_name ?? "");
   const [accName, setAccName] = useState(account?.account_name ?? "");
@@ -128,8 +126,8 @@ function BankAccountForm({ account, onSaved, onCancel }: { account: BankAccount 
     setSaving(true);
     const payload = { bank_name: bankName, account_name: accName, account_number: accNumber, currency, opening_balance: openingBalance, current_balance: currentBalance, is_active: isActive, notes: notes.trim() || null };
     const { error } = isNew
-      ? await supabase.from("account_bank_accounts").insert([payload])
-      : await supabase.from("account_bank_accounts").update(payload).eq("id", account!.id);
+      ? await createBankAccount(payload)
+      : await updateBankAccount(account!.id, payload);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "Bank account created" : "Bank account updated");
     setSaving(false);

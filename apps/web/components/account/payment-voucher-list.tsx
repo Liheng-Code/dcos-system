@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { listPaymentVouchers } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function PaymentVoucherList() {
-  const supabase = createClient();
   const [vouchers, setVouchers] = useState<PvEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -38,7 +37,7 @@ export function PaymentVoucherList() {
   const [editing, setEditing] = useState<PvEntry | null>(null);
 
   useEffect(() => {
-    supabase.from("account_payment_vouchers").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+    listPaymentVouchers().then(({ data }) => {
       if (data) setVouchers(data as PvEntry[]);
       setLoading(false);
     });

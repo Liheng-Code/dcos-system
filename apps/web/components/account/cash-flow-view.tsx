@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createCashForecast, getCashFlowSummary, listCashForecast } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,6 @@ interface CfEntry {
 }
 
 export function CashFlowView() {
-  const supabase = createClient();
   const [entries, setEntries] = useState<CfEntry[]>([]);
   const [summary, setSummary] = useState<{ forecast_date: string; total_inflow: number; total_outflow: number; net_flow: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,8 +27,8 @@ export function CashFlowView() {
   function load() {
     setLoading(true);
     Promise.all([
-      supabase.from("account_cash_forecast").select("*").order("forecast_date"),
-      supabase.from("account_cash_flow_summary").select("*").order("forecast_date"),
+      listCashForecast(),
+      getCashFlowSummary(),
     ]).then(([entriesRes, summaryRes]) => {
       if (entriesRes.data) setEntries(entriesRes.data as CfEntry[]);
       if (summaryRes.data) setSummary(summaryRes.data as typeof summary);
@@ -118,7 +117,6 @@ export function CashFlowView() {
 }
 
 function CashFlowForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const [forecastDate, setForecastDate] = useState(new Date().toISOString().slice(0, 10));
   const [category, setCategory] = useState("inflow_ar");
   const [description, setDescription] = useState("");
@@ -130,10 +128,10 @@ function CashFlowForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: ()
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("account_cash_forecast").insert([{
+    const { error } = await createCashForecast({
       forecast_date: forecastDate, category, description: description.trim() || null,
       amount, probability_pct: probability, notes: notes.trim() || null,
-    }]);
+    });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Cash flow entry created");
     setSaving(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createArInvoice, listClientOptions, listProjectOptions, updateArInvoice } from "@/lib/account/account-service";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,6 @@ interface ArInvoice {
 }
 
 export function ArInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: ArInvoice | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !raw?.id;
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Stakeholder[]>([]);
@@ -36,8 +35,8 @@ export function ArInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: Ar
 
   useEffect(() => {
     Promise.all([
-      supabase.from("projects").select("id, project_name, project_code").order("project_name"),
-      supabase.from("stakeholders").select("id, organization_name, contact_person").order("organization_name"),
+      listProjectOptions(),
+      listClientOptions(),
     ]).then(([pRes, sRes]) => {
       if (pRes.data) setProjects(pRes.data as Project[]);
       if (sRes.data) setClients(sRes.data as Stakeholder[]);
@@ -67,11 +66,11 @@ export function ArInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: Ar
     };
 
     if (isNew) {
-      const { error } = await supabase.from("account_ar_invoices").insert([payload]);
+      const { error } = await createArInvoice(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("AR invoice created");
     } else {
-      const { error } = await supabase.from("account_ar_invoices").update(payload).eq("id", raw!.id);
+      const { error } = await updateArInvoice(raw!.id, payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("AR invoice updated");
     }

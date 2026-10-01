@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getProfitLoss } from "@/lib/account/account-service";
 import { Loader2 } from "lucide-react";
 import { ReportExport } from "@/components/reports/layout/report-export";
 
@@ -11,12 +11,11 @@ interface PlRow {
 }
 
 export function ProfitLossView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<PlRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("account_profit_loss").select("*").order("sort_order").then(({ data }) => {
+    getProfitLoss().then(({ data }) => {
       if (data) setRows(data as PlRow[]);
       setLoading(false);
     });

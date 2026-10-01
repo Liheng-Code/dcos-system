@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { createExchangeRate, listCurrencies, listExchangeRates } from "@/lib/account/account-service";
 import { Loader2, Plus, DollarSign, TrendingUp, CornerDownRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export default function CurrenciesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [currencies, setCurrencies] = useState<any[]>([]);
   const [rates, setRates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,18 +21,18 @@ export default function CurrenciesPage() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("currencies").select("*").order("code"),
-      supabase.from("exchange_rates").select("*").order("effective_date", { ascending: false }).limit(50),
+      listCurrencies(),
+      listExchangeRates(),
     ]).then(([c, r]) => {
       if (c.data) setCurrencies(c.data);
       if (r.data) setRates(r.data);
       setLoading(false);
     });
-  }, [supabase]);
+  }, []);
 
   async function handleAddRate() {
     setSaving(true);
-    const { error } = await supabase.from("exchange_rates").insert({
+    const { error } = await createExchangeRate({
       from_currency: rateForm.from_currency,
       to_currency: rateForm.to_currency,
       rate: parseFloat(rateForm.rate),
@@ -44,7 +43,7 @@ export default function CurrenciesPage() {
     toast.success("Exchange rate added");
     setShowRateForm(false);
     setRateForm({ ...rateForm, rate: "" });
-    supabase.from("exchange_rates").select("*").order("effective_date", { ascending: false }).limit(50).then(({ data }) => {
+    listExchangeRates().then(({ data }) => {
       if (data) setRates(data);
     });
     setSaving(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createApInvoice, listProjectOptions, listSupplierOptions, updateApInvoice } from "@/lib/account/account-service";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,6 @@ interface ApInvoice {
 }
 
 export function ApInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: ApInvoice | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !raw?.id;
   const [projects, setProjects] = useState<Project[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -36,8 +35,8 @@ export function ApInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: Ap
 
   useEffect(() => {
     Promise.all([
-      supabase.from("projects").select("id, project_name, project_code").order("project_name"),
-      supabase.from("procurement_suppliers").select("id, company_name").order("company_name"),
+      listProjectOptions(),
+      listSupplierOptions(),
     ]).then(([pRes, sRes]) => {
       if (pRes.data) setProjects(pRes.data as Project[]);
       if (sRes.data) setSuppliers(sRes.data as Supplier[]);
@@ -67,11 +66,11 @@ export function ApInvoiceForm({ invoice: raw, onSaved, onCancel }: { invoice: Ap
     };
 
     if (isNew) {
-      const { error } = await supabase.from("account_ap_invoices").insert([payload]);
+      const { error } = await createApInvoice(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("AP invoice created");
     } else {
-      const { error } = await supabase.from("account_ap_invoices").update(payload).eq("id", raw!.id);
+      const { error } = await updateApInvoice(raw!.id, payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("AP invoice updated");
     }

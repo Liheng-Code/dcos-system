@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createPaymentVoucher, updatePaymentVoucher } from "@/lib/account/account-service";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ interface PvEntry {
 }
 
 export function PaymentVoucherForm({ voucher: raw, onSaved, onCancel }: { voucher: PvEntry | null; onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const isNew = !raw?.id;
   const [voucherNo] = useState(raw?.voucher_no ?? `PV-${Date.now()}`);
   const [voucherDate, setVoucherDate] = useState(raw?.voucher_date ?? new Date().toISOString().slice(0, 10));
@@ -48,11 +47,11 @@ export function PaymentVoucherForm({ voucher: raw, onSaved, onCancel }: { vouche
     };
 
     if (isNew) {
-      const { error } = await supabase.from("account_payment_vouchers").insert([payload]);
+      const { error } = await createPaymentVoucher(payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Payment voucher created");
     } else {
-      const { error } = await supabase.from("account_payment_vouchers").update(payload).eq("id", raw!.id);
+      const { error } = await updatePaymentVoucher(raw!.id, payload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success("Payment voucher updated");
     }

@@ -345,13 +345,26 @@ Measured against the local database:
 
 This matches the existing [RLS Security Remediation Tracker](DCOS-RLS-Security-Remediation-Tracker.md), which records that remediation needs an explicit go-ahead.
 
-#### Decisions needed before database enforcement starts
+#### Account pilot (2026-10-01): done locally
 
-1. **Go-ahead for RLS remediation**, as the tracker requires, and which domain goes first. The tracker's order is finance, contracts, tender, HSE, HR.
-2. **The permission matrix for the five unseeded modules**: which roles may view, create, edit, approve in Construction, QA/QC, HSE, Account and Reporting, and whether Design gets its own code. This is a business decision and cannot be inferred from the code.
-3. **How policies are rolled out.** Tightening a policy on a table that pages write to directly will break those pages for users without the permission, which is the intent, but it should be done one module at a time, on the local database first, with the snapshot tool run as a restricted user.
+Account is the first module taken all the way: service layer and database enforcement.
 
-Recommended first step once approved: one module end to end as a pilot (Account is the smallest and holds financial data), with a migration that replaces its `using (true)` policies by `has_permission(...)` checks, dry-run locally in a rolled-back transaction.
+- **Service layer.** All 50 database calls in Account's 21 screens moved to `lib/account/account-service.ts`. The scorecard for Account now reads 0 calls in UI, 100% in services.
+- **Permissions.** 44 `account_finance` permission rows seeded; 52 policies on 13 tables replace the single "any signed-in user" policy each had.
+- **Anonymous access closed.** The eight Account report views, and two more views in QS and Contracts, were readable through the API without signing in. Details, the default permission matrix and the verification are in the [RLS tracker, section 7](DCOS-RLS-Security-Remediation-Tracker.md).
+- **Sidebar fix.** `hooks/use-permitted-modules.ts` no longer relies on a query that the API cut off at 1,000 rows.
+- **Verified.** 18 Account screens identical for an administrator before and after; access checked through the API as five kinds of caller; a user with no Account role no longer sees Account and is redirected from its URLs.
+
+The two migrations are applied to the local database only. Production changes when they are pushed.
+
+#### Decisions needed before database enforcement continues
+
+1. **Review the Account permission matrix** in the RLS tracker. It is a default chosen for segregation of duties, not a confirmed business rule; in particular, accountants cannot approve.
+2. **The permission matrix for the four still-unseeded modules**: which roles may view, create, edit, approve in Construction, QA/QC, HSE and Reporting, and whether Design gets its own code. This is a business decision and cannot be inferred from the code.
+3. **How the client programme portal authenticates**, so `v_plan_client_programme` can be closed or deliberately left public.
+4. **Production roll-out.** The work is committed on branch `feat/modularisation` and not pushed. Pushing, merging to `main` and running `/dbpush` are the project owner's steps; the two security migrations are the most urgent part.
+
+Policies are rolled out one module at a time, on the local database first, verified with the snapshot tool as an administrator and through the API as restricted users, as was done for Account.
 
 ### Phase 7 — Extraction (only on a trigger)
 

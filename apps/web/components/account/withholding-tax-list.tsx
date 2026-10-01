@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createWithholdingTax, listWithholdingTax, updateWithholdingTax } from "@/lib/account/account-service";
 import { Search, Plus, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,6 @@ interface WhtEntry {
 }
 
 export function WithholdingTaxList() {
-  const supabase = createClient();
   const [items, setItems] = useState<WhtEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -26,7 +25,7 @@ export function WithholdingTaxList() {
 
   function load() {
     setLoading(true);
-    supabase.from("account_withholding_tax").select("*").order("tax_date", { ascending: false }).then(({ data }) => {
+    listWithholdingTax().then(({ data }) => {
       if (data) setItems(data as WhtEntry[]);
       setLoading(false);
     });
@@ -40,7 +39,7 @@ export function WithholdingTaxList() {
   );
 
   async function handleRemit(id: string) {
-    const { error } = await supabase.from("account_withholding_tax").update({ status: "remitted" }).eq("id", id);
+    const { error } = await updateWithholdingTax(id, { status: "remitted" });
     if (error) { toast.error(error.message); return; }
     toast.success("Marked as remitted");
     load();
@@ -105,7 +104,6 @@ export function WithholdingTaxList() {
 }
 
 function WithholdingTaxForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
-  const supabase = createClient();
   const [certNo, setCertNo] = useState(`WHT-${Date.now()}`);
   const [invoiceAmount, setInvoiceAmount] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
@@ -118,7 +116,7 @@ function WithholdingTaxForm({ onSaved, onCancel }: { onSaved: () => void; onCanc
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from("account_withholding_tax").insert([{
+    const { error } = await createWithholdingTax({
       tax_cert_no: certNo,
       invoice_amount: invoiceAmount,
       tax_rate_pct: taxRate,
@@ -126,7 +124,7 @@ function WithholdingTaxForm({ onSaved, onCancel }: { onSaved: () => void; onCanc
       tax_date: taxDate,
       notes: notes.trim() || null,
       status: "pending",
-    }]);
+    });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success("Withholding tax entry created");
     setSaving(false);

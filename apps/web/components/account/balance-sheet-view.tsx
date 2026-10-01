@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getBalanceSheet } from "@/lib/account/account-service";
 import { Loader2 } from "lucide-react";
 
 interface BsRow {
@@ -10,12 +10,11 @@ interface BsRow {
 }
 
 export function BalanceSheetView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<BsRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("account_balance_sheet").select("*").order("sort_order").then(({ data }) => {
+    getBalanceSheet().then(({ data }) => {
       if (data) setRows(data as BsRow[]);
       setLoading(false);
     });

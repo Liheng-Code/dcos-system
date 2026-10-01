@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { getApAging } from "@/lib/account/account-service";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +15,12 @@ interface ApAging {
 }
 
 export function ApAgingView() {
-  const supabase = createClient();
   const [rows, setRows] = useState<ApAging[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase.from("account_ap_aging").select("*").order("due_date").then(({ data }) => {
+    getApAging().then(({ data }) => {
       if (data) setRows(data as ApAging[]);
       setLoading(false);
     });
