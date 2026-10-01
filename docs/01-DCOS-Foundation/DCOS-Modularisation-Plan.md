@@ -376,7 +376,7 @@ The 50 calls left are of three kinds: the table or function name is chosen at ru
 How it was done:
 
 - `scripts/codemods/extract-service.mjs` parses each `supabase.from(...)` chain, turns its variable arguments into parameters, generates one function per distinct query in `lib/<module>/<module>-queries.ts`, and replaces the call site expression for expression. Names it cannot infer well are set in `scripts/codemods/names/<module>.json`. It can be run again on new code.
-- Each module was recorded in the browser before and after with `scripts/ui-snapshot/`: 295 screens in total, all identical apart from fields that show the current time or a frame rate.
+- Each module was recorded in the browser before and after with `scripts/ui-snapshot/`: 286 screens in total, all identical apart from fields that show the current time or a frame rate.
 - Typecheck, lint, the unit tests and two new CI checks pass.
 
 What the browser comparison caught, and typecheck and lint did not:
