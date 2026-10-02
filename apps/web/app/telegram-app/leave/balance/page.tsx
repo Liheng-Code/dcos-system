@@ -5,7 +5,7 @@ import { AlertCircle, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useMiniApp } from "@/lib/telegram/miniapp-context";
+import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 
 // Shape matches getLeaveBalanceSummary's return type (apps/web/lib/hr/leave.ts).
 interface LeaveBalance {

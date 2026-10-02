@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Script from "next/script";
-import { MiniAppProvider } from "@/lib/telegram/miniapp-context";
+import { MiniAppProvider } from "@/lib/hr/telegram/miniapp-context";
 
 // Light-mode fallbacks used when this page is opened outside Telegram's
 // WebView (e.g. directly in a browser during dev), where

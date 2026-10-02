@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireMiniAppProfile } from "@/lib/telegram/miniapp-auth";
+import { requireMiniAppProfile } from "@/lib/hr/telegram/miniapp-auth";
 import { createLeaveRequest } from "@/lib/hr/leave";
 import { LeaveApplySchema } from "@/lib/hr/leave-schemas";
 

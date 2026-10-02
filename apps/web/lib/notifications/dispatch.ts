@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendMessage } from "@/lib/telegram/bot";
+import { sendMessage } from "@/lib/hr/telegram/bot";
 import { sendEmail } from "@/lib/email/resend";
 
 /**

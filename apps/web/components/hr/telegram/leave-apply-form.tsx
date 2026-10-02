@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { useMiniApp } from "@/lib/telegram/miniapp-context";
+import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 import {
   computeLeaveDays,
   getDefaultDaySelections,

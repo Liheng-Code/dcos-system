@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { getFileBuffer, sendMessage } from "@/lib/telegram/bot";
+import { getFileBuffer, sendMessage } from "@/lib/hr/telegram/bot";
 import {
   AttendanceEmployeeProfile,
   getAttendanceProfileMessage,

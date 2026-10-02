@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireMiniAppProfile } from "@/lib/telegram/miniapp-auth";
+import { requireMiniAppProfile } from "@/lib/hr/telegram/miniapp-auth";
 import { getMyLeaveRequests } from "@/lib/hr/leave";
 
 export async function GET(request: NextRequest) {

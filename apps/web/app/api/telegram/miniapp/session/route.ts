@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireMiniAppProfile } from "@/lib/telegram/miniapp-auth";
+import { requireMiniAppProfile } from "@/lib/hr/telegram/miniapp-auth";
 
 export async function POST(request: NextRequest) {
   try {

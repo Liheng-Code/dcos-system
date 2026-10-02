@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireMiniAppProfile } from "@/lib/telegram/miniapp-auth";
+import { requireMiniAppProfile } from "@/lib/hr/telegram/miniapp-auth";
 import { decideLeaveRequest, DecideLeaveRequestError } from "@/lib/hr/leave";
 import { LeaveDecisionSchema } from "@/lib/hr/leave-schemas";
 
 // Status mapping for DecideLeaveRequestError (mirrors the human-facing
-// messages in lib/telegram/leave-handlers.ts's decisionErrorMessage, adapted
+// messages in lib/hr/telegram/leave-handlers.ts's decisionErrorMessage, adapted
 // to HTTP semantics):
 //   not_found      -> 404 (no such leave request)
 //   not_pending    -> 409 (already decided / not currently awaiting a fresh

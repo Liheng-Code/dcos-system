@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { getBotToken } from "@/lib/telegram/bot";
-import { verifyTelegramInitData } from "@/lib/telegram/init-data";
-import { findProfileByTelegramUserId } from "@/lib/telegram/webhook-handlers";
+import { getBotToken } from "@/lib/hr/telegram/bot";
+import { verifyTelegramInitData } from "@/lib/hr/telegram/init-data";
+import { findProfileByTelegramUserId } from "@/lib/hr/telegram/webhook-handlers";
 import { AttendanceEmployeeProfile } from "@/lib/hr/attendance";
 
 const DEFAULT_MAX_AGE_SECONDS = 3600;

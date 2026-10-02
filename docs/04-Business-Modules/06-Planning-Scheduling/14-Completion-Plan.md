@@ -32,7 +32,7 @@ Every new engine in this plan is a pure TypeScript function built on `schedulePr
 ## Verified reuse points (do not reinvent)
 
 - **Audit:** `wbs_audit_log` insert shape at `apps/web/lib/tasks/assign-task.ts:82`.
-- **Alerts:** `task_alerts`, auto-created by the trigger `create_task_alert_from_audit()` on `wbs_audit_log` inserts (`supabase/migrations/20260608000003_update_alert_trigger.sql`); `apps/web/lib/telegram/bot.ts sendMessage()`; `profiles.notification_preferences` jsonb.
+- **Alerts:** `task_alerts`, auto-created by the trigger `create_task_alert_from_audit()` on `wbs_audit_log` inserts (`supabase/migrations/20260608000003_update_alert_trigger.sql`); `apps/web/lib/hr/telegram/bot.ts sendMessage()`; `profiles.notification_preferences` jsonb.
 - **Roles/permissions:** `roles` / `role_permissions` / `user_roles` (codes L0–L6 internal levels, functional codes including `PE` Planning Engineer, external codes including `EXT-CLT`); `apps/web/lib/permissions.ts hasPermission()`; a copyable non-blanket RLS example at `supabase/migrations/20260527000023_allow_task_delete_permission.sql`.
 - **Approvals:** the `qs_claim_approvals` step-chain table (`supabase/migrations/20260728000003_qs_claim_approval_chain.sql`) is the closest existing pattern to copy; `project_approval_flows(flow_type, role_chain)` also exists.
 - **Baselines/revisions:** `wbs_baselines(baseline_name, baseline_type contract|revised|current, baseline_date, snapshot_data, is_active, baseline_number, set_by)`; `plan_schedule_streams` + `plan_schedule_revisions` + `capture_schedule_revision()`; `get_schedule_variance()` already computes duration variance but has zero callers.

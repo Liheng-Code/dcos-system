@@ -7,7 +7,7 @@ import { AlertCircle, ChevronRight, ClipboardCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useMiniApp } from "@/lib/telegram/miniapp-context";
+import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 
 // Mirrors PendingApprovalRow (apps/web/lib/hr/leave.ts:151-160), returned by
 // getPendingApprovalsForApprover and wrapped as `{ approvals: [...] }` by

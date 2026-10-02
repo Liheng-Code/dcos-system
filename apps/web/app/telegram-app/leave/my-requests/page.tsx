@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useMiniApp } from "@/lib/telegram/miniapp-context";
+import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 
 // Shape matches getMyLeaveRequests's return type (apps/web/lib/hr/leave.ts).
 interface LeaveRequest {

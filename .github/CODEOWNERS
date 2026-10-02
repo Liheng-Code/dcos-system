@@ -16,9 +16,7 @@
 
 # HR
 /apps/web/components/hr/                            @Liheng-Code
-/apps/web/components/telegram/                      @Liheng-Code
 /apps/web/lib/hr/                                   @Liheng-Code
-/apps/web/lib/telegram/                             @Liheng-Code
 /apps/web/app/dashboard/hr/                         @Liheng-Code
 /apps/web/app/api/hr/                               @Liheng-Code
 /apps/web/app/api/telegram/                         @Liheng-Code

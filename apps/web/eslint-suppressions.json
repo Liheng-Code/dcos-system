@@ -949,7 +949,7 @@
       "count": 1
     }
   },
-  "components/telegram/leave-apply-form.tsx": {
+  "components/hr/telegram/leave-apply-form.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
@@ -1110,7 +1110,7 @@
       "count": 2
     }
   },
-  "lib/telegram/miniapp-context.tsx": {
+  "lib/hr/telegram/miniapp-context.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

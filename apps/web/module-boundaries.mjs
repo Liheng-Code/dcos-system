@@ -20,9 +20,7 @@
 export const MODULE_PATHS = {
   hr: [
     "components/hr",
-    "components/telegram",
     "lib/hr",
-    "lib/telegram",
     "app/dashboard/hr",
     "app/api/hr",
     "app/api/telegram",
@@ -94,7 +92,7 @@ export const PUBLIC_API = {
     // Dashboard widget.
     "components/hr/leave/who-is-on-leave-today.tsx",
     // Telegram message sender, used by the notification dispatcher.
-    "lib/telegram/bot.ts",
+    "lib/hr/telegram/bot.ts",
   ],
   qs: [
     "lib/qs/qs-nav.ts",

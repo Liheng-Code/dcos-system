@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { sendMessage } from "@/lib/telegram/bot";
-import { findProfileByTelegramUserId, NOT_LINKED_MESSAGE, type TelegramMessage } from "@/lib/telegram/webhook-handlers";
+import { sendMessage } from "@/lib/hr/telegram/bot";
+import { findProfileByTelegramUserId, NOT_LINKED_MESSAGE, type TelegramMessage } from "@/lib/hr/telegram/webhook-handlers";
 import { getLeaveBalanceSummary, getMyLeaveRequests, getPendingApprovalsForApprover } from "@/lib/hr/leave";
 
 // Retired text-command flow (/approve <id>, /reject <id> <reason>) now redirects

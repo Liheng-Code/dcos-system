@@ -9,7 +9,7 @@ import {
   handleLocationMessage,
   handlePhotoMessage,
   type TelegramMessage,
-} from "@/lib/telegram/webhook-handlers";
+} from "@/lib/hr/telegram/webhook-handlers";
 import {
   handleApplyLeaveCommand,
   handleApproveCommand,
@@ -17,7 +17,7 @@ import {
   handleMyLeaveCommand,
   handlePendingApprovalsCommand,
   handleRejectCommand,
-} from "@/lib/telegram/leave-handlers";
+} from "@/lib/hr/telegram/leave-handlers";
 
 const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
