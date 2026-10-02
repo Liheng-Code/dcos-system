@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
-import { TransmittalListPage } from "@/components/naming/naming-transmittal-list";
+import { TransmittalListPage } from "@/components/documents/transmittals/transmittal-list";
 
 export default function TransmittalsPage() {
   const router = useRouter();

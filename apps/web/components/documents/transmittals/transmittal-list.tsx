@@ -6,8 +6,8 @@ import { Loader2, Search, X, Plus, Inbox, Send, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
-import { TransmittalCreate } from "./naming-transmittal-create";
-import { TransmittalDetail } from "./naming-transmittal-detail";
+import { TransmittalCreate } from "./transmittal-create";
+import { TransmittalDetail } from "./transmittal-detail";
 
 interface TransmittalRow {
   id: string;

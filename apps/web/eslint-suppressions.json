@@ -686,12 +686,12 @@
       "count": 1
     }
   },
-  "components/naming/naming-transmittal-create.tsx": {
+  "components/documents/transmittals/transmittal-create.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/naming/naming-transmittal-detail.tsx": {
+  "components/documents/transmittals/transmittal-detail.tsx": {
     "prefer-const": {
       "count": 1
     },
@@ -699,7 +699,7 @@
       "count": 1
     }
   },
-  "components/naming/naming-transmittal-list.tsx": {
+  "components/documents/transmittals/transmittal-list.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

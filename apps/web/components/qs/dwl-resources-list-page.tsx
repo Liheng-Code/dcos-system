@@ -105,7 +105,7 @@ export default function DwlResourcesListPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Resolve the current user's tenant_id from profiles.company_id — same
-  // pattern used by naming-transmittal-create.tsx / inv-service.ts's
+  // pattern used by documents/transmittals/transmittal-create.tsx / inv-service.ts's
   // resolveTenantId(). tenant_id is never accepted from user input.
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {

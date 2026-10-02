@@ -134,8 +134,6 @@ export const PUBLIC_API = {
   ],
   document_control: [
     "lib/documents/document-control-nav.ts",
-    // Printable transmittal sheet, reused by the naming transmittal detail.
-    "components/documents/transmittals/dtn-printable-sheet.tsx",
   ],
   account: ["lib/account/account-nav.ts"],
   reporting: ["lib/reporting/reporting-nav.ts"],
