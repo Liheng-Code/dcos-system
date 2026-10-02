@@ -77,7 +77,7 @@ export const MODULE_PATHS = {
   account: ["components/account", "lib/account", "app/dashboard/account"],
   // components/reports (chart and report-frame primitives) is shared UI, so it is core.
   reporting: [
-    "components/insights",
+    "components/reporting",
     "lib/reporting",
     "app/dashboard/reports",
     "app/dashboard/insights",

@@ -8,9 +8,9 @@ import {
   type DisciplineSummary,
   type ApprovalSummaryRow,
 } from "@/lib/reporting/insights-service";
-import { ModuleOverviewCards } from "@/components/insights/module-overview-cards";
-import { TaskStatusTable } from "@/components/insights/task-status-table";
-import { ApprovalPipelineTable } from "@/components/insights/approval-pipeline-table";
+import { ModuleOverviewCards } from "@/components/reporting/insights/module-overview-cards";
+import { TaskStatusTable } from "@/components/reporting/insights/task-status-table";
+import { ApprovalPipelineTable } from "@/components/reporting/insights/approval-pipeline-table";
 import { BarChart2 } from "lucide-react";
 import { ReportExport } from "@/components/reports/layout/report-export";
 import { useRouter } from "next/navigation";

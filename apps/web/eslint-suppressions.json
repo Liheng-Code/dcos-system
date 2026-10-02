@@ -573,7 +573,7 @@
       "count": 1
     }
   },
-  "components/insights/module-insight-page.tsx": {
+  "components/reporting/insights/module-insight-page.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     },

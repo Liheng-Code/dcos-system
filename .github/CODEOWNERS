@@ -97,7 +97,7 @@
 /apps/web/lib/modules/manifests/account.ts          @Liheng-Code
 
 # Reporting
-/apps/web/components/insights/                      @Liheng-Code
+/apps/web/components/reporting/                     @Liheng-Code
 /apps/web/lib/reporting/                            @Liheng-Code
 /apps/web/app/dashboard/reports/                    @Liheng-Code
 /apps/web/app/dashboard/insights/                   @Liheng-Code

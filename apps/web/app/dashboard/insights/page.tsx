@@ -1,4 +1,4 @@
-import ModuleInsightPage from "@/components/insights/module-insight-page";
+import ModuleInsightPage from "@/components/reporting/insights/module-insight-page";
 
 export const metadata = { title: "Module Insights | DCOS" };
 
