@@ -23,7 +23,7 @@ import {
   type CostDatabase,
   type CostDatabaseItem,
 } from "@/lib/qs/tender-cost-database";
-import { AssignCostDatabaseDialog } from "@/components/tenders/cost-estimation/assign-cost-database-dialog";
+import { AssignCostDatabaseDialog } from "@/components/qs/tenders/cost-estimation/assign-cost-database-dialog";
 
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const stageLabel = (s: string | null) => (s ? STAGE_LABELS[s as TenderStage] ?? s : "—");

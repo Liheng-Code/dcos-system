@@ -28,8 +28,6 @@
 
 # Quantity Surveying
 /apps/web/components/qs/                            @Liheng-Code
-/apps/web/components/tenders/                       @Liheng-Code
-/apps/web/components/qto/                           @Liheng-Code
 /apps/web/lib/qs/                                   @Liheng-Code
 /apps/web/app/dashboard/qs/                         @Liheng-Code
 /apps/web/app/dashboard/tenders/                    @Liheng-Code

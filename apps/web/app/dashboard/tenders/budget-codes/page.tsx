@@ -10,7 +10,7 @@ import {
   type BudgetCodeGroupTree,
 } from "@/lib/qs/tender-cost-service";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
-import { BudgetCodeExternalRefs } from "@/components/tenders/budget-code-external-refs";
+import { BudgetCodeExternalRefs } from "@/components/qs/tenders/budget-code-external-refs";
 
 export default function BudgetCodesPage() {
   const { can, loaded: permsLoaded } = useQsPermissions();

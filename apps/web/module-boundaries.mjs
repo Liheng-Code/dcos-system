@@ -32,8 +32,6 @@ export const MODULE_PATHS = {
   ],
   qs: [
     "components/qs",
-    "components/tenders",
-    "components/qto",
     "lib/qs",
     "app/dashboard/qs",
     "app/dashboard/tenders",

@@ -210,12 +210,12 @@ No changes needed — `recalculateBidSummaryFromBoq()` already sums `tender_prel
 | 1 | `supabase/migrations/20260718000001_prelim_cost_library.sql` | New | 1 |
 | 2 | `supabase/migrations/20260718000002_prelim_library_seed.sql` | New | 1 |
 | 3 | `apps/web/lib/prelim-library-service.ts` | New | 1 |
-| 4 | `apps/web/components/tenders/cost-library/site-data-panel.tsx` | New | 2 |
-| 5 | `apps/web/components/tenders/cost-library/prelim-tree.tsx` | New | 2 |
+| 4 | `apps/web/components/qs/tenders/cost-library/site-data-panel.tsx` | New | 2 |
+| 5 | `apps/web/components/qs/tenders/cost-library/prelim-tree.tsx` | New | 2 |
 | 6 | `apps/web/app/dashboard/tenders/cost-library/page.tsx` | New | 2 |
-| 7 | `apps/web/components/tenders/cost-library/item-editor.tsx` | New | 3 |
-| 8 | `apps/web/components/tenders/cost-library/apply-dialog.tsx` | New | 3 |
-| 9 | `apps/web/components/tenders/cost-estimation/preliminaries-tab.tsx` | Modify | 4 |
+| 7 | `apps/web/components/qs/tenders/cost-library/item-editor.tsx` | New | 3 |
+| 8 | `apps/web/components/qs/tenders/cost-library/apply-dialog.tsx` | New | 3 |
+| 9 | `apps/web/components/qs/tenders/cost-estimation/preliminaries-tab.tsx` | Modify | 4 |
 | 10 | `apps/web/components/dashboard/sidebar.tsx` | Modify | 4 |
 
 ---

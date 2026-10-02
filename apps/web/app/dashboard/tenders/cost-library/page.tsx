@@ -6,10 +6,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
-import SiteDataPanel from "@/components/tenders/cost-library/site-data-panel";
-import PrelimTree from "@/components/tenders/cost-library/prelim-tree";
-import ItemEditor from "@/components/tenders/cost-library/item-editor";
-import AddItemDialog from "@/components/tenders/cost-library/add-item-dialog";
+import SiteDataPanel from "@/components/qs/tenders/cost-library/site-data-panel";
+import PrelimTree from "@/components/qs/tenders/cost-library/prelim-tree";
+import ItemEditor from "@/components/qs/tenders/cost-library/item-editor";
+import AddItemDialog from "@/components/qs/tenders/cost-library/add-item-dialog";
 import {
   type SiteDataParams,
   type CalculatedPrelimTree,

@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { useQsLibrarySearch } from "@/hooks/use-qs-library-search";
 import { QsSearchIndexRefreshButton } from "@/components/qs/qs-search-index-refresh-button";
-import ElementLibraryTree from "@/components/tenders/element-library/element-library-tree";
-import ElementDetailPanel from "@/components/tenders/element-library/element-detail-panel";
-import AddElementDialog from "@/components/tenders/element-library/add-element-dialog";
+import ElementLibraryTree from "@/components/qs/tenders/element-library/element-library-tree";
+import ElementDetailPanel from "@/components/qs/tenders/element-library/element-detail-panel";
+import AddElementDialog from "@/components/qs/tenders/element-library/add-element-dialog";
 import { type QsElementRow, type DescriptionRow, type BudgetCodeOption } from "@/lib/qs/qs-element-library-shared";
 
 export default function QsElementLibraryPage() {

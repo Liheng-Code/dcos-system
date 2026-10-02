@@ -30,7 +30,7 @@ import {
   QTO_BUILDINGS,
   QTO_DISCIPLINES,
   QtoItemForm,
-} from "@/components/qto/qto-item-form";
+} from "@/components/qs/qto/qto-item-form";
 import {
   QTO_STATUSES,
   addRevision,

@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
-import { UnitRatesTab } from "@/components/tenders/cost-estimation/unit-rates-tab";
+import { UnitRatesTab } from "@/components/qs/tenders/cost-estimation/unit-rates-tab";
 
 export default function UnitRatesPage() {
   return (

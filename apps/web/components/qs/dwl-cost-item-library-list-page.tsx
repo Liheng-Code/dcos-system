@@ -17,7 +17,7 @@ import { DwlCostItemCreateDialog } from "@/components/qs/dwl-cost-item-create-di
 import { DwlCostItemImportDialog } from "@/components/qs/dwl-cost-item-import-dialog";
 import type { DwlAssemblyCostingSummaryRow } from "@/components/qs/dwl-types";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
-import { AssignLibraryToBoqDialog } from "@/components/tenders/cost-estimation/assign-library-to-boq-dialog";
+import { AssignLibraryToBoqDialog } from "@/components/qs/tenders/cost-estimation/assign-library-to-boq-dialog";
 import { getProfileById, listDwlVAssemblyCostingSummary } from "@/lib/qs/qs-queries";
 
 const V_COLUMNS =

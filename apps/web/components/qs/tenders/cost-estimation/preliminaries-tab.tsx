@@ -9,7 +9,7 @@ import {
   getPreliminariesItems, createPreliminariesItem, deletePreliminariesItem, getBudgetCodes,
   type TenderPreliminariesItem, type BudgetCode,
 } from "@/lib/qs/tender-cost-service";
-import LoadLibraryDialog from "@/components/tenders/cost-estimation/load-library-dialog";
+import LoadLibraryDialog from "@/components/qs/tenders/cost-estimation/load-library-dialog";
 
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 

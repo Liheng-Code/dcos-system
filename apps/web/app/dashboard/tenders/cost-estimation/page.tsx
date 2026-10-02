@@ -7,17 +7,17 @@ import { useProject } from "@/components/dashboard/project-context";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { Loader2, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BoqTab } from "@/components/tenders/cost-estimation/boq-tab";
-import { PriceListTab } from "@/components/tenders/cost-estimation/price-list-tab";
-import { PreliminariesTab } from "@/components/tenders/cost-estimation/preliminaries-tab";
-import { BidSummaryTab } from "@/components/tenders/cost-estimation/bid-summary-tab";
-import { CoverSummaryTab } from "@/components/tenders/cost-estimation/cover-summary-tab";
-import { SubQuotesTab } from "@/components/tenders/cost-estimation/sub-quotes-tab";
-import { RisksTab } from "@/components/tenders/cost-estimation/risks-tab";
-import { CostSummaryTab } from "@/components/tenders/cost-estimation/cost-summary-tab";
-import { ProjectBudgetTab } from "@/components/tenders/cost-estimation/project-budget-tab";
-import { CostPerM2Tab } from "@/components/tenders/cost-estimation/cost-per-m2-tab";
-import { ExcludeItemsTab } from "@/components/tenders/cost-estimation/exclude-items-tab";
+import { BoqTab } from "@/components/qs/tenders/cost-estimation/boq-tab";
+import { PriceListTab } from "@/components/qs/tenders/cost-estimation/price-list-tab";
+import { PreliminariesTab } from "@/components/qs/tenders/cost-estimation/preliminaries-tab";
+import { BidSummaryTab } from "@/components/qs/tenders/cost-estimation/bid-summary-tab";
+import { CoverSummaryTab } from "@/components/qs/tenders/cost-estimation/cover-summary-tab";
+import { SubQuotesTab } from "@/components/qs/tenders/cost-estimation/sub-quotes-tab";
+import { RisksTab } from "@/components/qs/tenders/cost-estimation/risks-tab";
+import { CostSummaryTab } from "@/components/qs/tenders/cost-estimation/cost-summary-tab";
+import { ProjectBudgetTab } from "@/components/qs/tenders/cost-estimation/project-budget-tab";
+import { CostPerM2Tab } from "@/components/qs/tenders/cost-estimation/cost-per-m2-tab";
+import { ExcludeItemsTab } from "@/components/qs/tenders/cost-estimation/exclude-items-tab";
 
 type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2" | "exclude_items";
 

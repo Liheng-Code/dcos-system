@@ -954,92 +954,92 @@
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/bid-summary-tab.tsx": {
+  "components/qs/tenders/cost-estimation/bid-summary-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/boq-element-library-picker-dialog.tsx": {
+  "components/qs/tenders/cost-estimation/boq-element-library-picker-dialog.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 3
     }
   },
-  "components/tenders/cost-estimation/boq-tab.tsx": {
+  "components/qs/tenders/cost-estimation/boq-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/cost-per-m2-tab.tsx": {
+  "components/qs/tenders/cost-estimation/cost-per-m2-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/cost-summary-tab.tsx": {
+  "components/qs/tenders/cost-estimation/cost-summary-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/cover-summary-tab.tsx": {
+  "components/qs/tenders/cost-estimation/cover-summary-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/element-library-picker-dialog.tsx": {
+  "components/qs/tenders/cost-estimation/element-library-picker-dialog.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/exclude-items-tab.tsx": {
+  "components/qs/tenders/cost-estimation/exclude-items-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/preliminaries-tab.tsx": {
+  "components/qs/tenders/cost-estimation/preliminaries-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/price-list-tab.tsx": {
+  "components/qs/tenders/cost-estimation/price-list-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/project-budget-tab.tsx": {
+  "components/qs/tenders/cost-estimation/project-budget-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/risks-tab.tsx": {
+  "components/qs/tenders/cost-estimation/risks-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/sub-quotes-tab.tsx": {
+  "components/qs/tenders/cost-estimation/sub-quotes-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-estimation/unit-rates-tab.tsx": {
+  "components/qs/tenders/cost-estimation/unit-rates-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-library/item-editor.tsx": {
+  "components/qs/tenders/cost-library/item-editor.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-library/prelim-tree.tsx": {
+  "components/qs/tenders/cost-library/prelim-tree.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/tenders/cost-library/site-data-panel.tsx": {
+  "components/qs/tenders/cost-library/site-data-panel.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 2
     }
   },
-  "components/tenders/element-library/element-detail-panel.tsx": {
+  "components/qs/tenders/element-library/element-detail-panel.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

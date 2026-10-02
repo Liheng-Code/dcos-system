@@ -106,7 +106,7 @@ Standardise on the left column. These are the exact kinds of drift this library 
 
 ## 5. Integration Points — Tender BOQ
 
-**Consumer:** the Tender BOQ "Add Item" form, `apps/web/components/tenders/cost-estimation/boq-tab.tsx`.
+**Consumer:** the Tender BOQ "Add Item" form, `apps/web/components/qs/tenders/cost-estimation/boq-tab.tsx`.
 
 At a design level (implementation is being carried out separately from this document):
 

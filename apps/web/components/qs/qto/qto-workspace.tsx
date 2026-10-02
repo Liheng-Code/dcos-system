@@ -45,7 +45,7 @@ import {
   type QtoItemDetail,
   type QtoMeasurement,
 } from "@/lib/qs/qto-service";
-import { DrawingViewer, type Calibration, type EmittedMeasurement } from "@/components/qto/drawing-viewer";
+import { DrawingViewer, type Calibration, type EmittedMeasurement } from "@/components/qs/qto/drawing-viewer";
 
 type Tab = "measure" | "details" | "calc" | "review" | "history";
 

@@ -461,7 +461,7 @@ export function exportPrelimTreeToExcel(
 }
 
 // Applying prelims to a tender is done from the tender's Preliminaries tab
-// (components/tenders/cost-estimation/load-library-dialog.tsx), which loads a saved case.
+// (components/qs/tenders/cost-estimation/load-library-dialog.tsx), which loads a saved case.
 
 // ── Cases CRUD ───────────────────────────────────────────────────────────────
 

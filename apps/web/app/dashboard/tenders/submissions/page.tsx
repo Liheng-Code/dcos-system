@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { SubmissionFormDialog } from "@/components/tenders/submissions/submission-form-dialog";
+import { SubmissionFormDialog } from "@/components/qs/tenders/submissions/submission-form-dialog";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
