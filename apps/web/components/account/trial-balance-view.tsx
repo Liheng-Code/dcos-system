@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getTrialBalance } from "@/lib/account/account-service";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { ReportExport } from "@/components/reports/layout/report-export";
+import { ReportExport } from "@/components/report-kit/layout/report-export";
 
 interface TbRow {
   account_id: string; code: string; name: string;

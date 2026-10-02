@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { cn } from "@/lib/utils";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
 import { DwlMaterialPriceDialog } from "@/components/qs/dwl-material-price-dialog";

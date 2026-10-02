@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getProfitLoss } from "@/lib/account/account-service";
 import { Loader2 } from "lucide-react";
-import { ReportExport } from "@/components/reports/layout/report-export";
+import { ReportExport } from "@/components/report-kit/layout/report-export";
 
 interface PlRow {
   section: string; account_id: string;

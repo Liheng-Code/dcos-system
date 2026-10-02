@@ -10,7 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { WhoIsOnLeaveToday } from "@/components/hr/leave/who-is-on-leave-today";
-import { BarChart } from "@/components/reports/charts/bar-chart";
+import { BarChart } from "@/components/report-kit/charts/bar-chart";
 import { getProjectCostAnalytics } from "@/lib/evm-service";
 
 interface KpiData {

@@ -12,7 +12,7 @@ import { ModuleOverviewCards } from "@/components/reporting/insights/module-over
 import { TaskStatusTable } from "@/components/reporting/insights/task-status-table";
 import { ApprovalPipelineTable } from "@/components/reporting/insights/approval-pipeline-table";
 import { BarChart2 } from "lucide-react";
-import { ReportExport } from "@/components/reports/layout/report-export";
+import { ReportExport } from "@/components/report-kit/layout/report-export";
 import { useRouter } from "next/navigation";
 import { useProject } from "@/components/dashboard/project-context";
 

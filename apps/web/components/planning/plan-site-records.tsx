@@ -5,7 +5,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useProject } from "@/components/dashboard/project-context";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
-import { BarChart } from "@/components/reports/charts/bar-chart";
+import { BarChart } from "@/components/report-kit/charts/bar-chart";
 import { listTasksForWork, type TaskRow } from "@/lib/planning/productivity-service";
 import {
   createProductivityLog,

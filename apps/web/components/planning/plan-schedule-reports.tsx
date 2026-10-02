@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ReportExport } from "@/components/reports/layout/report-export";
+import { ReportExport } from "@/components/report-kit/layout/report-export";
 import { getTaskStatus } from "@/components/planning/task-status";
 import { PlanDelayAnalysis } from "@/components/planning/plan-delay-analysis";
 

@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { DwlCostItemGeneralEditDialog } from "@/components/qs/dwl-cost-item-general-edit-dialog";
 import { DwlRecipeLineFormDialog } from "@/components/qs/dwl-recipe-line-form-dialog";
 import { DwlAssemblyResourceLineFormDialog } from "@/components/qs/dwl-assembly-resource-line-form-dialog";

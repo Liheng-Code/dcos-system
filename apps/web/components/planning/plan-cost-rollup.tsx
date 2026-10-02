@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { listWbsNodesByProjectIdOrderedByFullPath, listWbsTasksByProjectIdWithPlanTaskWork } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { LEGEND_STYLE, TICK, TOOLTIP_STYLE } from "@/components/planning/planning-dashboard-charts";
 import { getWbsCostRollup, type WbsCostRollupRow } from "@/lib/planning/cost-service";
 import { getProjectCalendarRow } from "@/lib/planning/productivity-service";

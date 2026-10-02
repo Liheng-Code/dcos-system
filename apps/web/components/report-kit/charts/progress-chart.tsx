@@ -1,28 +1,29 @@
 "use client";
 
 import {
-  BarChart as RechartsBar,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 
-interface BarSeries {
+interface LineSeries {
   dataKey: string;
   name: string;
   color: string;
+  strokeDasharray?: string;
 }
 
-interface BarChartProps {
+interface ProgressChartProps {
   data: Record<string, unknown>[];
-  series: BarSeries[];
+  series: LineSeries[];
   xKey: string;
-  stacked?: boolean;
   loading?: boolean;
   empty?: boolean;
   error?: string | null;
@@ -31,14 +32,20 @@ interface BarChartProps {
   description?: string;
   height?: number;
   formatY?: (val: number) => string;
+  formatX?: (val: string) => string;
   formatTooltip?: (val: number, name: string) => string;
+  /** Y-axis domain — defaults to a fixed 0–100 (percent). Use `[0, "auto"]` for cost. */
+  yDomain?: [number | "auto", number | "auto"];
+  /** Draws a vertical "as of today" reference line at this x-value (must match one of `data`'s `xKey` values exactly). */
+  todayX?: string;
+  /** Pre-formatted value shown as a label at the top of the today line, e.g. "72.4%". */
+  todayLabel?: string;
 }
 
-export function BarChart({
+export function ProgressChart({
   data,
   series,
   xKey,
-  stacked,
   loading,
   empty,
   error,
@@ -47,8 +54,12 @@ export function BarChart({
   description,
   height = 280,
   formatY,
+  formatX,
   formatTooltip,
-}: BarChartProps) {
+  yDomain = [0, 100],
+  todayX,
+  todayLabel,
+}: ProgressChartProps) {
   return (
     <ChartWrapper
       title={title}
@@ -60,9 +71,9 @@ export function BarChart({
       height={height}
     >
       <ResponsiveContainer width="100%" height={height}>
-        <RechartsBar
+        <LineChart
           data={data as Record<string, number | string>[]}
-          margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
+          margin={{ top: 22, right: 8, left: -8, bottom: 0 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis
@@ -70,12 +81,15 @@ export function BarChart({
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
+            tickFormatter={formatX}
+            minTickGap={24}
           />
           <YAxis
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={formatY}
+            domain={yDomain}
           />
           <Tooltip
             formatter={formatTooltip ? (val, name) => [formatTooltip(Number(val), String(name)), String(name)] : undefined}
@@ -87,7 +101,6 @@ export function BarChart({
               color: "var(--popover-foreground)",
             }}
             labelStyle={{ color: "var(--popover-foreground)" }}
-            cursor={{ fill: "var(--muted)", opacity: 0.4 }}
           />
           {series.length > 1 && (
             <Legend
@@ -97,17 +110,40 @@ export function BarChart({
             />
           )}
           {series.map((s) => (
-            <Bar
+            <Line
               key={s.dataKey}
+              type="monotone"
               dataKey={s.dataKey}
               name={s.name}
-              fill={s.color}
-              radius={[3, 3, 0, 0]}
-              stackId={stacked ? "stack" : undefined}
-              maxBarSize={32}
+              stroke={s.color}
+              strokeWidth={2}
+              strokeDasharray={s.strokeDasharray}
+              dot={{ r: 3, fill: s.color, strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+              connectNulls
             />
           ))}
-        </RechartsBar>
+          {todayX && (
+            <ReferenceLine
+              x={todayX}
+              stroke="#dc2626"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              label={
+                todayLabel
+                  ? {
+                      value: todayLabel,
+                      position: "insideTopRight",
+                      fill: "#dc2626",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      offset: 8,
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </LineChart>
       </ResponsiveContainer>
     </ChartWrapper>
   );

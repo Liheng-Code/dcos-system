@@ -6,7 +6,7 @@ import {
   PieChart, Pie, Cell, LabelList,
 } from "recharts";
 import { listDelayRegisterByProjectIdOfCauseAndImpactDaysAndStatus } from "@/lib/planning/planning-queries";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { useCachedFetch } from "@/hooks/use-cached-fetch";
 import { getTaskStatus } from "@/components/planning/task-status";
 import type { SheetRow, SheetTask } from "@/components/planning/sheet-types";

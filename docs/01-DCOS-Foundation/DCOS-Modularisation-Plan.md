@@ -172,7 +172,7 @@ Public API today, beyond each module's nav file:
 
 Ownership decided by map entry, without moving the file:
 
-- `components/reports` (chart and report-frame primitives) is core.
+- `components/report-kit` (chart and report-frame primitives) is core.
 - The look-ahead route and its four views under `components/wbs` and `app/dashboard/wbs/lookahead` belong to Planning.
 - `app/dashboard/administration/year-end` belongs to HR.
 

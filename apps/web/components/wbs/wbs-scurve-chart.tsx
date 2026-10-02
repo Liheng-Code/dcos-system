@@ -12,7 +12,7 @@ import { TrendingUp, Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ProgressChart } from "@/components/reports/charts/progress-chart";
+import { ProgressChart } from "@/components/report-kit/charts/progress-chart";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useProject } from "@/components/dashboard/project-context";
 import {

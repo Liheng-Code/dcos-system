@@ -6,7 +6,7 @@ import {
   BarChart, Bar, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceLine, ResponsiveContainer, Cell,
 } from "recharts";
-import { ChartWrapper } from "@/components/reports/charts/chart-wrapper";
+import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { cn } from "@/lib/utils";
 import {
   aggregateByType,

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { getScurveSeries, type ScurveSeries } from "@/lib/planning/schedule-service";
-import { ProgressChart } from "@/components/reports/charts/progress-chart";
+import { ProgressChart } from "@/components/report-kit/charts/progress-chart";
 import { todayISO } from "@/components/planning/sheet-utils";
 import { useCachedFetch } from "@/hooks/use-cached-fetch";
 
