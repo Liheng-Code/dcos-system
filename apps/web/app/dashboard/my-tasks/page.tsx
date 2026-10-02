@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { MyTasksDashboard } from "@/components/tasks/my-tasks-dashboard";
+import { MyTasksDashboard } from "@/components/project/tasks/my-tasks-dashboard";
 
 export default function MyTasksPage() {
   const router = useRouter();

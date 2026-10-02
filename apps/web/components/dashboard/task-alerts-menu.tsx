@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { WbsTaskAlertType } from "@/components/wbs/wbs-types";
+import type { WbsTaskAlertType } from "@/components/project/wbs/wbs-types";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 
 function formatRelativeTime(iso: string) {

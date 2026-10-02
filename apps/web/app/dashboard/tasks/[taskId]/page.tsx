@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { WbsTaskEditSheet } from "@/components/wbs/wbs-task-edit-sheet";
-import { type WbsTaskRecord } from "@/components/wbs/wbs-types";
-import { getWbsTaskById } from "@/lib/tasks/tasks-queries";
+import { WbsTaskEditSheet } from "@/components/project/wbs/wbs-task-edit-sheet";
+import { type WbsTaskRecord } from "@/components/project/wbs/wbs-types";
+import { getWbsTaskById } from "@/lib/project/tasks/tasks-queries";
 
 export default function TaskDetailPage() {
   const params = useParams();

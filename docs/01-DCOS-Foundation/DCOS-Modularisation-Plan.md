@@ -173,7 +173,7 @@ Public API today, beyond each module's nav file:
 Ownership decided by map entry, without moving the file:
 
 - `components/report-kit` (chart and report-frame primitives) is core.
-- The look-ahead route and its four views under `components/wbs` and `app/dashboard/wbs/lookahead` belong to Planning.
+- The look-ahead route and its four views under `components/project/wbs` and `app/dashboard/wbs/lookahead` belong to Planning.
 - `app/dashboard/administration/year-end` belongs to HR.
 
 All of the debt below was cleared in Phase 6 by declaring public APIs and moving the WBS area functions to core. The table is kept as the record of what it was.
@@ -318,6 +318,8 @@ Remaining: a team member builds one new HR feature end to end (branch, pull requ
 | Document Control | transmittal screens in `components/naming` (core) | `components/documents/transmittals/transmittal-{list,create,detail}.tsx` |
 
 Two core folders were renamed or folded in for clarity: `components/reports` (shared charts, report frame and export, used by six modules) became `components/report-kit`, so it is not mistaken for the Reporting module; `components/master-libraries` (one file) moved into `components/administration`.
+
+The Project module's folders (`projects`, `wbs`, `tasks`, `stakeholders`) are grouped as `components/project/*` and `lib/project/*` to match the sidebar. They stay core in the boundary rules, because every module builds on projects and the WBS; Planning's look-ahead and Gantt views inside `components/project/wbs` remain owned by Planning.
 
 Files moved with `git mv` (history follows with `git log --follow`). Page, API and webhook URLs are unchanged, including `/api/inv`. Core component folders stay at the top level: grouping them under a `core/` folder would rewrite about 700 imports, `components/ui` is where the shadcn tool installs components, and core is owned by the project owner either way.
 

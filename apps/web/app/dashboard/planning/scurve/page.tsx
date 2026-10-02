@@ -1,6 +1,6 @@
 "use client";
 
-import { WbsScurveChart } from "@/components/wbs/wbs-scurve-chart";
+import { WbsScurveChart } from "@/components/project/wbs/wbs-scurve-chart";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import { TrendingUp } from "lucide-react";
 

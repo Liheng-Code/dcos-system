@@ -46,10 +46,10 @@
 /apps/web/app/api/planning/                         @Liheng-Code
 /apps/web/app/portal/programme/                     @Liheng-Code
 /apps/web/app/dashboard/wbs/lookahead/              @Liheng-Code
-/apps/web/components/wbs/wbs-lookahead-view.tsx     @Liheng-Code
-/apps/web/components/wbs/wbs-lookahead-timeline.tsx @Liheng-Code
-/apps/web/components/wbs/wbs-scurve-chart.tsx       @Liheng-Code
-/apps/web/components/wbs/wbs-gantt-view.tsx         @Liheng-Code
+/apps/web/components/project/wbs/wbs-lookahead-view.tsx     @Liheng-Code
+/apps/web/components/project/wbs/wbs-lookahead-timeline.tsx @Liheng-Code
+/apps/web/components/project/wbs/wbs-scurve-chart.tsx       @Liheng-Code
+/apps/web/components/project/wbs/wbs-gantt-view.tsx         @Liheng-Code
 /apps/web/hooks/use-planning-permissions.ts         @Liheng-Code
 /apps/web/contexts/planning-permissions-context.tsx @Liheng-Code
 /apps/web/lib/modules/manifests/planning.ts         @Liheng-Code

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { DepartmentWorkspace } from "@/components/tasks/department-workspace";
+import { DepartmentWorkspace } from "@/components/project/tasks/department-workspace";
 
 export default function DepartmentPage() {
   const router = useRouter();

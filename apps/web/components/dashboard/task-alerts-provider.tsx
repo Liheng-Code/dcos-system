@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import type { WbsTaskAlertRecord } from "@/components/wbs/wbs-types";
+import type { WbsTaskAlertRecord } from "@/components/project/wbs/wbs-types";
 import { countTaskAlertsByRecipientIdWithReadAt, listTaskAlertsByRecipientId, updateTaskAlertByIdAndRecipientId, updateTaskAlertsByIdsAndRecipientId, updateTaskAlertsByRecipientIdWithReadAt } from "@/lib/dashboard/dashboard-queries";
 
 interface TaskAlertsContextValue {

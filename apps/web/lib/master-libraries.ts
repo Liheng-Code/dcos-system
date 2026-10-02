@@ -1,5 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
-import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord, WbsGenerationVariables } from "@/components/wbs/wbs-types";
+import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord, WbsGenerationVariables } from "@/components/project/wbs/wbs-types";
 
 export interface MasterLibraryDefinition {
   type: MasterLibraryType;

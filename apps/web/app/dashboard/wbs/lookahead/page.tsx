@@ -4,9 +4,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
-import { WbsLookaheadView } from "@/components/wbs/wbs-lookahead-view";
-import { WbsWeeklyPlan } from "@/components/wbs/wbs-weekly-plan";
-import { WbsScurveChart } from "@/components/wbs/wbs-scurve-chart";
+import { WbsLookaheadView } from "@/components/project/wbs/wbs-lookahead-view";
+import { WbsWeeklyPlan } from "@/components/project/wbs/wbs-weekly-plan";
+import { WbsScurveChart } from "@/components/project/wbs/wbs-scurve-chart";
 import { PlanProgressReviewQueue } from "@/components/planning/plan-progress-review-queue";
 
 const SUB_TAB_IDS = ["lookahead", "weekly", "scurve", "progress-reviews"] as const;

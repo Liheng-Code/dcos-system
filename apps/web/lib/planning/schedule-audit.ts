@@ -44,7 +44,7 @@ export interface ScheduleAuditEntry {
 
 /**
  * Writes one wbs_audit_log row for a Planning edit — same insert shape as
- * lib/tasks/assign-task.ts, kept in its own helper so every Planning write
+ * lib/project/tasks/assign-task.ts, kept in its own helper so every Planning write
  * path (Gantt, Sheet, baselines, data date) logs consistently instead of
  * inlining the insert at each call site.
  */

@@ -770,17 +770,17 @@
       "count": 1
     }
   },
-  "components/projects/project-edit-sheet.tsx": {
+  "components/project/projects/project-edit-sheet.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/projects/project-setup-wizard.tsx": {
+  "components/project/projects/project-setup-wizard.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 2
     }
   },
-  "components/projects/project-stakeholders-tab.tsx": {
+  "components/project/projects/project-stakeholders-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
@@ -926,17 +926,17 @@
       "count": 1
     }
   },
-  "components/stakeholders/staff-manager-dialog.tsx": {
+  "components/project/stakeholders/staff-manager-dialog.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/stakeholders/stakeholder-edit-sheet.tsx": {
+  "components/project/stakeholders/stakeholder-edit-sheet.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/stakeholders/template-edit-sheet.tsx": {
+  "components/project/stakeholders/template-edit-sheet.tsx": {
     "prefer-const": {
       "count": 1
     },
@@ -944,7 +944,7 @@
       "count": 2
     }
   },
-  "components/stakeholders/template-list-page.tsx": {
+  "components/project/stakeholders/template-list-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
@@ -1044,27 +1044,27 @@
       "count": 1
     }
   },
-  "components/wbs/template-management-page.tsx": {
+  "components/project/wbs/template-management-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 2
     }
   },
-  "components/wbs/wbs-evm-panel.tsx": {
+  "components/project/wbs/wbs-evm-panel.tsx": {
     "react-hooks/purity": {
       "count": 1
     }
   },
-  "components/wbs/wbs-execution-view.tsx": {
+  "components/project/wbs/wbs-execution-view.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/wbs/wbs-task-kpi-page.tsx": {
+  "components/project/wbs/wbs-task-kpi-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/wbs/wbs-tree-page.tsx": {
+  "components/project/wbs/wbs-tree-page.tsx": {
     "prefer-const": {
       "count": 1
     },

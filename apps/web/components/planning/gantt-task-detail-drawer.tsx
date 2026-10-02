@@ -9,7 +9,7 @@ import type { GanttTask } from "./gantt-types";
 import { ACTIVITY_TYPE_OPTIONS } from "./gantt-types";
 import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-utils";
 import { cn } from "@/lib/utils";
-import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
 import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
 import {
   addAssignment,

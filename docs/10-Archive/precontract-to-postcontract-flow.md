@@ -188,15 +188,15 @@ This document describes the complete flow for converting a project from the pre-
 | `supabase/migrations/20260725000002_qs_risk_items.sql` | Postcontract risk register table |
 | `supabase/migrations/20260725000003_qs_price_list_items.sql` | Postcontract price list table |
 | `apps/web/components/dashboard/postcontract-dashboard.tsx` | KPI dashboard for postcontract projects |
-| `apps/web/components/projects/postcontract-detail.tsx` | Tabbed detail view (7 tabs) |
+| `apps/web/components/project/projects/postcontract-detail.tsx` | Tabbed detail view (7 tabs) |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
 | `apps/web/lib/qs-service.ts` | Added 8 conversion functions + types |
-| `apps/web/components/projects/award-conversion-dialog.tsx` | Rewritten with data carry-over options |
-| `apps/web/components/projects/project-list-page.tsx` | Added postcontract detail click handler |
+| `apps/web/components/project/projects/award-conversion-dialog.tsx` | Rewritten with data carry-over options |
+| `apps/web/components/project/projects/project-list-page.tsx` | Added postcontract detail click handler |
 
 ---
 

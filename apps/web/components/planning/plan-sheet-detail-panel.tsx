@@ -7,7 +7,7 @@ import { ExternalLink, Loader2, Table2, UserPlus, X } from "lucide-react";
 import { listProfiles } from "@/lib/planning/planning-queries";
 import { cn } from "@/lib/utils";
 import { PRIORITY_OPTIONS, STATUS_LABELS, STATUS_OPTIONS, type SheetField, type SheetTask } from "./sheet-types";
-import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
 import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
 
 interface StaffProfile {

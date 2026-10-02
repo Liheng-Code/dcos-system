@@ -6,8 +6,8 @@
 > ## Implementation Record
 > - Migrations: `supabase/migrations/20260824000001…000005` (profile dept FK + sync trigger, task dept scoping + derive trigger, cross-dept fields, weekly planning columns, RBAC seeds)
 > - Shared helper: `apps/web/lib/task-scope.ts`
-> - My Tasks dashboard: `apps/web/app/dashboard/my-tasks/page.tsx` + `components/tasks/my-tasks-dashboard.tsx`
-> - Department workspace: `apps/web/app/dashboard/department/page.tsx` + `components/tasks/department-workspace.tsx` + `components/tasks/team-planner-grid.tsx`
+> - My Tasks dashboard: `apps/web/app/dashboard/my-tasks/page.tsx` + `components/project/tasks/my-tasks-dashboard.tsx`
+> - Department workspace: `apps/web/app/dashboard/department/page.tsx` + `components/project/tasks/department-workspace.tsx` + `components/project/tasks/team-planner-grid.tsx`
 > - Cross-department flow: create-form section in `wbs-task-edit-sheet.tsx`, accept/reject queues in My Tasks dashboard, kanban ⇄ badges, alerts (`cross_dept_requested/accepted/rejected`)
 > - Sidebar: "My Tasks" and "Department" entries under Project group; badge shows pending incoming cross-dept requests for department heads
 
@@ -24,7 +24,7 @@
 
 ## Current State
 
-- `/dashboard/tasks` → `apps/web/components/wbs/wbs-tasks-page.tsx` (tabs: My Tasks / Overdue / Pending Approval / All Tasks / Kanban / KPI). Existing "My Tasks" is a simple `owner_id/assignee_id` filter rendered in the same execution table.
+- `/dashboard/tasks` → `apps/web/components/project/wbs/wbs-tasks-page.tsx` (tabs: My Tasks / Overdue / Pending Approval / All Tasks / Kanban / KPI). Existing "My Tasks" is a simple `owner_id/assignee_id` filter rendered in the same execution table.
 - Kanban (`wbs-kanban-view.tsx`): read-only, columns Open → Assigned → In Progress → Pending Approval → Approved → Completed via `getKanbanStatus()`.
 - No `department_id` on `wbs_tasks`; `profiles.department` is free TEXT; structured `departments`/`teams` tables live in HR (`20260527000030_create_hr_organization_tables.sql`, incl. `department_head`, self-referencing `parent_id`).
 - RBAC ready: `role_permissions.scope = own|department|project|company`; L4 Department Manager role seeded. Helper: `apps/web/lib/permissions.ts`.
@@ -64,7 +64,7 @@ New `apps/web/lib/task-scope.ts`:
 
 ## Phase 3 — My Tasks Dashboard `/dashboard/my-tasks`
 
-- Route `app/dashboard/my-tasks/page.tsx` + `components/tasks/my-tasks-dashboard.tsx`.
+- Route `app/dashboard/my-tasks/page.tsx` + `components/project/tasks/my-tasks-dashboard.tsx`.
 - Cross-project: all `wbs_tasks` where `owner_id = me OR assignee_id = me`.
 - Widgets: KPI cards (Active / Overdue / Due this week / Completed this month); "Awaiting my approval"; Overdue & due-soon lists linking to `/dashboard/tasks/[taskId]`; status breakdown chart (recharts); recent activity feed from `wbs_audit_log`.
 
@@ -72,7 +72,7 @@ New `apps/web/lib/task-scope.ts`:
 
 - Guard: no department → empty state; non-managers read-only.
 - **My Team Tasks**: reuse `WbsExecutionView` / `WbsKanbanView` filtered by department (+ member filter). Manager can reassign/edit.
-- **Team Planning** (`components/tasks/team-planner-grid.tsx`): weekly people × days grid, task chips by date overlap, capacity bars vs planned hours, manager drag-drop reassignment (`owner_id`) and day shifts (`start/end_date`), unassigned backlog column, over-capacity warnings.
+- **Team Planning** (`components/project/tasks/team-planner-grid.tsx`): weekly people × days grid, task chips by date overlap, capacity bars vs planned hours, manager drag-drop reassignment (`owner_id`) and day shifts (`start/end_date`), unassigned backlog column, over-capacity warnings.
 
 ## Phase 5 — Cross-Department Request Flow
 

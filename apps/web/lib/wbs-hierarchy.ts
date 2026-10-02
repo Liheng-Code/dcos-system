@@ -1,7 +1,7 @@
 // Pure hierarchy math for WBS nodes + the one shared async that persists a
 // re-parent / reorder against `wbs_nodes`.
 //
-// Extracted from components/wbs/wbs-management-page.tsx so the WBS Builder grid
+// Extracted from components/project/wbs/wbs-management-page.tsx so the WBS Builder grid
 // and the (legacy) management page share exactly one implementation. Generalised
 // to any row shape carrying id / parent_id / wbs_code / sort_order.
 

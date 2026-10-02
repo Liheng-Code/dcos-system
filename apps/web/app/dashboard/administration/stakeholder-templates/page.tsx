@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { TemplateListPage } from "@/components/stakeholders/template-list-page";
+import { TemplateListPage } from "@/components/project/stakeholders/template-list-page";
 import { Loader2 } from "lucide-react";
 
 export default function StakeholderTemplatesPage() {

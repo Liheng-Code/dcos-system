@@ -18,7 +18,7 @@ import {
   setMasterLibraryActive,
   upsertMasterLibraryItem,
 } from "@/lib/master-libraries";
-import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord } from "@/components/wbs/wbs-types";
+import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord } from "@/components/project/wbs/wbs-types";
 
 type LibraryRecord = MasterLibraryRecord | TaskTemplateMasterRecord;
 

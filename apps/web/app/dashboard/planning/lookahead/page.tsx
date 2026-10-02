@@ -1,6 +1,6 @@
 "use client";
 
-import { WbsLookaheadView } from "@/components/wbs/wbs-lookahead-view";
+import { WbsLookaheadView } from "@/components/project/wbs/wbs-lookahead-view";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import { CalendarRange } from "lucide-react";
 

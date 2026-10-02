@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { assignTaskToProfile, type AssignableTask } from "@/lib/tasks/assign-task";
+import { assignTaskToProfile, type AssignableTask } from "@/lib/project/tasks/assign-task";
 import { dedupe } from "@/lib/request-dedup";
 
 export type ResourceType = "labor" | "equipment" | "material" | "subcontractor";

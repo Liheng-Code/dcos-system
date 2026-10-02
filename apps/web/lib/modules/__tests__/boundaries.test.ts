@@ -30,8 +30,8 @@ describe("module boundaries map", () => {
   it("resolves ownership by the most specific path", () => {
     expect(moduleOf("components/hr/leave/leave-form.tsx")).toBe("hr");
     expect(moduleOf("lib/qs/qs-service")).toBe("qs");
-    expect(moduleOf("components/wbs/wbs-tree.tsx")).toBe(CORE);
-    expect(moduleOf("components/wbs/wbs-lookahead-view.tsx")).toBe("planning");
+    expect(moduleOf("components/project/wbs/wbs-tree.tsx")).toBe(CORE);
+    expect(moduleOf("components/project/wbs/wbs-lookahead-view.tsx")).toBe("planning");
     expect(moduleOf("app/dashboard/administration/year-end/page.tsx")).toBe("hr");
     expect(moduleOf("app/dashboard/administration/users/page.tsx")).toBe(CORE);
     expect(moduleOf("lib/utils")).toBe(CORE);

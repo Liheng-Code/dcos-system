@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
-import { WbsManagementPage } from "@/components/wbs/wbs-management-page";
+import { WbsManagementPage } from "@/components/project/wbs/wbs-management-page";
 
 export default function WbsPage() {
   const router = useRouter();

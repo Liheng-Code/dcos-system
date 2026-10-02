@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { WbsTaskAlertType } from "@/components/wbs/wbs-types";
+import type { WbsTaskAlertType } from "@/components/project/wbs/wbs-types";
 
 let warnedMissingTaskAlertsTable = false;
 

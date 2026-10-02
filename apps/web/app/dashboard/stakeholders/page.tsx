@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
-import { StakeholderListPage } from "@/components/stakeholders/stakeholder-list-page";
+import { StakeholderListPage } from "@/components/project/stakeholders/stakeholder-list-page";
 
 export default function StakeholdersPage() {
   const router = useRouter();

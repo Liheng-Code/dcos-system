@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
-import { ProjectListPage } from "@/components/projects/project-list-page";
+import { ProjectListPage } from "@/components/project/projects/project-list-page";
 
 export default function ProjectsPage() {
   const router = useRouter();

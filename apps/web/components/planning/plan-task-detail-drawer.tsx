@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { WbsActivityStepsPanel } from "@/components/wbs/wbs-activity-steps-panel";
+import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
 import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
 import { cn } from "@/lib/utils";
 import type { SheetTask } from "./sheet-types";

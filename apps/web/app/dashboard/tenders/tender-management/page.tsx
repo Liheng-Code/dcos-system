@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { deleteTenderAddendaById, deleteTenderInvitationById, insertTenderAddenda, insertTenderInvitation, listTenderAddendaByTenderId, listTenderInvitationsByTenderIdOrderedByInvitedDate, listTenderRegister, updateTenderInvitationById } from "@/lib/qs/qs-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, Plus, Trash2, Send, FileWarning, Check, X, Clock } from "lucide-react";
-import { ClarificationsRegister } from "@/components/projects/precontract-bid-prep";
+import { ClarificationsRegister } from "@/components/project/projects/precontract-bid-prep";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
