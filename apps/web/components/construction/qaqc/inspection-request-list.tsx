@@ -13,7 +13,7 @@ import {
   createInspectionRequest,
   generateIrNumber,
 } from "@/lib/construction/qaqc-service";
-import { InspectionResultSheet } from "@/components/qaqc/inspection-result-sheet";
+import { InspectionResultSheet } from "@/components/construction/qaqc/inspection-result-sheet";
 
 const STATUS_COLORS: Record<InspectionRequest["status"], string> = {
   draft:      "bg-slate-100 text-slate-500",

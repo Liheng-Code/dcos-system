@@ -1,7 +1,7 @@
 "use client";
 
-import { HsePageShell } from "@/components/hse/hse-page-shell";
-import { HseRiskAssessments } from "@/components/hse/hse-risk-assessments";
+import { HsePageShell } from "@/components/construction/hse/hse-page-shell";
+import { HseRiskAssessments } from "@/components/construction/hse/hse-risk-assessments";
 import { ClipboardList } from "lucide-react";
 
 export default function RiskAssessmentsPage() {

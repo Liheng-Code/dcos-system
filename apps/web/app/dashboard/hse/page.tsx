@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { countHseIncidents, countHseObservations, countHsePermits, countHseRiskAssessments, countHseToolboxTalks } from "@/lib/construction/construction-queries";
-import { HsePageShell } from "@/components/hse/hse-page-shell";
+import { HsePageShell } from "@/components/construction/hse/hse-page-shell";
 import {
   ShieldCheck, FileText, MessageSquare, AlertTriangle, ClipboardList, Eye, Loader2
 } from "lucide-react";

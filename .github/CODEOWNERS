@@ -82,10 +82,7 @@
 /apps/web/lib/modules/manifests/design.ts           @Liheng-Code
 
 # Construction (site, QA/QC, HSE)
-/apps/web/components/site/                          @Liheng-Code
-/apps/web/components/qaqc/                          @Liheng-Code
-/apps/web/components/hse/                           @Liheng-Code
-/apps/web/lib/site/                                 @Liheng-Code
+/apps/web/components/construction/                  @Liheng-Code
 /apps/web/lib/construction/                         @Liheng-Code
 /apps/web/app/dashboard/site/                       @Liheng-Code
 /apps/web/app/dashboard/qaqc/                       @Liheng-Code

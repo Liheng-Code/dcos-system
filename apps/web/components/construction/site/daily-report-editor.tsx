@@ -45,12 +45,12 @@ import {
   type PlanningContextActivity,
   type SiteDailyReport,
   type StepProgressItem,
-} from "@/lib/site/daily-report-service";
+} from "@/lib/construction/site/daily-report-service";
 import {
   calculateWeightedProgress,
   deriveActivityStatus,
   validateDailyReportPayload,
-} from "@/lib/site/daily-report-math";
+} from "@/lib/construction/site/daily-report-math";
 import { todayISO } from "@/lib/planning/work-calendar";
 import { cn } from "@/lib/utils";
 

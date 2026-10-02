@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteEquipment } from "@/components/site/site-equipment";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteEquipment } from "@/components/construction/site/site-equipment";
 import { Wrench } from "lucide-react";
 
 export default function EquipmentPage() {

@@ -1,7 +1,7 @@
 "use client";
 
-import { HsePageShell } from "@/components/hse/hse-page-shell";
-import { HseObservations } from "@/components/hse/hse-observations";
+import { HsePageShell } from "@/components/construction/hse/hse-page-shell";
+import { HseObservations } from "@/components/construction/hse/hse-observations";
 import { Eye } from "lucide-react";
 
 export default function ObservationsPage() {

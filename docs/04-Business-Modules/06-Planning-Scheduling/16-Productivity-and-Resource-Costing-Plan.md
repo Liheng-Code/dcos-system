@@ -58,7 +58,7 @@ Norms drive the plan; logs measure reality and recalibrate the norms.
 | Tender BOQ | `tender_boq_items` (`quantity, unit, level, dwl_work_item_id, wbs_node_id`) | One tender has **841 real items** (rebar 45,000 kg, slab formwork 3,200 m², per-level ties…), **0 linked to WBS**, 9 linked to DWL items. |
 | Resources | `plan_resources` (`max_units, cost_per_unit, unit_label`), `plan_task_assignments` (`allocation_percent`) | Working; `cost_per_unit` is **stored but never used** in any calculation. |
 | Allocation / levelling | RPC `get_resource_allocation`, `lib/planning/resource-levelling.ts`, dashboard cards | Working (fixed this session). |
-| Actual manpower | `site_manpower` (trade, workers, hours), `timesheet_entries`, `overtime_requests` | `site_manpower` has **no WBS link**; its screen inserts a random UUID as `project_id` (`components/site/site-manpower.tsx:84`) — broken. |
+| Actual manpower | `site_manpower` (trade, workers, hours), `timesheet_entries`, `overtime_requests` | `site_manpower` has **no WBS link**; its screen inserts a random UUID as `project_id` (`components/construction/site/site-manpower.tsx:84`) — broken. |
 | Schedule engine | `lib/planning/schedule-engine.ts` (`EngineTask.durationWd`) | Duration always comes from dates. No effort-/quantity-driven mode. |
 | Calendar | `plan_calendars` (Mon–Sun booleans + exceptions) | **No hours per day.** |
 | Docs | Task-Management spec (§4.6, `v_task_productivity`, `task_resource_manpower`) | Spec only — never built (Planning was built on `wbs_tasks`/`plan_*` instead). Master_Prompt_10/11 are AI prompt outlines, not designs. |
@@ -188,7 +188,7 @@ Effort key (rough, one engineer): **S** ≈ 1–2 days · **M** ≈ 3–5 · **L
 | `get_resource_loading(project, from, to)` — working days per the resource's or project's calendar, exceptions honoured, hours-aware, Mon–Fri/8 h fallback with no calendar | migration `20260922000002`; `getResourceAllocation()` in `lib/planning/resource-service.ts` now calls it (old `get_resource_allocation` left untouched) |
 | `site_manpower.wbs_node_id` / `wbs_task_id` (optional FKs, `on delete set null`) | migration `20260922000003` |
 | Permission actions `norms`, `task_work`, `productivity` (L0–L4/PE full; L5/L6 view + create/edit on `productivity`; QS norms view/create/edit/approve + task_work view/edit) | migration `20260922000004` |
-| Site diary / manpower / equipment save against the selected project, list only that project, `created_by` filled on daily reports | `components/site/site-{daily-reports,manpower,equipment}.tsx` |
+| Site diary / manpower / equipment save against the selected project, list only that project, `created_by` filled on daily reports | `components/construction/site/site-{daily-reports,manpower,equipment}.tsx` |
 
 **Verified:** old vs new function on PRJ-2026-004-PC — 2,854 → 2,466 rows, the 388 dropped rows are all Sundays, Saturdays kept (Mon–Sat calendar), peaks unchanged. Holiday and Sunday-override exceptions, hours per day, per-resource calendar, no-calendar fallback and date clipping tested in a rolled-back transaction. Via the real client as a logged-in user: 3 pages, 2,466 rows, 0 Sunday rows. Browser test of the three site screens and the calendar screen; test rows removed afterwards. Migrations re-run cleanly (idempotent). Unit tests for `hoursPerDay`.
 

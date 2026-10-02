@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { type Ncr, getNcrs } from "@/lib/construction/qaqc-service";
-import { NcrCreateSheet } from "@/components/qaqc/ncr-detail-sheet";
+import { NcrCreateSheet } from "@/components/construction/qaqc/ncr-detail-sheet";
 
 const SEVERITY_COLORS: Record<Ncr["severity"], string> = {
   minor:    "bg-slate-100 text-slate-600",

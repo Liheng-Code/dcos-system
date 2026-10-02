@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteManpower } from "@/components/site/site-manpower";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteManpower } from "@/components/construction/site/site-manpower";
 import { Users } from "lucide-react";
 
 export default function ManpowerPage() {

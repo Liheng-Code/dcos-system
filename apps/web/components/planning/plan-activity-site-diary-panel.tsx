@@ -22,7 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   getTaskSiteDiaryHistory,
   type TaskSiteDiaryHistory,
-} from "@/lib/site/public";
+} from "@/lib/construction/site/public";
 import { cn } from "@/lib/utils";
 
 interface PlanActivitySiteDiaryPanelProps {

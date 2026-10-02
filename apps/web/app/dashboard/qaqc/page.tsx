@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, ClipboardCheck } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
-import { ItpManager } from "@/components/qaqc/itp-manager";
-import { InspectionRequestList } from "@/components/qaqc/inspection-request-list";
-import { NcrList } from "@/components/qaqc/ncr-list";
+import { ItpManager } from "@/components/construction/qaqc/itp-manager";
+import { InspectionRequestList } from "@/components/construction/qaqc/inspection-request-list";
+import { NcrList } from "@/components/construction/qaqc/ncr-list";
 
 const SUB_TAB_IDS = ["itps", "inspections", "ncrs"] as const;
 type SubTab = (typeof SUB_TAB_IDS)[number];

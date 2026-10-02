@@ -533,7 +533,7 @@
       "count": 1
     }
   },
-  "components/hse/hse-incidents.tsx": {
+  "components/construction/hse/hse-incidents.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -541,7 +541,7 @@
       "count": 1
     }
   },
-  "components/hse/hse-observations.tsx": {
+  "components/construction/hse/hse-observations.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -549,7 +549,7 @@
       "count": 1
     }
   },
-  "components/hse/hse-permits.tsx": {
+  "components/construction/hse/hse-permits.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -557,7 +557,7 @@
       "count": 1
     }
   },
-  "components/hse/hse-risk-assessments.tsx": {
+  "components/construction/hse/hse-risk-assessments.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -565,7 +565,7 @@
       "count": 1
     }
   },
-  "components/hse/hse-toolbox-talks.tsx": {
+  "components/construction/hse/hse-toolbox-talks.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -785,7 +785,7 @@
       "count": 1
     }
   },
-  "components/qaqc/inspection-request-list.tsx": {
+  "components/construction/qaqc/inspection-request-list.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 3
     },
@@ -793,7 +793,7 @@
       "count": 1
     }
   },
-  "components/qaqc/inspection-result-sheet.tsx": {
+  "components/construction/qaqc/inspection-result-sheet.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
     },
@@ -801,7 +801,7 @@
       "count": 1
     }
   },
-  "components/qaqc/itp-manager.tsx": {
+  "components/construction/qaqc/itp-manager.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 6
     },
@@ -809,12 +809,12 @@
       "count": 1
     }
   },
-  "components/qaqc/ncr-detail-sheet.tsx": {
+  "components/construction/qaqc/ncr-detail-sheet.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
   },
-  "components/qaqc/ncr-list.tsx": {
+  "components/construction/qaqc/ncr-list.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
     },
@@ -890,27 +890,27 @@
       "count": 2
     }
   },
-  "components/site/site-daily-reports.tsx": {
+  "components/construction/site/site-daily-reports.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/site/site-equipment.tsx": {
+  "components/construction/site/site-equipment.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/site/site-inspections.tsx": {
+  "components/construction/site/site-inspections.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/site/site-manpower.tsx": {
+  "components/construction/site/site-manpower.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/site/site-ncrs.tsx": {
+  "components/construction/site/site-ncrs.tsx": {
     "react-hooks/purity": {
       "count": 1
     },
@@ -918,7 +918,7 @@
       "count": 1
     }
   },
-  "components/site/site-progress-photos.tsx": {
+  "components/construction/site/site-progress-photos.tsx": {
     "react-hooks/purity": {
       "count": 2
     },

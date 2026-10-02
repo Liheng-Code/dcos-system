@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { countInspectionRequests, countNcrs, countSiteDailyReports, countSiteEquipment, countSiteManpower, countSiteProgressPhotos } from "@/lib/construction/construction-queries";
-import { SitePageShell } from "@/components/site/site-page-shell";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
 import { HardHat, FileText, Users, Wrench, Camera, ClipboardCheck, AlertTriangle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";

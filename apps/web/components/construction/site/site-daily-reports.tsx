@@ -26,7 +26,7 @@ import {
   listDailyReports,
   syncDailyReportToPlanning,
   type SiteDailyReport,
-} from "@/lib/site/daily-report-service";
+} from "@/lib/construction/site/daily-report-service";
 import { DailyReportEditor } from "./daily-report-editor";
 import { cn } from "@/lib/utils";
 

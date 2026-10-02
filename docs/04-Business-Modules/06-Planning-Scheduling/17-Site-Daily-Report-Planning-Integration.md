@@ -112,8 +112,8 @@ The **DCOS Construction $\leftrightarrow$ Planning Integration** establishes a c
 
 ## 5. UI Components
 
-- [`apps/web/components/site/daily-report-editor.tsx`](file:///d:/dcos-system/apps/web/components/site/daily-report-editor.tsx): Master-detail modal editor with planning activity picker and step checklists.
-- [`apps/web/components/site/site-daily-reports.tsx`](file:///d:/dcos-system/apps/web/components/site/site-daily-reports.tsx): Construction daily reports register with status badges and quick re-sync.
+- [`apps/web/components/construction/site/daily-report-editor.tsx`](file:///d:/dcos-system/apps/web/components/construction/site/daily-report-editor.tsx): Master-detail modal editor with planning activity picker and step checklists.
+- [`apps/web/components/construction/site/site-daily-reports.tsx`](file:///d:/dcos-system/apps/web/components/construction/site/site-daily-reports.tsx): Construction daily reports register with status badges and quick re-sync.
 - [`apps/web/components/planning/plan-activity-site-diary-panel.tsx`](file:///d:/dcos-system/apps/web/components/planning/plan-activity-site-diary-panel.tsx): Site diary timeline panel for planners.
 - [`apps/web/components/planning/plan-sheet-detail-panel.tsx`](file:///d:/dcos-system/apps/web/components/planning/plan-sheet-detail-panel.tsx): Tabbed switcher in task sheet.
 - [`apps/web/components/planning/gantt-task-detail-drawer.tsx`](file:///d:/dcos-system/apps/web/components/planning/gantt-task-detail-drawer.tsx): Site diary inspection drawer in Gantt view.
@@ -123,7 +123,7 @@ The **DCOS Construction $\leftrightarrow$ Planning Integration** establishes a c
 
 ## 6. Testing & Quality Assurance
 
-- **Vitest Unit Test Suite**: [`apps/web/lib/site/__tests__/daily-report-sync.test.ts`](file:///d:/dcos-system/apps/web/lib/site/__tests__/daily-report-sync.test.ts)
+- **Vitest Unit Test Suite**: [`apps/web/lib/construction/site/__tests__/daily-report-sync.test.ts`](file:///d:/dcos-system/apps/web/lib/construction/site/__tests__/daily-report-sync.test.ts)
   - 24 automated unit tests verifying weighted rollup, status derivation, man-hour calculation, productivity rate, delay categorizations, and validation.
 - Full test suite: **197 passing tests**, 0 failures.
 - TypeScript: Typecheck passed (`tsc --noEmit` exit code 0).

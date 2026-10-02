@@ -73,10 +73,7 @@ export const MODULE_PATHS = {
     "hooks/use-bim-viewer.ts",
   ],
   construction: [
-    "components/site",
-    "components/qaqc",
-    "components/hse",
-    "lib/site",
+    "components/construction",
     "lib/construction",
     "app/dashboard/site",
     "app/dashboard/qaqc",
@@ -139,7 +136,7 @@ export const PUBLIC_API = {
   construction: [
     "lib/construction/construction-nav.ts",
     // Named exports of the site daily-report service that others may use.
-    "lib/site/public.ts",
+    "lib/construction/site/public.ts",
   ],
   document_control: [
     "lib/documents/document-control-nav.ts",

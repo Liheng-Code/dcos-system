@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteInspections } from "@/components/site/site-inspections";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteInspections } from "@/components/construction/site/site-inspections";
 import { ClipboardCheck } from "lucide-react";
 
 export default function InspectionsPage() {

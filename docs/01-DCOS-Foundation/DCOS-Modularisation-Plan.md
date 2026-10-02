@@ -301,7 +301,7 @@ Remaining: a team member builds one new HR feature end to end (branch, pull requ
 
 - Seven WBS area functions (GFA per node, project site area) moved from the QS service to core (`lib/wbs-area-service.ts`); only WBS screens used them.
 - QS exposes two files of named exports: `lib/qs/public.ts` (19 names from the commercial service) and `lib/qs/public-tender.ts` (5 names from the tender service). The rest of both services is internal.
-- `lib/planning/public.ts` and `lib/site/public.ts` do the same for two smaller services.
+- `lib/planning/public.ts` and `lib/construction/site/public.ts` do the same for two smaller services.
 - Eight small files are public as a whole: tender approval and its permission hook, baselines, activity steps, the Telegram sender, and three components used as widgets or dialogs by another module.
 - `public*.ts` files are owned by the project owner in `CODEOWNERS`.
 

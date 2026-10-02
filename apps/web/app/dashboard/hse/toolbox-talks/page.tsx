@@ -1,7 +1,7 @@
 "use client";
 
-import { HsePageShell } from "@/components/hse/hse-page-shell";
-import { HseToolboxTalks } from "@/components/hse/hse-toolbox-talks";
+import { HsePageShell } from "@/components/construction/hse/hse-page-shell";
+import { HseToolboxTalks } from "@/components/construction/hse/hse-toolbox-talks";
 import { MessageSquare } from "lucide-react";
 
 export default function ToolboxTalksPage() {

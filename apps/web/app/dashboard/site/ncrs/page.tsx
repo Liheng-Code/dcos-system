@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteNcrs } from "@/components/site/site-ncrs";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteNcrs } from "@/components/construction/site/site-ncrs";
 import { AlertTriangle } from "lucide-react";
 
 export default function NcrsPage() {

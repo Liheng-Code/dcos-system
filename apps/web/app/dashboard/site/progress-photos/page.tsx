@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteProgressPhotos } from "@/components/site/site-progress-photos";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteProgressPhotos } from "@/components/construction/site/site-progress-photos";
 import { Camera } from "lucide-react";
 
 export default function ProgressPhotosPage() {

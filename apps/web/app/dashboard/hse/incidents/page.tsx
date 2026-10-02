@@ -1,7 +1,7 @@
 "use client";
 
-import { HsePageShell } from "@/components/hse/hse-page-shell";
-import { HseIncidents } from "@/components/hse/hse-incidents";
+import { HsePageShell } from "@/components/construction/hse/hse-page-shell";
+import { HseIncidents } from "@/components/construction/hse/hse-incidents";
 import { AlertTriangle } from "lucide-react";
 
 export default function IncidentsPage() {

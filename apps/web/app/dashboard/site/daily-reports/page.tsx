@@ -1,7 +1,7 @@
 "use client";
 
-import { SitePageShell } from "@/components/site/site-page-shell";
-import { SiteDailyReports } from "@/components/site/site-daily-reports";
+import { SitePageShell } from "@/components/construction/site/site-page-shell";
+import { SiteDailyReports } from "@/components/construction/site/site-daily-reports";
 import { FileText } from "lucide-react";
 
 export default function DailyReportsPage() {
