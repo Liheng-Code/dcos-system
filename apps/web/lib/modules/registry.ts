@@ -4,6 +4,7 @@
 // from this list.
 
 import type { ModuleManifest } from "@/lib/modules/types";
+import { isModuleDeployed } from "@/lib/modules/deployment";
 import { projectModule } from "@/lib/modules/manifests/project";
 import { reportingModule } from "@/lib/modules/manifests/reporting";
 import { documentControlModule } from "@/lib/modules/manifests/document-control";
@@ -17,7 +18,8 @@ import { hrModule } from "@/lib/modules/manifests/hr";
 import { accountModule } from "@/lib/modules/manifests/account";
 import { administrationModule } from "@/lib/modules/manifests/administration";
 
-export const MODULE_REGISTRY: ModuleManifest[] = [
+// Every module, deployed or not.
+const ALL_MODULES: ModuleManifest[] = [
   projectModule,
   reportingModule,
   documentControlModule,
@@ -31,6 +33,10 @@ export const MODULE_REGISTRY: ModuleManifest[] = [
   accountModule,
   administrationModule,
 ];
+
+// The modules this deployment ships (DCOS_ENABLED_MODULES; all when unset). A module
+// left out disappears from the sidebar and hub; next.config.ts blocks its routes.
+export const MODULE_REGISTRY: ModuleManifest[] = ALL_MODULES.filter((m) => isModuleDeployed(m.key));
 
 // The same modules in module-hub card order.
 export const HUB_MODULES: ModuleManifest[] = [...MODULE_REGISTRY].sort(

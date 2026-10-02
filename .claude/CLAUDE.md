@@ -195,6 +195,7 @@ dcos-system/
 - One code folder per module and layer: `components/<module>/`, `lib/<module>/`. Put a new sub-area in a subfolder there (e.g. `components/construction/hse`), not a new top-level folder. Page URLs (`app/dashboard/...`) do not have to follow this; the module's route folders are listed in `module-boundaries.mjs`.
 - Core component folders (shared by every module, owned by the project owner): `ui` (shadcn), `report-kit` (charts, report frame, export), `dashboard`, `project` (projects, wbs, tasks, stakeholders: the Project module in the sidebar, kept core because every module builds on it), `naming`, `settings`, `administration`, `auth`, `landing`.
 - Do not add to the boundary baseline in `eslint-suppressions.json` to get an import through; add the file to `PUBLIC_API` (a deliberate contract) or move the shared code to core.
+- **Choosing modules per deployment:** set `DCOS_ENABLED_MODULES=qs,planning` (comma-separated `module_settings` keys) on the Vercel project before deploying. `project` and `administration` are always on; unset or `all` ships everything (the local default). A module that is off leaves the sidebar and hub (`lib/modules/registry.ts`) and its pages redirect to `/dashboard` while its API routes 404 (`next.config.ts`, routes derived from `module-boundaries.mjs`). An unknown key fails the build. Logic: `module-deployment.mjs`. It hides modules, it does not remove their code from the bundle.
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
 
 **apps/web/hooks/** - Custom React hooks
