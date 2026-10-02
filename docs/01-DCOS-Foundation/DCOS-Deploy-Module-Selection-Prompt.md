@@ -1,5 +1,13 @@
 # DCOS: Deploy-Time Module Selection (Prompt and Runbook)
 
+> **Current workflow (recommended): deploy everything, control visibility in the app.**
+> Leave `DCOS_ENABLED_MODULES` **unset** (delete it in Vercel if it exists) so every module is deployed.
+> Visibility is then controlled by an admin in **Administration > Module Settings**: a switch per module, and
+> "Manage navigation items" per page. Changes apply immediately, with no redeploy. Only what
+> `apps/web/lib/modules/release.ts` lists is on by default; everything else shows "In development" until switched on.
+> The settings are stored in each environment's own database (local and production are separate).
+> The rest of this file describes the optional deploy-time limit, for when you want to hard-limit one deployment.
+
 Purpose: choose which DCOS business modules a Vercel deployment ships (for example only Project), instead of every module going live. The selection is made before each deploy with one environment variable.
 
 This file has two parts:

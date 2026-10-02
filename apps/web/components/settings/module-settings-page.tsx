@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import type { ModuleSetting } from "@/lib/module-settings-service";
 import { getModuleSettings } from "@/lib/module-settings-service";
 import { NAV_ITEM_CATALOG, type NavCatalogEntry } from "@/lib/nav-item-catalog";
+import { moduleHasActiveFeature } from "@/lib/modules/features";
 import { getModule } from "@/lib/modules/registry";
 import { useModuleSettings } from "@/contexts/module-settings-context";
 
@@ -35,7 +36,7 @@ export function ModuleSettingsPage() {
   // Live toggle state comes from the shared context, which is kept in sync by the
   // realtime postgres_changes subscription — toggling updates the sidebar + module
   // hub everywhere without a page refresh.
-  const { isModuleActive, toggleModule, loading: contextLoading } = useModuleSettings();
+  const { isModuleActive, toggleModule, navItemSettings, loading: contextLoading } = useModuleSettings();
 
   useEffect(() => {
     getModuleSettings(true).then((data) => {
@@ -139,7 +140,11 @@ export function ModuleSettingsPage() {
                     {!isProtected && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Info className="h-3 w-3" />
-                        {isActive ? "Visible in sidebar & hub" : "Hidden and blocked"}
+                        {!isActive
+                          ? "Hidden and blocked"
+                          : moduleHasActiveFeature(mod.module_key, navItemSettings)
+                            ? "Visible in sidebar & hub"
+                            : "On, but no pages switched on: still hidden"}
                       </span>
                     )}
                   </div>
