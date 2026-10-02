@@ -201,7 +201,7 @@ export function ModuleSettingsPage() {
 // isNavItemActive: a settings row wins, and with no row a released item is on
 // and an "In development" item is off.
 function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; displayName: string }) {
-  const { isNavItemActive, toggleNavItem } = useModuleSettings();
+  const { isNavItemActive, toggleNavItem, isModuleActive } = useModuleSettings();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [toggling, setToggling] = useState<string | null>(null);
 
@@ -214,16 +214,39 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
   async function handleNavToggle(entry: NavCatalogEntry) {
     const current = checked(entry.navKey);
     const next = !current;
-    setOverrides((prev) => ({ ...prev, [entry.navKey]: next }));
+    // A page stays hidden while its group is off, so switching a page on also
+    // switches its group on.
+    const parent = next && entry.parentGroupKey
+      ? entries.find((e) => e.navKey === entry.parentGroupKey)
+      : undefined;
+    const enableParent = !!parent && !checked(parent.navKey);
+
+    setOverrides((prev) => ({
+      ...prev,
+      [entry.navKey]: next,
+      ...(enableParent ? { [parent!.navKey]: true } : {}),
+    }));
     setToggling(entry.navKey);
 
-    const result = await toggleNavItem(entry.navKey, moduleKey, entry.nodeType, entry.label, next);
+    let result: { success: boolean; error?: string } = { success: true };
+    if (enableParent) {
+      result = await toggleNavItem(parent!.navKey, moduleKey, parent!.nodeType, parent!.label, true);
+    }
+    if (result.success) {
+      result = await toggleNavItem(entry.navKey, moduleKey, entry.nodeType, entry.label, next);
+    }
     setToggling(null);
 
     if (result.success) {
-      toast.success(`${next ? "Enabled" : "Disabled"} "${entry.label}"`);
+      toast.success(
+        `${next ? "Enabled" : "Disabled"} "${entry.label}"${enableParent ? ` (and its group "${parent!.label}")` : ""}`,
+      );
     } else {
-      setOverrides((prev) => ({ ...prev, [entry.navKey]: current }));
+      setOverrides((prev) => ({
+        ...prev,
+        [entry.navKey]: current,
+        ...(enableParent ? { [parent!.navKey]: false } : {}),
+      }));
       toast.error(result.error ?? "Failed to update navigation item.");
     }
   }
@@ -238,6 +261,12 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
         </DialogDescription>
       </DialogHeader>
 
+      {!isModuleActive(moduleKey) && (
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          This module is switched off, so none of its pages show. Switch the module on first.
+        </p>
+      )}
+
       <div className="flex flex-col gap-0.5">
         {entries.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">
@@ -248,6 +277,7 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
           const isGroup = entry.nodeType === "group";
           const isChild = !!entry.parentGroupKey;
           const active = checked(entry.navKey);
+          const groupOff = isChild && !checked(entry.parentGroupKey!);
           const isBusy = toggling === entry.navKey;
 
           return (
@@ -257,6 +287,7 @@ function NavItemsDialogContent({ moduleKey, displayName }: { moduleKey: string; 
                 "flex items-center justify-between gap-3 rounded-md px-2 py-1.5",
                 isGroup && "mt-2 first:mt-0",
                 isChild && "ml-4 border-l border-border/40 pl-3",
+                groupOff && "opacity-60",
               )}
             >
               <span
