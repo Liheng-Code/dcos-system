@@ -190,7 +190,7 @@ dcos-system/
 
 ### Modules & boundaries
 - The sidebar, module hub, route guard and permission map all derive from the module manifests. To add a module: write a manifest, add it to `registry.ts`, add its paths to `module-boundaries.mjs`.
-- A nav item with `status: "development"` is hidden and route-blocked until switched on in Module Settings (or `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true` locally).
+- A nav item with `status: "development"` is hidden and route-blocked until switched on in Module Settings (or `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true` locally). **Default is development:** only what `apps/web/lib/modules/release.ts` lists ships on; edit that file to release a page or module. A module with no visible page leaves the sidebar and hub.
 - `apps/web/module-boundaries.mjs` maps every folder to its owning module and lists each module's public API. The `dcos/module-boundaries` ESLint rule fails on an import of another module's internals. Anything not listed there is core, which any module may import.
 - One code folder per module and layer: `components/<module>/`, `lib/<module>/`. Put a new sub-area in a subfolder there (e.g. `components/construction/hse`), not a new top-level folder. Page URLs (`app/dashboard/...`) do not have to follow this; the module's route folders are listed in `module-boundaries.mjs`.
 - Core component folders (shared by every module, owned by the project owner): `ui` (shadcn), `report-kit` (charts, report frame, export), `dashboard`, `project` (projects, wbs, tasks, stakeholders: the Project module in the sidebar, kept core because every module builds on it), `naming`, `settings`, `administration`, `auth`, `landing`.

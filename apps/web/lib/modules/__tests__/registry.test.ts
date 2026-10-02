@@ -145,7 +145,7 @@ describe("isRouteBlocked", () => {
     const all = MODULE_REGISTRY.map((m) => m.key);
     const toggles = { activeModuleKeys: withoutHr, navItemSettings: [] };
     expect(isRouteBlocked("/dashboard/hr/employees", all, toggles)).toBe(true);
-    expect(isRouteBlocked("/dashboard/qs/boq", all, toggles)).toBe(false);
+    expect(isRouteBlocked("/dashboard/projects", all, toggles)).toBe(false);
   });
 
   it("fails open when module settings could not be loaded", () => {

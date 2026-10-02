@@ -10,6 +10,7 @@
 
 import type { FeatureStatus, ModuleNavTabItem } from "@/lib/module-nav";
 import { MODULE_REGISTRY, getModuleForPath } from "@/lib/modules/registry";
+import { isReleased } from "@/lib/modules/release";
 
 export interface ModuleFeature {
   // nav_item_settings.nav_key: the href for a page, "group:<module>:<slug>" for a group.
@@ -43,6 +44,12 @@ function itemPath(href: string): string | null {
   return href.includes("?") ? null : href;
 }
 
+// Status for a feature with no explicit one in its manifest: released only if
+// lib/modules/release.ts lists it, otherwise development (hidden by default).
+function releasedStatus(moduleKey: string, navKey: string): FeatureStatus {
+  return isReleased(moduleKey, navKey) ? "released" : "development";
+}
+
 function buildFeatures(): ModuleFeature[] {
   const features: ModuleFeature[] = [];
   for (const manifest of MODULE_REGISTRY) {
@@ -52,7 +59,7 @@ function buildFeatures(): ModuleFeature[] {
         moduleKey: manifest.key,
         label: leaf.label,
         nodeType: "item",
-        status: leaf.status ?? "released",
+        status: leaf.status ?? releasedStatus(manifest.key, leaf.href),
         path: itemPath(leaf.href),
       });
     }
@@ -62,7 +69,7 @@ function buildFeatures(): ModuleFeature[] {
         moduleKey: manifest.key,
         label: group.label,
         nodeType: "group",
-        status: group.status ?? "released",
+        status: group.status ?? releasedStatus(manifest.key, group.navKey),
         path: null,
       });
       for (const item of group.items as ModuleNavTabItem[]) {
@@ -72,7 +79,7 @@ function buildFeatures(): ModuleFeature[] {
           label: item.label,
           nodeType: "item",
           parentGroupKey: group.navKey,
-          status: item.status ?? "released",
+          status: item.status ?? releasedStatus(manifest.key, item.href),
           path: itemPath(item.href),
           hiddenTab: item.hidden,
         });
@@ -116,6 +123,25 @@ export function isFeatureActive(
   const row = settings.find((s) => s.nav_key === navKey);
   if (row) return row.is_active;
   return getFeatureStatus(navKey) === "released" || showDevelopment;
+}
+
+// True when a module has at least one page a user can open. A module whose pages
+// are all off is left out of the sidebar and module hub instead of showing an
+// empty section.
+export function moduleHasActiveFeature(
+  moduleKey: string,
+  settings: FeatureSetting[],
+  showDevelopment: boolean = SHOW_DEVELOPMENT_FEATURES,
+): boolean {
+  const pages = MODULE_FEATURES.filter(
+    (f) => f.moduleKey === moduleKey && f.nodeType === "item" && !f.hiddenTab,
+  );
+  if (pages.length === 0) return true;
+  return pages.some(
+    (f) =>
+      isFeatureActive(f.navKey, settings, showDevelopment) &&
+      (!f.parentGroupKey || isFeatureActive(f.parentGroupKey, settings, showDevelopment)),
+  );
 }
 
 // The feature that owns pathname: the longest feature path that equals it or,

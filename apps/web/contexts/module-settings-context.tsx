@@ -8,7 +8,7 @@ import {
   toggleNavItem as toggleNavItemService,
   type NavItemSetting,
 } from "@/lib/nav-item-settings-service";
-import { isFeatureActive } from "@/lib/modules/features";
+import { isFeatureActive, moduleHasActiveFeature } from "@/lib/modules/features";
 import { createClient } from "@/lib/supabase/client";
 import { usePermittedModules } from "@/hooks/use-permitted-modules";
 
@@ -16,6 +16,8 @@ interface ModuleSettingsContextValue {
   activeKeys: string[];
   loading: boolean;
   isModuleActive: (key: string) => boolean;
+  /** Module is on AND has at least one page a user can open; drives the sidebar and hub. */
+  isModuleVisible: (key: string) => boolean;
   toggleModule: (key: string, isActive: boolean) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<void>;
   navItemSettings: NavItemSetting[];
@@ -41,6 +43,7 @@ const ModuleSettingsContext = createContext<ModuleSettingsContextValue>({
   activeKeys: [],
   loading: true,
   isModuleActive: () => true,
+  isModuleVisible: () => true,
   toggleModule: async () => ({ success: false }),
   refresh: async () => {},
   navItemSettings: [],
@@ -120,6 +123,11 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
     [activeKeys],
   );
 
+  const isModuleVisible = useCallback(
+    (key: string) => activeKeys.includes(key) && moduleHasActiveFeature(key, navItemSettings),
+    [activeKeys, navItemSettings],
+  );
+
   const {
     permittedModuleKeys,
     loading: permittedLoading,
@@ -180,6 +188,7 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
         activeKeys,
         loading,
         isModuleActive,
+        isModuleVisible,
         toggleModule,
         refresh: fetchKeys,
         navItemSettings,

@@ -4,6 +4,7 @@ import {
   getFeatureForPath,
   isFeatureActive,
   isFeatureRouteBlocked,
+  moduleHasActiveFeature,
 } from "@/lib/modules/features";
 import { NAV_ITEM_CATALOG } from "@/lib/nav-item-catalog";
 
@@ -24,8 +25,33 @@ describe("isFeatureActive", () => {
     expect(isFeatureActive("/dashboard/unknown", off("/dashboard/unknown"), false)).toBe(false);
   });
 
-  it("keeps every feature that exists today released", () => {
-    expect(MODULE_FEATURES.filter((f) => f.status !== "released")).toEqual([]);
+  // lib/modules/release.ts decides what ships on by default; this pins it so a
+  // release is a deliberate, visible change.
+  it("releases only what lib/modules/release.ts lists", () => {
+    const released = MODULE_FEATURES.filter((f) => f.status === "released");
+    expect(released.filter((f) => f.moduleKey !== "administration").map((f) => f.navKey).sort()).toEqual(
+      ["/dashboard", "/dashboard/hr/employees", "/dashboard/projects", "group:hr:workforce"].sort(),
+    );
+    const administration = MODULE_FEATURES.filter((f) => f.moduleKey === "administration");
+    expect(administration.every((f) => f.status === "released")).toBe(true);
+  });
+
+  it("hides an unreleased page unless a row or the local override switches it on", () => {
+    expect(isFeatureActive("/dashboard/hr/payroll", [], false)).toBe(false);
+    expect(isFeatureActive("/dashboard/hr/payroll", [], true)).toBe(true);
+    expect(isFeatureActive("/dashboard/hr/payroll", on("/dashboard/hr/payroll"), false)).toBe(true);
+  });
+});
+
+describe("moduleHasActiveFeature", () => {
+  it("is true for a module with a released page", () => {
+    expect(moduleHasActiveFeature("project", [], false)).toBe(true);
+    expect(moduleHasActiveFeature("hr", [], false)).toBe(true);
+  });
+
+  it("is false for a module with nothing released, true once a page is switched on", () => {
+    expect(moduleHasActiveFeature("qs", [], false)).toBe(false);
+    expect(moduleHasActiveFeature("qs", [...on("group:qs:cost_control"), ...on("/dashboard/qs/boq")], false)).toBe(true);
   });
 });
 
@@ -79,23 +105,23 @@ describe("getFeatureForPath", () => {
 describe("isFeatureRouteBlocked", () => {
   it("blocks a switched-off page and its nested routes, not its siblings", () => {
     const settings = off("/dashboard/hr/leave");
-    expect(isFeatureRouteBlocked("/dashboard/hr/leave", settings, false)).toBe(true);
-    expect(isFeatureRouteBlocked("/dashboard/hr/leave/admin", settings, false)).toBe(true);
-    expect(isFeatureRouteBlocked("/dashboard/hr/payroll", settings, false)).toBe(false);
+    expect(isFeatureRouteBlocked("/dashboard/hr/leave", settings, true)).toBe(true);
+    expect(isFeatureRouteBlocked("/dashboard/hr/leave/admin", settings, true)).toBe(true);
+    expect(isFeatureRouteBlocked("/dashboard/hr/payroll", settings, true)).toBe(false);
   });
 
   it("blocks every page of a switched-off group", () => {
     const settings = off("group:hr:time_payroll");
-    expect(isFeatureRouteBlocked("/dashboard/hr/leave", settings, false)).toBe(true);
-    expect(isFeatureRouteBlocked("/dashboard/hr/employees", settings, false)).toBe(false);
+    expect(isFeatureRouteBlocked("/dashboard/hr/leave", settings, true)).toBe(true);
+    expect(isFeatureRouteBlocked("/dashboard/hr/employees", settings, true)).toBe(false);
   });
 
   it("does not block a page shared by query-string tabs when one tab is off", () => {
-    expect(isFeatureRouteBlocked("/dashboard/qs", off("/dashboard/qs?tab=contingency"), false)).toBe(false);
+    expect(isFeatureRouteBlocked("/dashboard/qs", off("/dashboard/qs?tab=contingency"), true)).toBe(false);
   });
 
   it("does not block routes outside any feature", () => {
-    expect(isFeatureRouteBlocked("/dashboard/profile", off("/dashboard/hr/leave"), false)).toBe(false);
+    expect(isFeatureRouteBlocked("/dashboard/profile", off("/dashboard/hr/leave"), true)).toBe(false);
   });
 });
 

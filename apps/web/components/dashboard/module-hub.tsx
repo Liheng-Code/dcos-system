@@ -10,7 +10,7 @@ import { HUB_MODULES } from "@/lib/modules/registry";
 import { getProfileById } from "@/lib/dashboard/dashboard-queries";
 
 export function ModuleHub() {
-  const { isModuleActive, loading: modulesLoading } = useModuleSettings();
+  const { isModuleVisible, loading: modulesLoading } = useModuleSettings();
   const { selectedProject } = useProject();
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -38,7 +38,7 @@ export function ModuleHub() {
   }
 
   const visibleModules = HUB_MODULES.filter((manifest) => {
-    if (!isModuleActive(manifest.key)) return false;
+    if (!isModuleVisible(manifest.key)) return false;
     if (manifest.hub.adminOnly && !isAdmin) return false;
     if (manifest.visible && !manifest.visible({ isPrecontract, isDesignTender })) return false;
     return true;

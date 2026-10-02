@@ -25,7 +25,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const isPrecontract = selectedProject?.project_type === "tender";
   // Design & Build / Turnkey tenders carry the design, so the bid team needs the Design module.
   const isDesignTender = isPrecontract && ["design_build", "turnkey"].includes(selectedProject?.contract_type ?? "");
-  const { isModuleActive, isModulePermitted, isNavItemActive } = useModuleSettings();
+  const { isModuleActive, isModuleVisible, isModulePermitted, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isHr, setIsHr] = useState(false);
   // Open/closed state of each module's sidebar section, keyed by module key.
@@ -294,7 +294,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
           const allowed = manifest.sidebarGate === "admin_or_hr"
             ? (isAdmin || isHr) && isModuleActive(manifest.key)
             : isModulePermitted(manifest.key);
-          if (!allowed) return null;
+          if (!allowed || !isModuleVisible(manifest.key)) return null;
           if (manifest.visible && !manifest.visible({ isPrecontract, isDesignTender })) return null;
 
           const open = !!openSections[manifest.key];
