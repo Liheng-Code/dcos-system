@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { MasterLibrariesPage } from "@/components/master-libraries/master-libraries-page";
+import { MasterLibrariesPage } from "@/components/administration/master-libraries-page";
 
 export default function MasterLibrariesRoute() {
   const router = useRouter();
