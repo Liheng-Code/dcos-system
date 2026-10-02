@@ -187,7 +187,7 @@ dcos-system/
 **apps/web/lib/** - Utilities and service layer
 - `supabase/` - Supabase client initialization and helpers
 - `utils.ts` - General utilities (cn() for class merging, etc.)
-- `<module>/` - each business module's services and nav file (`hr/`, `qs/`, `planning/`, `procurement/`, `inv/`, `design/`, `construction/`, `documents/`, `account/`, `reporting/`); a module's sub-areas are subfolders (`construction/site`, `design/bim`, `hr/telegram`)
+- `<module>/` - each business module's services and nav file (`hr/`, `qs/`, `planning/`, `procurement/`, `inventory/`, `design/`, `construction/`, `documents/`, `account/`, `reporting/`); a module's sub-areas are subfolders (`construction/site`, `design/bim`, `hr/telegram`)
 - `modules/` - module registry: one manifest per module in `modules/manifests/`, listed in `modules/registry.ts`; feature release status in `modules/features.ts`
 - Files left at the `lib/` root are core (shared by every module)
 
@@ -196,6 +196,7 @@ dcos-system/
 - A nav item with `status: "development"` is hidden and route-blocked until switched on in Module Settings (or `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true` locally).
 - `apps/web/module-boundaries.mjs` maps every folder to its owning module and lists each module's public API. The `dcos/module-boundaries` ESLint rule fails on an import of another module's internals. Anything not listed there is core, which any module may import.
 - One code folder per module and layer: `components/<module>/`, `lib/<module>/`. Put a new sub-area in a subfolder there (e.g. `components/construction/hse`), not a new top-level folder. Page URLs (`app/dashboard/...`) do not have to follow this; the module's route folders are listed in `module-boundaries.mjs`.
+- Core component folders (shared by every module, owned by the project owner): `ui` (shadcn), `report-kit` (charts, report frame, export), `dashboard`, `projects`, `wbs`, `tasks`, `stakeholders`, `naming`, `settings`, `administration`, `auth`, `landing`.
 - Do not add to the boundary baseline in `eslint-suppressions.json` to get an import through; add the file to `PUBLIC_API` (a deliberate contract) or move the shared code to core.
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
 

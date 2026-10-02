@@ -314,8 +314,14 @@ Remaining: a team member builds one new HR feature end to end (branch, pull requ
 | Design | `components/bim`, `lib/bim` | `components/design/bim`, `lib/design/bim` |
 | HR | `components/telegram`, `lib/telegram` | `components/hr/telegram`, `lib/hr/telegram` |
 | Reporting | `components/insights` | `components/reporting/insights` |
+| Inventory | `components/inv`, `lib/inv` | `components/inventory`, `lib/inventory` |
+| Document Control | transmittal screens in `components/naming` (core) | `components/documents/transmittals/transmittal-{list,create,detail}.tsx` |
 
-90 files moved with `git mv` (history follows with `git log --follow`). Page, API and webhook URLs are unchanged. `inv` keeps its short folder name for the Inventory module.
+Two core folders were renamed or folded in for clarity: `components/reports` (shared charts, report frame and export, used by six modules) became `components/report-kit`, so it is not mistaken for the Reporting module; `components/master-libraries` (one file) moved into `components/administration`.
+
+Files moved with `git mv` (history follows with `git log --follow`). Page, API and webhook URLs are unchanged, including `/api/inv`. Core component folders stay at the top level: grouping them under a `core/` folder would rewrite about 700 imports, `components/ui` is where the shadcn tool installs components, and core is owned by the project owner either way.
+
+The transmittal screens still read through `lib/naming/naming-queries.ts` (core). Moving their queries into `lib/documents` is a follow-up if Document Control is handed to a team member.
 
 **Module vocabularies.** The two vocabularies (`module_settings.module_key` and `role_permissions.module`) are joined in one place, each module's manifest (`rbacModules`). Renaming the codes in the database would touch about 1,200 permission rows and every policy that names them for no functional gain, so they are left as they are.
 
