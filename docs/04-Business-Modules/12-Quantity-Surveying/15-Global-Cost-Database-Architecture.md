@@ -188,7 +188,7 @@ The sections above describe a generic reference architecture. This section evalu
 
 **Has:** QTO already has a real, FK-backed link into BOQ — `qto_boq_links` maps `qto_item_id ↔ boq_item_id` with a contribution quantity (`apps/web/lib/qto-service.ts`, `docs/.../11-QTO-Module-Design.md` §19). This is a genuine relational linkage, not manual copy-paste. QTO itself, however, is 2D manual on-screen measurement against PDF; DWG files are stored and opened externally, not parsed.
 
-**The highest-leverage gap in this whole document:** A separate, genuinely working IFC/BIM 3D viewer already exists in the Design module (`apps/web/components/bim/ifc-viewer.tsx`, built on `web-ifc`/`three.js`/`@thatopen/components`), with a one-click "Extract Takeoff" action (`bim-toolbar.tsx`) that pulls IFC Property Set quantities into a staging table, `bim_element_takeoff` (`20260717000004_create_bim_element_takeoff.sql`, whose own header comment describes it as "non-destructive staging data... a human later reviews/aggregates these rows into a real BOQ"). No code anywhere connects `bim_element_takeoff` to `qto_items`, `qto_boq_links`, `qs_boq_items`, or `tender_boq_items` — the hard technical work (IFC parsing, 3D rendering, quantity extraction) is already built and working, it simply dead-ends before reaching QS. See §7 Phase 1a.
+**The highest-leverage gap in this whole document:** A separate, genuinely working IFC/BIM 3D viewer already exists in the Design module (`apps/web/components/design/bim/ifc-viewer.tsx`, built on `web-ifc`/`three.js`/`@thatopen/components`), with a one-click "Extract Takeoff" action (`bim-toolbar.tsx`) that pulls IFC Property Set quantities into a staging table, `bim_element_takeoff` (`20260717000004_create_bim_element_takeoff.sql`, whose own header comment describes it as "non-destructive staging data... a human later reviews/aggregates these rows into a real BOQ"). No code anywhere connects `bim_element_takeoff` to `qto_items`, `qto_boq_links`, `qs_boq_items`, or `tender_boq_items` — the hard technical work (IFC parsing, 3D rendering, quantity extraction) is already built and working, it simply dead-ends before reaching QS. See §7 Phase 1a.
 
 ### 6.8 Automated BOQ validation rules (cf. §4.2, first bullet)
 
@@ -298,7 +298,7 @@ BOQ and contract rate freezing on lock (§6.4) is correct commercial practice, n
 * `supabase/migrations/20260717000004_create_bim_element_takeoff.sql` — BIM staging table, §6.7.
 * `supabase/migrations/20260908000001_scurve_series.sql`, `20260531000009_create_snapshot_rpc.sql` — auto-derived S-curve, §6.10.
 * `apps/web/lib/tender-cost-service.ts`, `qs-service.ts`, `evm-service.ts`, `qto-service.ts` — service-layer evidence throughout §6.
-* `apps/web/components/bim/ifc-viewer.tsx`, `bim-toolbar.tsx` — the existing IFC viewer and "Extract Takeoff" action, §6.7.
+* `apps/web/components/design/bim/ifc-viewer.tsx`, `bim-toolbar.tsx` — the existing IFC viewer and "Extract Takeoff" action, §6.7.
 * QS module consolidation plan (tracked separately, not duplicated here) — `budget_codes`/`budget_package_sections` internal overlap noted in §6.2.
 
 *End of DCOS-DS-12-015 Draft.*

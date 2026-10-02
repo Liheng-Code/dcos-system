@@ -63,9 +63,7 @@ export const MODULE_PATHS = {
   inventory: ["components/inv", "lib/inv", "app/dashboard/inventory", "app/api/inv"],
   design: [
     "components/design",
-    "components/bim",
     "lib/design",
-    "lib/bim",
     "app/dashboard/design",
     "app/api/bim",
     "hooks/use-bim-viewer.ts",

@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { BimModel } from "@/lib/bim/bim-types";
+import type { BimModel } from "@/lib/design/bim/bim-types";
 
 export function BimDeleteDialog({
   open,

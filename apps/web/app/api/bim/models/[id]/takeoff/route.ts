@@ -5,7 +5,7 @@ import {
   bulkUpsertElementTakeoff,
   listElementTakeoff,
   BimError,
-} from "@/lib/bim/bim-service";
+} from "@/lib/design/bim/bim-service";
 
 export async function GET(
   _req: NextRequest,

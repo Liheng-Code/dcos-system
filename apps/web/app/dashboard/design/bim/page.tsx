@@ -1,5 +1,5 @@
 import { DesignPageShell } from "@/components/design/design-page-shell";
-import { BimModelRegister } from "@/components/bim/bim-model-register";
+import { BimModelRegister } from "@/components/design/bim/bim-model-register";
 import { Box } from "lucide-react";
 
 export default function Page() {

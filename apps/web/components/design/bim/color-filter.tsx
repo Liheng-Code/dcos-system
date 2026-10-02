@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useBimViewer } from "@/hooks/use-bim-viewer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronRight, Palette } from "lucide-react";
-import type { ColorMode, ColorPalette } from "@/lib/bim/bim-types";
-import { COLOR_PALETTES } from "@/lib/bim/bim-types";
+import type { ColorMode, ColorPalette } from "@/lib/design/bim/bim-types";
+import { COLOR_PALETTES } from "@/lib/design/bim/bim-types";
 
 const COLOR_MODE_OPTIONS: { value: ColorMode; label: string }[] = [
   { value: "none", label: "No Coloring" },

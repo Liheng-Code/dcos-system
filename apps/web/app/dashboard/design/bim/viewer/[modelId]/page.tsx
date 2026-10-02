@@ -11,18 +11,18 @@ import {
   BimFragmentsContext,
   BimItemDataContext,
   type BimHandles,
-} from "@/components/bim/ifc-viewer";
-import { IfcViewerLayout } from "@/components/bim/ifc-viewer-layout";
-import { BimToolbar } from "@/components/bim/bim-toolbar";
-import { BimStatusBar } from "@/components/bim/bim-status-bar";
-import { SpatialTree } from "@/components/bim/spatial-tree";
-import { DisciplineFilter } from "@/components/bim/discipline-filter";
-import { ElementProperties } from "@/components/bim/element-properties";
-import { ViewCube } from "@/components/bim/view-cube";
-import { PresetViews } from "@/components/bim/preset-views";
-import { ViewpointsPanel } from "@/components/bim/viewpoints-panel";
+} from "@/components/design/bim/ifc-viewer";
+import { IfcViewerLayout } from "@/components/design/bim/ifc-viewer-layout";
+import { BimToolbar } from "@/components/design/bim/bim-toolbar";
+import { BimStatusBar } from "@/components/design/bim/bim-status-bar";
+import { SpatialTree } from "@/components/design/bim/spatial-tree";
+import { DisciplineFilter } from "@/components/design/bim/discipline-filter";
+import { ElementProperties } from "@/components/design/bim/element-properties";
+import { ViewCube } from "@/components/design/bim/view-cube";
+import { PresetViews } from "@/components/design/bim/preset-views";
+import { ViewpointsPanel } from "@/components/design/bim/viewpoints-panel";
 import { useBimViewer } from "@/hooks/use-bim-viewer";
-import type { BimModel } from "@/lib/bim/bim-types";
+import type { BimModel } from "@/lib/design/bim/bim-types";
 
 export default function ViewerPage() {
   const params = useParams();

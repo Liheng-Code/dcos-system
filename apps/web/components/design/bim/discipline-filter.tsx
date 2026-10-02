@@ -6,8 +6,8 @@ import { useBimComponents } from "./ifc-viewer";
 import { Hider } from "@thatopen/components";
 import { ChevronDown, ChevronRight, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DISCIPLINE_COLORS } from "@/lib/bim/bim-types";
-import type { DisciplineInfo } from "@/lib/bim/bim-types";
+import { DISCIPLINE_COLORS } from "@/lib/design/bim/bim-types";
+import type { DisciplineInfo } from "@/lib/design/bim/bim-types";
 
 export function DisciplineFilter() {
   const {

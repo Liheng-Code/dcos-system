@@ -10,7 +10,7 @@ import { Upload, Eye, Loader2, Box, Pencil, Trash2 } from "lucide-react";
 import { BimUploadDialog } from "./bim-upload-dialog";
 import { BimEditDialog } from "./bim-edit-dialog";
 import { BimDeleteDialog } from "./bim-delete-dialog";
-import type { BimModel } from "@/lib/bim/bim-types";
+import type { BimModel } from "@/lib/design/bim/bim-types";
 
 export function BimModelRegister() {
   const router = useRouter();

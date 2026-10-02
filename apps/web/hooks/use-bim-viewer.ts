@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { LevelInfo, DisciplineInfo, SpatialTreeNode, ElementProperties, ColorMode, ColorLegendEntry, ColorPalette } from "@/lib/bim/bim-types";
+import type { LevelInfo, DisciplineInfo, SpatialTreeNode, ElementProperties, ColorMode, ColorLegendEntry, ColorPalette } from "@/lib/design/bim/bim-types";
 
 export type ActiveTool =
   | "orbit"

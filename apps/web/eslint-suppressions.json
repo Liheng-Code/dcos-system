@@ -416,27 +416,27 @@
       "count": 1
     }
   },
-  "components/bim/bim-model-register.tsx": {
+  "components/design/bim/bim-model-register.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/bim/element-properties.tsx": {
+  "components/design/bim/element-properties.tsx": {
     "react-hooks/static-components": {
       "count": 11
     }
   },
-  "components/bim/ifc-viewer-layout.tsx": {
+  "components/design/bim/ifc-viewer-layout.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/bim/preset-views.tsx": {
+  "components/design/bim/preset-views.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
   },
-  "components/bim/spatial-tree.tsx": {
+  "components/design/bim/spatial-tree.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }

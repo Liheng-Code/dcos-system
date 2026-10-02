@@ -8,7 +8,7 @@ import { FragmentsManager } from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { LevelInfo, SpatialTreeNode } from "@/lib/bim/bim-types";
+import type { LevelInfo, SpatialTreeNode } from "@/lib/design/bim/bim-types";
 
 export function SpatialTree() {
   const { spatialTree } = useBimViewer();
@@ -154,7 +154,7 @@ function TreeNode({ node, depth }: { node: SpatialTreeNode; depth: number }) {
       attributesDefault: true,
       relationsDefault: { attributes: true, relations: true },
     });
-    const { extractPropertiesFromItemData } = await import("@/lib/bim/ifc-helpers");
+    const { extractPropertiesFromItemData } = await import("@/lib/design/bim/ifc-helpers");
     setElementProperties(extractPropertiesFromItemData(itemData as Record<string, unknown>));
 
     // Zoom to the element(s)

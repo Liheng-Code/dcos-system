@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createUserClient, createAdminClient } from "@/lib/supabase/server";
-import { getModel, BimError } from "@/lib/bim/bim-service";
+import { getModel, BimError } from "@/lib/design/bim/bim-service";
 
 export async function GET(
   req: NextRequest,
@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const supabase = createAdminClient();
-    const { resolveTenantId } = await import("@/lib/bim/bim-service");
+    const { resolveTenantId } = await import("@/lib/design/bim/bim-service");
     const tenantId = await resolveTenantId(supabase, user.id);
     const model = await getModel(supabase, tenantId, id);
 

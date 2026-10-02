@@ -13,10 +13,10 @@ import {
   extractStoreysFromData, countElementsPerClass, buildDisciplineInfo, buildSpatialTree,
   extractPropertiesFromItemData, mapIfcClassToDiscipline, getItemCategory,
   buildStoryMapFromBoundingBox,
-} from "@/lib/bim/ifc-helpers";
-import type { LevelInfo, DisciplineInfo, SpatialTreeNode } from "@/lib/bim/bim-types";
-import type { ColorMode, ColorLegendEntry } from "@/lib/bim/bim-types";
-import { COLOR_PALETTES } from "@/lib/bim/bim-types";
+} from "@/lib/design/bim/ifc-helpers";
+import type { LevelInfo, DisciplineInfo, SpatialTreeNode } from "@/lib/design/bim/bim-types";
+import type { ColorMode, ColorLegendEntry } from "@/lib/design/bim/bim-types";
+import { COLOR_PALETTES } from "@/lib/design/bim/bim-types";
 
 // Hover feedback uses a warm amber tint, deliberately distinct from the
 // indigo selection color, so users can tell "what's under my cursor" apart

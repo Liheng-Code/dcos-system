@@ -71,9 +71,7 @@
 
 # Design and BIM
 /apps/web/components/design/                        @Liheng-Code
-/apps/web/components/bim/                           @Liheng-Code
 /apps/web/lib/design/                               @Liheng-Code
-/apps/web/lib/bim/                                  @Liheng-Code
 /apps/web/app/dashboard/design/                     @Liheng-Code
 /apps/web/app/api/bim/                              @Liheng-Code
 /apps/web/hooks/use-bim-viewer.ts                   @Liheng-Code

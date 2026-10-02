@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, ChevronRight, Bookmark, Plus, Trash2 } from "lucide-react";
-import type { BimViewpoint } from "@/lib/bim/bim-types";
+import type { BimViewpoint } from "@/lib/design/bim/bim-types";
 
 interface ViewpointsPanelProps {
   modelId: string;

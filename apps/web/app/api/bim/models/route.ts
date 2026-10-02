@@ -6,7 +6,7 @@ import {
   createModelRecord,
   supersedePreviousRevisions,
   BimError,
-} from "@/lib/bim/bim-service";
+} from "@/lib/design/bim/bim-service";
 
 export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get("project_id");

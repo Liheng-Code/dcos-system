@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useBimViewer } from "@/hooks/use-bim-viewer";
-import { useBimComponents, useBimWorld, useBimItemData } from "@/components/bim/ifc-viewer";
+import { useBimComponents, useBimWorld, useBimItemData } from "@/components/design/bim/ifc-viewer";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
@@ -17,8 +17,8 @@ import { Clipper, Hider } from "@thatopen/components";
 import { BimEditDialog } from "./bim-edit-dialog";
 import { BimDeleteDialog } from "./bim-delete-dialog";
 import { BimReviewPromoteDialog } from "./bim-review-promote-dialog";
-import { extractBoqFieldsFromItemData } from "@/lib/bim/ifc-helpers";
-import type { BimModel } from "@/lib/bim/bim-types";
+import { extractBoqFieldsFromItemData } from "@/lib/design/bim/ifc-helpers";
+import type { BimModel } from "@/lib/design/bim/bim-types";
 
 function ClipboardListIcon({ className }: { className?: string }) {
   return <ClipboardList className={className} />;

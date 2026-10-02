@@ -32,7 +32,7 @@ import {
   type BoqTargetPhase,
   type TenderOption,
   type BoqItemOption,
-} from "@/lib/bim/bim-boq-promotion-service";
+} from "@/lib/design/bim/bim-boq-promotion-service";
 import type { QsBoqSummary, QsBoqSection } from "@/lib/qs/public";
 import type { BudgetCode } from "@/lib/qs/public-tender";
 
