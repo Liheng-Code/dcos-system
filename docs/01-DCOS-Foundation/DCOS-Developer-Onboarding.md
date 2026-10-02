@@ -185,6 +185,6 @@ node scripts/ui-snapshot/compare.mjs before.json after.json
 ## 5. Things that will trip you up
 
 - **Lint baseline.** `apps/web/eslint-suppressions.json` records errors that existed before the rules were enforced. New errors fail. If you fix old ones, run `pnpm lint:prune` to shrink the baseline.
-- **Next.js 16.** Some APIs differ from older versions. Check `apps/web/AGENTS.md` and `node_modules/next/dist/docs/` before changing routing or configuration.
+- **Next.js 16.** Some APIs differ from older versions. Check `apps/web/CLAUDE.md` and `node_modules/next/dist/docs/` before changing routing or configuration.
 - **Permissions are checked in the browser for some modules.** Treat the database as the security boundary: a table without the right row-level security policy is readable by any signed-in user.
 - **Do not run `supabase db reset` or `supabase stop --no-backup` casually.** Both wipe your local database. `supabase stop` on its own keeps your data.

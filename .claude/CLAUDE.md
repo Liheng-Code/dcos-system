@@ -239,7 +239,7 @@ dcos-system/
 ## Important Notes
 
 ### Next.js v16 Breaking Changes
-The project uses Next.js 16.2.6, which contains breaking changes from earlier versions. See `AGENTS.md` for warnings. Always check `node_modules/next/dist/docs/` for deprecation notices before making changes to routing or configuration.
+The project uses Next.js 16.2.6, which contains breaking changes from earlier versions. See `apps/web/CLAUDE.md` for warnings. Always check `node_modules/next/dist/docs/` for deprecation notices before making changes to routing or configuration.
 
 ### Tailwind CSS v4
 Tailwind CSS 4 is used with Lightning CSS (Rust-based compiler for performance). Configuration is minimal—most styling uses utility classes directly.
