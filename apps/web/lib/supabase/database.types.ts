@@ -31361,6 +31361,15 @@ export type Database = {
         }
         Relationships: []
       }
+      dwl_v_material_duplicates: {
+        Row: {
+          codes: string[] | null
+          copies: number | null
+          fingerprint: string | null
+          names: string[] | null
+        }
+        Relationships: []
+      }
       dwl_v_materials: {
         Row: {
           application_element: string | null
@@ -32192,6 +32201,27 @@ export type Database = {
       dwl_approve_price_submission: {
         Args: { p_note?: string; p_submission_id: string }
         Returns: string
+      }
+      dwl_create_material: { Args: { p: Json }; Returns: Json }
+      dwl_find_material_matches: {
+        Args: {
+          p_category_id: string
+          p_dimension?: string
+          p_exclude_resource_id?: string
+          p_grade?: string
+          p_name: string
+          p_standard?: string
+          p_thickness?: string
+          p_type?: string
+          p_unit: string
+          p_strength?: string
+        }
+        Returns: {
+          code: string
+          match_level: string
+          material_name: string
+          resource_id: string
+        }[]
       }
       dwl_current_tenant: { Args: never; Returns: string }
       dwl_price_capability: { Args: { p_field: string }; Returns: boolean }

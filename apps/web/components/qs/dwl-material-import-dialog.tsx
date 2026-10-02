@@ -20,14 +20,14 @@ import {
 import { cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv-export";
 import {
-  parseSimpleMaterialSheet, type SimpleMaterialRow, type ImportIssue,
+  parseSimpleMaterialSheet, type SimpleMaterialExtras, type SimpleMaterialRow, type ImportIssue,
 } from "@/components/qs/dwl-import-lib";
 import {
   ATTRIBUTE_FIELDS, STATUS_LABEL, cellId, classifyMaterialRows, isCellSelectedByDefault, isRowSelectable,
   isRowSelectedByDefault, loadMaterialCatalogSnapshot, resolveBudgetCodeId, resolveCategory,
   type CellChange, type ClassifiedMaterialRow, type MaterialRowStatus,
 } from "@/components/qs/dwl-material-import-compare";
-import { insertDwlMaterialAttribute, insertDwlResourcePrice, insertDwlResourceReturning, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
+import { dwlCreateMaterial, insertDwlMaterialAttribute, insertDwlResourcePrice, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
 
 const STATUS_CLASS: Record<MaterialRowStatus, string> = {
   new: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -40,7 +40,20 @@ const STATUS_CLASS: Record<MaterialRowStatus, string> = {
 
 const CHANGE_KIND_LABEL: Record<CellChange["kind"], string> = { fill: "fills empty", change: "overwrites", price: "new price" };
 
-const TEMPLATE_COLUMNS = ["Code", "Name", "Category", "Specification", "Standard", "Grade", "Unit", "Brand", "Discipline", "Cost Code", "Application", "Effective Cost"];
+// Column order = the Material Register (docs/.../16-Material Register.md). Code
+// may be left blank for a new material: the system assigns it. Supplier and
+// price belong to the price record, so only an Effective Cost is imported.
+const TEMPLATE_COLUMNS = [
+  "Code", "Name", "Category", "Type", "Specification", "Standard", "Grade", "Size", "Thickness", "Density",
+  "Compressive Strength", "Colour / Finish", "Unit", "Effective Date", "Cost Code", "Brand", "Manufacturer",
+  "Discipline", "Application", "Effective Cost",
+];
+
+type SimpleMaterialSeed = Omit<SimpleMaterialRow, "_row" | keyof SimpleMaterialExtras> & Partial<SimpleMaterialExtras>;
+const NO_EXTRAS: SimpleMaterialExtras = {
+  material_type: null, dimension: null, thickness: null, density: null, compressive_strength: null,
+  color_finish: null, manufacturer: null, effective_date: null,
+};
 
 // The 25-material ceiling systems reference set (same materials already
 // seeded as M-CLG-001..025 by 20260910000010_dwl_seed_ceiling_materials.sql)
@@ -51,7 +64,7 @@ const TEMPLATE_COLUMNS = ["Code", "Name", "Category", "Specification", "Standard
 // public.budget_codes.code — this repo's budget codes use a different
 // lettered scheme, so in practice they are carried on the row but not
 // linked (see importSimpleMaterials()).
-const CEILING_MATRIX: Omit<SimpleMaterialRow, "_row">[] = [
+const CEILING_MATRIX: SimpleMaterialSeed[] = [
   { code: "MAT-CEIL-001", legacy_code: "MAT-CL-001", material_name: "Gypsum Board Suspended Ceiling", category_text: "Finishes - Ceiling", tech_spec_summary: null, standard: "ASTM C1396 / EN 520", grade: "Standard Commercial", brand: "Gyproc / Knauf", discipline: "Architectural", unit: "m2", cost_code_text: "09.51.13", application_scope: null, effective_cost: null },
   { code: "MAT-CEIL-002", legacy_code: "MAT-CL-002", material_name: "Gypsum Board Direct-Fixed Ceiling", category_text: "Finishes - Ceiling", tech_spec_summary: null, standard: "ASTM C1396 / EN 520", grade: "Standard Residential", brand: "Gyproc / USG Boral", discipline: "Architectural", unit: "m2", cost_code_text: "09.51.14", application_scope: null, effective_cost: null },
   { code: "MAT-CEIL-003", legacy_code: "MAT-CL-003", material_name: "Moisture-Resistant Gypsum Ceiling", category_text: "Finishes - Ceiling", tech_spec_summary: null, standard: "ASTM C1396 Type H / EN 520 Type H2", grade: "Moisture-Resistant (Green Board)", brand: "Gyproc AquaROC / Knauf Hydro", discipline: "Architectural", unit: "m2", cost_code_text: "09.51.15", application_scope: null, effective_cost: null },
@@ -79,14 +92,18 @@ const CEILING_MATRIX: Omit<SimpleMaterialRow, "_row">[] = [
   { code: "MAT-CEIL-025", legacy_code: "MAT-CL-025", material_name: "Exposed MEP Ceiling", category_text: "Finishes - Ceiling", tech_spec_summary: null, standard: "SMACNA / ASHRAE 90.1 Architectural Exposed Ductwork", grade: "Coordinated Architectural MEP Plenum", brand: "System Coordinated MEP Specification", discipline: "Architectural", unit: "m2", cost_code_text: "09.51.51", application_scope: null, effective_cost: null },
 ];
 
-function rowsToAoa(rows: Omit<SimpleMaterialRow, "_row">[]): (string | number)[][] {
+function rowsToAoa(rows: SimpleMaterialSeed[]): (string | number)[][] {
   return [
     TEMPLATE_COLUMNS,
-    ...rows.map((r) => [
-      r.legacy_code ?? r.code, r.material_name, r.category_text ?? "", r.tech_spec_summary ?? "", r.standard ?? "",
-      r.grade ?? "", r.unit, r.brand ?? "", r.discipline ?? "", r.cost_code_text ?? "", r.application_scope ?? "",
-      r.effective_cost ?? "",
-    ]),
+    ...rows.map((s) => {
+      const r = { ...NO_EXTRAS, ...s };
+      return [
+        r.legacy_code ?? r.code, r.material_name, r.category_text ?? "", r.material_type ?? "", r.tech_spec_summary ?? "",
+        r.standard ?? "", r.grade ?? "", r.dimension ?? "", r.thickness ?? "", r.density ?? "", r.compressive_strength ?? "",
+        r.color_finish ?? "", r.unit, r.effective_date ?? "", r.cost_code_text ?? "", r.brand ?? "", r.manufacturer ?? "",
+        r.discipline ?? "", r.application_scope ?? "", r.effective_cost ?? "",
+      ];
+    }),
   ];
 }
 
@@ -98,13 +115,17 @@ function downloadXlsx(filename: string, aoa: (string | number)[][]) {
   XLSX.writeFile(wb, filename);
 }
 
-const EXAMPLE_ROW: Omit<SimpleMaterialRow, "_row"> = {
-  code: "MAT-CONC-004", legacy_code: null, material_name: "Ready Mix Concrete C25/30 (EN 206)",
-  category_text: "Structural - Concrete & Cement",
-  tech_spec_summary: "Minimum slump 100±25mm, 20mm max aggregate, w/c ratio ≤ 0.5",
-  standard: "EN 206 / BS 8500", grade: "C25/30",
-  brand: "Insee Pro", discipline: "Structural", unit: "m3", cost_code_text: "03-3000", application_scope: "Slabs, footings",
-  effective_cost: 68.5,
+// Code is blank on purpose: a new material gets its code from the system.
+const EXAMPLE_ROW: SimpleMaterialSeed = {
+  code: "", legacy_code: null, material_name: "Red Clay Hollow Bricks (4-Hole 80×80×180 mm)",
+  category_text: "Masonry & Plaster",
+  material_type: "Hollow Clay Brick – 4 Hole",
+  tech_spec_summary: "Machine-made fired red clay hollow brick; 4 vertical holes; suitable for non-load-bearing masonry",
+  standard: "Project Specification / Manufacturer Technical Data", grade: null,
+  dimension: "80 × 80 × 180 mm", thickness: null, density: "~1,000–1,400 kg/m³", compressive_strength: "~5–10 MPa",
+  color_finish: "Natural Red Clay / Fired Finish", effective_date: new Date().toISOString().slice(0, 10),
+  brand: null, manufacturer: null, discipline: "Architectural", unit: "pcs", cost_code_text: null,
+  application_scope: "Internal / external partitions", effective_cost: null,
 };
 
 interface ImportResult { resourcesInserted: number; resourcesSkipped: number; attrsInserted: number; attrsSkipped: number; pricesInserted: number; failed: number; errors: string[]; }
@@ -136,34 +157,55 @@ async function importSimpleMaterials(
   const result: ImportResult = { resourcesInserted: 0, resourcesSkipped: 0, attrsInserted: 0, attrsSkipped: 0, pricesInserted: 0, failed: 0, errors: [] };
 
   for (const row of rows) {
-    let rid = codeToId.get(row.code) ?? legacyToId.get(row.code) ?? (row.legacy_code ? legacyToId.get(row.legacy_code) : undefined);
-    if (!rid) {
-      const { data, error } = await insertDwlResourceReturning({
-        tenant_id: tenantId, code: row.code, category: "material",
-        description: row.standard ? `${row.material_name} (${row.standard})` : row.material_name,
-        unit: row.unit, spec_reference: row.standard, created_by: userId,
-      });
-      if (error || !data) { result.failed++; result.errors.push(`${row.code}: ${error?.message ?? "resource insert failed"}`); continue; }
-      rid = data.id as string; codeToId.set(row.code, rid); result.resourcesInserted++;
-    } else {
-      result.resourcesSkipped++;
-    }
-
-    if (attrSet.has(rid)) { result.attrsSkipped++; continue; }
-
+    const label = row.code || row.material_name;
+    const existing = (row.code ? codeToId.get(row.code) ?? legacyToId.get(row.code) : undefined)
+      ?? (row.legacy_code ? legacyToId.get(row.legacy_code) : undefined);
     const cat = resolveCategory(snapshot, row.category_text);
     const budgetCodeId = resolveBudgetCodeId(snapshot, row.cost_code_text);
+    const description = row.standard ? `${row.material_name} (${row.standard})` : row.material_name;
+    let rid = existing;
 
-    const { error: attrErr } = await insertDwlMaterialAttribute({
-      resource_id: rid, tenant_id: tenantId, material_name: row.material_name,
-      discipline: row.discipline, standard: row.standard, grade: row.grade, brand: row.brand,
-      tech_spec_summary: row.tech_spec_summary,
-      category_id: cat?.id ?? null, application_element: cat?.specific_element ?? null,
-      application_scope: row.application_scope, budget_code_id: budgetCodeId,
-      legacy_code: row.legacy_code, lifecycle_status: "active", created_by: userId,
-    });
-    if (attrErr) { result.failed++; result.errors.push(`${row.code}: ${attrErr.message}`); continue; }
-    attrSet.add(rid); result.attrsInserted++;
+    if (!rid) {
+      // New material: the database assigns the code and refuses an exact-spec
+      // duplicate (dwl_create_material). A code in the file is kept only as legacy_code.
+      if (!cat) { result.failed++; result.errors.push(`${label}: Category is required to generate a code`); continue; }
+      const { data, error } = await dwlCreateMaterial({
+        material_name: row.material_name, description, unit: row.unit, category_id: cat.id,
+        application_element: cat.specific_element, discipline: row.discipline, standard: row.standard, grade: row.grade,
+        material_type: row.material_type, dimension: row.dimension, thickness: row.thickness, density: row.density,
+        compressive_strength: row.compressive_strength, color_finish: row.color_finish, brand: row.brand,
+        manufacturer: row.manufacturer, effective_date: row.effective_date, tech_spec_summary: row.tech_spec_summary,
+        application_scope: row.application_scope, budget_code_id: budgetCodeId, lifecycle_status: "active",
+      });
+      if (error || !data) {
+        result.failed++;
+        result.errors.push(`${label}: ${error?.message.replace(/^DUPLICATE_MATERIAL: /, "already exists as ") ?? "create failed"}`);
+        continue;
+      }
+      const created = data as { resource_id: string; code: string };
+      rid = created.resource_id;
+      codeToId.set(created.code, rid); attrSet.add(rid);
+      result.resourcesInserted++; result.attrsInserted++;
+      const legacy = row.legacy_code ?? (row.code && row.code !== created.code ? row.code : null);
+      if (legacy) await updateDwlMaterialAttributesByResourceId({ legacy_code: legacy }, rid);
+    } else {
+      result.resourcesSkipped++;
+      if (attrSet.has(rid)) { result.attrsSkipped++; continue; }
+      // Resource exists without a Material Master record ("incomplete"): add the record.
+      const { error: attrErr } = await insertDwlMaterialAttribute({
+        resource_id: rid, tenant_id: tenantId, material_name: row.material_name,
+        discipline: row.discipline, standard: row.standard, grade: row.grade, brand: row.brand,
+        manufacturer: row.manufacturer, material_type: row.material_type, dimension: row.dimension,
+        thickness: row.thickness, density: row.density, compressive_strength: row.compressive_strength,
+        color_finish: row.color_finish, effective_date: row.effective_date,
+        tech_spec_summary: row.tech_spec_summary,
+        category_id: cat?.id ?? null, application_element: cat?.specific_element ?? null,
+        application_scope: row.application_scope, budget_code_id: budgetCodeId,
+        legacy_code: row.legacy_code, lifecycle_status: "active", created_by: userId,
+      });
+      if (attrErr) { result.failed++; result.errors.push(`${label}: ${attrErr.message}`); continue; }
+      attrSet.add(rid); result.attrsInserted++;
+    }
 
     if (row.effective_cost != null && row.effective_cost > 0) {
       const { error: priceErr } = await insertDwlResourcePrice({
@@ -171,7 +213,7 @@ async function importSimpleMaterials(
         valid_from: new Date().toISOString().slice(0, 10), source_type: "market_survey", price_status: "approved",
         notes: `Imported via Material Master Excel/CSV template — Effective Cost column.`, created_by: userId,
       });
-      if (priceErr) { result.failed++; result.errors.push(`${row.code}: price — ${priceErr.message}`); }
+      if (priceErr) { result.failed++; result.errors.push(`${label}: price — ${priceErr.message}`); }
       else result.pricesInserted++;
     }
   }
@@ -355,17 +397,17 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
   const rowSelectable = (r: ClassifiedMaterialRow) => r.status === "update" || isRowSelectable(r.status);
 
   function downloadComparison() {
-    const header = ["Row", "Code", "Name", "Unit", "Status", "Will import", "Matched code", "Matched name", "Cell", "Existing", "File", "Change type", "Apply"];
+    const header = ["Row", "Code", "Name", "Unit", "Status", "Note", "Will import", "Matched code", "Matched name", "Cell", "Existing", "File", "Change type", "Apply"];
     const body: string[][] = [];
     for (const r of classified) {
-      const base = [String(r.row._row), r.row.code, r.row.material_name, r.row.unit, STATUS_LABEL[r.status], rowChecked(r) ? "Yes" : "No", r.match?.code ?? "", r.match?.name ?? ""];
+      const base = [String(r.row._row), r.row.code, r.row.material_name, r.row.unit, STATUS_LABEL[r.status], r.note ?? "", rowChecked(r) ? "Yes" : "No", r.match?.code ?? "", r.match?.name ?? ""];
       if (r.changes.length === 0) { body.push([...base, "", "", "", "", ""]); continue; }
       for (const c of r.changes) {
         const apply = r.status === "update" && c.applicable && selectedCells.has(cellId(r.row._row, c.key));
         body.push([...base, c.label, c.existing, c.file, c.applicable ? c.kind : `info (${c.note ?? "not applied"})`, apply ? "Yes" : "No"]);
       }
     }
-    const invalid = issues.filter((i) => i.level === "error").map((i) => [String(i.row ?? ""), "", "", "", "Invalid", "No", "", "", "", "", i.message, "", ""]);
+    const invalid = issues.filter((i) => i.level === "error").map((i) => [String(i.row ?? ""), "", "", "", "Invalid", "", "No", "", "", "", "", i.message, "", ""]);
     downloadCsv(`material-import-comparison-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...body, ...invalid]);
   }
 
@@ -397,7 +439,7 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
     if (!tenantId) { toast.error("No tenant assigned to your profile — cannot import."); return; }
     setMatrixLoading(true);
     try {
-      const matrixRows: SimpleMaterialRow[] = CEILING_MATRIX.map((r, i) => ({ ...r, _row: i + 2 }));
+      const matrixRows: SimpleMaterialRow[] = CEILING_MATRIX.map((r, i) => ({ ...NO_EXTRAS, ...r, _row: i + 2 }));
       const res = await importSimpleMaterials(supabase, matrixRows, tenantId, userId);
       if (res.resourcesInserted === 0 && res.attrsInserted === 0) {
         toast.info("All 25 ceiling reference materials are already in your Material Master catalog.");
@@ -428,8 +470,9 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
             <FileSpreadsheet className="h-5 w-5 text-muted-foreground" /> Controlled Material Master Import (Excel / CSV)
           </DialogTitle>
           <DialogDescription>
-            Upload → Validate → Compare with the catalog → Import new items. Existing materials are never overwritten;
-            invalid rows are skipped. Nothing is written until you confirm.
+            Upload → Validate → Compare with the catalog → Import. Leave Code blank: new materials get their code from the
+            system, and a row whose spec already exists (same Category, Type, Size, Thickness, Grade, Strength, Standard and Unit)
+            updates that material instead of creating a second code. Nothing is written until you confirm.
           </DialogDescription>
         </DialogHeader>
 
@@ -437,7 +480,7 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
           <div className="rounded-lg border border-border p-3">
             <p className="text-sm font-medium">Download Standardized Template</p>
             <p className="text-xs text-muted-foreground">
-              Pre-configured with all columns: Code, Name, Category, Specification, Standard, Grade, Unit, Brand, Discipline, Cost Code, Application, Effective Cost.
+              Material Register columns: {TEMPLATE_COLUMNS.join(", ")}. Code is optional (auto-assigned); Category is required for a new material.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
@@ -513,12 +556,12 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
                 {([
                   ["all", "Rows in file", classified.length + invalidRowCount, "text-foreground", "All valid rows"],
-                  ["new", "New", counts.new, "text-emerald-700", "Not in the catalog — will be created"],
+                  ["new", "New", counts.new, "text-emerald-700", "Not in the catalog — will be created with an auto-assigned code"],
                   ["update", "Has updates", counts.update, "text-violet-700", `${changedCellCount} changed cell(s), ${priceChangeCount} new price(s) — tick the cells to apply`],
                   ["incomplete", "Record missing", counts.incomplete, "text-sky-700", "Code exists, Material Master record will be added"],
                   ["possible_duplicate", "Possible duplicate", counts.possible_duplicate, "text-amber-700", "Same name under another code — skipped unless ticked"],
                   ["unchanged", "Unchanged", counts.unchanged, "text-muted-foreground", "Every filled cell already matches the catalog"],
-                  ["invalid", "Invalid", invalidRowCount, "text-destructive", "Failed validation — skipped"],
+                  ["invalid", "Invalid", counts.invalid, "text-destructive", "Failed validation, no usable Category, or a repeat of an earlier row — skipped"],
                 ] as const).map(([key, label, n, color, hint]) => (
                   <button
                     key={key}
@@ -568,8 +611,8 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
                             />
                           </td>
                           <td className="px-2 py-1.5 tabular-nums">{r.row._row}</td>
-                          <td className="px-2 py-1.5 font-mono">{r.row.code}</td>
-                          <td className="px-2 py-1.5">{r.row.material_name}</td>
+                          <td className="px-2 py-1.5 font-mono">{r.row.code || <span className="font-sans text-muted-foreground">auto</span>}</td>
+                          <td className="px-2 py-1.5">{r.row.material_name}{r.note && <span className="block text-[10px] text-destructive">{r.note}</span>}</td>
                           <td className="px-2 py-1.5">{r.row.unit}</td>
                           <td className="px-2 py-1.5"><Badge variant="outline" className={cn("whitespace-nowrap text-[10px]", STATUS_CLASS[r.status])}>{STATUS_LABEL[r.status]}</Badge></td>
                           <td className="px-2 py-1.5">
@@ -577,7 +620,7 @@ export function DwlMaterialImportDialog({ open, onOpenChange, tenantId, userId, 
                               <span>
                                 <span className="font-mono">{r.match.code}</span>
                                 {r.match.name && <span className="block text-muted-foreground">{r.match.name}</span>}
-                                <span className="block text-[10px] text-muted-foreground">matched by {r.matchedBy === "legacy_code" ? "legacy code" : r.matchedBy}</span>
+                                <span className="block text-[10px] text-muted-foreground">matched by {r.matchedBy === "legacy_code" ? "legacy code" : r.matchedBy === "spec" ? "same spec" : r.matchedBy}</span>
                               </span>
                             ) : "—"}
                           </td>

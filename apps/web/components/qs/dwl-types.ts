@@ -792,6 +792,9 @@ export interface DwlMaterialAttributes {
   thickness: string | null;
   weight: string | null;
   color_finish: string | null;
+  density: string | null;
+  compressive_strength: string | null;
+  effective_date: string | null;
   application_element: string | null;
   lifecycle_status: DwlMaterialLifecycle;
   tags: string[];
@@ -863,6 +866,9 @@ export interface DwlMaterialRow {
   budget_code: string | null;
   application_scope: string | null;
   photo_count: number;
+  density: string | null;
+  compressive_strength: string | null;
+  effective_date: string | null;
 }
 
 // Fixed client-side badge/dot color palette for dwl_material_categories.

@@ -28,6 +28,7 @@ import { QsSearchIndexRefreshButton } from "@/components/qs/qs-search-index-refr
 import { DwlMaterialFormDialog } from "@/components/qs/dwl-material-form-dialog";
 import { DwlMaterialCategoryDialog } from "@/components/qs/dwl-material-category-dialog";
 import { DwlMaterialImportDialog } from "@/components/qs/dwl-material-import-dialog";
+import { DwlMaterialDuplicatesDialog } from "@/components/qs/dwl-material-duplicates-dialog";
 import type { DwlMaterialCategory, DwlMaterialRow } from "@/components/qs/dwl-types";
 import { deleteDwlResourceByIdReturning, getProfileById, listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceIds, listDwlVMaterialsOrderedByCode } from "@/lib/qs/qs-queries";
 
@@ -81,7 +82,7 @@ function prettyUnit(unit: string): string {
 const V_COLUMNS =
   "resource_id, code, category, material_name, description, unit, spec_reference, is_active, created_at, updated_at, " +
   "subcategory, discipline, material_type, brand, model, manufacturer, standard, grade, color_finish, application_element, " +
-  "lifecycle_status, tags, legacy_code, tech_spec_summary, " +
+  "lifecycle_status, tags, legacy_code, tech_spec_summary, density, compressive_strength, effective_date, dimension, thickness, " +
   "current_unit_price, current_currency, current_price_valid_from, current_price_is_expired, current_supplier_name, " +
   "current_spec_code, current_spec_name, current_spec_revision_no, current_spec_status, " +
   "current_effective_unit_cost, current_price_status, " +
@@ -116,6 +117,7 @@ export default function DwlMaterialsListPage() {
   const [editRow, setEditRow] = useState<DwlMaterialRow | null>(null);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -326,41 +328,36 @@ export default function DwlMaterialsListPage() {
     await loadData();
   }
 
+  // Export columns follow the Material Register / import template, so an
+  // exported file can be edited and re-imported. The trailing columns are
+  // read-only context that the import ignores.
+  const EXPORT_HEADER = [
+    "Code", "Material Name", "Category", "Type", "Specification", "Standard", "Grade", "Size", "Thickness", "Density",
+    "Compressive Strength", "Colour / Finish", "Unit", "Effective Date", "Cost Code", "Brand", "Manufacturer",
+    "Discipline", "Application", "Specific Element", "Supplier", "Effective Rate", "Currency", "Status", "Updated",
+  ];
+
+  function exportRow(r: DwlMaterialRow): (string | number)[] {
+    return [
+      r.code, cleanLabel(r.material_name), r.category_name ?? "", r.material_type ?? "", cleanLabel(r.tech_spec_summary),
+      r.standard ?? "", r.grade ?? "", r.dimension ?? "", r.thickness ?? "", r.density ?? "", r.compressive_strength ?? "",
+      r.color_finish ?? "", r.unit, r.effective_date ?? "", r.budget_code ?? "", r.brand ?? "", r.manufacturer ?? "",
+      r.discipline ?? "", r.application_scope ?? "", r.application_element ?? "", r.current_supplier_name ?? "",
+      r.current_effective_unit_cost ?? "", r.current_currency ?? "", r.is_active ? "Active" : "Inactive", r.updated_at,
+    ];
+  }
+
   function handleExcelExport() {
-    const data = filtered.map((r) => ({
-      Code: r.code,
-      "Material Name": cleanLabel(r.material_name),
-      Category: r.category_name ?? "",
-      Discipline: r.discipline ?? "",
-      "Specific Element": r.application_element ?? "",
-      Specification: cleanLabel(r.tech_spec_summary),
-      Standard: r.standard ?? "",
-      Grade: r.grade ?? "",
-      Unit: r.unit,
-      "Effective Rate": r.current_effective_unit_cost ?? "",
-      Currency: r.current_currency ?? "",
-      "Cost Code": r.budget_code ?? "",
-      Status: r.is_active ? "Active" : "Inactive",
-      Updated: r.updated_at,
-    }));
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = Object.keys(data[0] ?? {}).map((k) => ({ wch: Math.max(k.length, 12) }));
+    const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADER, ...filtered.map(exportRow)]);
+    ws["!cols"] = EXPORT_HEADER.map((k) => ({ wch: Math.max(k.length + 2, 14) }));
     XLSX.utils.book_append_sheet(wb, ws, "Materials");
     XLSX.writeFile(wb, `Material_Master_Catalog_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   function handleCsvExport() {
-    const header = [
-      "Code", "Material Name", "Category", "Discipline", "Specific Element", "Specification", "Standard", "Grade",
-      "Unit", "Effective Rate", "Currency", "Cost Code", "Status", "Updated",
-    ];
-    const dataRows = filtered.map((r) => [
-      r.code, cleanLabel(r.material_name), r.category_name ?? "", r.discipline ?? "", r.application_element ?? "",
-      cleanLabel(r.tech_spec_summary), r.standard ?? "", r.grade ?? "", r.unit, fmtCsvNum(r.current_effective_unit_cost), r.current_currency ?? "",
-      r.budget_code ?? "", r.is_active ? "Active" : "Inactive", r.updated_at,
-    ]);
-    downloadCsv(`Material_Master_Catalog_${new Date().toISOString().slice(0, 10)}.csv`, [header, ...dataRows]);
+    const dataRows = filtered.map((r) => exportRow(r).map((v, i) => (EXPORT_HEADER[i] === "Effective Rate" ? fmtCsvNum(r.current_effective_unit_cost) : String(v))));
+    downloadCsv(`Material_Master_Catalog_${new Date().toISOString().slice(0, 10)}.csv`, [EXPORT_HEADER, ...dataRows]);
   }
 
   if (permsLoaded && !canView) {
@@ -399,6 +396,9 @@ export default function DwlMaterialsListPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={handleCsvExport} disabled={filtered.length === 0}>
             <FileDown className="h-3.5 w-3.5" /> CSV Export
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowDuplicates(true)}>
+            Duplicates
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
             <Upload className="h-3.5 w-3.5" /> Import (Excel/CSV)
@@ -642,6 +642,7 @@ export default function DwlMaterialsListPage() {
         onOpenChange={setShowCategoryDialog}
         onChanged={() => { void loadCategories(); void loadData(); }}
       />
+      <DwlMaterialDuplicatesDialog open={showDuplicates} onOpenChange={setShowDuplicates} />
       <DwlMaterialImportDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}

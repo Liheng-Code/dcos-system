@@ -28,7 +28,7 @@ const V_MATERIAL_COLUMNS =
   "dimension, thickness, weight, color_finish, application_element, lifecycle_status, tags, legacy_code, notes, " +
   "current_unit_price, current_currency, current_price_valid_from, current_price_valid_until, current_supplier_name, " +
   "current_price_is_expired, current_spec_code, current_spec_name, current_spec_revision_no, current_spec_status, " +
-  "current_effective_unit_cost, current_price_status";
+  "current_effective_unit_cost, current_price_status, density, compressive_strength, effective_date";
 
 const PRICE_COLUMNS =
   "id, tenant_id, resource_id, supplier_id, unit_price, currency, valid_from, quote_valid_until, source_type, location, " +
@@ -245,6 +245,9 @@ export default function DwlMaterialDetailPage() {
               ["Dimension", material.dimension],
               ["Thickness", material.thickness],
               ["Weight", material.weight],
+              ["Density", material.density],
+              ["Compressive strength", material.compressive_strength],
+              ["Effective date", material.effective_date],
               ["Colour / finish", material.color_finish],
               ["Application / element", material.application_element],
               ["Lifecycle", material.lifecycle_status],

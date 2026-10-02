@@ -1880,3 +1880,20 @@ export function insertUnitRateLibrary(row: object) {
 export function listUnitRateLibrary() {
   return db().from("unit_rate_library").select("*").order("category");
 }
+
+// ── Material Master code allocation / duplicate detection ─────────────────────
+
+// @table dwl_create_material
+export function dwlCreateMaterial(payload: object) {
+  return db().rpc("dwl_create_material", { p: payload });
+}
+
+// @table dwl_find_material_matches
+export function dwlFindMaterialMatches(args: object) {
+  return db().rpc("dwl_find_material_matches", args);
+}
+
+// @table dwl_v_material_duplicates
+export function listDwlVMaterialDuplicates() {
+  return db().from("dwl_v_material_duplicates").select("fingerprint, copies, codes, names").order("copies", { ascending: false });
+}

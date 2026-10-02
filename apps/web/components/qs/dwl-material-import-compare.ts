@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/client";
 import type { SimpleMaterialRow } from "@/components/qs/dwl-import-lib";
+import { materialFingerprint } from "@/lib/qs/material-fingerprint";
 
 // Material Master import — compares parsed file rows with the existing
 // catalog cell by cell before anything is written. A row whose code already
@@ -23,6 +24,14 @@ export interface ExistingMaterial {
   brand: string | null;
   discipline: string | null;
   application_scope: string | null;
+  material_type: string | null;
+  dimension: string | null;
+  thickness: string | null;
+  density: string | null;
+  compressive_strength: string | null;
+  color_finish: string | null;
+  manufacturer: string | null;
+  effective_date: string | null;
   category_id: string | null;
   budget_code_id: string | null;
   current_price: number | null;
@@ -34,6 +43,8 @@ export interface MaterialCatalogSnapshot {
   byCode: Map<string, ExistingMaterial>;
   byLegacy: Map<string, ExistingMaterial>;
   byName: Map<string, ExistingMaterial[]>;
+  // Same-spec lookup (see lib/qs/material-fingerprint.ts) — "same material = one code".
+  byFingerprint: Map<string, ExistingMaterial>;
   categories: { id: string; code: string | null; name: string; specific_element: string | null }[];
   budgetCodes: { id: string; code: string }[];
 }
@@ -63,7 +74,7 @@ export async function loadMaterialCatalogSnapshot(supabase: Supabase): Promise<M
     fetchAll<AttrRow>((a, b) =>
       supabase
         .from("dwl_material_attributes")
-        .select("resource_id, legacy_code, material_name, tech_spec_summary, standard, grade, brand, discipline, application_scope, category_id, budget_code_id")
+        .select("resource_id, legacy_code, material_name, tech_spec_summary, standard, grade, brand, discipline, application_scope, material_type, dimension, thickness, density, compressive_strength, color_finish, manufacturer, effective_date, category_id, budget_code_id")
         .order("resource_id")
         .range(a, b)),
     // Same "current price" the Material Master shows: latest price per resource.
@@ -85,6 +96,9 @@ export async function loadMaterialCatalogSnapshot(supabase: Supabase): Promise<M
       legacy_code: a?.legacy_code ?? null, material_name: a?.material_name ?? null,
       tech_spec_summary: a?.tech_spec_summary ?? null, standard: a?.standard ?? null, grade: a?.grade ?? null,
       brand: a?.brand ?? null, discipline: a?.discipline ?? null, application_scope: a?.application_scope ?? null,
+      material_type: a?.material_type ?? null, dimension: a?.dimension ?? null, thickness: a?.thickness ?? null,
+      density: a?.density ?? null, compressive_strength: a?.compressive_strength ?? null,
+      color_finish: a?.color_finish ?? null, manufacturer: a?.manufacturer ?? null, effective_date: a?.effective_date ?? null,
       category_id: a?.category_id ?? null, budget_code_id: a?.budget_code_id ?? null,
       current_price: price != null ? Number(price) : null,
       current_price_date: p?.valid_from ?? null,
@@ -94,13 +108,18 @@ export async function loadMaterialCatalogSnapshot(supabase: Supabase): Promise<M
   const byCode = new Map<string, ExistingMaterial>();
   const byLegacy = new Map<string, ExistingMaterial>();
   const byName = new Map<string, ExistingMaterial[]>();
+  const byFingerprint = new Map<string, ExistingMaterial>();
   for (const m of materials) {
+    if (m.hasAttributes) {
+      const fp = materialFingerprint({ ...m, material_name: m.material_name });
+      if (!byFingerprint.has(fp)) byFingerprint.set(fp, m);
+    }
     byCode.set(m.code, m);
     if (m.legacy_code) byLegacy.set(m.legacy_code, m);
     const key = normalizeName(m.material_name);
     if (key) byName.set(key, [...(byName.get(key) ?? []), m]);
   }
-  return { materials, byCode, byLegacy, byName, categories: cats, budgetCodes: budget };
+  return { materials, byCode, byLegacy, byName, byFingerprint, categories: cats, budgetCodes: budget };
 }
 
 export function resolveCategory(snapshot: MaterialCatalogSnapshot, text: string | null) {
@@ -122,7 +141,7 @@ export type MaterialRowStatus =
   | "incomplete"          // resource exists but has no Material Master record — the record is added
   | "possible_duplicate"  // different code, same name as an existing material — skipped unless opted in
   | "unchanged"           // exists and every filled cell matches — nothing to do
-  | "invalid";            // failed validation — skipped
+  | "invalid";            // failed validation (or a new row with no usable Category / a repeat of an earlier row) — skipped
 
 // Text cells that map 1:1 onto dwl_material_attributes columns.
 export const ATTRIBUTE_FIELDS = [
@@ -133,6 +152,14 @@ export const ATTRIBUTE_FIELDS = [
   { key: "brand", label: "Brand" },
   { key: "discipline", label: "Discipline" },
   { key: "application_scope", label: "Application" },
+  { key: "material_type", label: "Type" },
+  { key: "dimension", label: "Size" },
+  { key: "thickness", label: "Thickness" },
+  { key: "density", label: "Density" },
+  { key: "compressive_strength", label: "Compressive Strength" },
+  { key: "color_finish", label: "Colour / Finish" },
+  { key: "manufacturer", label: "Manufacturer" },
+  { key: "effective_date", label: "Effective Date" },
 ] as const;
 
 export type CellKey = (typeof ATTRIBUTE_FIELDS)[number]["key"] | "category" | "cost_code" | "unit" | "effective_cost";
@@ -153,7 +180,9 @@ export interface CellChange {
 export interface ClassifiedMaterialRow {
   row: SimpleMaterialRow;
   status: MaterialRowStatus;
-  matchedBy: "code" | "legacy_code" | "name" | null;
+  matchedBy: "code" | "legacy_code" | "spec" | "name" | null;
+  // Why a row is invalid / what happens to it (shown in the comparison table).
+  note?: string;
   match: { id: string; code: string; name: string | null; unit: string } | null;
   changes: CellChange[];
 }
@@ -213,14 +242,21 @@ export function compareCells(row: SimpleMaterialRow, m: ExistingMaterial, snapsh
   return changes;
 }
 
+function rowFingerprint(row: SimpleMaterialRow, categoryId: string | null): string {
+  return materialFingerprint({ ...row, category_id: categoryId });
+}
+
 export function classifyMaterialRows(rows: SimpleMaterialRow[], snapshot: MaterialCatalogSnapshot): ClassifiedMaterialRow[] {
+  // Rows of this file that will create a material, by spec — a second row with
+  // the same spec is the same material, not a new one.
+  const newInFile = new Map<string, number>();
   return rows.map((row) => {
-    const byCode = snapshot.byCode.get(row.code);
+    const byCode = row.code ? snapshot.byCode.get(row.code) : undefined;
     // A file may carry a pre-standardization code (e.g. MAT-CL-003) that still
     // passes the code pattern, so the row's own code is checked as a legacy code too.
     const byLegacy = byCode
       ? undefined
-      : snapshot.byLegacy.get(row.code) ?? (row.legacy_code ? snapshot.byLegacy.get(row.legacy_code) : undefined);
+      : (row.code ? snapshot.byLegacy.get(row.code) : undefined) ?? (row.legacy_code ? snapshot.byLegacy.get(row.legacy_code) : undefined);
     const exact = byCode ?? byLegacy;
     if (exact) {
       const match = { id: exact.id, code: exact.code, name: exact.material_name, unit: exact.unit };
@@ -228,6 +264,15 @@ export function classifyMaterialRows(rows: SimpleMaterialRow[], snapshot: Materi
       if (!exact.hasAttributes) return { row, status: "incomplete", matchedBy, match, changes: [] };
       const changes = compareCells(row, exact, snapshot);
       return { row, status: changes.some((c) => c.applicable) ? "update" : "unchanged", matchedBy, match, changes };
+    }
+    const cat = resolveCategory(snapshot, row.category_text);
+    // No code match: the same spec already in the catalog is the same material,
+    // whatever code the file carries. Its cells are compared like any update.
+    const bySpec = snapshot.byFingerprint.get(rowFingerprint(row, cat?.id ?? null));
+    if (bySpec) {
+      const match = { id: bySpec.id, code: bySpec.code, name: bySpec.material_name, unit: bySpec.unit };
+      const changes = compareCells(row, bySpec, snapshot);
+      return { row, status: changes.some((c) => c.applicable) ? "update" : "unchanged", matchedBy: "spec", match, changes };
     }
     const sameName = snapshot.byName.get(normalizeName(row.material_name)) ?? [];
     const dup = sameName.find((m) => m.unit.toLowerCase() === row.unit.toLowerCase()) ?? sameName[0];
@@ -239,6 +284,17 @@ export function classifyMaterialRows(rows: SimpleMaterialRow[], snapshot: Materi
         changes: compareCells(row, dup, snapshot).map((c) => ({ ...c, applicable: false })),
       };
     }
+    // A new material needs a Category: the code group comes from it.
+    if (!cat) {
+      return { row, status: "invalid", matchedBy: null, match: null, changes: [],
+        note: row.category_text ? `Category "${row.category_text}" is not a Material Master category` : "Category is required to generate a code" };
+    }
+    const fp = rowFingerprint(row, cat.id);
+    const first = newInFile.get(fp);
+    if (first != null) {
+      return { row, status: "invalid", matchedBy: null, match: null, changes: [], note: `Same material as row ${first} in this file` };
+    }
+    newInFile.set(fp, row._row);
     return { row, status: "new", matchedBy: null, match: null, changes: [] };
   });
 }

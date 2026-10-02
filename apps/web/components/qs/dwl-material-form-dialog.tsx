@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Camera, Loader2, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Camera, Loader2, Lock, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,47 +28,21 @@ import {
   type DwlMaterialRow,
   type DwlUnit,
 } from "@/components/qs/dwl-types";
-import { deleteDwlMaterialPhotoById, deleteDwlResourceById, insertDwlMaterialAttribute, insertDwlMaterialPhoto, insertDwlResourceReturning, listBudgetCodesWithIsActive, listDwlMaterialCategoriesWithIsActiveOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceId, listDwlResourcesByCodeWithCategoryMaterial, listQsElementLibraryWithIsActive, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
+import { deleteDwlMaterialPhotoById, dwlCreateMaterial, dwlFindMaterialMatches, insertDwlMaterialPhoto, listBudgetCodesWithIsActive, listDwlMaterialCategoriesWithIsActiveOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceId, listQsElementLibraryWithIsActive, updateDwlMaterialAttributesByResourceId, updateDwlResourceById } from "@/lib/qs/qs-queries";
 
-// Material Master coding standard — standardized 2026-09-15 (QS Manager
-// decision, supersedes the original SOP §6 D2 "M-GRP3-NNN" lock for
-// materials only; see migration 20260910000030_dwl_material_code_
-// standardize.sql): MAT- prefix, group segment derived from the selected
-// Category (falling back to Discipline when no Category is set), 3-digit
-// sequence — e.g. MAT-CEIL-001. Group segment is auto-computed by
-// suggestCodeFor() below, kept in sync with the DB-side derivation used by
-// the standardization migration.
-const MATERIAL_CODE_PATTERN = /^MAT-[A-Z]{2,6}-\d{3}$/;
-
-// Keep in sync with the discipline -> group fallback in
-// 20260910000030_dwl_material_code_standardize.sql.
-const DISCIPLINE_GROUP: Record<string, string> = {
-  Architectural: "ARC",
-  Structural: "STR",
-  Civil: "CIV",
-  MEP: "MEP",
-  Interior: "INT",
-  Landscape: "LND",
-  Specialist: "SPC",
-  "Façade": "FAC",
-  "Fire & Life Safety": "FLS",
-  Acoustic: "ACU",
-};
-
-function groupCodeFor(categoryCode: string | null | undefined, discipline: string | undefined): string {
-  if (categoryCode) {
-    const seg = categoryCode.split("-")[1];
-    if (seg) return seg.toUpperCase();
-  }
-  return (discipline && DISCIPLINE_GROUP[discipline]) || "GEN";
+// Material codes (MAT-<GROUP>-NNN) are allocated by the database on create
+// (dwl_create_material / dwl_next_material_code, migration 20261002000002):
+// never typed, never reused, immutable. An exact spec match is refused and a
+// near match is warned about here, so the same material is not coded twice.
+interface MaterialMatch {
+  resource_id: string;
+  code: string;
+  material_name: string;
+  match_level: "exact" | "near";
 }
 
 const materialFormSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(1, "Material code is required")
-    .regex(MATERIAL_CODE_PATTERN, "Code must match M-GRP-NNN, e.g. M-CLG-001"),
+  code: z.string().optional(),
   unit: z.enum(DWL_UNITS, { message: "Standard unit is required" }),
   material_name: z.string().trim().min(3, "Material name is required"),
   category_id: z.string().optional(),
@@ -76,6 +50,15 @@ const materialFormSchema = z.object({
   discipline: z.enum(DWL_DISCIPLINES, { message: "Discipline is required" }),
   standard: z.string().trim().optional(),
   grade: z.string().trim().optional(),
+  material_type: z.string().trim().optional(),
+  brand: z.string().trim().optional(),
+  manufacturer: z.string().trim().optional(),
+  dimension: z.string().trim().optional(),
+  thickness: z.string().trim().optional(),
+  density: z.string().trim().optional(),
+  compressive_strength: z.string().trim().optional(),
+  color_finish: z.string().trim().optional(),
+  effective_date: z.string().optional(),
   budget_code_id: z.string().optional(),
   lifecycle_status: z.enum(DWL_MATERIAL_LIFECYCLE, { message: "Status is required" }),
   tech_spec_summary: z.string().trim().optional(),
@@ -128,7 +111,8 @@ export function DwlMaterialFormDialog({
   const [budgetCodes, setBudgetCodes] = useState<BudgetCodeOption[]>([]);
   const [elementOptions, setElementOptions] = useState<string[]>([]);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
+  const [matches, setMatches] = useState<MaterialMatch[]>([]);
+  const [confirmDifferent, setConfirmDifferent] = useState(false);
 
   const [existingPhotos, setExistingPhotos] = useState<ExistingPhoto[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
@@ -153,6 +137,15 @@ export function DwlMaterialFormDialog({
       discipline: "Architectural",
       standard: "",
       grade: "",
+      material_type: "",
+      brand: "",
+      manufacturer: "",
+      dimension: "",
+      thickness: "",
+      density: "",
+      compressive_strength: "",
+      color_finish: "",
+      effective_date: "",
       budget_code_id: "",
       lifecycle_status: "active",
       tech_spec_summary: "",
@@ -216,6 +209,15 @@ export function DwlMaterialFormDialog({
           discipline: (editRow.discipline as (typeof DWL_DISCIPLINES)[number]) ?? "Architectural",
           standard: editRow.standard ?? "",
           grade: editRow.grade ?? "",
+          material_type: editRow.material_type ?? "",
+          brand: editRow.brand ?? "",
+          manufacturer: editRow.manufacturer ?? "",
+          dimension: editRow.dimension ?? "",
+          thickness: editRow.thickness ?? "",
+          density: editRow.density ?? "",
+          compressive_strength: editRow.compressive_strength ?? "",
+          color_finish: editRow.color_finish ?? "",
+          effective_date: editRow.effective_date ?? "",
           budget_code_id: editRow.budget_code_id ?? "",
           lifecycle_status: editRow.lifecycle_status ?? "active",
           tech_spec_summary: editRow.tech_spec_summary ?? "",
@@ -224,7 +226,7 @@ export function DwlMaterialFormDialog({
         void loadPhotos(editRow.resource_id);
       } else {
         reset({
-          code: "MAT-",
+          code: "",
           unit: "m2",
           material_name: "",
           category_id: "",
@@ -232,39 +234,58 @@ export function DwlMaterialFormDialog({
           discipline: "Architectural",
           standard: "",
           grade: "",
+          material_type: "",
+          brand: "",
+          manufacturer: "",
+          dimension: "",
+          thickness: "",
+          density: "",
+          compressive_strength: "",
+          color_finish: "",
+          effective_date: "",
           budget_code_id: "",
           lifecycle_status: "active",
           tech_spec_summary: "",
           application_scope: "",
         });
-        void suggestCodeFor("", "Architectural");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editRow, reset]);
 
-  async function suggestCodeFor(categoryId: string, discipline: string) {
-    const cat = categories.find((c) => c.id === categoryId);
-    const grp = groupCodeFor(cat?.code, discipline);
-    setSuggesting(true);
-    const { data, error } = await listDwlResourcesByCodeWithCategoryMaterial(`MAT-${grp}-%`);
-    setSuggesting(false);
-    if (error) {
-      toast.error(error.message);
+  // Live duplicate check (create only): same spec => exact match (blocked on
+  // save); similar name in the same category => near match (needs a tick).
+  const [wCat, wName, wType, wDim, wThick, wGrade, wStrength, wStd, wUnit] = watch([
+    "category_id", "material_name", "material_type", "dimension", "thickness",
+    "grade", "compressive_strength", "standard", "unit",
+  ]);
+  useEffect(() => {
+    if (!open || isEdit || !wCat || (wName ?? "").trim().length < 3) {
+      setMatches([]);
       return;
     }
-    let max = 0;
-    for (const row of (data ?? []) as { code: string }[]) {
-      const seq = row.code.match(/-(\d{3})$/);
-      if (seq) max = Math.max(max, parseInt(seq[1], 10));
-    }
-    const next = String(max + 1).padStart(3, "0");
-    setValue("code", `MAT-${grp}-${next}`, { shouldValidate: true });
-  }
+    const handle = setTimeout(() => {
+      void (async () => {
+        const { data } = await dwlFindMaterialMatches({
+          p_category_id: wCat,
+          p_type: wType || null,
+          p_dimension: wDim || null,
+          p_thickness: wThick || null,
+          p_grade: wGrade || null,
+          p_strength: wStrength || null,
+          p_standard: wStd || null,
+          p_unit: wUnit,
+          p_name: wName,
+        });
+        setMatches((data ?? []) as MaterialMatch[]);
+        setConfirmDifferent(false);
+      })();
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [open, isEdit, wCat, wName, wType, wDim, wThick, wGrade, wStrength, wStd, wUnit]);
 
-  function suggestNextCode() {
-    return suggestCodeFor(watch("category_id") || "", watch("discipline"));
-  }
+  const exactMatch = matches.find((m) => m.match_level === "exact");
+  const nearMatches = matches.filter((m) => m.match_level === "near");
 
   function handlePhotoFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -334,7 +355,6 @@ export function DwlMaterialFormDialog({
       return;
     }
 
-    const codeUpper = values.code.trim().toUpperCase();
     const isActive = values.lifecycle_status === "active";
     const description = [values.material_name.trim(), values.grade?.trim() || null]
       .filter(Boolean)
@@ -347,6 +367,15 @@ export function DwlMaterialFormDialog({
       discipline: values.discipline,
       standard: values.standard?.trim() || null,
       grade: values.grade?.trim() || null,
+      material_type: values.material_type?.trim() || null,
+      brand: values.brand?.trim() || null,
+      manufacturer: values.manufacturer?.trim() || null,
+      dimension: values.dimension?.trim() || null,
+      thickness: values.thickness?.trim() || null,
+      density: values.density?.trim() || null,
+      compressive_strength: values.compressive_strength?.trim() || null,
+      color_finish: values.color_finish?.trim() || null,
+      effective_date: values.effective_date || null,
       budget_code_id: values.budget_code_id || null,
       lifecycle_status: values.lifecycle_status,
       tech_spec_summary: values.tech_spec_summary?.trim() || null,
@@ -375,44 +404,40 @@ export function DwlMaterialFormDialog({
       return;
     }
 
-    const { data: resource, error: resErr } = await insertDwlResourceReturning({
-        tenant_id: tenantId,
-        category: "material",
-        code: codeUpper,
-        description,
-        unit: values.unit,
-        is_active: isActive,
-        created_by: userId,
-      });
-    if (resErr || !resource) {
-      if (resErr && (resErr.code === "23505" || /unique/i.test(resErr.message))) {
-        setError("code", { message: "A material with this code already exists" });
+    if (!values.category_id) {
+      setError("category_id", { message: "Category is required to generate the material code" });
+      return;
+    }
+    if (exactMatch) {
+      toast.error(`Already exists as ${exactMatch.code} — add a supplier or price to it instead`);
+      return;
+    }
+    if (nearMatches.length > 0 && !confirmDifferent) {
+      toast.error("Similar materials exist — confirm this is a different material");
+      return;
+    }
+
+    const { data: created, error: createErr } = await dwlCreateMaterial({
+      ...attributesPayload,
+      description,
+      unit: values.unit,
+    });
+    if (createErr || !created) {
+      if (createErr && /DUPLICATE_MATERIAL/.test(createErr.message)) {
+        toast.error(createErr.message.replace(/^.*DUPLICATE_MATERIAL: /, "Already exists as "));
       } else {
-        toast.error(resErr?.message ?? "Failed to create material");
+        toast.error(createErr?.message ?? "Failed to create material");
       }
       return;
     }
 
-    const resourceId = resource.id as string;
-    const { error: attrErr } = await insertDwlMaterialAttribute({
-      resource_id: resourceId,
-      tenant_id: tenantId,
-      ...attributesPayload,
-      created_by: userId,
-    });
-    if (attrErr) {
-      // Two-step spine+companion insert — never leave an orphaned dwl_resources row.
-      await deleteDwlResourceById(resourceId);
-      toast.error(attrErr.message);
-      return;
-    }
-
+    const { resource_id: resourceId, code: newCode } = created as { resource_id: string; code: string };
     if (pendingPhotos.length > 0) {
       await uploadPhotosNow(resourceId, pendingPhotos);
       setPendingPhotos([]);
     }
 
-    toast.success(`Material ${codeUpper} created`);
+    toast.success(`Material ${newCode} created`);
     onSaved();
     onOpenChange(false);
   }
@@ -435,22 +460,17 @@ export function DwlMaterialFormDialog({
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="code">Material Code *</Label>
-                <div className="flex gap-1.5">
+                <Label htmlFor="code">Material Code</Label>
+                <div className="relative">
                   <Input
                     id="code"
-                    placeholder="MAT-CEIL-001"
-                    {...register("code")}
-                    disabled={isEdit}
-                    onChange={(e) => setValue("code", e.target.value.toUpperCase(), { shouldValidate: true })}
+                    readOnly
+                    value={isEdit ? editRow?.code ?? "" : ""}
+                    placeholder="Auto-assigned on save"
+                    className="bg-muted pr-8"
                   />
-                  {!isEdit && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => void suggestNextCode()} disabled={suggesting} title="Suggest next code">
-                      {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    </Button>
-                  )}
+                  <Lock className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
               </div>
 
               <div className="space-y-1">
@@ -473,7 +493,7 @@ export function DwlMaterialFormDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="category_id">Category</Label>
+                  <Label htmlFor="category_id">Category{isEdit ? "" : " *"}</Label>
                   <button
                     type="button"
                     className="text-xs font-medium text-violet-600 hover:underline"
@@ -488,7 +508,6 @@ export function DwlMaterialFormDialog({
                   className={SELECT_CLASS}
                   onChange={(e) => {
                     setValue("category_id", e.target.value);
-                    if (!isEdit) void suggestCodeFor(e.target.value, watch("discipline"));
                   }}
                 >
                   <option value="">— None —</option>
@@ -522,7 +541,6 @@ export function DwlMaterialFormDialog({
                   onChange={(e) => {
                     const next = e.target.value as (typeof DWL_DISCIPLINES)[number];
                     setValue("discipline", next, { shouldValidate: true });
-                    if (!isEdit) void suggestCodeFor(watch("category_id") || "", next);
                   }}
                 >
                   {DWL_DISCIPLINES.map((d) => (
@@ -561,8 +579,56 @@ export function DwlMaterialFormDialog({
               </select>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="material_type">Type</Label>
+                <Input id="material_type" placeholder="e.g. Hollow Clay Brick – 4 Hole" {...register("material_type")} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="color_finish">Colour / Finish</Label>
+                <Input id="color_finish" placeholder="e.g. Natural Red Clay / Fired Finish" {...register("color_finish")} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="dimension">Size</Label>
+                <Input id="dimension" placeholder="e.g. 80 × 80 × 180 mm" {...register("dimension")} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="thickness">Thickness</Label>
+                <Input id="thickness" placeholder="e.g. 12 mm" {...register("thickness")} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="density">Density</Label>
+                <Input id="density" placeholder="e.g. ~1,000–1,400 kg/m³" {...register("density")} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="compressive_strength">Compressive Strength</Label>
+                <Input id="compressive_strength" placeholder="e.g. ~5–10 MPa" {...register("compressive_strength")} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="brand">Brand</Label>
+                <Input id="brand" placeholder="TBD" {...register("brand")} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="manufacturer">Manufacturer</Label>
+                <Input id="manufacturer" {...register("manufacturer")} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="effective_date">Effective Date</Label>
+                <Input id="effective_date" type="date" {...register("effective_date")} />
+              </div>
+            </div>
+
             <div className="space-y-1">
-              <Label htmlFor="tech_spec_summary">Technical Specification Requirements</Label>
+              <Label htmlFor="tech_spec_summary">Specification</Label>
               <textarea
                 id="tech_spec_summary"
                 className={TEXTAREA_CLASS}
@@ -637,11 +703,33 @@ export function DwlMaterialFormDialog({
               )}
             </div>
 
+            {!isEdit && exactMatch && (
+              <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div>
+                  <p className="font-medium">This material already exists as {exactMatch.code}</p>
+                  <p className="text-muted-foreground">{exactMatch.material_name}. Same category, type, size, grade and unit share one code. Add the new supplier or price to that material instead of creating another.</p>
+                </div>
+              </div>
+            )}
+            {!isEdit && !exactMatch && nearMatches.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4 text-amber-600" /> Similar materials already exist</p>
+                <ul className="list-disc pl-6 text-muted-foreground">
+                  {nearMatches.map((m) => <li key={m.resource_id}>{m.code} — {m.material_name}</li>)}
+                </ul>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={confirmDifferent} onChange={(e) => setConfirmDifferent(e.target.checked)} />
+                  This is a different material (different size, grade or type)
+                </label>
+              </div>
+            )}
+
             <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || (!isEdit && !!exactMatch)}>
                 {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {isEdit ? "Update Material Record" : "Save Material Record"}
               </Button>

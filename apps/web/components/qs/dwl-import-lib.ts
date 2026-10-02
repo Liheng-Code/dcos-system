@@ -39,7 +39,7 @@ const UNIT_MAP: Record<string, string> = {
   "m³": "m3", m3: "m3", cbm: "m3",
   lm: "m", "l.m": "m", length: "m", "lin.m": "m", rm: "m", m: "m",
   "no.": "no", nr: "no", no: "no", nos: "no", each: "no", ea: "no",
-  pc: "pc", pcs: "pc", piece: "pc",
+  pc: "pcs", pcs: "pcs", piece: "pcs",
   set: "set", bag: "bag", box: "box", roll: "roll", sheet: "sheet", trip: "trip",
   kg: "kg", ton: "tonne", tonne: "tonne", t: "tonne",
   ltr: "l", litre: "l", liter: "l", l: "l",
@@ -84,7 +84,7 @@ const norm = (h: unknown) => String(h ?? "").toLowerCase().replace(/[\s_\-/().]/
 
 type Aoa = unknown[][];
 
-export function readSheet(aoa: Aoa, anchorHeader: string): { headers: string[]; rows: { _row: number; cells: Record<string, unknown> }[] } {
+export function readSheet(aoa: Aoa, anchorHeader: string, requireFirstCol = true): { headers: string[]; rows: { _row: number; cells: Record<string, unknown> }[] } {
   const anchor = norm(anchorHeader);
   let hIdx = -1;
   for (let i = 0; i < Math.min(aoa.length, 12); i++) {
@@ -96,7 +96,7 @@ export function readSheet(aoa: Aoa, anchorHeader: string): { headers: string[]; 
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const r = aoa[i] || [];
     if (r.every((c) => c == null || String(c).trim() === "")) continue;
-    if (r[0] == null || String(r[0]).trim() === "") continue; // first col is always a code/id
+    if (requireFirstCol && (r[0] == null || String(r[0]).trim() === "")) continue; // first col is always a code/id
     const cells: Record<string, unknown> = {};
     headers.forEach((h, ci) => { if (h) cells[norm(h)] = r[ci] ?? null; });
     rows.push({ _row: i + 1, cells });
@@ -411,8 +411,23 @@ export function parseWorkbook(wb: WorkBook): ParsedImport {
 // dwl-material-import-dialog.tsx (the "Import (Excel/CSV)" action on the
 // Material Master Catalog page).
 // ─────────────────────────────────────────────────────────────────────────
-export interface SimpleMaterialRow {
+// Columns added with the Material Register fields (docs/.../16-Material Register.md).
+export interface SimpleMaterialExtras {
+  material_type: string | null;
+  dimension: string | null; // "Size" column
+  thickness: string | null;
+  density: string | null;
+  compressive_strength: string | null;
+  color_finish: string | null; // "Colour / Finish" column
+  manufacturer: string | null;
+  effective_date: string | null; // YYYY-MM-DD
+}
+
+export interface SimpleMaterialRow extends SimpleMaterialExtras {
   _row: number;
+  // Blank = the database assigns the next code on create. A code that already
+  // exists matches that material; one that does not exist is NOT reused for a
+  // new material (it is kept as legacy_code) — see dwl_create_material().
   code: string;
   legacy_code: string | null;
   material_name: string;
@@ -428,6 +443,16 @@ export interface SimpleMaterialRow {
   effective_cost: number | null; // "Effective Cost" column -> a new dwl_resource_prices row (currency: USD, source_type: market_survey) on first import only
 }
 
+// Excel cells arrive as Date (cellDates) or text; keep the calendar day only.
+function dateStr(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime()) ? null : new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  const m = String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
 export function parseSimpleMaterialSheet(wb: WorkBook): { rows: SimpleMaterialRow[]; issues: ImportIssue[] } {
   const issues: ImportIssue[] = [];
   const sheetName = wb.SheetNames[0];
@@ -437,7 +462,7 @@ export function parseSimpleMaterialSheet(wb: WorkBook): { rows: SimpleMaterialRo
     return { rows: [], issues };
   }
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true }) as Aoa;
-  const { rows: rawRows } = readSheet(aoa, "Code");
+  const { rows: rawRows } = readSheet(aoa, "Code", false); // Code may be blank: auto-assigned
   if (rawRows.length === 0) {
     issues.push({ sheet: sheetName, row: null, level: "error", message: "No \"Code\" column found — is this the Material Master template?" });
     return { rows: [], issues };
@@ -448,15 +473,16 @@ export function parseSimpleMaterialSheet(wb: WorkBook): { rows: SimpleMaterialRo
   for (const { _row, cells } of rawRows) {
     const rawCode = str(get(cells, "Code", "Material Code"));
     const name = str(get(cells, "Name", "Material Name"));
-    if (!rawCode) { issues.push({ sheet: sheetName, row: _row, level: "error", message: "Code is required." }); continue; }
-    const { code, legacy } = remapMaterialCode(rawCode);
-    if (!code) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `Code "${rawCode}" does not match the standardized MAT-<GROUP>-NNN pattern (e.g. MAT-CEIL-001).` }); continue; }
-    if (!name) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `${code}: Name is required.` }); continue; }
-    if (seen.has(code)) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `Duplicate code ${code} in the file.` }); continue; }
-    seen.add(code);
+    // Code is optional: blank = auto-assigned on create; a non-standard value is kept as legacy_code.
+    const { code: stdCode, legacy } = rawCode ? remapMaterialCode(rawCode) : { code: null, legacy: "" };
+    const code = stdCode ?? "";
+    const label = code || rawCode || `row ${_row}`;
+    if (!name) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `${label}: Name is required.` }); continue; }
+    if (code && seen.has(code)) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `Duplicate code ${code} in the file.` }); continue; }
+    if (code) seen.add(code);
     const { unit, known } = normalizeUnit(get(cells, "Unit"));
-    if (!unit) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `${code}: Unit is required.` }); continue; }
-    if (!known) issues.push({ sheet: sheetName, row: _row, level: "warn", message: `${code}: Unit "${unit}" is not in the locked dictionary — imported as-is.` });
+    if (!unit) { issues.push({ sheet: sheetName, row: _row, level: "error", message: `${label}: Unit is required.` }); continue; }
+    if (!known) issues.push({ sheet: sheetName, row: _row, level: "warn", message: `${label}: Unit "${unit}" is not in the locked dictionary — imported as-is.` });
     rows.push({
       _row, code, legacy_code: legacy || null, material_name: name,
       category_text: str(get(cells, "Category")),
@@ -468,7 +494,15 @@ export function parseSimpleMaterialSheet(wb: WorkBook): { rows: SimpleMaterialRo
       unit,
       cost_code_text: str(get(cells, "Cost Code")),
       application_scope: str(get(cells, "Application")),
-      effective_cost: num(get(cells, "Effective Cost", "Unit Price", "Rate")),
+      effective_cost: num(get(cells, "Effective Cost", "Effective Rate", "Unit Price", "Rate")),
+      material_type: str(get(cells, "Type", "Material Type")),
+      dimension: str(get(cells, "Size", "Dimension")),
+      thickness: str(get(cells, "Thickness")),
+      density: str(get(cells, "Density")),
+      compressive_strength: str(get(cells, "Compressive Strength")),
+      color_finish: str(get(cells, "Colour / Finish", "Color / Finish", "Colour", "Color", "Finish")),
+      manufacturer: str(get(cells, "Manufacturer")),
+      effective_date: dateStr(get(cells, "Effective Date")),
     });
   }
   return { rows, issues };
