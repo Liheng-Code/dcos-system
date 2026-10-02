@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { AdjustmentList } from "@/components/inv/adjustment-list"
+import { AdjustmentList } from "@/components/inventory/adjustment-list"
 
 export default function AdjustmentListPage() {
   const router = useRouter()

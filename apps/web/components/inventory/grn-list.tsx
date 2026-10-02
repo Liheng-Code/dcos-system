@@ -10,7 +10,7 @@ import { Search, Plus, Truck, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { GrnRow, InvStore } from "./inv-types"
-import { listInvGrns, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
+import { listInvGrns, listInvStoresWithStatusActive } from "@/lib/inventory/inventory-queries";
 
 export function GrnList() {
   const router = useRouter()

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { ItemList } from "@/components/inv/item-list"
+import { ItemList } from "@/components/inventory/item-list"
 
 export default function ItemMasterPage() {
   const router = useRouter()

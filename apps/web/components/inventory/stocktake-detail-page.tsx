@@ -23,7 +23,7 @@ import { ArrowLeft, Loader2, PlayCircle, CheckCircle2, XCircle, SendHorizontal, 
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { StocktakeRow, StocktakeLineRow } from "./inv-types"
-import { getInvStocktakeById, listInvStocktakeLinesByStocktakeId } from "@/lib/inv/inventory-queries";
+import { getInvStocktakeById, listInvStocktakeLinesByStocktakeId } from "@/lib/inventory/inventory-queries";
 
 interface Props {
   id: string

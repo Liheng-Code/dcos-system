@@ -11,7 +11,7 @@ import { Search, Warehouse, Plus, ChevronRight } from "lucide-react"
 import { STORE_TYPE_LABELS } from "./inv-types"
 import type { InvStore } from "./inv-types"
 import { StoreForm } from "./store-form"
-import { listInvStores, listProjectsOfIdAndProjectCodeAndProjectName } from "@/lib/inv/inventory-queries";
+import { listInvStores, listProjectsOfIdAndProjectCodeAndProjectName } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

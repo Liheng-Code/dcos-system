@@ -23,7 +23,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import { RETURN_CONDITION_LABELS } from "./inv-types"
 import type { ReturnRow, ReturnLineRow } from "./inv-types"
-import { getInvReturnById } from "@/lib/inv/inventory-queries";
+import { getInvReturnById } from "@/lib/inventory/inventory-queries";
 
 interface ReturnDetail extends ReturnRow {
   inv_return_lines: ReturnLineRow[]

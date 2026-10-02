@@ -58,7 +58,7 @@ export const MODULE_PATHS = {
     "contexts/planning-permissions-context.tsx",
   ],
   procurement: ["components/procurement", "lib/procurement", "app/dashboard/procurement"],
-  inventory: ["components/inv", "lib/inv", "app/dashboard/inventory", "app/api/inv"],
+  inventory: ["components/inventory", "lib/inventory", "app/dashboard/inventory", "app/api/inv"],
   design: [
     "components/design",
     "lib/design",
@@ -125,7 +125,7 @@ export const PUBLIC_API = {
     // Raise a purchase requisition from BOQ lines; opened from the QS BOQ builder.
     "components/procurement/raise-pr-from-boq-dialog.tsx",
   ],
-  inventory: ["lib/inv/inventory-nav.ts"],
+  inventory: ["lib/inventory/inventory-nav.ts"],
   design: ["lib/design/design-nav.ts"],
   construction: [
     "lib/construction/construction-nav.ts",

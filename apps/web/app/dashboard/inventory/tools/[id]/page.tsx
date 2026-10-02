@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { ToolDetailPage } from "@/components/inv/tool-detail-page"
+import { ToolDetailPage } from "@/components/inventory/tool-detail-page"
 
 export default function ToolDetailRoute() {
   const params = useParams()

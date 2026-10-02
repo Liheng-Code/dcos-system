@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { TransferCreatePage } from "@/components/inv/transfer-create-page"
+import { TransferCreatePage } from "@/components/inventory/transfer-create-page"
 
 export default function NewTransferPage() {
   const router = useRouter()

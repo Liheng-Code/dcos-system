@@ -11,7 +11,7 @@ import { Search, Wrench, Plus, Lock, ChevronRight } from "lucide-react"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { ToolRow } from "./inv-types"
 import { ToolForm } from "./tool-form"
-import { listInvToolIssuesWithStatusIssuedOverdue, listInvTools } from "@/lib/inv/inventory-queries";
+import { listInvToolIssuesWithStatusIssuedOverdue, listInvTools } from "@/lib/inventory/inventory-queries";
 
 interface ActiveIssue {
   tool_id: string

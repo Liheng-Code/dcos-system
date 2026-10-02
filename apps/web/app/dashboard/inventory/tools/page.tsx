@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { ToolList } from "@/components/inv/tool-list"
+import { ToolList } from "@/components/inventory/tool-list"
 
 export default function ToolListPage() {
   const router = useRouter()

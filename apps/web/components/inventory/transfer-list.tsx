@@ -10,7 +10,7 @@ import { Search, Plus, ArrowLeftRight, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { TransferRow } from "./inv-types"
-import { listInvTransfers } from "@/lib/inv/inventory-queries";
+import { listInvTransfers } from "@/lib/inventory/inventory-queries";
 
 export function TransferList() {
   const router = useRouter()

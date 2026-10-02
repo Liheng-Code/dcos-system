@@ -12,7 +12,7 @@ import type { InvStore, LocationRow } from "./inv-types"
 import { StoreForm } from "./store-form"
 import { LocationForm } from "./location-form"
 import { LabelPrintButton } from "./label-print-button"
-import { getInvStoreById, getProjectById, listInvLocationsByStoreId } from "@/lib/inv/inventory-queries";
+import { getInvStoreById, getProjectById, listInvLocationsByStoreId } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

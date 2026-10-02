@@ -10,7 +10,7 @@ import { Search, Plus, Undo2, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { ReturnRow, InvStore } from "./inv-types"
-import { listInvReturns, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
+import { listInvReturns, listInvStoresWithStatusActive } from "@/lib/inventory/inventory-queries";
 
 export function ReturnList() {
   const router = useRouter()

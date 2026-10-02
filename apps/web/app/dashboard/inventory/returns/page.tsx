@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { ReturnList } from "@/components/inv/return-list"
+import { ReturnList } from "@/components/inventory/return-list"
 
 export default function ReturnListPage() {
   const router = useRouter()

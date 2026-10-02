@@ -25,7 +25,7 @@ import {
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { TransferRow, TransferLineRow } from "./inv-types"
-import { getInvTransferById, listInvAuditLogByRecordIdWithTableNameInvTransfers } from "@/lib/inv/inventory-queries";
+import { getInvTransferById, listInvAuditLogByRecordIdWithTableNameInvTransfers } from "@/lib/inventory/inventory-queries";
 
 interface TransferDetailData extends Omit<TransferRow, "inv_transfer_lines"> {
   transfer_number: string

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { MrDetailPage } from "@/components/inv/mr-detail-page"
+import { MrDetailPage } from "@/components/inventory/mr-detail-page"
 
 export default function MrDetailRoute() {
   const params = useParams()

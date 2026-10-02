@@ -25,7 +25,7 @@ import type { ToolRow, ToolIssueRow } from "./inv-types"
 import { ToolForm } from "./tool-form"
 import { ToolIssueForm } from "./tool-issue-form"
 import { LabelPrintButton } from "./label-print-button"
-import { getInvToolById, listInvToolIssuesByToolId } from "@/lib/inv/inventory-queries";
+import { getInvToolById, listInvToolIssuesByToolId } from "@/lib/inventory/inventory-queries";
 
 export function ToolDetailPage({ id }: { id: string }) {
   const router = useRouter()

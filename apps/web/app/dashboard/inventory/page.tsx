@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { InvDashboardPage } from "@/components/inv/inv-dashboard-page"
+import { InvDashboardPage } from "@/components/inventory/inv-dashboard-page"
 
 export default function InventoryDashboard() {
   const router = useRouter()

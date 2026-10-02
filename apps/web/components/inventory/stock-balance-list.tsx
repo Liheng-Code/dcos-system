@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import type { StockRow, InvStore } from "./inv-types"
 import { CATEGORIES } from "./inv-types"
-import { listInvStock, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
+import { listInvStock, listInvStoresWithStatusActive } from "@/lib/inventory/inventory-queries";
 
 export function StockBalanceList() {
   const router = useRouter()

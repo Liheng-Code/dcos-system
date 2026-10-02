@@ -61,8 +61,8 @@
 /apps/web/lib/modules/manifests/procurement.ts      @Liheng-Code
 
 # Inventory
-/apps/web/components/inv/                           @Liheng-Code
-/apps/web/lib/inv/                                  @Liheng-Code
+/apps/web/components/inventory/                     @Liheng-Code
+/apps/web/lib/inventory/                            @Liheng-Code
 /apps/web/app/dashboard/inventory/                  @Liheng-Code
 /apps/web/app/api/inv/                              @Liheng-Code
 /apps/web/lib/modules/manifests/inventory.ts        @Liheng-Code

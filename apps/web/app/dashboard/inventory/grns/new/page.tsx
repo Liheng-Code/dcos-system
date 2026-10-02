@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { GrnCreatePage } from "@/components/inv/grn-create-page"
+import { GrnCreatePage } from "@/components/inventory/grn-create-page"
 
 export default function NewGrnPage() {
   const router = useRouter()

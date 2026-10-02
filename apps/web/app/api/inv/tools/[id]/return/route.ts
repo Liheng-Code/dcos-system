@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { ToolReturnSchema } from "@/lib/inv/inv-schemas"
-import { returnTool, findActiveToolIssueId, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { ToolReturnSchema } from "@/lib/inventory/inv-schemas"
+import { returnTool, findActiveToolIssueId, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 // Note: [id] here is the tool's id (matching the /tools/[id]/... nesting), not the
 // inv_tool_issues row id. We resolve the tool's current active issue via

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { ReturnDetailPage } from "@/components/inv/return-detail-page"
+import { ReturnDetailPage } from "@/components/inventory/return-detail-page"
 
 export default function ReturnDetailRoute() {
   const params = useParams()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { StocktakeLineUpdateSchema } from "@/lib/inv/inv-schemas"
-import { updateStocktakeLineCount, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { StocktakeLineUpdateSchema } from "@/lib/inventory/inv-schemas"
+import { updateStocktakeLineCount, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 export async function PATCH(
   req: NextRequest,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { getStockByStore, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { getStockByStore, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 export async function GET(req: NextRequest) {
   const userClient = await createUserClient()

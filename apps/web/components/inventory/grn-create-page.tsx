@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Loader2, AlertTriangle, Truck } from "lucide-react"
 import type { InvStore, InvItem } from "./inv-types"
-import { listActiveInvItemsForInspection, listInvStoresWithStatusActive, listProcurementPoItemsByPoId, listProcurementPosByProjectIdWithStatusApprovedIssuedPartiallyDelivered } from "@/lib/inv/inventory-queries";
+import { listActiveInvItemsForInspection, listInvStoresWithStatusActive, listProcurementPoItemsByPoId, listProcurementPosByProjectIdWithStatusApprovedIssuedPartiallyDelivered } from "@/lib/inventory/inventory-queries";
 
 interface PoOption {
   id: string

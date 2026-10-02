@@ -584,30 +584,12 @@
       "count": 1
     }
   },
-  "components/inv/grn-detail-page.tsx": {
+  "components/inventory/grn-detail-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/grn-list.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "react/no-unescaped-entities": {
-      "count": 2
-    }
-  },
-  "components/inv/item-list.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/inv/mr-detail-page.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/inv/mr-list.tsx": {
+  "components/inventory/grn-list.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     },
@@ -615,17 +597,35 @@
       "count": 2
     }
   },
-  "components/inv/return-detail-page.tsx": {
+  "components/inventory/item-list.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/return-list.tsx": {
+  "components/inventory/mr-detail-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/stock-balance-list.tsx": {
+  "components/inventory/mr-list.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
+      "count": 2
+    }
+  },
+  "components/inventory/return-detail-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/inventory/return-list.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/inventory/stock-balance-list.tsx": {
     "@next/next/no-html-link-for-pages": {
       "count": 1
     },
@@ -633,22 +633,22 @@
       "count": 1
     }
   },
-  "components/inv/store-detail-page.tsx": {
+  "components/inventory/store-detail-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/store-list.tsx": {
+  "components/inventory/store-list.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/tool-detail-page.tsx": {
+  "components/inventory/tool-detail-page.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/inv/tool-list.tsx": {
+  "components/inventory/tool-list.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

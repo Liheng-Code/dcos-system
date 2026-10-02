@@ -12,7 +12,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { MOVEMENT_TYPE_LABELS, MOVEMENT_TYPES } from "./inv-types"
 import type { MovementRow } from "./inv-types"
-import { listInvMovementsOrderedByCreatedAt } from "@/lib/inv/inventory-queries";
+import { listInvMovementsOrderedByCreatedAt } from "@/lib/inventory/inventory-queries";
 
 export function MovementList() {
   const searchParams = useSearchParams()

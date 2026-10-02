@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { GrnDetailPage } from "@/components/inv/grn-detail-page"
+import { GrnDetailPage } from "@/components/inventory/grn-detail-page"
 
 export default function GrnDetailRoute() {
   const params = useParams()

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { confirmGrn, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { confirmGrn, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 export async function POST(
   req: NextRequest,

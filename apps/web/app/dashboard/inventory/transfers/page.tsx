@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { TransferList } from "@/components/inv/transfer-list"
+import { TransferList } from "@/components/inventory/transfer-list"
 
 export default function TransferListPage() {
   const router = useRouter()

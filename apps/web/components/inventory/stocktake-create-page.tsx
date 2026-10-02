@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import type { InvStore } from "./inv-types"
-import { listInvStoresWithStatusActive, listProjects } from "@/lib/inv/inventory-queries";
+import { listInvStoresWithStatusActive, listProjects } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

@@ -15,7 +15,7 @@ import {
 import { Loader2, Save } from "lucide-react"
 import { STORE_TYPE_LABELS } from "./inv-types"
 import type { InvStore } from "./inv-types"
-import { listProfiles, listProjects } from "@/lib/inv/inventory-queries";
+import { listProfiles, listProjects } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

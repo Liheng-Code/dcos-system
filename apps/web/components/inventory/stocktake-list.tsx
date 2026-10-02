@@ -6,18 +6,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
-import { Search, Plus, RefreshCw, ChevronRight } from "lucide-react"
+import { Search, Plus, CheckSquare, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
-import { REASON_CODE_LABELS } from "./inv-types"
-import type { AdjustmentRow } from "./inv-types"
-import { listInvAdjustments } from "@/lib/inv/inventory-queries";
+import type { StocktakeRow } from "./inv-types"
+import { listInvStocktakes } from "@/lib/inventory/inventory-queries";
 
-export function AdjustmentList() {
+export function StocktakeList() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [rows, setRows] = useState<AdjustmentRow[]>([])
+  const [rows, setRows] = useState<StocktakeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
@@ -32,18 +31,18 @@ export function AdjustmentList() {
     setError(null)
     try {
 
-      let query = listInvAdjustments((page - 1) * limit, page * limit - 1)
+      let query = listInvStocktakes((page - 1) * limit, page * limit - 1)
 
       if (status) query = query.eq("status", status)
-      if (search) query = query.ilike("adjustment_number", `%${search}%`)
+      if (search) query = query.ilike("stocktake_number", `%${search}%`)
 
       const { data, error: fetchErr, count } = await query
       if (fetchErr) throw fetchErr
 
-      setRows((data ?? []) as unknown as AdjustmentRow[])
+      setRows((data ?? []) as unknown as StocktakeRow[])
       setTotal(count ?? 0)
     } catch (e) {
-      setError((e as Error).message ?? "Failed to load adjustments")
+      setError((e as Error).message ?? "Failed to load stocktakes")
     } finally {
       setLoading(false)
     }
@@ -61,7 +60,7 @@ export function AdjustmentList() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by adjustment number..."
+            placeholder="Search by stocktake number..."
             className="pl-8"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
@@ -73,15 +72,14 @@ export function AdjustmentList() {
           onChange={e => { setStatus(e.target.value); setPage(1) }}
         >
           <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="counting">Counting</option>
           <option value="pending_approval">Pending Approval</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
         </select>
-        <Button variant="outline" size="icon" onClick={load} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <Button onClick={() => router.push("/dashboard/inventory/adjustments/new")}>
-          <Plus className="mr-2 h-4 w-4" />New Adjustment
+        <Button onClick={() => router.push("/dashboard/inventory/stocktakes/new")}>
+          <Plus className="mr-2 h-4 w-4" />New Stock Take
         </Button>
       </div>
 
@@ -102,11 +100,11 @@ export function AdjustmentList() {
       ) : rows.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <RefreshCw className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="font-medium text-muted-foreground">No adjustments found.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Click &apos;New Adjustment&apos; to record a stock correction.</p>
-            <Button className="mt-4" onClick={() => router.push("/dashboard/inventory/adjustments/new")}>
-              <Plus className="mr-2 h-4 w-4" />New Adjustment
+            <CheckSquare className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+            <p className="font-medium text-muted-foreground">No stocktakes found.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Click &apos;New Stock Take&apos; to start counting inventory.</p>
+            <Button className="mt-4" onClick={() => router.push("/dashboard/inventory/stocktakes/new")}>
+              <Plus className="mr-2 h-4 w-4" />New Stock Take
             </Button>
           </CardContent>
         </Card>
@@ -115,11 +113,11 @@ export function AdjustmentList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Adjustment #</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Reason</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Stocktake #</th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Lines</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Created</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Items</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Started</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Completed</th>
                 <th className="w-10" />
               </tr>
             </thead>
@@ -128,16 +126,18 @@ export function AdjustmentList() {
                 <tr
                   key={r.id}
                   className="hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={() => router.push(`/dashboard/inventory/adjustments/${r.id}`)}
+                  onClick={() => router.push(`/dashboard/inventory/stocktakes/${r.id}`)}
                 >
-                  <td className="px-4 py-2.5 font-medium">{r.adjustment_number}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{REASON_CODE_LABELS[r.reason_code] ?? r.reason_code}</td>
+                  <td className="px-4 py-2.5 font-medium">{r.stocktake_number}</td>
                   <td className="px-4 py-2.5"><InvStatusBadge status={r.status} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                    {r.inv_adjustment_lines?.[0]?.count ?? 0}
+                    {r.inv_stocktake_lines?.[0]?.count ?? 0}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                    {format(new Date(r.created_at), "dd MMM yyyy")}
+                    {format(new Date(r.initiated_at), "dd MMM yyyy HH:mm")}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    {r.completed_at ? format(new Date(r.completed_at), "dd MMM yyyy HH:mm") : "—"}
                   </td>
                   <td className="px-4 py-2.5"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
                 </tr>

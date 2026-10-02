@@ -21,7 +21,7 @@ import { ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Package } from "lucide
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { GrnRow, GrnLineRow } from "./inv-types"
-import { getInvGrnById } from "@/lib/inv/inventory-queries";
+import { getInvGrnById } from "@/lib/inventory/inventory-queries";
 
 interface GrnDetail extends Omit<GrnRow, "inv_grn_lines"> {
   supplier_delivery_note: string | null

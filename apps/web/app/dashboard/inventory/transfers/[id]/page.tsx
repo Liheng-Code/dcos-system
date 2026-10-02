@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { TransferDetailPage } from "@/components/inv/transfer-detail-page"
+import { TransferDetailPage } from "@/components/inventory/transfer-detail-page"
 
 export default function TransferDetailRoute() {
   const params = useParams()

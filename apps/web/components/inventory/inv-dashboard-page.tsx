@@ -14,7 +14,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { MovementRow } from "./inv-types"
 import { MOVEMENT_TYPE_LABELS } from "./inv-types"
-import { countInvGrnsWithStatusDraft, countInvMaterialRequisitionsWithStatusSubmitted, countInvReturnsWithStatusDraftSubmittedInspected, countInvToolsWithStatusAvailable, countInvToolsWithStatusIssued, countInvTransfersWithStatusSubmittedApproved, getInvStocktakeWithStatusOpenCountingPendingApproval, listInvItemsWithIsActiveWithInvStock, listInvMovements, listInvStockWithIsActive, listInvToolIssuesWithStatusIssuedOverdue } from "@/lib/inv/inventory-queries";
+import { countInvGrnsWithStatusDraft, countInvMaterialRequisitionsWithStatusSubmitted, countInvReturnsWithStatusDraftSubmittedInspected, countInvToolsWithStatusAvailable, countInvToolsWithStatusIssued, countInvTransfersWithStatusSubmittedApproved, getInvStocktakeWithStatusOpenCountingPendingApproval, listInvItemsWithIsActiveWithInvStock, listInvMovements, listInvStockWithIsActive, listInvToolIssuesWithStatusIssuedOverdue } from "@/lib/inventory/inventory-queries";
 
 interface DashboardStats {
   totalStockValue: number

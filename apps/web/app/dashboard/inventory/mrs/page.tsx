@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { MrList } from "@/components/inv/mr-list"
+import { MrList } from "@/components/inventory/mr-list"
 
 export default function MrListPage() {
   const router = useRouter()

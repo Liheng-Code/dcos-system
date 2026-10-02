@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Loader2, PackageCheck } from "lucide-react"
-import { listProfiles, listProjects, listWbsNodesByProjectId } from "@/lib/inv/inventory-queries";
+import { listProfiles, listProjects, listWbsNodesByProjectId } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

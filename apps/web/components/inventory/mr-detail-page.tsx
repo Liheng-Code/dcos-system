@@ -25,7 +25,7 @@ import {
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { MrRow, MrLineRow } from "./inv-types"
-import { getInvMaterialRequisitionById, listInvAuditLogByRecordIdWithTableNameInvMaterialRequisitions } from "@/lib/inv/inventory-queries";
+import { getInvMaterialRequisitionById, listInvAuditLogByRecordIdWithTableNameInvMaterialRequisitions } from "@/lib/inventory/inventory-queries";
 
 interface AuditEntry {
   id: string

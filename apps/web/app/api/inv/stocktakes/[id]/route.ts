@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { resolveTenantId } from "@/lib/inv/inv-service"
+import { resolveTenantId } from "@/lib/inventory/inv-service"
 
 export async function GET(
   req: NextRequest,

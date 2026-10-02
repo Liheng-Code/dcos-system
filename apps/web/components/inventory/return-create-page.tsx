@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Search, Trash2, Loader2, Undo2 } from "lucide-react"
 import { RETURN_CONDITION_LABELS } from "./inv-types"
 import type { InvStore, InvItem } from "./inv-types"
-import { listInvItemsByFilterWithIsActive, listInvMaterialRequisitionsByProjectIdAndStoreIdWithStatusIssuedPartiallyIssued, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
+import { listInvItemsByFilterWithIsActive, listInvMaterialRequisitionsByProjectIdAndStoreIdWithStatusIssuedPartiallyIssued, listInvStoresWithStatusActive } from "@/lib/inventory/inventory-queries";
 
 interface MrOption {
   id: string

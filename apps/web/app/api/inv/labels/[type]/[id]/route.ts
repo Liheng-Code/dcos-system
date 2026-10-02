@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { getLabelData, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { getLabelData, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 const VALID_TYPES = ["item", "bin", "tool"] as const
 type LabelType = (typeof VALID_TYPES)[number]

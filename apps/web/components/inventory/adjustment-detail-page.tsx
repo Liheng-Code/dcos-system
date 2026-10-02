@@ -23,7 +23,7 @@ import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import { REASON_CODE_LABELS } from "./inv-types"
 import type { AdjustmentRow, AdjustmentLineRow } from "./inv-types"
-import { getInvAdjustmentById, listInvAdjustmentLinesByAdjustmentId, listInvAuditLogByRecordIdWithTableNameInvAdjustments } from "@/lib/inv/inventory-queries";
+import { getInvAdjustmentById, listInvAdjustmentLinesByAdjustmentId, listInvAuditLogByRecordIdWithTableNameInvAdjustments } from "@/lib/inventory/inventory-queries";
 
 interface Props {
   id: string

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { StocktakeList } from "@/components/inv/stocktake-list"
+import { StocktakeList } from "@/components/inventory/stocktake-list"
 
 export default function StocktakeListPage() {
   const router = useRouter()

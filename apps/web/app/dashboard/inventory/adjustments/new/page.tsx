@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { AdjustmentCreatePage } from "@/components/inv/adjustment-create-page"
+import { AdjustmentCreatePage } from "@/components/inventory/adjustment-create-page"
 
 export default function NewAdjustmentPage() {
   const router = useRouter()

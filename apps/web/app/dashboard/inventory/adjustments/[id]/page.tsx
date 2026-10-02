@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
-import { AdjustmentDetailPage } from "@/components/inv/adjustment-detail-page"
+import { AdjustmentDetailPage } from "@/components/inventory/adjustment-detail-page"
 
 export default function AdjustmentDetailRoute() {
   const params = useParams()

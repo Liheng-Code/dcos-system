@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Search, Plus, Trash2, Loader2, ClipboardList, AlertTriangle } from "lucide-react"
 import type { InvStore, InvItem } from "./inv-types"
-import { listInvItemsByFilterWithIsActive, listInvStockByStoreIdAndItemIds, listInvStoresWithStatusActive, listWbsNodesByProjectId, listWbsTasksByWbsNodeId } from "@/lib/inv/inventory-queries";
+import { listInvItemsByFilterWithIsActive, listInvStockByStoreIdAndItemIds, listInvStoresWithStatusActive, listWbsNodesByProjectId, listWbsTasksByWbsNodeId } from "@/lib/inventory/inventory-queries";
 
 interface WbsNode {
   id: string

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Search, Trash2, Loader2 } from "lucide-react"
 import { REASON_CODE_LABELS } from "./inv-types"
 import type { InvStore, InvItem } from "./inv-types"
-import { listInvItemsWithIsActive, listInvStoresWithStatusActive, listProjects } from "@/lib/inv/inventory-queries";
+import { listInvItemsWithIsActive, listInvStoresWithStatusActive, listProjects } from "@/lib/inventory/inventory-queries";
 
 interface ProjectOption {
   id: string

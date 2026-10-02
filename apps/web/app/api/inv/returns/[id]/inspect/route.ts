@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { ReturnInspectSchema } from "@/lib/inv/inv-schemas"
-import { inspectReturn, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { ReturnInspectSchema } from "@/lib/inventory/inv-schemas"
+import { inspectReturn, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 export async function POST(
   req: NextRequest,

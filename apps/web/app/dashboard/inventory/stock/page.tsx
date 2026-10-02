@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { StockBalanceList } from "@/components/inv/stock-balance-list"
+import { StockBalanceList } from "@/components/inventory/stock-balance-list"
 
 export default function StockBalancePage() {
   const router = useRouter()

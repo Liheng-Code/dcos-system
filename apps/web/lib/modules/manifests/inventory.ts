@@ -1,5 +1,5 @@
 import { Box, LayoutDashboard, Truck } from "lucide-react";
-import { INVENTORY_GROUPS } from "@/lib/inv/inventory-nav";
+import { INVENTORY_GROUPS } from "@/lib/inventory/inventory-nav";
 import type { ModuleManifest } from "@/lib/modules/types";
 
 export const inventoryModule: ModuleManifest = {

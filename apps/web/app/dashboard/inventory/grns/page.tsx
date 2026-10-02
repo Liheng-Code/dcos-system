@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { GrnList } from "@/components/inv/grn-list"
+import { GrnList } from "@/components/inventory/grn-list"
 
 export default function GrnListPage() {
   const router = useRouter()

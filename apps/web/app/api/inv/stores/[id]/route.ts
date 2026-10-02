@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUserClient, createAdminClient } from "@/lib/supabase/server"
-import { StoreUpdateSchema } from "@/lib/inv/inv-schemas"
-import { updateStore, resolveTenantId, InvError } from "@/lib/inv/inv-service"
+import { StoreUpdateSchema } from "@/lib/inventory/inv-schemas"
+import { updateStore, resolveTenantId, InvError } from "@/lib/inventory/inv-service"
 
 export async function GET(
   req: NextRequest,

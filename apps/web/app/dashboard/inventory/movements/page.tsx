@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
 import { Suspense } from "react"
-import { MovementList } from "@/components/inv/movement-list"
+import { MovementList } from "@/components/inventory/movement-list"
 
 export default function MovementListPage() {
   const router = useRouter()

@@ -10,7 +10,7 @@ import { Search, Plus, ClipboardList, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
 import { InvStatusBadge } from "./inv-status-badge"
 import type { MrRow, InvStore } from "./inv-types"
-import { listInvMaterialRequisitions, listInvStoresWithStatusActive } from "@/lib/inv/inventory-queries";
+import { listInvMaterialRequisitions, listInvStoresWithStatusActive } from "@/lib/inventory/inventory-queries";
 
 export function MrList() {
   const router = useRouter()
