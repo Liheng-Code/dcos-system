@@ -110,7 +110,7 @@
 /.claude/                                           @Liheng-Code
 /scripts/                                           @Liheng-Code
 /apps/web/module-boundaries.mjs                     @Liheng-Code
-/apps/web/lib/*/public*.ts                          @Liheng-Code
+/apps/web/lib/**/public*.ts                         @Liheng-Code
 /apps/web/eslint-rules/                             @Liheng-Code
 /apps/web/eslint.config.mjs                         @Liheng-Code
 /apps/web/eslint-suppressions.json                  @Liheng-Code

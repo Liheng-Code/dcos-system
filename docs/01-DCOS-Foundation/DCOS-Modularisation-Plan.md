@@ -305,6 +305,18 @@ Remaining: a team member builds one new HR feature end to end (branch, pull requ
 - Eight small files are public as a whole: tender approval and its permission hook, baselines, activity steps, the Telegram sender, and three components used as widgets or dialogs by another module.
 - `public*.ts` files are owned by the project owner in `CODEOWNERS`.
 
+**One code folder per module.** Modules whose code was spread over several top-level folders now keep it under one folder per layer, so a team member can be given a module as "`components/<module>/` and `lib/<module>/`":
+
+| Module | Before | After |
+|---|---|---|
+| Construction | `components/site`, `components/qaqc`, `components/hse`, `lib/site` | `components/construction/{site,qaqc,hse}`, `lib/construction/site` |
+| QS | `components/tenders`, `components/qto` | `components/qs/tenders`, `components/qs/qto` |
+| Design | `components/bim`, `lib/bim` | `components/design/bim`, `lib/design/bim` |
+| HR | `components/telegram`, `lib/telegram` | `components/hr/telegram`, `lib/hr/telegram` |
+| Reporting | `components/insights` | `components/reporting/insights` |
+
+90 files moved with `git mv` (history follows with `git log --follow`). Page, API and webhook URLs are unchanged. `inv` keeps its short folder name for the Inventory module.
+
 **Module vocabularies.** The two vocabularies (`module_settings.module_key` and `role_permissions.module`) are joined in one place, each module's manifest (`rbacModules`). Renaming the codes in the database would touch about 1,200 permission rows and every policy that names them for no functional gain, so they are left as they are.
 
 **Tooling.**

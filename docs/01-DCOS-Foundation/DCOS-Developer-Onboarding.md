@@ -66,6 +66,8 @@ Everything is one Next.js app in `apps/web`. Each business module owns a set of 
 | Navigation | `lib/<module>/<module>-nav.ts` |
 | Manifest (key, permission codes, routes, icons) | `lib/modules/manifests/<module>.ts` |
 
+A module with several areas keeps them as subfolders of its own folder, for example `components/construction/site`, `components/construction/qaqc` and `components/construction/hse`. Add a new area the same way rather than as a new top-level folder. Page URLs can differ from the code folders: Construction's pages are still `/dashboard/site`, `/dashboard/qaqc` and `/dashboard/hse`.
+
 The exact folder list for each module is in `apps/web/module-boundaries.mjs`. Anything not listed there is **core**: the shell, WBS, projects, tasks, permissions, the Supabase client and the shared UI components in `components/ui`.
 
 ### How a page is put together
