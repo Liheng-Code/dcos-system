@@ -94,6 +94,14 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+// Quick Demo Access is for local development and a separate demo deployment only.
+// It is off unless NEXT_PUBLIC_DCOS_DEMO_LOGIN=true and a demo password is set.
+// NEXT_PUBLIC_ values are readable in the browser, so never enable this where the
+// demo accounts exist with real data or an admin role.
+const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DCOS_DEMO_PASSWORD ?? "";
+export const DEMO_LOGIN_ENABLED =
+  process.env.NEXT_PUBLIC_DCOS_DEMO_LOGIN === "true" && DEMO_PASSWORD !== "";
+
 interface DemoUserDropdownProps {
   signIn: (email: string, password: string) => Promise<void>;
   loading: boolean;
@@ -123,7 +131,7 @@ export function DemoUserDropdown({ signIn, loading }: DemoUserDropdownProps) {
 
   async function handleSignIn(email: string) {
     try {
-      await signIn(email, "dcosdemo#2026");
+      await signIn(email, DEMO_PASSWORD);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to sign in";

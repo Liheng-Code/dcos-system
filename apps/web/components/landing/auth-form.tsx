@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PasswordInput } from "@/components/landing/password-input";
-import { DemoUserDropdown } from "@/components/landing/demo-user-dropdown";
+import { DEMO_LOGIN_ENABLED, DemoUserDropdown } from "@/components/landing/demo-user-dropdown";
 import { useSupabaseAuth } from "@/hooks/use-supabase-auth";
 
 const signInSchema = z.object({
@@ -158,7 +158,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         {isSignIn ? "Sign In" : "Create Account"}
       </Button>
 
-      {isSignIn && (
+      {isSignIn && DEMO_LOGIN_ENABLED && (
         <DemoUserDropdown signIn={signIn} loading={loading} />
       )}
 
