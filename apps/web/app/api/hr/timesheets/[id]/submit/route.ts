@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { checkTimesheet } from "@/lib/hr/timesheet-generation";
 import { getTimesheetUser, recalcTimesheetTotals } from "../../_utils";
 
 export async function POST(
@@ -34,5 +35,7 @@ export async function POST(
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true, status: "submitted" });
+  // Advisory only: a mismatch with attendance is reported to the submitter, not blocked.
+  const check = await checkTimesheet(supabase, id).catch(() => null);
+  return NextResponse.json({ success: true, status: "submitted", issues: check?.issues ?? [] });
 }

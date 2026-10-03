@@ -20,7 +20,9 @@ export const HR_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/hr/dashboard",
     items: [
       { label: "Workforce Dashboard", href: "/dashboard/hr/dashboard" },
+      { label: "Needs Attention", href: "/dashboard/hr/attention" },
       { label: "Organization Setup", href: "/dashboard/hr/organization" },
+      { label: "Assignment Rules", href: "/dashboard/hr/organization/assignment-rules" },
       { label: "Employee Master", href: "/dashboard/hr/employees" },
       { label: "Resource Allocation", href: "/dashboard/hr/resources" },
       { label: "Employee Assets", href: "/dashboard/hr/assets" },

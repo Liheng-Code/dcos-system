@@ -14,6 +14,7 @@ export interface InlineKeyboardButton {
 
 export interface SendMessageOptions {
   requestLocation?: boolean;
+  requestContact?: boolean;
   removeKeyboard?: boolean;
   parseMode?: "Markdown";
   inlineKeyboard?: InlineKeyboardButton[][];
@@ -36,6 +37,12 @@ export async function sendMessage(
     // Mutually exclusive with requestLocation/removeKeyboard — Telegram only
     // accepts one reply_markup shape per message. inlineKeyboard wins.
     payload.reply_markup = { inline_keyboard: opts.inlineKeyboard };
+  } else if (opts?.requestContact) {
+    payload.reply_markup = {
+      keyboard: [[{ text: "📱 Share my phone number", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    };
   } else if (opts?.requestLocation) {
     payload.reply_markup = {
       keyboard: [[{ text: "📍 Share Location", request_location: true }]],

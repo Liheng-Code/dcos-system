@@ -27,6 +27,13 @@ const OT_CATEGORIES = [
   { value: "voluntary", label: "Voluntary" },
 ];
 
+const humanise = (t: string) => t.replace(/_/g, " ").replace(/w/g, (c) => c.toUpperCase());
+
+interface OtSuggestion {
+  ot_type: string;
+  reason: string;
+}
+
 interface FormData {
   employee_id: string;
   project_id: string;
@@ -57,6 +64,11 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
   const [overlaps, setOverlaps] = useState<any[]>([]);
   const [checkingOverlap, setCheckingOverlap] = useState(false);
   const overlapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Once the person picks a type (or is editing a saved request), the suggestion stops overwriting it.
+  const typeTouched = useRef(Boolean(initialData?.ot_type));
+  const [otTypes, setOtTypes] = useState(OT_TYPES);
+  const [suggestion, setSuggestion] = useState<OtSuggestion | null>(null);
 
   const [form, setForm] = useState<FormData>({
     employee_id: initialData?.employee_id || "",
@@ -87,9 +99,13 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
         }
       }
     });
+    // Offer exactly the OT types HR has rated; keep the built-in list if rates cannot be read.
     fetch("/api/hr/overtime/rates")
       .then((r) => r.json())
-      .then((rates) => { /* could display rates info */ })
+      .then((rates: { ot_type: string; is_active: boolean }[]) => {
+        const active = Array.isArray(rates) ? rates.filter((r) => r.is_active) : [];
+        if (active.length > 0) setOtTypes(active.map((r) => ({ value: r.ot_type, label: OT_TYPES.find((t) => t.value === r.ot_type)?.label ?? humanise(r.ot_type) })));
+      })
       .catch(() => {});
   }, [initialData]);
 
@@ -115,6 +131,22 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
       setCheckingOverlap(false);
     }
   }, [user, initialData]);
+
+  const suggestType = (start: string, end: string) => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    if (!start || !end || new Date(end) <= new Date(start)) { setSuggestion(null); return; }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/hr/overtime/suggest-type?${new URLSearchParams({ start_time: start, end_time: end })}`);
+        const data = await res.json();
+        const found: OtSuggestion | null = data.suggestion ?? null;
+        setSuggestion(found);
+        if (found && !typeTouched.current) setForm((f) => ({ ...f, ot_type: found.ot_type }));
+      } catch {
+        setSuggestion(null);
+      }
+    }, 400);
+  };
 
   const requestIdParam = () => {
     if (typeof window === "undefined") return "";
@@ -212,10 +244,17 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
               <select
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={form.ot_type}
-                onChange={(e) => setForm((f) => ({ ...f, ot_type: e.target.value }))}
+                onChange={(e) => { typeTouched.current = true; setForm((f) => ({ ...f, ot_type: e.target.value })); }}
               >
-                {OT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {otTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+              {suggestion && (
+                <p className="text-xs text-muted-foreground">
+                  {suggestion.ot_type === form.ot_type
+                    ? `Suggested: ${humanise(suggestion.ot_type)}, because ${suggestion.reason}.`
+                    : `HR rules suggest ${humanise(suggestion.ot_type)} (${suggestion.reason}). You chose a different type.`}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Category</Label>
@@ -240,6 +279,7 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
                   setForm((f) => ({ ...f, start_time: v }));
                   autoCalcHours(v, form.end_time);
                   debouncedOverlapCheck(v, form.end_time);
+                  suggestType(v, form.end_time);
                 }}
               />
             </div>
@@ -253,6 +293,7 @@ export function OTRequestForm({ initialData, onSuccess }: Props) {
                   setForm((f) => ({ ...f, end_time: v }));
                   autoCalcHours(form.start_time, v);
                   debouncedOverlapCheck(form.start_time, v);
+                  suggestType(form.start_time, v);
                 }}
               />
             </div>

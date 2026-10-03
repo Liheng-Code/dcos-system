@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { format, getDaysInMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { toast } from "sonner";
+import { attendanceDeduction, summariseMonth, type AttendanceDeductionSetting, type AttendanceMonthSummary, type LeaveInfo, type MonthDayRow } from "@/lib/hr/payroll-attendance";
 import Link from "next/link";
 import {
   calculatePIT,
@@ -38,7 +39,7 @@ import {
   type DependentRelief,
   type NSSFRuleSimple,
 } from "@/components/hr/payroll/pit-calculator";
-import { deletePayrollEntryLinesByEntryId, getPayrollSettingWithKeyWorkingTime, getTosExchangeRateByPeriodYearAndPeriodMonth, insertPayrollAuditLog, insertPayrollEntryLines, listAttendanceRecordsByDateFromAndDateTo, listEmployeePayrollProfilesOrderedByEffectiveDate, listEmployeeSalaryStructuresWithEffectiveTo, listEmployeeTaxProfiles, listLeaveRequestsByEndDateFromAndStartDateToWithStatusApproved, listNssfRulesWithStatusActive, listPayrollComponentTypeCodes, listPayrollPeriods, listProfiles, listTimesheetEntriesByWeekStartDateFromAndWeekEndDateToWithStatusApproved, listTosBracketsWithStatusActive, listTosDependentReliefWithStatusActive, updatePayrollPeriodById, upsertPayrollEntry } from "@/lib/hr/hr-queries";
+import { deletePayrollEntryLinesByEntryId, getPayrollSettingWithKeyWorkingTime, getTosExchangeRateByPeriodYearAndPeriodMonth, insertPayrollAuditLog, insertPayrollEntryLines, listEmployeePayrollProfilesOrderedByEffectiveDate, listEmployeeSalaryStructuresWithEffectiveTo, listEmployeeTaxProfiles, listNssfRulesWithStatusActive, listPayrollComponentTypeCodes, listPayrollPeriods, listProfiles, listActiveOvertimeRates, listAttendanceDailyByDateRange, getPayrollSettingByKey, listTosBracketsWithStatusActive, listTosDependentReliefWithStatusActive, updatePayrollPeriodById, upsertPayrollEntry } from "@/lib/hr/hr-queries";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,10 @@ interface PreviewRow {
   workingDays: number;
   presentDays: number;
   leaveDays: number;
+  unpaidLeaveDays: number;
+  absentDays: number;
+  attendanceDeductionDays: number;
+  attendanceDeduction: number;
   taxResidency: string;
   validationIssues: ValidationIssue[];
   lines: { component_type_id: string; amount: number; note: string }[];
@@ -696,12 +701,23 @@ function RunPayrollInner() {
     const monthStart = format(new Date(year, month - 1, 1), "yyyy-MM-dd");
     const monthEnd   = format(new Date(year, month - 1, daysInMonth), "yyyy-MM-dd");
 
-    const [empRes, structRes, otRes, leaveRes, attendRes, taxProfileRes, payrollProfileRes, settingsRes] = await Promise.all([
+    // Bring the month's daily attendance up to date (logs, leave, holidays, approved OT) before reading it.
+    const refresh = await fetch("/api/hr/attendance-daily", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: monthStart, to: monthEnd }),
+    }).catch(() => null);
+    if (!refresh?.ok) toast.warning("Could not refresh daily attendance; using what is already stored.");
+
+    const [empRes, structRes, dailyRes, dedSettingRes, otRatesRes, taxProfileRes, payrollProfileRes, settingsRes] = await Promise.all([
       listProfiles("id, full_name, department, job_title"),
       listEmployeeSalaryStructuresWithEffectiveTo("employee_id, component_type_id, amount, payroll_component_types(code, category, is_taxable, is_system)"),
-      listTimesheetEntriesByWeekStartDateFromAndWeekEndDateToWithStatusApproved(monthStart, monthEnd),
-      listLeaveRequestsByEndDateFromAndStartDateToWithStatusApproved(monthStart, monthEnd),
-      listAttendanceRecordsByDateFromAndDateTo(monthStart, monthEnd),
+      // One source for days worked, leave, absence and matched OT: the daily attendance table
+      listAttendanceDailyByDateRange(monthStart, monthEnd),
+      // HR switch for deducting unpaid leave / absence (off by default)
+      getPayrollSettingByKey("attendance_deduction"),
+      // OT multipliers are HR-configured (OT Management > Rates), never hard-coded
+      listActiveOvertimeRates(),
       // Fetch tax profiles for all employees
       listEmployeeTaxProfiles("employee_id, tax_residency, marital_status, spouse_dependent, num_children"),
       // Fetch payroll profiles for currency awareness
@@ -719,12 +735,6 @@ function RunPayrollInner() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const structures = (structRes.data || []) as any[];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const otEntries  = (otRes.data || []) as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const leaveReqs  = (leaveRes.data || []) as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const attendance = (attendRes.data || []) as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const taxProfiles = (taxProfileRes.data || []) as any[];
 
     // Build lookup maps
@@ -733,31 +743,37 @@ function RunPayrollInner() {
       if (!structByEmp[s.employee_id]) structByEmp[s.employee_id] = [];
       structByEmp[s.employee_id].push(s);
     }
-    const otByEmp: Record<string, { ot150: number; ot200: number; holiday: number }> = {};
-    for (const e of otEntries) {
-      const eid = e.employee_id;
-      if (!otByEmp[eid]) otByEmp[eid] = { ot150: 0, ot200: 0, holiday: 0 };
-      const hours = parseFloat(e.ot_hours) || 0;
-      if (e.ot_type === "1.5x") otByEmp[eid].ot150 += hours;
-      else if (e.ot_type === "2.0x") otByEmp[eid].ot200 += hours;
-      else if (e.ot_type === "holiday") otByEmp[eid].holiday += hours;
+    // Latest active multiplier per OT type that is effective by month end
+    const otMultiplier: Record<string, number> = {};
+    const otComponent: Record<string, string | null> = {};
+    for (const r of (otRatesRes.data || []) as { ot_type: string; multiplier: number | string; effective_date: string; payroll_component_code: string | null }[]) {
+      if (r.effective_date <= monthEnd && otMultiplier[r.ot_type] === undefined) { otMultiplier[r.ot_type] = Number(r.multiplier); otComponent[r.ot_type] = r.payroll_component_code; }
     }
-    const leaveByEmp: Record<string, number> = {};
-    for (const lr of leaveReqs) {
-      const eid = lr.employee_id;
-      const start = new Date(Math.max(new Date(lr.start_date).getTime(), new Date(monthStart).getTime()));
-      const end   = new Date(Math.min(new Date(lr.end_date).getTime(), new Date(monthEnd).getTime()));
-      if (start <= end) {
-        const days = eachDayOfInterval({ start, end }).filter((d) => !isWeekend(d)).length;
-        leaveByEmp[eid] = (leaveByEmp[eid] ?? 0) + days;
+    // Month summary per employee from the daily attendance rows
+    type DailyDbRow = {
+      employee_id: string; status: string; ot_hours_actual: number | string; is_holiday: boolean; is_rest_day: boolean;
+      needs_review: boolean; review_resolved_at: string | null; leave_request_id: string | null;
+      ot: { ot_type: string } | null;
+      leave: { is_half_day: boolean | null; leave_types: { is_paid: boolean | null } | null } | null;
+    };
+    const dailyByEmp = new Map<string, MonthDayRow[]>();
+    const leaveById = new Map<string, LeaveInfo>();
+    for (const d of (dailyRes.data || []) as unknown as DailyDbRow[]) {
+      if (d.leave_request_id && d.leave) {
+        leaveById.set(d.leave_request_id, { is_paid: d.leave.leave_types?.is_paid !== false, is_half_day: !!d.leave.is_half_day });
       }
+      const list = dailyByEmp.get(d.employee_id) ?? [];
+      list.push({
+        status: d.status, ot_hours_actual: Number(d.ot_hours_actual), is_holiday: d.is_holiday, is_rest_day: d.is_rest_day,
+        needs_review: d.needs_review, review_resolved_at: d.review_resolved_at, leave_request_id: d.leave_request_id,
+        ot_type: d.ot?.ot_type ?? null,
+      });
+      dailyByEmp.set(d.employee_id, list);
     }
-    const presentByEmp: Record<string, number> = {};
-    for (const a of attendance) {
-      if (["present", "late", "wfh", "site_work"].includes((a.status || "").toLowerCase())) {
-        presentByEmp[a.employee_id] = (presentByEmp[a.employee_id] ?? 0) + 1;
-      }
-    }
+    const summaryByEmp = new Map<string, AttendanceMonthSummary>();
+    for (const [eid, list] of dailyByEmp) summaryByEmp.set(eid, summariseMonth(list, leaveById));
+    const deductionSetting = (dedSettingRes.data?.value ?? null) as Partial<AttendanceDeductionSetting> | null;
+
     // Latest tax profile per employee
     const taxProfileByEmp: Record<string, typeof taxProfiles[0]> = {};
     for (const tp of taxProfiles) {
@@ -775,19 +791,28 @@ function RunPayrollInner() {
 
     const rows: PreviewRow[] = employeesWithStructure.map((emp) => {
       const empStructure = structByEmp[emp.id] ?? [];
-      const ot = otByEmp[emp.id] ?? { ot150: 0, ot200: 0, holiday: 0 };
-      const leaveDays = leaveByEmp[emp.id] ?? 0;
-      const presentDays = presentByEmp[emp.id] ?? totalWorkingDays;
+      const summary = summaryByEmp.get(emp.id) ?? summariseMonth([], leaveById);
+      const ot = summary.otHoursByType;
+      const leaveDays = summary.leaveDays;
+      const presentDays = summary.presentDays;
+      const workingDays = summary.rows > 0 ? summary.workingDays : totalWorkingDays;
       const taxProfile = taxProfileByEmp[emp.id];
 
       const basic = empStructure.filter((s: { payroll_component_types: { code: string } }) => s.payroll_component_types?.code === "BASIC").reduce((sum: number, s: { amount: number }) => sum + Number(s.amount), 0);
       const hourlyRate = basic / workingDaysInMonth / hoursPerDay;
 
-      const ot150Amt     = ot.ot150 * hourlyRate * 1.5;
-      const ot200Amt     = ot.ot200 * hourlyRate * 2.0;
-      const otHolidayAmt = ot.holiday * hourlyRate * 2.0;
-      const otEarnings   = ot150Amt + ot200Amt + otHolidayAmt;
-      const otHours      = ot.ot150 + ot.ot200 + ot.holiday;
+      // One line per approved OT type; multiplier comes from HR's OT rates. Types with no
+      // active rate are not paid and are flagged below.
+      const otLines: { code: string; type: string; hours: number; multiplier: number; amount: number }[] = [];
+      const unratedOtTypes: string[] = [];
+      for (const [type, hours] of Object.entries(ot)) {
+        const multiplier = otMultiplier[type];
+        if (multiplier === undefined) { unratedOtTypes.push(type); continue; }
+        const code = otComponent[type] ?? "OT_150";
+        otLines.push({ code, type, hours, multiplier, amount: hours * hourlyRate * multiplier });
+      }
+      const otEarnings = otLines.reduce((sum, l) => sum + l.amount, 0);
+      const otHours    = otLines.reduce((sum, l) => sum + l.hours, 0);
 
       const structureEarnings = empStructure
         .filter((s: { payroll_component_types: { category: string; is_system: boolean } }) => s.payroll_component_types?.category === "earning" && !s.payroll_component_types?.is_system)
@@ -801,49 +826,68 @@ function RunPayrollInner() {
       const currency = currencyByEmp[emp.id] ?? "USD";
       const totalEarningsUSD = currency === "KHR" ? totalEarnings / periodExchangeRate : totalEarnings;
 
+      // Unpaid leave / absence deduction (only when HR has switched it on). Per-day rate is basic / days per month.
+      const deduction = attendanceDeduction(summary, deductionSetting, basic / workingDaysInMonth);
+      const deductionUSD = currency === "KHR" ? deduction.amount / periodExchangeRate : deduction.amount;
+      // Tax and NSSF are computed on what is actually payable, after the deduction.
+      const payable = Math.max(0, totalEarnings - deduction.amount);
+      const payableUSD = Math.max(0, totalEarningsUSD - deductionUSD);
+
       // Cambodia TOS calculation
       let tos = 0;
       let taxReliefKHR = 0;
-      let taxableIncome = totalEarningsUSD;
+      let taxableIncome = payableUSD;
       const taxResidency = taxProfile?.tax_residency ?? "resident";
 
       if (taxResidency === "non_resident") {
-        tos = calculateNonResidentTOS(totalEarningsUSD);
-        taxableIncome = totalEarningsUSD;
+        tos = calculateNonResidentTOS(payableUSD);
+        taxableIncome = payableUSD;
       } else if (tosBrackets.length > 0) {
         // DB-driven KHR calculation
         const spouseRelief = (taxProfile?.spouse_dependent && taxProfile?.marital_status === "married") ? tosRelief.spouse : 0;
         const childRelief = (taxProfile?.num_children ?? 0) * tosRelief.child;
         taxReliefKHR = spouseRelief + childRelief;
         const relief: DependentRelief = { spouse: spouseRelief, children: childRelief };
-        const totalEarningsKHR = currency === "KHR" ? totalEarnings : totalEarningsUSD * periodExchangeRate;
+        const totalEarningsKHR = currency === "KHR" ? payable : payableUSD * periodExchangeRate;
         const tosKHR = calculateTOS_KHR(totalEarningsKHR, tosBrackets, relief);
         tos = Math.round((tosKHR / periodExchangeRate) * 100) / 100;
-        taxableIncome = Math.max(0, totalEarningsUSD - taxReliefKHR / periodExchangeRate);
+        taxableIncome = Math.max(0, payableUSD - taxReliefKHR / periodExchangeRate);
       } else {
         // Legacy fallback
-        tos = calculatePIT(totalEarningsUSD);
-        taxableIncome = totalEarningsUSD;
+        tos = calculatePIT(payableUSD);
+        taxableIncome = payableUSD;
       }
 
       // NSSF calculation
       let nssfEE: number;
       let nssfER: number;
       if (nssfRules.length > 0) {
-        nssfEE = calculateNSSF(totalEarningsUSD, nssfRules, "employee");
-        nssfER = calculateNSSF(totalEarningsUSD, nssfRules, "employer");
+        nssfEE = calculateNSSF(payableUSD, nssfRules, "employee");
+        nssfER = calculateNSSF(payableUSD, nssfRules, "employer");
       } else {
-        nssfEE = calculateNSSF_EE(totalEarningsUSD);
-        nssfER = calculateNSSF_ER(totalEarningsUSD);
+        nssfEE = calculateNSSF_EE(payableUSD);
+        nssfER = calculateNSSF_ER(payableUSD);
       }
 
-      const totalDeductions = nssfEE + tos + structureDeductions;
+      const totalDeductions = nssfEE + tos + structureDeductions + deductionUSD;
       const netSalary = Math.max(0, totalEarningsUSD - totalDeductions);
 
       // Build validation issues for this employee
       const validationIssues: ValidationIssue[] = [];
       if (!taxProfile) {
         validationIssues.push({ severity: "critical", message: "No tax profile configured", field: "tax_profile" });
+      }
+      if (unratedOtTypes.length > 0) {
+        validationIssues.push({ severity: "critical", message: `Approved OT not paid: no active OT rate for ${unratedOtTypes.join(", ")}`, field: "ot_rate" });
+      }
+      if (summary.rows === 0) {
+        validationIssues.push({ severity: "warning", message: "No daily attendance for this month", field: "attendance" });
+      }
+      if (summary.reviewDays > 0) {
+        validationIssues.push({ severity: "critical", message: `${summary.reviewDays} attendance day(s) still need review: resolve them in HR > Needs Attention`, field: "attendance_review" });
+      }
+      if (deduction.days === 0 && (summary.unpaidLeaveDays > 0 || summary.absentDays > 0)) {
+        validationIssues.push({ severity: "warning", message: `${summary.unpaidLeaveDays} unpaid-leave and ${summary.absentDays} absent day(s) are not deducted (attendance deduction is off)`, field: "attendance_deduction" });
       }
       if (netSalary < 0) {
         validationIssues.push({ severity: "critical", message: "Net salary is negative", field: "net_salary" });
@@ -854,9 +898,10 @@ function RunPayrollInner() {
       for (const s of empStructure.filter((s: { payroll_component_types: { is_system: boolean } }) => !s.payroll_component_types?.is_system)) {
         lines.push({ component_type_id: s.component_type_id, amount: Number(s.amount), note: "" });
       }
-      if (ot150Amt > 0 && componentTypeMap["OT_150"]) lines.push({ component_type_id: componentTypeMap["OT_150"].id, amount: Math.round(ot150Amt * 100) / 100, note: `${ot.ot150.toFixed(1)} hrs × $${hourlyRate.toFixed(2)} × 1.5` });
-      if (ot200Amt > 0 && componentTypeMap["OT_200"]) lines.push({ component_type_id: componentTypeMap["OT_200"].id, amount: Math.round(ot200Amt * 100) / 100, note: `${ot.ot200.toFixed(1)} hrs × $${hourlyRate.toFixed(2)} × 2.0` });
-      if (otHolidayAmt > 0 && componentTypeMap["OT_HOLIDAY"]) lines.push({ component_type_id: componentTypeMap["OT_HOLIDAY"].id, amount: Math.round(otHolidayAmt * 100) / 100, note: `${ot.holiday.toFixed(1)} holiday hrs × $${hourlyRate.toFixed(2)} × 2.0` });
+      for (const l of otLines) {
+        if (l.amount > 0 && componentTypeMap[l.code]) lines.push({ component_type_id: componentTypeMap[l.code].id, amount: Math.round(l.amount * 100) / 100, note: `${l.hours.toFixed(1)} hrs ${l.type} × $${hourlyRate.toFixed(2)} × ${l.multiplier}` });
+      }
+      if (deduction.amount > 0 && componentTypeMap["UNPAID_LEAVE"]) lines.push({ component_type_id: componentTypeMap["UNPAID_LEAVE"].id, amount: deduction.amount, note: `${deduction.days} day(s): ${summary.unpaidLeaveDays} unpaid leave, ${summary.absentDays} absent` });
       if (nssfEE > 0 && componentTypeMap["NSSF_EE"]) lines.push({ component_type_id: componentTypeMap["NSSF_EE"].id, amount: nssfEE, note: "NSSF Employee contribution" });
       if (tos > 0 && componentTypeMap["PIT"]) lines.push({ component_type_id: componentTypeMap["PIT"].id, amount: tos, note: "Cambodia TOS" });
 
@@ -869,6 +914,7 @@ function RunPayrollInner() {
       const deductionsBreakdown = [
         ...(tos > 0 ? [{ label: "Tax on Salary (TOS)", amount: tos }] : []),
         ...(nssfEE > 0 ? [{ label: "NSSF Employee", amount: nssfEE }] : []),
+        ...(deductionUSD > 0 ? [{ label: "Unpaid leave / absence", amount: Math.round(deductionUSD * 100) / 100 }] : []),
         ...empStructure
           .filter((s: { payroll_component_types: { category: string; is_system: boolean } }) => s.payroll_component_types?.category === "deduction" && !s.payroll_component_types?.is_system)
           .map((s: { payroll_component_types: { name: string }; amount: number }) => ({ label: s.payroll_component_types?.name ?? "Deduction", amount: Number(s.amount) })),
@@ -894,15 +940,19 @@ function RunPayrollInner() {
         otherDeductions: structureDeductions,
         totalDeductions: Math.round(totalDeductions * 100) / 100,
         netSalary: Math.round(netSalary * 100) / 100,
-        workingDays: totalWorkingDays,
+        workingDays,
         presentDays,
         leaveDays,
+        unpaidLeaveDays: summary.unpaidLeaveDays,
+        absentDays: summary.absentDays,
+        attendanceDeductionDays: deduction.days,
+        attendanceDeduction: Math.round(deductionUSD * 100) / 100,
         taxResidency,
         validationIssues,
         lines,
         earningsBreakdown,
         deductionsBreakdown,
-        attendanceSummary: { working: totalWorkingDays, present: presentDays, leave: leaveDays, ot: otHours },
+        attendanceSummary: { working: workingDays, present: presentDays, leave: leaveDays, ot: otHours },
       };
     });
 
@@ -934,6 +984,9 @@ function RunPayrollInner() {
           working_days: row.workingDays,
           present_days: row.presentDays,
           leave_days: row.leaveDays,
+          // unpaid leave days as recorded; the deduction also covers absence when HR has enabled that
+          unpaid_leave_days: row.unpaidLeaveDays,
+          unpaid_leave_deduction: row.attendanceDeduction,
           ot_hours: row.otHours,
           status: "draft",
           calculated_at: new Date().toISOString(),

@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { getFileBuffer, sendMessage } from "@/lib/hr/telegram/bot";
+import { sendNotLinked } from "@/lib/hr/telegram/auto-link";
 import {
   AttendanceEmployeeProfile,
   getAttendanceProfileMessage,
@@ -12,9 +13,10 @@ import {
 
 export interface TelegramMessage {
   message_id: number;
-  from: { id: number };
+  from: { id: number; first_name?: string; last_name?: string; username?: string };
   chat: { id: number };
   text?: string;
+  contact?: { phone_number: string; user_id?: number; first_name?: string; last_name?: string };
   location?: { latitude: number; longitude: number };
   photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>;
 }
@@ -69,7 +71,6 @@ export async function findProfileByTelegramUserId(admin: SupabaseClient, telegra
 }
 
 const START_OVER_MESSAGE = "Send /checkin (or /checkout) again to start.";
-export const NOT_LINKED_MESSAGE = "You're not linked yet. Go to DCOS → Attendance → Link Telegram.";
 
 export async function handleLinkCommand(
   admin: SupabaseClient,
@@ -149,7 +150,7 @@ export async function handleCheckinCommand(admin: SupabaseClient, message: Teleg
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
 
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
 
@@ -183,7 +184,7 @@ export async function handleCheckoutCommand(admin: SupabaseClient, message: Tele
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
 
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
 
@@ -305,4 +306,5 @@ export async function handleHelp(admin: SupabaseClient, message: TelegramMessage
       "/pending — leave requests awaiting your approval, with Review buttons to approve or reject each one\n\n" +
       "/help — show this message",
   );
+  if (!(await findProfileByTelegramUserId(admin, message.from.id))) await sendNotLinked(message.chat.id);
 }

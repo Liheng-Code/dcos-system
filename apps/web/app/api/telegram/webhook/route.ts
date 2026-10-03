@@ -10,6 +10,7 @@ import {
   handlePhotoMessage,
   type TelegramMessage,
 } from "@/lib/hr/telegram/webhook-handlers";
+import { handleContactMessage } from "@/lib/hr/telegram/auto-link";
 import {
   handleApplyLeaveCommand,
   handleApproveCommand,
@@ -69,6 +70,8 @@ export async function POST(request: NextRequest) {
         await handleRejectCommand(admin, message);
       } else if (text === "/start" || text === "/help") {
         await handleHelp(admin, message);
+      } else if (message.contact) {
+        await handleContactMessage(admin, message);
       } else if (message.location) {
         await handleLocationMessage(admin, message);
       } else if (message.photo && message.photo.length > 0) {

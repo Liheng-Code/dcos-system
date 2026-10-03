@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, ListChecks } from "lucide-react";
+import { LayoutDashboard, ListChecks, Tags } from "lucide-react";
 
 const TABS = [
   { href: "/dashboard/hr/employees", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/hr/employees/list", label: "Detail List", icon: ListChecks },
+  { href: "/dashboard/hr/employees/classify", label: "Classify", icon: Tags },
 ];
 
 export function EmployeesTabs() {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Clock } from "lucide-react";
 import { format } from "date-fns";
+import Link from "next/link";
 
 interface Timesheet {
   id: string;
@@ -75,8 +76,8 @@ export default function TimesheetPage() {
           <h2 className="text-2xl font-bold tracking-tight">Timesheet Management</h2>
           <p className="text-muted-foreground">Track work hours and approve timesheets</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" /> New Entry
+        <Button className="gap-2" asChild>
+          <Link href="/dashboard/hr/timesheet/my"><Plus className="h-4 w-4" /> My Timesheet</Link>
         </Button>
       </div>
 

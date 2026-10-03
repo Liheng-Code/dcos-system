@@ -77,9 +77,9 @@ export function listAttendanceRecordsByAttendanceDate(attendanceDate: string | n
 export function listAttendanceRecordsByDateFromAndDateTo(dateFrom: string | number | boolean, dateTo: string | number | boolean) {
   return db()
     .from("attendance_records")
-    .select("employee_id, status")
-    .gte("date", dateFrom)
-    .lte("date", dateTo);
+    .select("employee_id, attendance_type")
+    .gte("attendance_date", dateFrom)
+    .lte("attendance_date", dateTo);
 }
 
 // @table attendance_records
@@ -1417,6 +1417,25 @@ export function listTimesheetEntriesByWeekStartDateFromAndWeekEndDateToWithStatu
     .in("timesheets.status", ["approved"]);
 }
 
+// @table overtime_requests
+export function listApprovedOvertimeRequestsByStartTimeRange(startFrom: string, startBefore: string) {
+  return db()
+    .from("overtime_requests")
+    .select("employee_id, ot_type, hours")
+    .eq("status", "approved")
+    .gte("start_time", startFrom)
+    .lt("start_time", startBefore);
+}
+
+// @table overtime_rates
+export function listActiveOvertimeRates() {
+  return db()
+    .from("overtime_rates")
+    .select("ot_type, multiplier, effective_date, payroll_component_code")
+    .eq("is_active", true)
+    .order("effective_date", { ascending: false });
+}
+
 // ── timesheets ────────────────────────────────────────────────────────────────
 
 // @table timesheets
@@ -1630,4 +1649,57 @@ export function insertWorkShifts(rows: object | object[]) {
 // @table work_shifts
 export function listWorkShifts() {
   return db().from("work_shifts").select("*").order("name");
+}
+
+// ── hr_assignment_rules ───────────────────────────────────────────────────────
+
+// @table hr_assignment_rules
+export function listHrAssignmentRules() {
+  return db().from("hr_assignment_rules").select("*").order("priority").order("name");
+}
+
+// @table hr_assignment_rules
+export function insertHrAssignmentRule(row: object) {
+  return db().from("hr_assignment_rules").insert([row]);
+}
+
+// @table hr_assignment_rules
+export function updateHrAssignmentRuleById(id: string, values: object) {
+  return db().from("hr_assignment_rules").update(values).eq("id", id);
+}
+
+// @table hr_assignment_rules
+export function deleteHrAssignmentRuleById(id: string) {
+  return db().from("hr_assignment_rules").delete().eq("id", id);
+}
+
+// @table employee_master_lists
+export function listEmployeeMasterListItems(listTypes: string[]) {
+  return db()
+    .from("employee_master_lists")
+    .select("list_type, code, name")
+    .in("list_type", listTypes)
+    .eq("is_active", true)
+    .order("sort_order");
+}
+
+// @table companies
+export function listCompanies() {
+  return db().from("companies").select("id, name").order("name");
+}
+
+// @table attendance_daily
+export function listAttendanceDailyByDateRange(from: string, to: string) {
+  return db()
+    .from("attendance_daily")
+    .select(
+      "employee_id, work_date, status, ot_hours_actual, is_holiday, is_rest_day, needs_review, review_resolved_at, leave_request_id, ot:overtime_requests(ot_type), leave:leave_requests(is_half_day, leave_types(is_paid))",
+    )
+    .gte("work_date", from)
+    .lte("work_date", to);
+}
+
+// @table payroll_settings
+export function getPayrollSettingByKey(key: string) {
+  return db().from("payroll_settings").select("value").eq("key", key).maybeSingle();
 }

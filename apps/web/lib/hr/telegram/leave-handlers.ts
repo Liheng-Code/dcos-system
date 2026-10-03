@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendMessage } from "@/lib/hr/telegram/bot";
-import { findProfileByTelegramUserId, NOT_LINKED_MESSAGE, type TelegramMessage } from "@/lib/hr/telegram/webhook-handlers";
+import { findProfileByTelegramUserId, type TelegramMessage } from "@/lib/hr/telegram/webhook-handlers";
+import { sendNotLinked } from "@/lib/hr/telegram/auto-link";
 import { getLeaveBalanceSummary, getMyLeaveRequests, getPendingApprovalsForApprover } from "@/lib/hr/leave";
 
 // Retired text-command flow (/approve <id>, /reject <id> <reason>) now redirects
@@ -17,7 +18,7 @@ export async function handleApplyLeaveCommand(admin: SupabaseClient, message: Te
   const chatId = message.chat.id;
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
   const miniAppBaseUrl = process.env.TELEGRAM_MINIAPP_BASE_URL;
@@ -36,7 +37,7 @@ export async function handleBalanceCommand(admin: SupabaseClient, message: Teleg
   const chatId = message.chat.id;
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
 
@@ -69,7 +70,7 @@ export async function handleMyLeaveCommand(admin: SupabaseClient, message: Teleg
   const chatId = message.chat.id;
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
 
@@ -93,7 +94,7 @@ export async function handlePendingApprovalsCommand(admin: SupabaseClient, messa
   const chatId = message.chat.id;
   const profile = await findProfileByTelegramUserId(admin, message.from.id);
   if (!profile) {
-    await sendMessage(chatId, NOT_LINKED_MESSAGE);
+    await sendNotLinked(chatId);
     return;
   }
 
