@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { countWbsNodesByProjectId, getProjectById, insertProjectsReturning, insertWbsNodeReturning, insertWbsNodes, insertWbsNodesReturning, listLevelNamingTemplatesWithIsActive, listProfiles, updateProjectByIdReturning } from "@/lib/naming/naming-queries";
+import { countWbsNodesByProjectId, getProjectById, insertProjectsReturning, insertWbsNodeReturning, insertWbsNodes, insertWbsNodesReturning, listProfiles, updateProjectByIdReturning } from "@/lib/naming/naming-queries";
+import { listLevelTemplates } from "@/lib/level-library-queries";
 import { X, Loader2, Save, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -90,13 +91,16 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
     listProfiles().then(({ data }) => {
       if (data) setStaff(data as { id: string; full_name: string; employee_id: string | null }[]);
     });
-    listLevelNamingTemplatesWithIsActive().then(({ data }) => {
-      if (data) setLevelTemplates(data as LevelNamingTemplateRecord[]);
-    });
-  }, []);
-
-  const handleProjectCodeChange = useCallback((v: string) => {
-    setForm((prev) => ({ ...prev, project_code: v }));
+    // Level Library templates (items), shaped as this wizard's {code, name} entries.
+    listLevelTemplates({ activeOnly: true })
+      .then((tpls) => setLevelTemplates(tpls.map((t) => ({
+        id: t.id,
+        template_name: t.template_name,
+        description: t.description,
+        is_active: t.is_active,
+        config: t.items.map((i) => ({ code: i.level_code, name: i.level_name })),
+      }))))
+      .catch(() => setLevelTemplates([]));
   }, []);
 
   const handleShortNameChange = useCallback((v: string) => {
@@ -431,9 +435,8 @@ export function NamingProjectWizard({ project, onClose, onSave }: NamingProjectW
         <div className="md:col-span-2">
           <NamingProjectCodeGen
             projectName={form.project_name}
-            projectCode={form.project_code}
+            projectCode={project?.project_code ?? ""}
             shortName={form.short_name}
-            onProjectCodeChange={handleProjectCodeChange}
             onShortNameChange={handleShortNameChange}
           />
         </div>

@@ -168,33 +168,6 @@ export function listDocumentsByProjectId(projectId: string | number | boolean) {
     .order("document_number");
 }
 
-// ── level_naming_templates ────────────────────────────────────────────────────
-
-// @table level_naming_templates
-export function deleteLevelNamingTemplateById(id: string | number | boolean) {
-  return db().from("level_naming_templates").delete().eq("id", id);
-}
-
-// @table level_naming_templates
-export function insertLevelNamingTemplateReturning(row: object) {
-  return db().from("level_naming_templates").insert([row]).select().single();
-}
-
-// @table level_naming_templates
-export function listLevelNamingTemplates() {
-  return db().from("level_naming_templates").select("*").order("template_name");
-}
-
-// @table level_naming_templates
-export function listLevelNamingTemplatesWithIsActive() {
-  return db().from("level_naming_templates").select("*").eq("is_active", true).order("template_name");
-}
-
-// @table level_naming_templates
-export function updateLevelNamingTemplateById(patch: object, id: string | number | boolean) {
-  return db().from("level_naming_templates").update(patch).eq("id", id);
-}
-
 // ── profiles ──────────────────────────────────────────────────────────────────
 
 // @table profiles
@@ -217,13 +190,6 @@ export function getProjectBudgetSettingByProjectId(projectId: string | number | 
 // @table project_budget_settings
 export function upsertProjectBudgetSettings(rows: object | object[]) {
   return db().from("project_budget_settings").upsert(rows, { onConflict: "project_id" });
-}
-
-// ── project_code_sequences ────────────────────────────────────────────────────
-
-// @table project_code_sequences
-export function getProjectCodeSequenceWithPrefixP() {
-  return db().from("project_code_sequences").select("last_sequence").eq("prefix", "P").single();
 }
 
 // ── project_numbering_rules ───────────────────────────────────────────────────

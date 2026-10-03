@@ -5,9 +5,13 @@ import {
   ArrowUp,
   ChevronsDownUp,
   ChevronsUpDown,
+  BookmarkPlus,
+  FileSpreadsheet,
   History,
+  LayoutTemplate,
   IndentDecrease,
   IndentIncrease,
+  Layers,
   Plus,
   Save,
 } from "lucide-react";
@@ -25,6 +29,14 @@ interface WbsBuilderToolbarProps {
   onCollapseAll: () => void;
   onSaveVersion: () => void;
   onOpenVersions: () => void;
+  /** Set when the selected row is a building: opens "Add levels from template". */
+  onAddLevels?: () => void;
+  onApplyWbsTemplate: () => void;
+  onSaveWbsTemplate: () => void;
+  /** Import WBS + activities from an Excel / CSV file. */
+  onImportFile: () => void;
+  /** View menu (depth, activities, columns). */
+  viewMenu?: React.ReactNode;
 }
 
 export function WbsBuilderToolbar({
@@ -39,12 +51,27 @@ export function WbsBuilderToolbar({
   onCollapseAll,
   onSaveVersion,
   onOpenVersions,
+  onAddLevels,
+  onApplyWbsTemplate,
+  onSaveWbsTemplate,
+  onImportFile,
+  viewMenu,
 }: WbsBuilderToolbarProps) {
   const noSelection = !selectedRowId;
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5">
       <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onAddRow}>
         <Plus className="h-3.5 w-3.5" /> Add row
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1 text-[11px]"
+        onClick={onAddLevels}
+        disabled={!onAddLevels}
+        title={onAddLevels ? "Add levels from a level template" : "Add a Building / Area row first"}
+      >
+        <Layers className="h-3.5 w-3.5" /> Levels from template
       </Button>
 
       <span className="mx-1 h-4 w-px bg-border" />
@@ -113,7 +140,20 @@ export function WbsBuilderToolbar({
         <History className="h-3.5 w-3.5" /> Versions
       </Button>
 
-      <div className="ml-auto text-[11px] text-muted-foreground">
+      <span className="mx-1 h-4 w-px bg-border" />
+
+      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onApplyWbsTemplate} title="Copy a company WBS template into this project">
+        <LayoutTemplate className="h-3.5 w-3.5" /> Apply WBS template
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onSaveWbsTemplate} title="Save this WBS as a company template">
+        <BookmarkPlus className="h-3.5 w-3.5" /> Save as template
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onImportFile} title="Import WBS and activities from an Excel or CSV file">
+        <FileSpreadsheet className="h-3.5 w-3.5" /> Import Excel / CSV
+      </Button>
+
+      <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+        {viewMenu}
         {nodeCount} node{nodeCount === 1 ? "" : "s"}
       </div>
     </div>

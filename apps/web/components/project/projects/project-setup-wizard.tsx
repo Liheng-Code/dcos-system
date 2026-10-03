@@ -23,6 +23,8 @@ import {
   type ProjectApprovalFlow,
   type ProjectNotificationRule,
 } from "@/lib/project-setup-service";
+import { ProjectCodeField } from "./project-code-field";
+import { listWbsTemplates, setProjectWbsTemplateId, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
 import { getProjectById, insertProjectsReturning, listProfilesOfIdAndFullName, updateProjectById, updateProjectByIdReturning, upsertProjectActivationLog } from "@/lib/project/projects/projects-queries";
 
 const PROJECT_TYPES = [
@@ -126,6 +128,12 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
   // ── Step 5-11 form state ──────────────────────────────────────────────────
   const [calForm, setCalForm] = useState({ working_days: "Monday to Saturday", working_hours: "08:00 - 17:00", weekend_rule: "Sunday Off", holiday_calendar: "Cambodia National Calendar", shift_type: "Day Shift", exception_days: "" });
   const [wbsMethod, setWbsMethod] = useState("use_template");
+  // Company WBS template chosen for this project; applied from the WBS builder (Apply WBS template).
+  const [wbsTemplateId, setWbsTemplateId] = useState<string>((project as { wbs_template_id?: string | null } | null)?.wbs_template_id ?? "");
+  const [wbsTemplates, setWbsTemplates] = useState<WbsTemplate[]>([]);
+  useEffect(() => {
+    listWbsTemplates({ activeOnly: true }).then(setWbsTemplates).catch(() => setWbsTemplates([]));
+  }, []);
   const [numForm, setNumForm] = useState({ format_mask: "PROJECT-DISC-DOC-BLDG-LEVEL-SEQ-REV", discipline_codes: "ARC, STR, MEP", document_types: "DWG, RFI, MRA, MOS", revision_format: "R00, R01, R02" });
   const [approvalFlows, setApprovalFlows] = useState<ProjectApprovalFlow[]>([]);
   const [budgetForm, setBudgetForm] = useState({ contingency: "5", cost_code_template: "Company Standard Cost Code", approval_limit_rule: "By Role and Amount" });
@@ -170,7 +178,6 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
   }, []);
 
   const validationItems = useMemo(() => [
-    { label: "Project code created", ok: !!form.project_code },
     { label: "Sector selected", ok: !!form.category },
     { label: "Client assigned", ok: !!form.client_id },
     { label: "Project manager assigned", ok: !!form.project_manager_id },
@@ -205,6 +212,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
     try {
       await upsertProjectCalendar({ project_id: projectId, ...calForm });
       await upsertProjectWbsSetup({ project_id: projectId, setup_method: wbsMethod });
+      if (wbsMethod === "use_template") await setProjectWbsTemplateId(projectId, wbsTemplateId || null);
       await upsertProjectNumberingRules({
         project_id: projectId,
         format_mask: numForm.format_mask,
@@ -250,11 +258,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
   function renderBasicInfo() {
     return (
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="wz_project_code">Project Code *</Label>
-          <input id="wz_project_code" value={fv(form.project_code)} onChange={(e) => update("project_code", e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono outline-hidden focus:border-primary" />
-        </div>
+        <ProjectCodeField code={project?.project_code} className="space-y-1.5" inputClassName="rounded-xl py-2.5" />
         <div className="space-y-1.5">
           <Label htmlFor="wz_project_type">Project Type *</Label>
           <select id="wz_project_type" value={fv(form.project_type)} onChange={(e) => update("project_type", e.target.value)}
@@ -642,7 +646,7 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
 
   function renderWBS() {
     const wbsOptions = [
-      { value: "use_template", label: "Use Company WBS Template", desc: "Project → Building → Level → Zone → Room → Element" },
+      { value: "use_template", label: "Use Company WBS Template", desc: "Sections + activities, repeated per floor; applied from the WBS builder" },
       { value: "create_manually", label: "Create WBS Manually", desc: "Define WBS structure from scratch" },
       { value: "import_excel", label: "Import WBS from Excel", desc: "Upload WBS via spreadsheet" },
       { value: "clone_project", label: "Clone from Existing Project", desc: "Copy WBS from another project" },
@@ -656,6 +660,21 @@ export function ProjectSetupWizard({ project, onClose, onSave }: ProjectSetupWiz
             <p className={`mt-1 text-sm ${wbsMethod === opt.value ? "text-background/70" : "text-muted-foreground"}`}>{opt.desc}</p>
           </div>
         ))}
+        {wbsMethod === "use_template" && (
+          <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="wz_wbs_template">WBS Template</Label>
+            <select id="wz_wbs_template" value={wbsTemplateId} onChange={(e) => setWbsTemplateId(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-hidden focus:border-primary">
+              <option value="">— Choose later —</option>
+              {wbsTemplates.map((t) => <option key={t.id} value={t.id}>{t.template_name}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {wbsTemplates.length === 0
+                ? "No WBS templates yet: create one in Master Libraries › WBS Templates, or use Save as template on a project's WBS."
+                : "Apply it from the WBS builder (Apply WBS template); you pick the buildings and levels there. The template itself is never changed."}
+            </p>
+          </div>
+        )}
       </div>
     );
   }

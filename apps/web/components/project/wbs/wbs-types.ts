@@ -173,28 +173,6 @@ export interface WbsTaskAlertRecord {
   created_at: string;
 }
 
-export interface WbsTemplateRecord {
-  id: string;
-  template_name: string;
-  template_desc: string | null;
-  node_type_chain: string[];
-  is_active: boolean;
-  template_category?: string | null;
-}
-
-export interface WbsTemplateNodeRecord {
-  id: string;
-  template_id: string;
-  parent_id: string | null;
-  wbs_code: string;
-  wbs_name: string;
-  node_type: string;
-  sort_order: number;
-  source_library_type: string | null;
-  source_library_id: string | null;
-  children?: WbsTemplateNodeRecord[];
-}
-
 export type MasterLibraryType =
   | "phase"
   | "building"
@@ -247,18 +225,4 @@ export interface TaskTemplateMasterRecord extends MasterLibraryRecord {
   approval_workflow: string | null;
   dependency: string | null;
   remarks: string | null;
-}
-
-export interface WbsGenerationVariables {
-  phase_code: string;
-  phase_name: string;
-  building_code: string;
-  building_name: string;
-  basement_count: number;
-  floor_count: number;
-  zone_count: number;
-  room_count: number;
-  elements: { code: string; name: string }[];
-  disciplines: { code: string; name: string }[];
-  task_groups: { code: string; name: string }[];
 }

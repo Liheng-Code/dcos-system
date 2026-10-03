@@ -12,16 +12,26 @@ import {
   MIN_COL_WIDTH,
   NAV_COLUMNS,
   NODE_TYPE_OPTIONS,
+  PROJECT_NODE_TYPE,
   ROW_HEIGHT,
-  WBS_BUILDER_COLUMNS,
+  activityRollup,
+  countVisible,
+  openMapFor,
+  attachActivities,
+  isActivityRowId,
   rowWidthFrom,
+  visibleColumnsFor,
+  wbsDisplayCodes,
   type ColWidths,
+  type WbsActivitySummary,
   type WbsBuilderField,
   type WbsBuilderNode,
   type WbsBuilderRow,
   type WbsColumnKey,
+  type WbsViewPrefs,
 } from "./wbs-builder-types";
 import type { UseWbsBuilderData } from "./use-wbs-builder-data";
+import type { WbsCodeMask } from "@/lib/planning/wbs-code-mask";
 
 const BLANK = "__blank__";
 const COL_WIDTHS_KEY = "dcos_wbs_builder_col_widths";
@@ -64,7 +74,18 @@ interface WbsBuilderGridProps {
   registerTree: (api: TreeApi<WbsBuilderRow> | null) => void;
   /** Hands the parent an "add a row + start editing it" callback for the toolbar. */
   registerAddRow?: (fn: () => void) => void;
+  /** Open the detail panel for a node (details button, # double-click, activity row). */
   onOpenDetails: (nodeId: string, node?: WbsBuilderNode) => void;
+  /** A node row was selected (the panel follows it while open). */
+  onRowSelected?: (nodeId: string, node?: WbsBuilderNode) => void;
+  /** View › Columns / depth / activities. */
+  view: WbsViewPrefs;
+  /** The project's activities (roll-up column and optional activity rows). */
+  activities: WbsActivitySummary[];
+  /** The project's WBS Code Definition (Planning) — the grid shows the same codes. */
+  codeMask: WbsCodeMask;
+  /** Bumped on every View change, so re-choosing the same depth (Expand / Collapse all) re-applies it. */
+  depthNonce: number;
 }
 
 export function WbsBuilderGrid({
@@ -75,6 +96,11 @@ export function WbsBuilderGrid({
   registerTree,
   registerAddRow,
   onOpenDetails,
+  onRowSelected,
+  view,
+  activities,
+  depthNonce,
+  codeMask,
 }: WbsBuilderGridProps) {
   const {
     tree,
@@ -90,9 +116,54 @@ export function WbsBuilderGrid({
   const treeRef = useRef<TreeApi<WbsBuilderRow> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // No internal scrollbars — the arborist list is sized to fit every row so the
-  // whole grid grows with its content and the page does the scrolling.
-  const listHeight = Math.max(ROW_HEIGHT, flatRows.length * ROW_HEIGHT) + 2;
+  // Columns, activity rows and the per-node activity roll-up (View settings).
+  const columns = useMemo(() => visibleColumnsFor(view.columns), [view.columns]);
+  const navColumns = useMemo(() => NAV_COLUMNS.filter((f) => columns.some((c) => c.field === f)), [columns]);
+  const displayTree = useMemo(
+    () => (view.showActivities ? attachActivities(tree, activities) : tree),
+    [tree, activities, view.showActivities],
+  );
+  // Full WBS code per row, computed with activities attached so positions match Planning.
+  const codes = useMemo(() => wbsDisplayCodes(attachActivities(tree, activities), codeMask), [tree, activities, codeMask]);
+  const rollup = useMemo(() => {
+    const nodes = flatRows.map((r) => r.node).filter((n) => n.node_type !== PROJECT_NODE_TYPE);
+    const m = activityRollup(nodes, activities);
+    const project = flatRows.find((r) => r.node.node_type === PROJECT_NODE_TYPE);
+    if (project) {
+      const all = activityRollup(nodes.map((n) => (n.parent_id ? n : { ...n, parent_id: project.node.id })), activities)
+        .get(project.node.id);
+      if (all) m.set(project.node.id, all);
+    }
+    return m;
+  }, [flatRows, activities]);
+
+  // No internal scrollbars — the list is sized to the rows currently shown (collapsed branches
+  // take no space) so the grid grows with its content and the page does the scrolling.
+  const [initialOpen] = useState(() => openMapFor(displayTree, view));
+  const [visibleCount, setVisibleCount] = useState(() => countVisible(displayTree, initialOpen));
+  const syncVisible = useCallback(() => {
+    requestAnimationFrame(() => {
+      const n = treeRef.current?.visibleNodes?.length;
+      if (n != null) setVisibleCount(n);
+    });
+  }, []);
+  useEffect(() => { syncVisible(); }, [displayTree, syncVisible]);
+
+  // Depth / activities switch: open WBS levels above the chosen depth, close the rest.
+  useEffect(() => {
+    const api = treeRef.current;
+    if (!api) return;
+    const open = openMapFor(displayTree, view);
+    for (const [id, isOpen] of Object.entries(open)) {
+      if (isOpen) api.open(id);
+      else api.close(id);
+    }
+    syncVisible();
+    // Re-apply only when the depth or the activities switch changes, not on every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.depth, view.showActivities, depthNonce]);
+
+  const listHeight = Math.max(ROW_HEIGHT, visibleCount * ROW_HEIGHT) + 2;
 
   const [activeCell, setActiveCell] = useState<{ rowId: string; field: WbsBuilderField } | null>(null);
   const [editing, setEditing] = useState(false);
@@ -118,7 +189,7 @@ export function WbsBuilderGrid({
   useEffect(() => {
     colWidthsRef.current = colWidths;
   });
-  const rowWidth = rowWidthFrom(colWidths);
+  const rowWidth = rowWidthFrom(colWidths, columns);
 
   const startResize = useCallback((e: React.MouseEvent, field: WbsColumnKey) => {
     e.preventDefault();
@@ -182,7 +253,7 @@ export function WbsBuilderGrid({
 
   // Every cell is editable except on the synthetic project row.
   const isEditableRow = useCallback(
-    (rowId: string): boolean => !rowId.startsWith("node:project:"),
+    (rowId: string): boolean => !rowId.startsWith("node:project:") && !isActivityRowId(rowId),
     [],
   );
 
@@ -205,21 +276,21 @@ export function WbsBuilderGrid({
           return { rowId: nextRowId, field: firstEditableField(nextRowId, cur.field) };
         }
         const step = nav === "right" ? 1 : -1;
-        let i = NAV_COLUMNS.indexOf(cur.field);
-        for (let k = i + step; k >= 0 && k < NAV_COLUMNS.length; k += step) {
+        let i = navColumns.indexOf(cur.field);
+        for (let k = i + step; k >= 0 && k < navColumns.length; k += step) {
           if (isEditableRow(cur.rowId)) {
             i = k;
             break;
           }
         }
-        return { rowId: cur.rowId, field: NAV_COLUMNS[i] };
+        return { rowId: cur.rowId, field: navColumns[i] ?? cur.field };
       });
     },
-    [visibleIds, firstEditableField, isEditableRow],
+    [visibleIds, firstEditableField, isEditableRow, navColumns],
   );
 
-  // Selecting a real row also opens its detail panel — clicking any cell is
-  // enough, no separate "open details" click.
+  // Selecting a row only selects it (like a spreadsheet). The detail panel opens on request —
+  // the row's details button or a double-click on its # cell — and, while open, follows the selection.
   const selectRow = useCallback(
     (rowId: string | null) => {
       onSelectedRowChange(rowId);
@@ -230,10 +301,15 @@ export function WbsBuilderGrid({
         !rowId.startsWith("node:project:") // the synthetic project row has no node detail
       ) {
         const id = rowId.slice(5);
-        onOpenDetails(id, getNodeById(id) ?? undefined);
+        onRowSelected?.(id, getNodeById(id) ?? undefined);
       }
     },
-    [onSelectedRowChange, onOpenDetails, getNodeById],
+    [onSelectedRowChange, onRowSelected, getNodeById],
+  );
+
+  const openDetailsFor = useCallback(
+    (nodeId: string) => onOpenDetails(nodeId, getNodeById(nodeId) ?? undefined),
+    [onOpenDetails, getNodeById],
   );
 
   const activateCell = useCallback(
@@ -312,6 +388,12 @@ export function WbsBuilderGrid({
   const handleGridKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (editing || !activeCell) return;
+      // Activity rows are read-only: no indent / move / edit from the keyboard.
+      const structural = e.key === "Tab" || (e.altKey && e.key.startsWith("Arrow"));
+      if (structural && isActivityRowId(activeCell.rowId)) {
+        e.preventDefault();
+        return;
+      }
 
       switch (e.key) {
         case "ArrowLeft":
@@ -375,7 +457,7 @@ export function WbsBuilderGrid({
           >
             #
           </div>
-          {WBS_BUILDER_COLUMNS.map((c) => (
+          {columns.map((c) => (
             <div
               key={c.field}
               className={cn(
@@ -410,10 +492,12 @@ export function WbsBuilderGrid({
           ) : (
             <Tree<WbsBuilderRow>
               ref={setTreeApi}
-              data={tree}
+              data={displayTree}
               idAccessor="id"
               childrenAccessor={(r) => r.children}
               openByDefault
+              initialOpenState={initialOpen}
+              onToggle={syncVisible}
               rowHeight={ROW_HEIGHT}
               indent={0}
               padding={0}
@@ -449,6 +533,13 @@ export function WbsBuilderGrid({
                   onSetGfa={actions.setGfa}
                   onClearGfa={actions.clearGfa}
                   onToggleLock={actions.toggleLock}
+                  columns={columns}
+                  rollup={rollup.get(props.node.data.node.id)}
+                  onOpenActivity={(_task, packageNodeId) => {
+                    if (!packageNodeId.startsWith("project:")) openDetailsFor(packageNodeId);
+                  }}
+                  onOpenDetails={openDetailsFor}
+                  displayCode={codes.get(props.node.data.id) ?? ""}
                 />
               )}
             </Tree>
@@ -477,7 +568,7 @@ export function WbsBuilderGrid({
               <Plus className="h-3.5 w-3.5" />
             </span>
           </div>
-          {WBS_BUILDER_COLUMNS.map((c) => {
+          {columns.map((c) => {
             if (c.field === "node_type") {
               return (
                 <div

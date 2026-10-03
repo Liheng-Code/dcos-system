@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listWbsNodesByProjectIdNullsLast, listWbsTasksByProjectIdOrderedBySortOrder } from "@/lib/project/wbs/wbs-queries";
-import { Loader2, FileSpreadsheet, FolderTree, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, FolderTree, X } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
-import { MasterWbsImportDialog } from "@/components/project/wbs/master-wbs-import-dialog";
 import { WbsNodeWorkspace } from "@/components/project/wbs/wbs-node-workspace";
 import { WbsBuilder, type WbsBuilderApi } from "@/components/project/wbs/builder/wbs-builder";
 import type { WbsBuilderNode } from "@/components/project/wbs/builder/wbs-builder-types";
@@ -36,7 +34,6 @@ export function WbsManagementPage() {
   const [nodes, setNodes] = useState<WbsNodeRecord[]>([]);
   const [tasks, setTasks] = useState<WbsTaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showMasterImport, setShowMasterImport] = useState(false);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   // The builder's own copy of the clicked node — lets the panel render instantly
@@ -76,10 +73,20 @@ export function WbsManagementPage() {
     };
   }, [selectedProjectId, refreshAll]);
 
+  // While the panel is open it follows the selected row; a closed panel stays closed.
+  const handleRowSelected = useCallback(
+    (nodeId: string, node?: WbsBuilderNode) => {
+      if (!panelOpen) return;
+      setDetailNodeId(nodeId);
+      setPendingNode(node ?? null);
+    },
+    [panelOpen],
+  );
+
   const handleOpenDetails = useCallback(
     (nodeId: string, node?: WbsBuilderNode) => {
-      // Fired on every row click — show the panel instantly from data already in
-      // memory and refresh node/task detail in the background (don't await).
+      // Opened on request (details button, # double-click, activity row) — show the panel
+      // instantly from data in memory and refresh node/task detail in the background.
       setDetailNodeId(nodeId);
       setPendingNode(node ?? null);
       setPanelOpen(true);
@@ -189,16 +196,6 @@ export function WbsManagementPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-xl"
-            onClick={() => setShowMasterImport(true)}
-          >
-            <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" /> Import Master WBS
-          </Button>
-        </div>
       </header>
 
       <main
@@ -212,6 +209,7 @@ export function WbsManagementPage() {
             projectId={selectedProjectId}
             project={selectedProject}
             onOpenDetails={handleOpenDetails}
+            onRowSelected={handleRowSelected}
             registerApi={(api) => {
               builderApiRef.current = api;
             }}
@@ -255,16 +253,6 @@ export function WbsManagementPage() {
         )}
       </main>
 
-      {showMasterImport && (
-        <MasterWbsImportDialog
-          projectId={selectedProjectId}
-          onClose={() => setShowMasterImport(false)}
-          onImported={() => {
-            refreshAll();
-            builderApiRef.current?.reload();
-          }}
-        />
-      )}
     </div>
   );
 }

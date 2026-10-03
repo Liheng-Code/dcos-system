@@ -8,8 +8,12 @@ export type CellNav = "down" | "up" | "right" | "left" | "none";
 
 interface WbsBuilderCellProps {
   column: WbsBuilderColumn;
-  /** Raw string value for edit/display. */
+  /** Raw string value for edit (and display unless `display` is given). */
   value: string;
+  /** Shown instead of `value` when not editing (e.g. the full WBS code while the editor edits the own segment). */
+  display?: string;
+  /** Hover text when not editing. */
+  hint?: string;
   editable: boolean;
   active: boolean;
   editing: boolean;
@@ -26,6 +30,8 @@ interface WbsBuilderCellProps {
 export function WbsBuilderCell({
   column,
   value,
+  display,
+  hint,
   editable,
   active,
   editing,
@@ -77,12 +83,13 @@ export function WbsBuilderCell({
       ? n.toLocaleString("en-US", { maximumFractionDigits: 2 })
       : "";
   };
-  const displayLabel =
+  const displayLabel = display ?? (
     column.variant === "select"
       ? (options.find((o) => o.value === value)?.label ?? (value ? niceCase(value) : ""))
       : column.variant === "number"
         ? fmtNumber(value)
-        : value;
+        : value
+  );
 
   if (editing && editable) {
     const common =
@@ -154,7 +161,7 @@ export function WbsBuilderCell({
         editable ? "cursor-cell" : "cursor-default text-muted-foreground",
         active && "rounded-[3px] bg-primary/5 ring-2 ring-inset ring-primary/70",
       )}
-      title={displayLabel}
+      title={hint ?? displayLabel}
     >
       <span className="truncate">
         {displayLabel ||

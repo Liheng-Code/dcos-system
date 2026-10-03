@@ -1,12 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { updateWbsNodeById } from "@/lib/project/wbs/wbs-queries";
-import { CalendarDays, Edit3, Lock, Save, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, ExternalLink, ListChecks, Lock, TrendingUp } from "lucide-react";
 import { WbsCostTab } from "@/components/project/wbs/wbs-cost-tab";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { type WbsNodeData, type WbsNodeRecord, type WbsTaskRecord } from "@/components/project/wbs/wbs-types";
 
@@ -19,9 +16,9 @@ interface WbsNodeWorkspaceProps {
   locked?: boolean;
 }
 
-const NODE_TYPES = ["building", "level", "zone", "room", "element", "discipline", "task_group"];
-const STATUSES = ["active", "on_hold", "closed"];
-const TABS = ["details", "cost", "edit", "permissions"] as const;
+// Node fields (code, name, type, status, ...) are edited in the WBS grid itself; the panel shows
+// what the grid can't: schedule, activities and cost.
+const TABS = ["details", "cost"] as const;
 
 function dateRange(tasks: WbsTaskRecord[], field: "start_date" | "end_date") {
   const dates = tasks.map((task) => task[field]).filter((date): date is string => !!date).sort();
@@ -29,20 +26,18 @@ function dateRange(tasks: WbsTaskRecord[], field: "start_date" | "end_date") {
   return field === "start_date" ? dates[0] : dates[dates.length - 1];
 }
 
-export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = false }: WbsNodeWorkspaceProps) {
+const statusText = (s: string | null | undefined) => (s ? s.replace(/_/g, " ") : "");
+
+export function WbsNodeWorkspace({ node, nodeRecord, tasks, locked = false }: WbsNodeWorkspaceProps) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("details");
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    wbs_code: nodeRecord?.wbs_code ?? node.wbs_code,
-    wbs_name: nodeRecord?.wbs_name ?? node.wbs_name,
-    node_type: nodeRecord?.node_type ?? node.node_type,
-    status: nodeRecord?.status ?? node.status,
-    sort_order: nodeRecord?.sort_order?.toString() ?? "0",
-  });
 
   const plannedStart = dateRange(tasks, "start_date");
   const plannedFinish = dateRange(tasks, "end_date");
   const lateTasks = tasks.filter((task) => task.delay_status === "delayed" || task.delay_status === "blocked").length;
+  const sortedTasks = useMemo(
+    () => [...tasks].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || (a.task_code ?? "").localeCompare(b.task_code ?? "", undefined, { numeric: true })),
+    [tasks],
+  );
 
   const varianceSummary = useMemo(() => {
     const baselined = tasks.filter((t) => t.baseline_finish_date && t.end_date);
@@ -58,30 +53,6 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
     return { total: baselined.length, delayed: delayed.length, onTime: baselined.length - delayed.length, avgDays };
   }, [tasks]);
 
-  async function handleSave() {
-    if (!nodeRecord) return;
-    if (locked) {
-      toast.error("This WBS node is locked (Planning backbone) — unlock it first");
-      return;
-    }
-    setSaving(true);
-    const { error } = await updateWbsNodeById({
-        wbs_code: form.wbs_code,
-        wbs_name: form.wbs_name,
-        node_type: form.node_type,
-        status: form.status,
-        sort_order: parseInt(form.sort_order) || 0,
-      }, nodeRecord.id);
-
-    if (error) toast.error(error.message);
-    else {
-      toast.success("WBS node updated");
-      onSave();
-      setTab("details");
-    }
-    setSaving(false);
-  }
-
   return (
     <div className="space-y-4">
       {locked && (
@@ -90,15 +61,13 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
           <span>Locked — Planning backbone. Structure and GFA can&apos;t be edited until it is unlocked.</span>
         </div>
       )}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs text-slate-500">{nodeRecord?.full_path ?? node.full_path ?? node.wbs_code}</div>
-          <h2 className="mt-1 text-xl font-semibold text-slate-900">{node.wbs_name}</h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
-            <span className="rounded-full bg-slate-100 px-2 py-1 capitalize text-slate-700">{node.node_type}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-slate-700">{node.wbs_code}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{tasks.length} tasks</span>
-          </div>
+      <div>
+        <div className="text-xs text-slate-500">{nodeRecord?.full_path ?? node.full_path ?? node.wbs_code}</div>
+        <h2 className="mt-1 text-xl font-semibold text-slate-900">{node.wbs_name}</h2>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="rounded-full bg-slate-100 px-2 py-1 capitalize text-slate-700">{statusText(node.node_type)}</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-slate-700">{node.wbs_code}</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{tasks.length} activities</span>
         </div>
       </div>
 
@@ -123,7 +92,7 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
                 <CalendarDays className="h-4 w-4" />
                 Schedule
               </div>
-              {lateTasks > 0 && <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-medium text-red-600">Late</span>}
+              {lateTasks > 0 && <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-medium text-red-600">{lateTasks} late</span>}
             </div>
             <div className="grid grid-cols-2 gap-6 text-xs">
               <div>
@@ -133,14 +102,6 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Planned Finish</div>
                 <div className="mt-1 font-semibold">{plannedFinish ?? "-"}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Tasks</div>
-                <div className="mt-1 font-semibold">{tasks.length}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Late Tasks</div>
-                <div className="mt-1 font-semibold">{lateTasks}</div>
               </div>
             </div>
             <div className="mt-5">
@@ -176,18 +137,33 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
                   <div className={`text-[10px] ${varianceSummary.avgDays > 0 ? "text-amber-600" : "text-emerald-600"}`}>Avg Variance</div>
                 </div>
               </div>
-              <div className="mt-2 text-[10px] text-slate-400">{varianceSummary.total} of {tasks.length} tasks have a baseline set</div>
+              <div className="mt-2 text-[10px] text-slate-400">{varianceSummary.total} of {tasks.length} activities have a baseline set</div>
             </section>
           )}
 
           <section className="rounded-xl border border-slate-200 p-4">
-            <dl className="grid grid-cols-2 gap-4 text-xs">
-              <div><dt className="mb-1 uppercase tracking-wider text-slate-500">Type</dt><dd className="capitalize">{node.node_type}</dd></div>
-              <div><dt className="mb-1 uppercase tracking-wider text-slate-500">Code</dt><dd className="font-mono">{node.wbs_code}</dd></div>
-              <div className="col-span-2"><dt className="mb-1 uppercase tracking-wider text-slate-500">Full Path</dt><dd>{nodeRecord?.full_path ?? node.full_path ?? "-"}</dd></div>
-              <div><dt className="mb-1 uppercase tracking-wider text-slate-500">Status</dt><dd className="capitalize">{node.status.replace(/_/g, " ")}</dd></div>
-              <div><dt className="mb-1 uppercase tracking-wider text-slate-500">Description</dt><dd className="italic text-slate-500">None</dd></div>
-            </dl>
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <ListChecks className="h-4 w-4" />
+              Activities
+              <span className="text-xs font-normal text-slate-500">({tasks.length})</span>
+            </div>
+            {sortedTasks.length === 0 ? (
+              <p className="text-xs text-slate-500">No activities directly under this node.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 text-xs">
+                {sortedTasks.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 py-1.5">
+                    <span className="w-24 shrink-0 truncate font-mono text-[10px] text-slate-500">{t.task_code}</span>
+                    <span className="min-w-0 flex-1 truncate">{t.task_name}</span>
+                    <span className="shrink-0 capitalize text-slate-500">{statusText(t.status)}</span>
+                    <span className="w-9 shrink-0 text-right tabular-nums">{Math.round(t.progress ?? 0)}%</span>
+                    <Link href={`/dashboard/tasks/${t.id}`} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label={`Open ${t.task_name}`}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </div>
       )}
@@ -206,62 +182,6 @@ export function WbsNodeWorkspace({ node, nodeRecord, tasks, onSave, locked = fal
             Select a saved WBS node to view cost data.
           </div>
         )
-      )}
-
-      {tab === "edit" && (
-        <section className="rounded-xl border border-slate-200 p-4">
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
-            <Edit3 className="h-4 w-4" />
-            Edit WBS Information
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="inline_wbs_code">WBS Code *</Label>
-              <input id="inline_wbs_code" value={form.wbs_code} onChange={(e) => setForm((prev) => ({ ...prev, wbs_code: e.target.value.toUpperCase() }))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-hidden focus:border-primary" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="inline_node_type">Node Type</Label>
-              <select id="inline_node_type" value={form.node_type} onChange={(e) => setForm((prev) => ({ ...prev, node_type: e.target.value }))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary">
-                {NODE_TYPES.map((type) => <option key={type} value={type}>{type.replace(/_/g, " ")}</option>)}
-              </select>
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="inline_wbs_name">Name *</Label>
-              <input id="inline_wbs_name" value={form.wbs_name} onChange={(e) => setForm((prev) => ({ ...prev, wbs_name: e.target.value }))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="inline_status">Status</Label>
-              <select id="inline_status" value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary">
-                {STATUSES.map((status) => <option key={status} value={status}>{status.replace(/_/g, " ")}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="inline_sort_order">Sort Order</Label>
-              <input id="inline_sort_order" type="number" value={form.sort_order} onChange={(e) => setForm((prev) => ({ ...prev, sort_order: e.target.value }))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary" />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button
-              onClick={handleSave}
-              disabled={saving || locked || !form.wbs_code.trim() || !form.wbs_name.trim()}
-            >
-              <Save className="mr-1.5 h-4 w-4" />
-              Save Changes
-            </Button>
-          </div>
-        </section>
-      )}
-
-      {tab === "permissions" && (
-        <section className="rounded-xl border border-slate-200 p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <Lock className="h-4 w-4" />
-            Permissions
-          </div>
-          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-            WBS permissions are inherited from the selected project. Node-level permission rules can be added here when project permissions are expanded.
-          </div>
-        </section>
       )}
     </div>
   );

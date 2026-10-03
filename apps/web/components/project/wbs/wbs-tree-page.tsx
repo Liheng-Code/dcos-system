@@ -27,6 +27,7 @@ import { WbsNodeEditSheet, type WbsNodeRecord } from "@/components/project/wbs/w
 import { ProjectSiteAreaDialog } from "@/components/project/wbs/project-site-area-dialog";
 import { GfaInlineEditor } from "@/components/project/wbs/gfa-inline-editor";
 import { GfaRollup } from "@/components/project/wbs/gfa-rollup";
+import { ApplyLevelTemplateDialog } from "@/components/project/wbs/levels/apply-level-template-dialog";
 
 interface WbsNodeData {
   id: string;
@@ -187,6 +188,7 @@ export function WbsTreePage() {
   const [editingNode, setEditingNode] = useState<WbsNodeRecord | null>(null);
   const [addingChild, setAddingChild] = useState(false);
   const [showSiteArea, setShowSiteArea] = useState(false);
+  const [applyLevelsFor, setApplyLevelsFor] = useState<WbsNodeData | null>(null);
 
   const fetchGfaData = useCallback(async (nodeRecords: WbsNodeRecord[]): Promise<Map<string, { value: number; source: string | null }>> => {
     const gfaMap = new Map<string, { value: number; source: string | null }>();
@@ -371,6 +373,16 @@ export function WbsTreePage() {
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
+              {data.node_type === "building" && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setApplyLevelsFor(data); }}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="Add levels from template"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleDelete(data.id); }}
@@ -457,6 +469,12 @@ export function WbsTreePage() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {selectedNode.node_type === "building" && (
+                <Button variant="outline" size="sm" onClick={() => setApplyLevelsFor(selectedNode)}>
+                  <Layers className="mr-1 h-3.5 w-3.5" />
+                  Add Levels from Template
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -482,6 +500,16 @@ export function WbsTreePage() {
           parentId={addingChild && selectedNode ? selectedNode.id : null}
           onClose={() => { setShowEdit(false); setAddingChild(false); setEditingNode(null); }}
           onSave={() => { setShowEdit(false); setAddingChild(false); setEditingNode(null); refreshTree(); }}
+        />
+      )}
+
+      {applyLevelsFor && (
+        <ApplyLevelTemplateDialog
+          buildings={nodes.filter((n) => n.node_type === "building")}
+          initialBuildingId={applyLevelsFor.id}
+          open
+          onOpenChange={(open) => { if (!open) setApplyLevelsFor(null); }}
+          onApplied={() => refreshTree()}
         />
       )}
 

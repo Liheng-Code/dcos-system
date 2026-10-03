@@ -2,15 +2,14 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { BookType, Building2, Users, FileType, FolderTree, Layers } from "lucide-react";
+import { BookType, Building2, Users, FileType, FolderTree } from "lucide-react";
 import { NamingDisciplineCodes } from "./naming-discipline-codes";
 import { NamingCompanyAbbreviations } from "./naming-company-abbreviations";
 import { NamingStakeholderAbbreviations } from "./naming-stakeholder-abbreviations";
 import { NamingDocumentTypesSync } from "./naming-document-types-sync";
 import { NamingBudgetSectionsEditor } from "./naming-budget-sections-editor";
-import { NamingLevelTemplateAdmin } from "./naming-level-template-admin";
 
-type SubTab = "disciplines" | "companies" | "stakeholders" | "doctypes" | "budget" | "level_templates";
+type SubTab = "disciplines" | "companies" | "stakeholders" | "doctypes" | "budget";
 
 const subTabs: { id: SubTab; label: string; icon: typeof BookType }[] = [
   { id: "disciplines", label: "Discipline Codes", icon: BookType },
@@ -18,7 +17,6 @@ const subTabs: { id: SubTab; label: string; icon: typeof BookType }[] = [
   { id: "stakeholders", label: "Stakeholder Abbreviations", icon: Users },
   { id: "doctypes", label: "Document Type Sync", icon: FileType },
   { id: "budget", label: "Budget Sections", icon: FolderTree },
-  { id: "level_templates", label: "Level Templates", icon: Layers },
 ];
 
 export function NamingConventionAdminPage() {
@@ -63,7 +61,6 @@ export function NamingConventionAdminPage() {
       {subTab === "stakeholders" && <NamingStakeholderAbbreviations />}
       {subTab === "doctypes" && <NamingDocumentTypesSync />}
       {subTab === "budget" && <NamingBudgetSectionsEditor />}
-      {subTab === "level_templates" && <NamingLevelTemplateAdmin />}
     </div>
   );
 }

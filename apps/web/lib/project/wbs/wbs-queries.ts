@@ -11,13 +11,6 @@ import { createClient } from "@/lib/supabase/client";
 
 const db = () => createClient();
 
-// ── clone_wbs_template_to_project ─────────────────────────────────────────────
-
-// @table clone_wbs_template_to_project
-export function cloneWbsTemplateToProject(args: object) {
-  return db().rpc("clone_wbs_template_to_project", args);
-}
-
 // ── close_weekly_plan ─────────────────────────────────────────────────────────
 
 // @table close_weekly_plan
@@ -35,13 +28,6 @@ export function getDepartmentById(id: string | number | boolean) {
 // @table departments
 export function listDepartments() {
   return db().from("departments").select("id, department_code, department_name").order("department_name");
-}
-
-// ── generate_wbs_from_master_library_items ────────────────────────────────────
-
-// @table generate_wbs_from_master_library_items
-export function generateWbsFromMasterLibraryItems(args: object) {
-  return db().rpc("generate_wbs_from_master_library_items", args);
 }
 
 // ── import_master_wbs ─────────────────────────────────────────────────────────
@@ -165,11 +151,6 @@ export function deleteWbsNodeByIdReturning(id: string | number | boolean) {
 }
 
 // @table wbs_nodes
-export function deleteWbsNodesByProjectIdWithStatusActive(projectId: string | number | boolean) {
-  return db().from("wbs_nodes").delete().eq("project_id", projectId).eq("status", "active");
-}
-
-// @table wbs_nodes
 export function getWbsNodeById(id: string | number | boolean) {
   return db().from("wbs_nodes").select("wbs_code, wbs_name, full_path").eq("id", id).single();
 }
@@ -264,6 +245,27 @@ export function insertWbsSubscription(row: object) {
 
 // ── wbs_tasks ─────────────────────────────────────────────────────────────────
 
+// @table plan_wbs_code_mask
+/** The project's WBS Code Definition (set in Planning); null when none is saved or not visible. */
+export function getWbsCodeMaskByProjectId(projectId: string) {
+  return db()
+    .from("plan_wbs_code_mask")
+    .select("code_prefix, levels, generate_for_new, verify_unique")
+    .eq("project_id", projectId)
+    .maybeSingle();
+}
+
+// @table wbs_tasks
+/** One page of a project's activities (summary fields), for the WBS builder's activity rows / roll-up. */
+export function listWbsTaskSummariesPage(projectId: string, from: number, to: number) {
+  return db()
+    .from("wbs_tasks")
+    .select("id, wbs_node_id, task_code, wbs_outline_code, task_name, status, progress, duration_days, discipline, sort_order")
+    .eq("project_id", projectId)
+    .order("id")
+    .range(from, to);
+}
+
 // @table wbs_tasks
 export function deleteWbsTaskByIdReturning(id: string | number | boolean) {
   return db().from("wbs_tasks").delete().eq("id", id).select("id").maybeSingle();
@@ -333,55 +335,6 @@ export function listWbsTasksByProjectIdOrderedByTaskCode(projectId: string | num
 // @table wbs_tasks
 export function updateWbsTaskById(patch: object, id: string | number | boolean) {
   return db().from("wbs_tasks").update(patch).eq("id", id);
-}
-
-// ── wbs_template_nodes ────────────────────────────────────────────────────────
-
-// @table wbs_template_nodes
-export function deleteWbsTemplateNodeById(id: string | number | boolean) {
-  return db().from("wbs_template_nodes").delete().eq("id", id);
-}
-
-// @table wbs_template_nodes
-export function insertWbsTemplateNode(row: object) {
-  return db().from("wbs_template_nodes").insert([row]);
-}
-
-// @table wbs_template_nodes
-export function listWbsTemplateNodesByTemplateId(templateId: string | number | boolean) {
-  return db().from("wbs_template_nodes").select("*").eq("template_id", templateId).order("sort_order");
-}
-
-// @table wbs_template_nodes
-export function updateWbsTemplateNodeById(patch: object, id: string | number | boolean) {
-  return db().from("wbs_template_nodes").update(patch).eq("id", id);
-}
-
-// ── wbs_templates ─────────────────────────────────────────────────────────────
-
-// @table wbs_templates
-export function deleteWbsTemplateById(id: string | number | boolean) {
-  return db().from("wbs_templates").delete().eq("id", id);
-}
-
-// @table wbs_templates
-export function insertWbsTemplateReturning(row: object) {
-  return db().from("wbs_templates").insert([row]).select("id").single();
-}
-
-// @table wbs_templates
-export function listWbsTemplates() {
-  return db().from("wbs_templates").select("*").order("template_name");
-}
-
-// @table wbs_templates
-export function listWbsTemplatesWithIsActive() {
-  return db().from("wbs_templates").select("*").eq("is_active", true).order("template_name");
-}
-
-// @table wbs_templates
-export function updateWbsTemplateById(patch: object, id: string | number | boolean) {
-  return db().from("wbs_templates").update(patch).eq("id", id);
 }
 
 // ── weekly_plan_tasks ─────────────────────────────────────────────────────────

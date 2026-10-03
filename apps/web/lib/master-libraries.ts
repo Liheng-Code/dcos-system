@@ -1,5 +1,5 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
-import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord, WbsGenerationVariables } from "@/components/project/wbs/wbs-types";
+import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord } from "@/components/project/wbs/wbs-types";
 
 export interface MasterLibraryDefinition {
   type: MasterLibraryType;
@@ -11,11 +11,12 @@ export interface MasterLibraryDefinition {
   orderField: string;
 }
 
+// Levels are not a single-item library: they come only from Level Templates (lib/level-library.ts),
+// copied into a building. The old level_master table is kept but no longer offered.
 export const MASTER_LIBRARY_DEFINITIONS: MasterLibraryDefinition[] = [
   { type: "phase", label: "Phases", table: "phase_master", codeField: "phase_code", nameField: "phase_name", extraFields: ["sequence_no", "description"], orderField: "sequence_no" },
   { type: "building", label: "Buildings", table: "building_master", codeField: "building_code", nameField: "building_name", extraFields: ["building_type", "description"], orderField: "building_code" },
   { type: "stage", label: "Stages", table: "stage_master", codeField: "stage_code", nameField: "stage_name", extraFields: ["sequence_no", "description"], orderField: "sequence_no" },
-  { type: "level", label: "Levels", table: "level_master", codeField: "level_code", nameField: "level_name", extraFields: ["sort_order", "level_type"], orderField: "sort_order" },
   { type: "zone", label: "Zones", table: "zone_master", codeField: "zone_code", nameField: "zone_name", extraFields: ["description"], orderField: "zone_code" },
   { type: "room", label: "Rooms", table: "room_master", codeField: "room_code", nameField: "room_name", extraFields: ["category", "discipline", "description"], orderField: "room_code" },
   { type: "element", label: "Elements", table: "element_master", codeField: "element_code", nameField: "element_name", extraFields: ["category", "discipline", "description"], orderField: "element_code" },
@@ -24,7 +25,6 @@ export const MASTER_LIBRARY_DEFINITIONS: MasterLibraryDefinition[] = [
   { type: "task_template", label: "Task Templates", table: "task_template_master", codeField: "template_code", nameField: "task_name", extraFields: [], orderField: "template_code" },
 ];
 
-export const WBS_MASTER_LIBRARY_DEFINITIONS = MASTER_LIBRARY_DEFINITIONS.filter((definition) => definition.type !== "task_template");
 
 export function getMasterLibraryDefinition(type: MasterLibraryType) {
   return MASTER_LIBRARY_DEFINITIONS.find((definition) => definition.type === type) ?? MASTER_LIBRARY_DEFINITIONS[0];
@@ -387,27 +387,3 @@ function csvRowsToTaskTemplateRecords(rows: string[][]): Partial<TaskTemplateMas
     return record;
   });
 }
-
-export const DEFAULT_WBS_GENERATION_VARIABLES: WbsGenerationVariables = {
-  phase_code: "PH-CON",
-  phase_name: "Construction",
-  building_code: "BLD-A",
-  building_name: "Building A",
-  basement_count: 1,
-  floor_count: 3,
-  zone_count: 2,
-  room_count: 2,
-  elements: [
-    { code: "STR", name: "Structural Works" },
-    { code: "ARC", name: "Architectural Works" },
-    { code: "MEP", name: "M&E Works" },
-  ],
-  disciplines: [
-    { code: "CON", name: "Construction" },
-    { code: "QAQC", name: "QAQC" },
-  ],
-  task_groups: [
-    { code: "TG-CON", name: "Construction" },
-    { code: "TG-INS", name: "Inspection" },
-  ],
-};

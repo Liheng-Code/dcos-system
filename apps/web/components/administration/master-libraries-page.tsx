@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { LevelTemplateEditor } from "./level-template-editor";
+import { WbsTemplateEditor } from "./wbs-template-editor";
 import { BookTemplate, Download, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,8 @@ export function MasterLibrariesPage() {
   const supabase = useMemo(() => createClient(), []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeType, setActiveType] = useState<MasterLibraryType>("phase");
+  // Template tabs: Level Templates (level sets copied into a building) and WBS Templates (full WBS copied into a project).
+  const [templateTab, setTemplateTab] = useState<"level_templates" | "wbs_templates" | null>(null);
   const [records, setRecords] = useState<LibraryRecord[]>([]);
   const [phaseOptions, setPhaseOptions] = useState<MasterLibraryRecord[]>([]);
   const [disciplineOptions, setDisciplineOptions] = useState<MasterLibraryRecord[]>([]);
@@ -226,7 +230,7 @@ export function MasterLibrariesPage() {
             <p className="text-xs text-slate-500">PMO-maintained project generation libraries</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", templateTab && "hidden")}>
           <input
             ref={fileInputRef}
             type="file"
@@ -253,23 +257,40 @@ export function MasterLibrariesPage() {
         <div className="shrink-0 border-b border-slate-200 bg-white px-5 pt-3">
           <div className="scrollbar-hidden flex gap-1 overflow-x-auto">
             {MASTER_LIBRARY_DEFINITIONS.map((item) => (
-              <button
-                key={item.type}
-                type="button"
-                onClick={() => { setLoading(true); setActiveType(item.type); setEditing(null); setSearch(""); setCategoryFilter(""); setDisciplineFilter(""); setTaskGroupFilter(""); }}
-                className={cn(
-                  "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                  activeType === item.type
-                    ? "border-slate-900 text-slate-900"
-                    : "border-transparent text-slate-500 hover:text-slate-900",
-                )}
-              >
-                {item.label}
-              </button>
+              <Fragment key={item.type}>
+                <button
+                  type="button"
+                  onClick={() => { setTemplateTab(null); if (item.type !== activeType) setLoading(true); setActiveType(item.type); setEditing(null); setSearch(""); setCategoryFilter(""); setDisciplineFilter(""); setTaskGroupFilter(""); }}
+                  className={cn(
+                    "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                    !templateTab && activeType === item.type
+                      ? "border-slate-900 text-slate-900"
+                      : "border-transparent text-slate-500 hover:text-slate-900",
+                  )}
+                >
+                  {item.label}
+                </button>
+                {item.type === "stage" && ([["level_templates", "Level Templates"], ["wbs_templates", "WBS Templates"]] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setTemplateTab(tab); setEditing(null); }}
+                    className={cn(
+                      "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                      templateTab === tab
+                        ? "border-slate-900 text-slate-900"
+                        : "border-transparent text-slate-500 hover:text-slate-900",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </Fragment>
             ))}
           </div>
         </div>
 
+        {templateTab === "level_templates" ? <LevelTemplateEditor /> : templateTab === "wbs_templates" ? <WbsTemplateEditor /> : (
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
             <div>
@@ -427,6 +448,7 @@ export function MasterLibrariesPage() {
             )}
           </div>
         </main>
+        )}
       </div>
 
       {editing && (

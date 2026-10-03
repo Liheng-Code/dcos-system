@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { differenceInCalendarDays, format as fmtDate, isValid, parse as parseDateFns } from "date-fns";
+import { COLUMNS, depthOf, parseMasterWbsRows, readMasterWbsWorkbook, type MRow } from "@/lib/project/wbs/master-wbs-sheet";
 import { importMasterWbs, listWbsNodesByProjectIdOfIdAndWbsCode, listWbsTasksByProjectId } from "@/lib/project/wbs/wbs-queries";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,106 +26,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useIsWbsManager } from "@/hooks/use-is-wbs-manager";
 
-// ---------------------------------------------------------------------------
-// Column model — the PMO "Master WBS" sheet
-// (docs/7_Floor_Building_Master_WBS_Complete_Mockup.xlsx → sheet "Master WBS").
-// Header row 1; one row per WBS line. Summary rows (Project / Phase / Work
-// Package) become wbs_nodes; Activity / Material Package rows become wbs_tasks.
-// ---------------------------------------------------------------------------
-type ColKey =
-  | "code"
-  | "level"
-  | "name"
-  | "type"
-  | "discipline"
-  | "area"
-  | "duration"
-  | "start"
-  | "finish"
-  | "predecessors"
-  | "resources"
-  | "cost_code"
-  | "notes";
-
-const COLUMNS: { key: ColKey; label: string; hint: string; required?: boolean }[] = [
-  { key: "code", label: "WBS Code", hint: "Dot notation — 0, 01, 01.01, 01.04.07", required: true },
-  { key: "level", label: "Level", hint: "0–5 (optional — derived from the code)" },
-  { key: "name", label: "Activity / Work Package", hint: "Line name", required: true },
-  { key: "type", label: "Type", hint: "Project · Phase · Work Package · Activity · Material Package", required: true },
-  { key: "discipline", label: "Discipline", hint: "Structural, MEP, Architectural…" },
-  { key: "area", label: "Floor / Area", hint: "B1, GF, 1F…7F, RF, External" },
-  { key: "duration", label: "Duration (Days)", hint: "Whole days (activities)" },
-  { key: "start", label: "Baseline Start", hint: "dd-MMM-yyyy" },
-  { key: "finish", label: "Baseline Finish", hint: "dd-MMM-yyyy" },
-  { key: "predecessors", label: "Predecessors", hint: "Comma-separated WBS codes" },
-  { key: "resources", label: "Resources", hint: "Comma-separated (free text)" },
-  { key: "cost_code", label: "Cost Code", hint: "e.g. D-1100, C-32G1" },
-  { key: "notes", label: "Notes / Remarks", hint: "Free text" },
-];
-
-const HEADER_ALIASES: Record<ColKey, string[]> = {
-  code: ["wbscode", "code", "wbs", "id"],
-  level: ["level", "outlinelevel", "depth", "tier"],
-  name: ["activityworkpackage", "activity", "workpackage", "name", "title", "description"],
-  type: ["type", "nodetype", "kind"],
-  discipline: ["discipline", "trade"],
-  area: ["floorarea", "floor", "area", "zone", "location"],
-  duration: ["durationdays", "duration", "days", "dur"],
-  start: ["baselinestart", "start", "startdate", "plannedstart"],
-  finish: ["baselinefinish", "finish", "finishdate", "end", "enddate", "plannedfinish"],
-  predecessors: ["predecessors", "predecessor", "preds", "logic", "depends", "dependency"],
-  resources: ["resources", "resource", "crew"],
-  cost_code: ["costcode", "cost", "cbs", "costcentre"],
-  notes: ["notesremarks", "notes", "remarks", "comment", "comments"],
-};
-
-const normHeader = (h: string) => h.toLowerCase().replace(/[\s_\-/.()]/g, "");
-
-const TARGET_SHEET = "master wbs";
-
-// ---------------------------------------------------------------------------
-
-type RowKind = "node" | "task";
-type RowState = "new" | "skip" | "update" | "error";
 type Mode = "merge" | "merge_update" | "replace";
 
-interface Predecessor {
-  code: string;
-  type: string; // fs | ss | ff | sf
-  lag: number;
-}
-
-interface MRow {
-  _row: number;
-  rawCode: string;
-  key: string;
-  parentKey: string;
-  level: number;
-  name: string;
-  typeRaw: string;
-  kind: RowKind;
-  nodeType: string;
-  taskType: string;
-  /** The sheet's level-0 Project row — never imported; the app's project is the root. */
-  isProjectRow: boolean;
-  discipline: string;
-  area: string;
-  durationDays: number | null;
-  start: string | null;
-  finish: string | null;
-  predText: string;
-  preds: Predecessor[];
-  resources: string;
-  costCode: string;
-  notes: string;
-  sortOrder: number;
-  isBelowGround: boolean;
-  isExternal: boolean;
-  scheduleLevel: number;
-  state: RowState;
-  errors: string[];
-  warnings: string[];
-}
+const NODE_KIND_LABEL: Record<string, string> = {
+  phase: "Phase", building: "Building", level: "Level", zone: "Zone", task_group: "Package",
+};
 
 interface ImportSummary {
   mode: string;
@@ -146,104 +51,6 @@ interface MasterWbsImportDialogProps {
 
 type Step = "upload" | "preview" | "importing" | "done";
 
-// ---------------------------------------------------------------------------
-// Parsing helpers
-// ---------------------------------------------------------------------------
-
-const CODE_RE = /^\d+(?:\.\d+)*$/;
-
-function normCode(raw: string): string {
-  return raw.trim().replace(/\s+/g, "").replace(/[，、]/g, ",");
-}
-
-function parentOf(code: string): string {
-  if (!code || code === "0") return "";
-  const i = code.lastIndexOf(".");
-  if (i === -1) return "0"; // top-level phase → hangs off the project root row
-  return code.slice(0, i);
-}
-
-function depthOf(code: string): number {
-  if (code === "0") return 0;
-  return code.split(".").length;
-}
-
-/** Strip a leading token equal to the WBS code (or its last segment) from a name. */
-function stripCodePrefix(name: string, code: string): string {
-  const n = name.trim();
-  const last = code.includes(".") ? code.slice(code.lastIndexOf(".") + 1) : code;
-  for (const token of [code, last]) {
-    if (token && n.toLowerCase().startsWith(token.toLowerCase())) {
-      const rest = n.slice(token.length).replace(/^[\s.:)\-–—]+/, "");
-      if (rest) return rest;
-    }
-  }
-  return n;
-}
-
-const DATE_FORMATS = ["dd-MMM-yyyy", "d-MMM-yyyy", "dd-MMM-yy", "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "MM/dd/yyyy"];
-
-function parseCellDate(v: unknown): string | null {
-  if (v == null || v === "") return null;
-  if (v instanceof Date) return isValid(v) ? fmtDate(v, "yyyy-MM-dd") : null;
-  if (typeof v === "number" && Number.isFinite(v)) {
-    // Excel serial date (1900 date system)
-    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-    return isValid(d) ? fmtDate(d, "yyyy-MM-dd") : null;
-  }
-  const s = String(v).trim();
-  if (!s) return null;
-  for (const f of DATE_FORMATS) {
-    const d = parseDateFns(s, f, new Date());
-    if (isValid(d)) return fmtDate(d, "yyyy-MM-dd");
-  }
-  const iso = new Date(s);
-  return isValid(iso) ? fmtDate(iso, "yyyy-MM-dd") : null;
-}
-
-const PRED_RE = /^(\d+(?:\.\d+)*)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+)?\s*d?$/i;
-
-function parsePredecessors(raw: string): { list: Predecessor[]; bad: string[] } {
-  const list: Predecessor[] = [];
-  const bad: string[] = [];
-  for (const part of raw.split(/[,;\n]/).map((p) => p.trim()).filter(Boolean)) {
-    const m = part.match(PRED_RE);
-    if (!m) {
-      bad.push(part);
-      continue;
-    }
-    list.push({
-      code: m[1],
-      type: (m[2] ?? "fs").toLowerCase(),
-      lag: m[3] ? Number(m[3].replace(/\s+/g, "")) : 0,
-    });
-  }
-  return { list, bad };
-}
-
-function classifyType(
-  raw: string,
-): { kind: RowKind; nodeType: string; taskType: string; known: boolean; isProject: boolean } {
-  const s = raw.toLowerCase().replace(/[\s_-]+/g, " ").trim();
-  if (s === "project")
-    return { kind: "node", nodeType: "building", taskType: "", known: true, isProject: true };
-  if (s === "phase")
-    return { kind: "node", nodeType: "phase", taskType: "", known: true, isProject: false };
-  if (s === "work package" || s === "workpackage" || s === "summary" || s === "wp")
-    return { kind: "node", nodeType: "task_group", taskType: "", known: true, isProject: false };
-  if (s === "material package" || s === "material" || s === "procurement")
-    return { kind: "task", nodeType: "", taskType: "material_package", known: true, isProject: false };
-  if (s === "activity" || s === "task")
-    return { kind: "task", nodeType: "", taskType: "activity", known: true, isProject: false };
-  return { kind: "task", nodeType: "", taskType: "activity", known: false, isProject: false };
-}
-
-function clampLevel(n: number): number {
-  if (!Number.isFinite(n)) return 3;
-  return Math.min(5, Math.max(1, Math.round(n)));
-}
-
-// ---------------------------------------------------------------------------
 
 export function MasterWbsImportDialog({ projectId, onClose, onImported }: MasterWbsImportDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -257,8 +64,26 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
   const [dragging, setDragging] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
+  // Rows the user unticked in the preview (a key also excludes everything under it).
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const isExcluded = useCallback(
+    (r: MRow) => [...excluded].some((k) => r.key === k || r.key.startsWith(`${k}.`)),
+    [excluded],
+  );
+  const toggleRow = (r: MRow) =>
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (isExcluded(r)) {
+        // Re-tick: drop this key and anything excluded below it (a parent stays as it was).
+        for (const k of [...next]) if (k === r.key || k.startsWith(`${r.key}.`)) next.delete(k);
+      } else {
+        next.add(r.key);
+      }
+      return next;
+    });
+
   const stats = useMemo(() => {
-    const usable = rows.filter((r) => r.state !== "error" && !r.isProjectRow);
+    const usable = rows.filter((r) => r.state !== "error" && !r.isProjectRow && !isExcluded(r));
     return {
       nodes: usable.filter((r) => r.kind === "node").length,
       tasks: usable.filter((r) => r.kind === "task").length,
@@ -266,138 +91,25 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
       errors: rows.filter((r) => r.state === "error").length,
       projectSkipped: rows.some((r) => r.isProjectRow),
       predWarnings: rows.reduce((a, r) => a + r.warnings.filter((w) => w.startsWith("Predecessor")).length, 0),
+      unticked: rows.filter((r) => r.state !== "error" && !r.isProjectRow && isExcluded(r)).length,
     };
-  }, [rows]);
+  }, [rows, isExcluded]);
 
   const parseFile = useCallback(
     async (file: File | null) => {
       if (!file) return;
       setFileName(file.name);
       try {
-        const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-        const sheetName =
-          wb.SheetNames.find((n) => n.trim().toLowerCase() === TARGET_SHEET) ?? wb.SheetNames[0];
+        const { sheetName, raw } = readMasterWbsWorkbook(await file.arrayBuffer());
         setSheetUsed(sheetName);
-        const ws = wb.Sheets[sheetName];
-        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
         if (raw.length === 0) {
           toast.error(`Sheet "${sheetName}" is empty`);
           return;
         }
 
-        const headers = Object.keys(raw[0]);
-        const col: Partial<Record<ColKey, string>> = {};
-        for (const key of Object.keys(HEADER_ALIASES) as ColKey[]) {
-          col[key] = headers.find(
-            (h) => normHeader(h) === normHeader(key) || HEADER_ALIASES[key].includes(normHeader(h)),
-          );
-        }
-        if (!col.code || !col.name || !col.type) {
-          toast.error('Missing required columns — need "WBS Code", "Activity / Work Package" and "Type"');
-          return;
-        }
-
-        const cell = (r: Record<string, unknown>, key: ColKey) =>
-          col[key] ? String(r[col[key]!] ?? "").trim() : "";
-        const cellRaw = (r: Record<string, unknown>, key: ColKey) => (col[key] ? r[col[key]!] : "");
-
-        // -- Pass 1: raw parse ------------------------------------------------
-        const parsed: MRow[] = raw.map((r, i) => {
-          const errors: string[] = [];
-          const warnings: string[] = [];
-
-          const rawCode = normCode(cell(r, "code"));
-          const key = rawCode;
-          const name0 = cell(r, "name");
-          const typeRaw = cell(r, "type");
-
-          if (!rawCode) errors.push("WBS Code is required");
-          else if (!CODE_RE.test(rawCode)) errors.push(`WBS Code "${rawCode}" is not dot-notation`);
-          if (!name0) errors.push("Name is required");
-
-          const levelCell = Number(cell(r, "level"));
-          const level = Number.isFinite(levelCell) && cell(r, "level") !== "" ? levelCell : depthOf(rawCode);
-
-          const t = classifyType(typeRaw);
-          const isProjectRow = t.isProject || rawCode === "0" || level === 0;
-          if (!typeRaw) errors.push("Type is required");
-          else if (!t.known && !isProjectRow)
-            warnings.push(`Unrecognised Type "${typeRaw}" — treated as Activity`);
-
-          const durStr = cell(r, "duration");
-          const durationDays = durStr !== "" && Number.isFinite(Number(durStr)) ? Number(durStr) : null;
-
-          const start = parseCellDate(cellRaw(r, "start"));
-          const finish = parseCellDate(cellRaw(r, "finish"));
-          if (cell(r, "start") && !start) warnings.push(`Baseline Start "${cell(r, "start")}" not understood`);
-          if (cell(r, "finish") && !finish) warnings.push(`Baseline Finish "${cell(r, "finish")}" not understood`);
-          if (start && finish && finish < start) warnings.push("Baseline Finish is before Baseline Start");
-          if (durationDays != null && start && finish) {
-            const span = differenceInCalendarDays(new Date(finish), new Date(start));
-            if (Math.abs(span - durationDays) > 3)
-              warnings.push(`Duration ${durationDays}d ≠ date span ${span}d`);
-          }
-
-          const predText = cell(r, "predecessors");
-          const { list: preds, bad } = parsePredecessors(predText);
-          for (const b of bad) warnings.push(`Predecessor "${b}" not understood — kept as text`);
-
-          const area = cell(r, "area");
-
-          return {
-            _row: i + 2,
-            rawCode,
-            key,
-            parentKey: parentOf(rawCode),
-            level,
-            name: stripCodePrefix(name0, rawCode),
-            typeRaw,
-            kind: t.kind,
-            nodeType: t.nodeType,
-            taskType: t.taskType,
-            isProjectRow,
-            discipline: cell(r, "discipline"),
-            area,
-            durationDays,
-            start,
-            finish,
-            predText,
-            preds,
-            resources: cell(r, "resources"),
-            costCode: cell(r, "cost_code"),
-            notes: cell(r, "notes"),
-            sortOrder: 0,
-            isBelowGround: /^b\s*-?\d/i.test(area),
-            isExternal: /^ext/i.test(area.trim()) || area.trim().toLowerCase() === "external",
-            scheduleLevel: clampLevel(level || depthOf(rawCode)),
-            state: "new" as RowState,
-            errors,
-            warnings,
-          };
-        });
-
-        // -- Pass 2: drop the sheet's Project row, resolve hierarchy -------
-        // The DCOS project is already fixed from the global project picker and
-        // shown as the WBS root, so the sheet's level-0 Project row is never
-        // imported. Its direct children (the phases) re-attach at the top level.
-        const projectKeys = new Set(parsed.filter((r) => r.isProjectRow).map((r) => r.key));
-        for (const r of parsed) {
-          if (projectKeys.has(r.parentKey)) r.parentKey = "";
-          if (r.isProjectRow) r.warnings.push("Skipped — phases attach under your current project");
-        }
-
+        // Pass 1 + 2 (cells, Project row, hierarchy) are shared with WBS template import.
+        const parsed = parseMasterWbsRows(raw);
         const sheetKeys = new Set(parsed.filter((r) => r.key && !r.isProjectRow).map((r) => r.key));
-        const parentKeys = new Set(
-          parsed.filter((r) => !r.isProjectRow).map((r) => r.parentKey).filter(Boolean),
-        );
-        for (const r of parsed) {
-          if (r.kind === "task" && parentKeys.has(r.key)) {
-            r.kind = "node";
-            r.nodeType = "task_group";
-            r.taskType = "";
-            r.warnings.push("Has child rows — imported as a Work Package node");
-          }
-        }
 
         const [nodesRes, tasksRes] = await Promise.all([
           listWbsNodesByProjectIdOfIdAndWbsCode(projectId, "wbs_code, wbs_outline_code, full_path"),
@@ -462,6 +174,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
         }
 
         setRows(parsed);
+        setExcluded(new Set());
         setStep("preview");
       } catch (e) {
         toast.error("Couldn't read that file: " + (e instanceof Error ? e.message : "unknown error"));
@@ -471,7 +184,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
   );
 
   async function runImport() {
-    const usable = rows.filter((r) => r.state !== "error" && !r.isProjectRow);
+    const usable = rows.filter((r) => r.state !== "error" && !r.isProjectRow && !isExcluded(r));
     if (usable.length === 0) return;
     setStep("importing");
 
@@ -551,8 +264,10 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
       ["01.01.01", 3, "Design Brief", "Activity", "Design", "", 10, "01-Oct-2026", "10-Oct-2026", "01.01", "Design Manager, Client", "D-1100", ""],
       ["01.01.02", 3, "Design Criteria", "Activity", "Design", "", 8, "13-Oct-2026", "20-Oct-2026", "01.01.01", "Design Manager", "D-1100", ""],
       ["02", 1, "02 CONSTRUCTION", "Phase", "Construction", "", 280, "01-Feb-2027", "30-Nov-2027", "01", "PM Team", "C-2000", ""],
-      ["02.01", 2, "02.01 GROUND FLOOR", "Work Package", "Construction", "GF", 90, "01-Feb-2027", "01-May-2027", "01.01.02", "Site Team", "C-2100", ""],
-      ["02.01.01", 3, "Setting Out", "Activity", "Structural", "GF", 2, "01-Feb-2027", "02-Feb-2027", "02.01", "Surveyor", "C-2100", ""],
+      ["02.01", 2, "02.01 TOWER A", "Building", "Construction", "", 280, "01-Feb-2027", "30-Nov-2027", "", "Site Team", "C-2100", ""],
+      ["02.01.01", 3, "02.01.01 GROUND FLOOR", "Level", "Construction", "GF", 90, "01-Feb-2027", "01-May-2027", "01.01.02", "Site Team", "C-2110", ""],
+      ["02.01.01.01", 4, "02.01.01.01 STRUCTURAL WORKS", "Work Package", "Structural", "GF", 30, "01-Feb-2027", "02-Mar-2027", "", "Site Team", "C-2111", ""],
+      ["02.01.01.01.01", 5, "Setting Out", "Activity", "Structural", "GF", 2, "01-Feb-2027", "02-Feb-2027", "", "Surveyor", "C-2111", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = [12, 7, 40, 16, 14, 12, 14, 15, 15, 18, 24, 12, 24].map((wch) => ({ wch }));
@@ -575,14 +290,9 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
       <DialogContent className="w-[min(1080px,94vw)] max-w-none sm:max-w-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4" /> Import Master WBS
+            <FileSpreadsheet className="h-4 w-4" /> Import WBS from Excel / CSV
           </DialogTitle>
-          <DialogDescription>
-            Import a PMO master programme. <strong>Phase / Work Package</strong> rows become WBS nodes;{" "}
-            <strong>Activity / Material Package</strong> rows become scheduled activities with baseline
-            dates and predecessor links. The sheet&apos;s top-level Project row is skipped — the WBS
-            hangs off your current project. Reads the sheet named <strong>Master WBS</strong>.
-          </DialogDescription>
+          <DialogDescription>Phases, buildings, levels and packages become WBS nodes; activities keep their dates and links.</DialogDescription>
         </DialogHeader>
 
         {/* Step rail */}
@@ -604,9 +314,11 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
 
         {step === "upload" && (
           <div className="space-y-3">
-            <div className="rounded-lg border border-border bg-muted/40 p-3">
-              <p className="mb-2 text-[11px] font-semibold text-muted-foreground">Expected columns</p>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <details className="rounded-lg border border-border bg-muted/40 p-3">
+              <summary className="cursor-pointer text-[11px] font-semibold text-muted-foreground">
+                Columns: WBS Code*, Name*, Type*, then optional Discipline, Floor / Area, Duration, dates, Predecessors…
+              </summary>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                 {COLUMNS.map((c) => (
                   <div key={c.key} className="rounded-md border border-border bg-background px-2 py-1.5">
                     <div className="flex items-center gap-1 text-xs font-medium">
@@ -617,14 +329,15 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
                   </div>
                 ))}
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("xlsx")}>
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Excel template
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("csv")}>
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> CSV template
-                </Button>
-              </div>
+            </details>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              Sample file:
+              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("xlsx")}>
+                <Download className="mr-1.5 h-3.5 w-3.5" /> Excel
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => downloadTemplate("csv")}>
+                <Download className="mr-1.5 h-3.5 w-3.5" /> CSV
+              </Button>
             </div>
 
             <div
@@ -669,6 +382,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
                 <span className="text-sky-600">{stats.tasks} activities</span>
                 {stats.skip > 0 && <> {" · "}<span className="text-slate-500">{stats.skip} already exist</span></>}
                 {stats.errors > 0 && <> {" · "}<span className="text-amber-600">{stats.errors} errors</span></>}
+                {stats.unticked > 0 && <> {" · "}<span className="text-slate-500">{stats.unticked} unticked</span></>}
               </span>
               <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => fileInputRef.current?.click()}>
                 Change file
@@ -685,10 +399,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
             {stats.projectSkipped && (
               <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>
-                  The sheet&apos;s top-level <strong>Project</strong> row is skipped — your project is
-                  already set from the project picker. Its phases import directly under it.
-                </span>
+                <span>The sheet&apos;s Project row is skipped; its phases go under this project.</span>
               </div>
             )}
 
@@ -720,6 +431,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
             <div className="max-h-[22rem] overflow-auto rounded-lg border border-border">
               <table className="w-full table-fixed text-xs">
                 <colgroup>
+                  <col className="w-8" />
                   <col className="w-12" />
                   <col className="w-28" />
                   <col className="w-24" />
@@ -732,6 +444,16 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
                 </colgroup>
                 <thead className="sticky top-0 bg-muted text-left text-[11px] font-semibold text-muted-foreground">
                   <tr>
+                    <th className="px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all rows"
+                        checked={excluded.size === 0}
+                        ref={(el) => { if (el) el.indeterminate = excluded.size > 0 && stats.nodes + stats.tasks > 0; }}
+                        onChange={(e) => setExcluded(e.target.checked ? new Set() : new Set(rows.filter((r) => !r.isProjectRow && r.parentKey === "").map((r) => r.key)))}
+                        className="h-3.5 w-3.5 accent-primary"
+                      />
+                    </th>
                     <th className="px-2 py-1.5">#</th>
                     <th className="px-2 py-1.5">Code</th>
                     <th className="px-2 py-1.5">Kind</th>
@@ -752,8 +474,20 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
                         r.state === "error" && "bg-amber-50/60",
                         r.state === "skip" && "text-muted-foreground",
                         r.isProjectRow && "opacity-60",
+                        isExcluded(r) && "opacity-40",
                       )}
                     >
+                      <td className="px-2 py-1">
+                        {!r.isProjectRow && r.state !== "error" && (
+                          <input
+                            type="checkbox"
+                            aria-label={`Import ${r.name}`}
+                            checked={!isExcluded(r)}
+                            onChange={() => toggleRow(r)}
+                            className="h-3.5 w-3.5 accent-primary"
+                          />
+                        )}
+                      </td>
                       <td className="px-2 py-1 text-muted-foreground tabular-nums">{r._row}</td>
                       <td className="px-2 py-1 font-mono">{r.rawCode || "—"}</td>
                       <td className="px-2 py-1">
@@ -767,7 +501,7 @@ export function MasterWbsImportDialog({ projectId, onClose, onImported }: Master
                                 : "bg-sky-100 text-sky-700",
                           )}
                         >
-                          {r.isProjectRow ? "Project · skip" : r.kind === "node" ? "Node" : "Task"}
+                          {r.isProjectRow ? "Project · skip" : r.kind === "node" ? (NODE_KIND_LABEL[r.nodeType] ?? "Node") : "Activity"}
                         </span>
                       </td>
                       <td

@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { getWbsNodeGfa, upsertWbsNodeGfa } from "@/lib/wbs-area-service";
+import { LEVEL_TYPES } from "@/lib/level-library";
+import { getLevelTemplateName } from "@/lib/level-library-queries";
 import { insertWbsNode, listWbsNodesByProjectIdAndParentId, updateWbsNodeById } from "@/lib/project/wbs/wbs-queries";
 
 export interface WbsNodeRecord {
@@ -23,6 +25,12 @@ export interface WbsNodeRecord {
   status: string;
   is_below_ground?: boolean;
   is_external_works?: boolean;
+  // Level nodes only. A level copied from a Level Library template keeps the template as a
+  // reference; editing the level here never changes the template.
+  level_type?: string | null;
+  floor_height_m?: number | null;
+  source_level_template_id?: string | null;
+  source_level_template_version?: number | null;
 }
 
 const NODE_TYPES = [
@@ -55,9 +63,26 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
     sort_order: node?.sort_order?.toString() ?? "0",
     is_below_ground: node?.is_below_ground ?? false,
     is_external_works: node?.is_external_works ?? false,
+    level_type: node?.level_type ?? "",
+    floor_height_m: node?.floor_height_m != null ? String(node.floor_height_m) : "",
   });
   const [saving, setSaving] = useState(false);
   const [sortOrderTouched, setSortOrderTouched] = useState(false);
+  const [sourceTemplateName, setSourceTemplateName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!node?.source_level_template_id) return;
+    getLevelTemplateName(node.source_level_template_id).then(setSourceTemplateName);
+  }, [node?.source_level_template_id]);
+
+  // Level-only attributes; cleared when the node is not a level.
+  const levelFields = form.node_type === "level"
+    ? {
+        level_type: form.level_type || null,
+        floor_height_m: form.floor_height_m ? parseFloat(form.floor_height_m) : null,
+        is_basement: form.level_type === "basement" || form.is_below_ground,
+      }
+    : { level_type: null, floor_height_m: null };
 
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -80,6 +105,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
           sort_order: parseInt(form.sort_order) || 0,
           is_below_ground: form.is_below_ground,
           is_external_works: form.is_external_works,
+          ...levelFields,
         }, node.id);
 
       if (error) {
@@ -106,6 +132,7 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
         sort_order: sortOrder,
         is_below_ground: form.is_below_ground,
         is_external_works: form.is_external_works,
+        ...levelFields,
       });
 
       if (error) {
@@ -212,15 +239,51 @@ export function WbsNodeEditSheet({ node, projectId, parentId, onClose, onSave }:
               </div>
             </div>
             {form.node_type === "level" && (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.is_below_ground}
-                  onChange={() => toggle("is_below_ground")}
-                  className="h-4 w-4 rounded border-border"
-                />
-                Basement level (below ground)
-              </label>
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="level_type">Level Type</Label>
+                    <select
+                      id="level_type"
+                      value={form.level_type}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => ({ ...prev, level_type: v, is_below_ground: v === "basement" ? true : prev.is_below_ground }));
+                      }}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                    >
+                      <option value="">—</option>
+                      {LEVEL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="floor_height_m">Floor-to-floor height (m)</Label>
+                    <input
+                      id="floor_height_m"
+                      type="number"
+                      step="0.01"
+                      value={form.floor_height_m}
+                      onChange={(e) => update("floor_height_m", e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.is_below_ground}
+                    onChange={() => toggle("is_below_ground")}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  Basement level (below ground)
+                </label>
+                {node?.source_level_template_id && (
+                  <p className="text-xs text-muted-foreground">
+                    Copied from level template {sourceTemplateName ? `"${sourceTemplateName}"` : ""}
+                    {node.source_level_template_version ? ` v${node.source_level_template_version}` : ""}. Changes here apply to this project only.
+                  </p>
+                )}
+              </>
             )}
             <label className="flex items-center gap-2 text-sm">
               <input
