@@ -155,7 +155,7 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
     setDetails(d);
     if (d?.tender_register_id) {
       const [{ data: t }, { data: ws }] = await Promise.all([
-        getTenderRegisterById(d.tender_register_id, "id, tender_no, title, status, issue_date"),
+        getTenderRegisterById(d.tender_register_id, "id, tender_no, title, status, issue_date, budget_range"),
         listTenderWorkstreamsByTenderId(d.tender_register_id),
       ]);
       setTender((t as TenderRecord | null) ?? null);

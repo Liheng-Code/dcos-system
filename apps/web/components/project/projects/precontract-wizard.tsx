@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { getProjectById, getProjectPrecontractDetailByProjectId, getTenderRegisterById, getTenderRegisterByProjectId, getTenderRegisterByTenderNo, insertProjectsReturning, insertTenderRegisterReturning, insertTenderRiskItems, listProfilesOfIdAndFullName, listStakeholdersWithStatusActive, updateProjectById, updateTenderRegisterById, upsertProjectPrecontractDetails } from "@/lib/project/projects/projects-queries";
+import { ProjectCodeField } from "./project-code-field";
 import { X, Loader2, Save, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -87,8 +88,7 @@ interface RiskItem {
 }
 
 interface PrecontractForm {
-  // Step 1: Opportunity
-  project_code: string;
+  // Step 1: Opportunity (project_code is assigned by the database on insert)
   project_name: string;
   description: string;
   location: string;
@@ -100,9 +100,8 @@ interface PrecontractForm {
   tender_type: string;
   procurement_method: string;
   contract_type: string;
-  budget_range: string;
+  budget_range: string; // client budget, if disclosed; our estimate comes from Cost Estimation
   currency: string;
-  estimated_value: string;
   // Step 2: Schedule
   issue_date: string;
   site_visit_date: string;
@@ -127,7 +126,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   const isEditing = !!project;
 
   const [form, setForm] = useState<PrecontractForm>(() => ({
-    project_code: project?.project_code ?? "",
     project_name: project?.project_name ?? "",
     description: project?.description ?? "",
     location: project?.location ?? "",
@@ -141,7 +139,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
     contract_type: project?.contract_type ?? "",
     budget_range: "",
     currency: project?.currency ?? "USD",
-    estimated_value: "",
     issue_date: "",
     site_visit_date: "",
     query_deadline: "",
@@ -184,7 +181,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
         ...prev,
         tender_type: data.tender_type ?? prev.tender_type,
         procurement_method: data.procurement_method ?? prev.procurement_method,
-        estimated_value: data.estimated_value != null ? String(data.estimated_value) : prev.estimated_value,
         submission_deadline: data.submission_deadline ? toLocalInput(data.submission_deadline) : prev.submission_deadline,
         query_deadline: data.query_deadline ? toLocalInput(data.query_deadline) : prev.query_deadline,
         site_visit_date: data.site_visit_date ?? prev.site_visit_date,
@@ -202,7 +198,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   }
 
   const validationItems = useMemo(() => [
-    { label: "Project code", ok: !!form.project_code },
     { label: "Project name", ok: !!form.project_name },
     { label: "Sector selected", ok: !!form.category },
     { label: "Client assigned", ok: !!form.client_id },
@@ -217,7 +212,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
 
     // 1. Create/update project
     const projectPayload = {
-      project_code: form.project_code.toUpperCase(),
       project_name: form.project_name,
       project_type: "tender",
       client_id: form.client_id || null,
@@ -235,22 +229,27 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       project_manager_id: form.project_manager_id || null,
     };
 
+    // The code is assigned by the database on insert and never changes afterwards.
     let projectId: string;
+    let projectCode: string;
     if (isEditing) {
       const { error } = await updateProjectById(projectPayload, project.id);
       if (error) { toast.error(error.message); setSaving(false); return; }
       projectId = project.id;
+      projectCode = project.project_code;
     } else {
       const { data, error } = await insertProjectsReturning(projectPayload);
       if (error) { toast.error(error.message); setSaving(false); return; }
       projectId = data.id;
+      projectCode = data.project_code;
     }
 
     // 2. Create/update tender_register. The client's tender reference defaults to the project code.
+    // Our estimated value is not entered here: it comes from the Cost Estimation bid summary.
     const days = parseInt(form.tender_days) || 30;
     const tenderPayload = {
       project_id: projectId,
-      tender_no: (form.tender_reference.trim() || form.project_code).toUpperCase(),
+      tender_no: (form.tender_reference.trim() || projectCode).toUpperCase(),
       title: form.project_name,
       description: form.description || null,
       tender_type: form.tender_type,
@@ -260,7 +259,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       submission_deadline: fromLocalInput(form.submission_deadline),
       tender_days: days,
       procurement_method: form.procurement_method,
-      estimated_value: parseFloat(form.estimated_value) || null,
     };
 
     // Reuse this project's tender; a tender_no match is only reused when no other project owns it.
@@ -298,7 +296,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
       query_deadline: fromLocalInput(form.query_deadline),
       site_visit_date: form.site_visit_date || null,
       tender_days: days,
-      estimated_value: parseFloat(form.estimated_value) || null,
       bid_currency: form.currency,
     };
 
@@ -326,7 +323,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
 
     const { data: updated } = await getProjectById(projectId);
     if (updated) onSave(updated as Project);
-    else onSave({ ...projectPayload, id: projectId } as unknown as Project);
+    else onSave({ ...projectPayload, id: projectId, project_code: projectCode } as unknown as Project);
   }
 
   async function handleActivate() {
@@ -364,11 +361,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
   function renderOpportunity() {
     return (
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-xs font-medium">Project Code *</Label>
-          <input value={form.project_code} onChange={(e) => update("project_code", e.target.value)} placeholder="e.g. PRJ-001"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-        </div>
+        <ProjectCodeField code={project?.project_code} />
         <div className="space-y-1">
           <Label className="text-xs font-medium">Sector *</Label>
           <select value={form.category}
@@ -428,7 +421,7 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
         <div className="space-y-1">
           <Label className="text-xs font-medium">Tender Reference</Label>
           <input value={form.tender_reference} onChange={(e) => update("tender_reference", e.target.value)}
-            placeholder={form.project_code ? `Defaults to ${form.project_code.toUpperCase()}` : "Client's tender reference"}
+            placeholder={project?.project_code ? `Defaults to ${project.project_code}` : "Defaults to the project code"}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
@@ -454,8 +447,9 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
           </select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-medium">Budget Range</Label>
+          <Label className="text-xs font-medium">Client Budget</Label>
           <input type="number" value={form.budget_range} onChange={(e) => update("budget_range", e.target.value)}
+            placeholder="If disclosed by the client"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
@@ -464,11 +458,6 @@ export function PrecontractWizard({ project, onClose, onSave }: PrecontractWizar
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-        </div>
-        <div className="col-span-2 space-y-1">
-          <Label className="text-xs font-medium">Estimated Value</Label>
-          <input type="number" value={form.estimated_value} onChange={(e) => update("estimated_value", e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
         </div>
       </div>
     );

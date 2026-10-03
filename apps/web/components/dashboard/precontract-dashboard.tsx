@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { countTenderBoqItemsByTenderId, countTenderPreliminariesItemsByTenderId, countTenderSubQuotesByTenderId, getProjectPrecontractDetailByProjectId, listTenderRiskItemsByTenderId } from "@/lib/dashboard/dashboard-queries";
+import { countTenderBoqItemsByTenderId, countTenderPreliminariesItemsByTenderId, countTenderSubQuotesByTenderId, getLatestBidSummaryByTenderId, getProjectPrecontractDetailByProjectId, listTenderRiskItemsByTenderId } from "@/lib/dashboard/dashboard-queries";
+import { tenderValue, tenderValueCaption, type LatestBidRevision } from "@/lib/qs/tender-value";
 import { Clock, TrendingUp, AlertTriangle, Users, Calculator, FileSearch, Send, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,9 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
   const [details, setDetails] = useState<PrecontractDetails | null>(null);
   const [riskSummary, setRiskSummary] = useState<RiskSummary>({ critical: 0, high: 0, medium: 0, low: 0 });
   const [costProgress, setCostProgress] = useState<CostProgress>({ boqItems: 0, prelimItems: 0, subQuoteItems: 0, totalBoq: 0, totalPrelim: 0 });
+  const [latestRev, setLatestRev] = useState<LatestBidRevision | null>(null);
   const [loading, setLoading] = useState(true);
+  const value = tenderValue(details, latestRev);
 
   useEffect(() => {
     async function load() {
@@ -61,12 +64,14 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
             setRiskSummary(summary);
           }
 
-          // Load cost progress
-          const [boqRes, prelimRes, subQuoteRes] = await Promise.all([
+          // Load cost progress and the latest estimate revision
+          const [boqRes, prelimRes, subQuoteRes, revRes] = await Promise.all([
             countTenderBoqItemsByTenderId(pcDetails.tender_register_id),
             countTenderPreliminariesItemsByTenderId(pcDetails.tender_register_id),
             countTenderSubQuotesByTenderId(pcDetails.tender_register_id),
+            getLatestBidSummaryByTenderId(pcDetails.tender_register_id),
           ]);
+          setLatestRev((revRes.data as LatestBidRevision | null) ?? null);
 
           setCostProgress({
             boqItems: boqRes.count ?? 0,
@@ -136,13 +141,11 @@ export function PrecontractDashboard({ projectId, projectName }: PrecontractDash
             </div>
           </div>
           <p className="text-2xl font-bold text-emerald-600">
-            {details?.bid_price != null
-              ? `${details.bid_currency} ${details.bid_price.toLocaleString()}`
-              : details?.estimated_value != null
-              ? `~${details.bid_currency} ${details.estimated_value.toLocaleString()}`
+            {value.amount != null
+              ? `${value.kind === "approved" ? "" : "~"}${details?.bid_currency ?? ""} ${value.amount.toLocaleString()}`
               : "—"}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">Latest revision</p>
+          <p className="text-xs text-muted-foreground mt-1">{tenderValueCaption(value)}</p>
         </div>
 
         {/* Risk Summary */}

@@ -180,6 +180,19 @@ export function updateTaskAlertsByRecipientIdWithReadAt(patch: object, recipient
   return db().from("task_alerts").update(patch).eq("recipient_id", recipientId).is("read_at", null);
 }
 
+// ── tender_bid_summaries ──────────────────────────────────────────────────────
+
+// @table tender_bid_summaries
+export function getLatestBidSummaryByTenderId(tenderId: string) {
+  return db()
+    .from("tender_bid_summaries")
+    .select("revision_no, total_bid_price")
+    .eq("tender_id", tenderId)
+    .order("revision_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
 // ── tender_boq_items ──────────────────────────────────────────────────────────
 
 // @table tender_boq_items

@@ -24,6 +24,7 @@ export interface PrecontractDetails {
   procurement_method: string | null;
   submission_deadline: string | null;
   tender_days: number | null;
+  /** Legacy manual estimate; no longer entered. See lib/qs/tender-value.ts. */
   estimated_value: number | null;
   bid_price: number | null;
   bid_currency: string;
@@ -57,6 +58,8 @@ export interface TenderRecord {
   title: string;
   status: string;
   issue_date: string | null;
+  /** The client's budget, if disclosed (shown as "Client Budget"). */
+  budget_range: number | null;
 }
 
 export interface StaffOption {

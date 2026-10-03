@@ -5,6 +5,7 @@ import { deleteProjectStakeholderMappingsByProjectId, deleteProjectStakeholderTe
 import { X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import { ProjectCodeField } from "./project-code-field";
 import { Button } from "@/components/ui/button";
 import { LocationPicker } from "@/components/ui/location-picker";
 import { PROJECT_SECTORS, buildingTypesForSector, sectorLabel } from "@/lib/project-categories";
@@ -271,8 +272,8 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
 
   async function handleSave() {
     setSaving(true);
+    // project_code is never sent: the database assigns it on insert and it is not editable.
     const payload = {
-      project_code: form.project_code.toUpperCase(),
       project_name: form.project_name,
       project_type: form.project_type,
       client_id: form.client_id || null,
@@ -302,6 +303,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
     };
 
     let projectId: string;
+    let projectCode = form.project_code;
     if (isEditing) {
       const { error } = await updateProjectByIdReturning(payload, project.id);
       if (error) {
@@ -318,8 +320,9 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
         setSaving(false);
         return;
       }
-      toast.success("Project created");
+      toast.success(`Project ${data.project_code} created`);
       projectId = data.id;
+      projectCode = data.project_code;
     }
 
     // Save stakeholder mappings
@@ -372,6 +375,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
     setSaving(false);
     onSave({
       id: projectId,
+      project_code: projectCode,
       ...payload,
       contract_value: payload.contract_value ?? null,
     } as unknown as Project);
@@ -403,15 +407,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
           <fieldset className="space-y-3">
             <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Info</legend>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="project_code">Project Code *</Label>
-                <input
-                  id="project_code"
-                  value={form.project_code}
-                  onChange={(e) => update("project_code", e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono outline-hidden focus:border-primary"
-                />
-              </div>
+              <ProjectCodeField code={project?.project_code} className="space-y-1.5" />
               <div className="space-y-1.5">
                 <Label htmlFor="project_type">Project Type *</Label>
                 <select
@@ -892,7 +888,7 @@ export function ProjectEditSheet({ project, onClose, onSave }: ProjectEditSheetP
 
         <div className="sticky bottom-0 border-t border-border bg-background px-5 py-3 flex items-center justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !form.project_code.trim() || !form.project_name.trim()}>
+          <Button onClick={handleSave} disabled={saving || !form.project_name.trim()}>
             {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             <Save className="mr-1.5 h-4 w-4" />
             {isEditing ? "Save Changes" : "Create Project"}

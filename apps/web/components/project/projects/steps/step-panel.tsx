@@ -85,9 +85,9 @@ export function formStateFromProject(p: Project | null): WizardFormState {
   };
 }
 
+// project_code is never sent: the database assigns it on insert and it is not editable.
 export function formToPayload(form: WizardFormState) {
   return {
-    project_code: form.project_code.toUpperCase(),
     project_name: form.project_name,
     project_type: form.project_type,
     client_id: form.client_id || null,

@@ -101,6 +101,8 @@ export const PUBLIC_API = {
     "lib/qs/public-tender.ts",
     // Owner of tender_stage and its transitions; the project screens drive it.
     "lib/qs/tender-lifecycle.ts",
+    // Which figure is a tender's value (approved bid / latest estimate / legacy manual).
+    "lib/qs/tender-value.ts",
     // Bid review, approval and submission steps; driven from the project screens.
     "lib/qs/tender-approval.ts",
     "hooks/use-tender-permissions.ts",
@@ -119,6 +121,8 @@ export const PUBLIC_API = {
     "lib/planning/baseline-service.ts",
     // Weighted activity steps of a WBS task, edited from the WBS task panel.
     "lib/planning/activity-steps-service.ts",
+    // WBS Code Definition (code mask): the WBS builder shows the same codes as the schedule.
+    "lib/planning/wbs-code-mask.ts",
   ],
   procurement: [
     "lib/procurement/procurement-nav.ts",

@@ -38,7 +38,8 @@ import {
   toastResult,
   type PrecontractCtx,
 } from "./shared";
-import { listStakeholdersByIds, updateProjectPrecontractDetailsByProjectId, updateTenderWorkstreamById } from "@/lib/project/projects/projects-queries";
+import { tenderValue, tenderValueCaption, type LatestBidRevision } from "@/lib/qs/tender-value";
+import { getLatestBidSummaryByTenderId, listStakeholdersByIds, updateProjectPrecontractDetailsByProjectId, updateTenderWorkstreamById } from "@/lib/project/projects/projects-queries";
 
 const label = (v: string | null | undefined) => (v ? v.replace(/_/g, " ") : "—");
 
@@ -47,6 +48,14 @@ const label = (v: string | null | undefined) => (v ? v.replace(/_/g, " ") : "—
 export function RegistrationSection({ ctx }: { ctx: PrecontractCtx }) {
   const { project, details, tender } = ctx;
   const [names, setNames] = useState<Record<string, string>>({});
+  const [latestRev, setLatestRev] = useState<LatestBidRevision | null>(null);
+
+  useEffect(() => {
+    if (!details.tender_register_id) return;
+    getLatestBidSummaryByTenderId(details.tender_register_id)
+      .then(({ data }) => setLatestRev((data as LatestBidRevision | null) ?? null));
+  }, [details.tender_register_id, details.bid_price]);
+  const value = tenderValue(details, latestRev);
 
   useEffect(() => {
     const ids = [project.client_id, project.consultant_id].filter((v): v is string => !!v);
@@ -69,7 +78,16 @@ export function RegistrationSection({ ctx }: { ctx: PrecontractCtx }) {
         <Field label="Contract Type" className="capitalize" value={label(project.contract_type)} />
         <Field label="Tender Type" className="capitalize" value={label(details.tender_type)} />
         <Field label="Procurement Method" className="capitalize" value={label(details.procurement_method)} />
-        <Field label="Estimated Value" value={formatMoney(details.estimated_value, cur)} />
+        <Field
+          label="Estimated Value"
+          value={
+            <>
+              {formatMoney(value.amount, cur)}
+              <span className="block text-xs font-normal text-muted-foreground">{tenderValueCaption(value)}</span>
+            </>
+          }
+        />
+        <Field label="Client Budget" value={formatMoney(tender?.budget_range, cur)} />
         <Field label="Estimated Duration" value={project.duration ? `${project.duration} months` : "—"} />
         <Field label="Invitation Date" value={formatDate(tender?.issue_date)} />
         <Field label="Submission Deadline" value={formatDateTime(details.submission_deadline)} />

@@ -166,6 +166,12 @@ export function listProjectTeamMembersByProjectStakeholderTeamIds(projectStakeho
 
 // ── projects ──────────────────────────────────────────────────────────────────
 
+// Preview of the next PJR-YYYY-NNN code. The real code is assigned by a trigger on insert,
+// so this does not reserve anything.
+export function peekNextProjectCode() {
+  return db().rpc("peek_next_project_code");
+}
+
 // @table projects
 export function getProjectById(id: string | number | boolean) {
   return db().from("projects").select("*").eq("id", id).single();
@@ -355,6 +361,19 @@ export function countTenderPriceListByTenderId(tenderId: string | number | boole
     .from("tender_price_list")
     .select("id", { count: "exact", head: true })
     .eq("tender_id", tenderId);
+}
+
+// ── tender_bid_summaries ──────────────────────────────────────────────────────
+
+// @table tender_bid_summaries
+export function getLatestBidSummaryByTenderId(tenderId: string) {
+  return db()
+    .from("tender_bid_summaries")
+    .select("revision_no, total_bid_price")
+    .eq("tender_id", tenderId)
+    .order("revision_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 }
 
 // ── tender_register ───────────────────────────────────────────────────────────
