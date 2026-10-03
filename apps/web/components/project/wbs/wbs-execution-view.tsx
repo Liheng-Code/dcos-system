@@ -144,6 +144,7 @@ function QuickProgressEditor({ task, onRefresh }: { task: WbsTaskRecord; onRefre
 }
 
 export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, onRefresh }: WbsExecutionViewProps) {
+  const codeById = new Map(tasks.map((t) => [t.id, t.task_code]));
   const { unreadTaskIds } = useTaskAlerts();
 
   async function handleDuplicate(task: WbsTaskRecord) {
@@ -290,27 +291,38 @@ export function WbsExecutionView({ tasks, taskAssignerNames, onEdit, onDelete, o
                   </span>
                 </td>
                 <td className="px-2">
-                  {task.dependency_task_id ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className={cn(
-                        "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase shrink-0",
-                        task.dependency_type === "fs" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                        task.dependency_type === "ss" ? "bg-purple-50 text-purple-700 border-purple-200" :
-                        task.dependency_type === "ff" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                        "bg-slate-50 text-slate-600 border-slate-200"
-                      )}>
-                        {task.dependency_type?.toUpperCase() ?? "—"}
-                      </span>
-                      <span className="text-[10px] truncate max-w-[100px]" title={task.dependency_text ?? ""}>
-                        {task.dependency_text?.replace(/^[A-Z]+: /, "") ?? "—"}
-                      </span>
-                      {(task.lag_days ?? 0) !== 0 && (
-                        <span className="text-[9px] text-slate-400 shrink-0">
-                          {(task.lag_days ?? 0) > 0 ? `+${task.lag_days}d` : `${task.lag_days}d`}
+                  {(task.dependency_task_ids?.length ?? 0) > 0 ? (() => {
+                    const ids = task.dependency_task_ids ?? [];
+                    const type = (task.dependency_types?.[0] ?? "fs").toLowerCase();
+                    const lag = Number(task.dependency_lag_days?.[0] ?? 0);
+                    const label = ids
+                      .map((id, k) => {
+                        const l = Number(task.dependency_lag_days?.[k] ?? 0);
+                        return `${codeById.get(id) ?? "?"}${(task.dependency_types?.[k] ?? "fs").toUpperCase()}${l ? (l > 0 ? `+${l}d` : `${l}d`) : ""}`;
+                      })
+                      .join(", ");
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn(
+                          "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase shrink-0",
+                          type === "fs" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                          type === "ss" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                          type === "ff" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                          "bg-slate-50 text-slate-600 border-slate-200"
+                        )}>
+                          {type.toUpperCase()}
                         </span>
-                      )}
-                    </div>
-                  ) : (
+                        <span className="text-[10px] truncate max-w-[100px]" title={label}>
+                          {codeById.get(ids[0]) ?? "—"}
+                        </span>
+                        {ids.length > 1 ? (
+                          <span className="text-[9px] text-slate-400 shrink-0">+{ids.length - 1}</span>
+                        ) : lag !== 0 ? (
+                          <span className="text-[9px] text-slate-400 shrink-0">{lag > 0 ? `+${lag}d` : `${lag}d`}</span>
+                        ) : null}
+                      </div>
+                    );
+                  })() : (
                     <span className="text-[10px] text-slate-400">—</span>
                   )}
                 </td>

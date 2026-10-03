@@ -123,6 +123,10 @@ export const PUBLIC_API = {
     "lib/planning/activity-steps-service.ts",
     // WBS Code Definition (code mask): the WBS builder shows the same codes as the schedule.
     "lib/planning/wbs-code-mask.ts",
+    // CPM engine helpers (link arrays, loop check, durations) for WBS task editing.
+    "lib/planning/schedule-engine.ts",
+    // Whole-project scheduling from a start date (WBS builder "Schedule").
+    "lib/planning/project-schedule.ts",
   ],
   procurement: [
     "lib/procurement/procurement-nav.ts",

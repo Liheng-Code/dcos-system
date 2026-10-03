@@ -14,6 +14,10 @@ export interface SheetTask {
   status: string;
   sort_order: number;
   is_milestone: boolean | null;
+  /** Kept in step with the dates by the DB; the only duration source while dates are empty. */
+  duration_days?: number | null;
+  /** "wd" working days (default) | "cd" calendar days. */
+  duration_unit?: string | null;
   // --- scheduling ---
   dependency_task_ids: string[] | null;
   dependency_types: string[] | null;

@@ -13,7 +13,8 @@ import { SaveAsWbsTemplateDialog } from "@/components/project/wbs/templates/save
 import { MasterWbsImportDialog } from "@/components/project/wbs/master-wbs-import-dialog";
 import { useWbsBuilderData } from "./use-wbs-builder-data";
 import { DEFAULT_VIEW, WBS_BUILDER_COLUMNS, type BuilderProject, type WbsBuilderNode, type WbsBuilderRow, type WbsViewPrefs } from "./wbs-builder-types";
-import { useWbsActivities, useWbsCodeMask } from "./use-wbs-activities";
+import { useProjectCalendar, useWbsActivities, useWbsCodeMask } from "./use-wbs-activities";
+import { ScheduleWbsDialog } from "./schedule-wbs-dialog";
 import { WbsBuilderViewMenu } from "./wbs-builder-view-menu";
 
 const VIEW_KEY = "dcos_wbs_builder_view";
@@ -65,7 +66,8 @@ export function WbsBuilder({
   // "Add levels": open for any building; default to the selected building, or the building
   // above a selected level/zone, else the first building.
   const [levelsFor, setLevelsFor] = useState<string | null>(null);
-  const [wbsTemplateDialog, setWbsTemplateDialog] = useState<"apply" | "save" | "import" | null>(null);
+  const [wbsTemplateDialog, setWbsTemplateDialog] = useState<"apply" | "save" | "import" | "schedule" | null>(null);
+  const [scheduleNonce, setScheduleNonce] = useState(0);
   const buildings = useMemo(() => data.nodes.filter((n) => n.node_type === "building"), [data.nodes]);
   const defaultBuildingId = useMemo(() => {
     // Row ids are "node:<uuid>"; getNodeById takes the bare id.
@@ -127,7 +129,8 @@ export function WbsBuilder({
     }
   }, []);
   // Activities for the roll-up column / activity rows; reloaded when the node set changes.
-  const activities = useWbsActivities(projectId, changeKey);
+  const activities = useWbsActivities(projectId, `${changeKey}|${scheduleNonce}`);
+  const calendar = useProjectCalendar(projectId);
   const codeMask = useWbsCodeMask(projectId);
 
   const openVersions = useCallback((mode: "save" | "list") => {
@@ -162,6 +165,7 @@ export function WbsBuilder({
         onApplyWbsTemplate={() => setWbsTemplateDialog("apply")}
         onSaveWbsTemplate={() => setWbsTemplateDialog("save")}
         onImportFile={() => setWbsTemplateDialog("import")}
+        onSchedule={() => setWbsTemplateDialog("schedule")}
       />
       {wbsTemplateDialog === "apply" && (
         <ApplyWbsTemplateDialog
@@ -170,6 +174,16 @@ export function WbsBuilder({
           onOpenChange={(open) => { if (!open) setWbsTemplateDialog(null); }}
           onApplied={() => {
             data.reload();
+            onDataChanged?.();
+          }}
+        />
+      )}
+      {wbsTemplateDialog === "schedule" && (
+        <ScheduleWbsDialog
+          projectId={projectId}
+          onClose={() => setWbsTemplateDialog(null)}
+          onScheduled={() => {
+            setScheduleNonce((n) => n + 1);
             onDataChanged?.();
           }}
         />
@@ -204,6 +218,7 @@ export function WbsBuilder({
         view={view}
         depthNonce={depthNonce}
         codeMask={codeMask}
+        calendar={calendar}
         activities={activities}
       />
       {levelsFor && (

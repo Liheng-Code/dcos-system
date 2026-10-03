@@ -39,9 +39,9 @@ describe("columns", () => {
 describe("activities", () => {
   it("rolls activity count and duration-weighted progress up the tree", () => {
     const r = activityRollup(nodes, acts);
-    expect(r.get("s")).toEqual({ count: 2, progress: 50 });
+    expect(r.get("s")).toMatchObject({ count: 2, progress: 50 });
     // gf: a1 (100%, 2d) + a2 (0%, 2d) + a3 (50%, 4d) → 4 of 8 days = 50%
-    expect(r.get("gf")).toEqual({ count: 3, progress: 50 });
+    expect(r.get("gf")).toMatchObject({ count: 3, progress: 50 });
     expect(r.get("c")?.count).toBe(3);
   });
 

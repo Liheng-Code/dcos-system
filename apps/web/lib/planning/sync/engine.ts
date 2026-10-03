@@ -353,8 +353,21 @@ export async function runImportCommit(
     const outOfScope = (ev.changes.dependsOutOfScope as string | null) ?? null;
     const update: Record<string, unknown> = {};
     if (dependsOnUid && mspUidToTaskId.has(dependsOnUid)) {
-      update.dependency_task_id = mspUidToTaskId.get(dependsOnUid);
-      update.dependency_type = dependsOnType ?? "FS";
+      // Add the link to the task's predecessor list (kept if already there).
+      const predId = mspUidToTaskId.get(dependsOnUid) as string;
+      const { data: cur } = await supabase
+        .from("wbs_tasks")
+        .select("dependency_task_ids, dependency_types, dependency_lag_days")
+        .eq("id", ev.wbs_task_id)
+        .maybeSingle();
+      const ids = (cur?.dependency_task_ids as string[] | null) ?? [];
+      if (!ids.includes(predId)) {
+        const types = ids.map((_, i) => ((cur?.dependency_types as string[] | null) ?? [])[i] ?? "fs");
+        const lags = ids.map((_, i) => Number(((cur?.dependency_lag_days as number[] | null) ?? [])[i] ?? 0));
+        update.dependency_task_ids = [...ids, predId];
+        update.dependency_types = [...types, (dependsOnType ?? "FS").toLowerCase()];
+        update.dependency_lag_days = [...lags, 0];
+      }
       update.dependency_text = null;
     } else if (outOfScope) {
       update.dependency_text = outOfScope;
@@ -415,7 +428,7 @@ export async function runExport(
   const { data: tasks } = await supabase
     .from("wbs_tasks")
     .select(
-      "id, task_code, task_name, msp_uid, msp_outline_number, start_date, end_date, planned_hours, progress, dependency_task_id, dependency_type, schedule_level",
+      "id, task_code, task_name, msp_uid, msp_outline_number, start_date, end_date, planned_hours, progress, dependency_task_ids, dependency_types, dependency_lag_days, schedule_level",
     )
     .eq("project_id", projectId)
     .eq("schedule_level", settings.syncLevel)
@@ -437,10 +450,10 @@ export async function runExport(
     end_date: string | null;
     planned_hours: number | null;
     progress: number | null;
-    dependency_task_id: string | null;
-    dependency_type: string | null;
+    dependency_task_ids: string[] | null;
+    dependency_types: string[] | null;
+    dependency_lag_days: number[] | null;
   }>).map((t, i) => {
-    const dep = t.dependency_task_id ? idToTask.get(t.dependency_task_id) : undefined;
     return {
       uid: t.msp_uid ?? `EXPORT-${t.task_code}`,
       id: i + 1,
@@ -453,16 +466,16 @@ export async function runExport(
       percentComplete: Math.round(t.progress ?? 0),
       summary: false,
       milestone: false,
-      predecessors:
-        t.dependency_task_id && dep
-          ? [
-              {
-                uid: dep.msp_uid ?? `EXPORT-${dep.task_code}`,
-                type: (t.dependency_type as ExportTask["predecessors"][number]["type"]) ?? "FS",
-                lag: 0,
-              },
-            ]
-          : [],
+      // Every link; MSPDI lag is in tenths of a minute (8 h working day).
+      predecessors: (t.dependency_task_ids ?? []).flatMap((predId, k) => {
+        const dep = idToTask.get(predId);
+        if (!dep) return [];
+        return [{
+          uid: (dep.msp_uid as string | null) ?? `EXPORT-${dep.task_code}`,
+          type: ((t.dependency_types?.[k] ?? "fs").toUpperCase()) as ExportTask["predecessors"][number]["type"],
+          lag: Math.round(Number(t.dependency_lag_days?.[k] ?? 0) * 8 * 600),
+        }];
+      }),
     };
   });
 

@@ -14,7 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type { NodeApi } from "react-arborist";
-import type { WorkCalendar } from "@/lib/planning/work-calendar";
+import { formatDuration, type WorkCalendar } from "@/lib/planning/work-calendar";
 import { depsFromArrays } from "@/lib/planning/schedule-engine";
 import { formatPredecessors } from "@/lib/planning/predecessor-syntax";
 import { cn } from "@/lib/utils";
@@ -67,7 +67,8 @@ function cellFor(
         return { value: t.task_name, editable: true };
       case "duration": {
         const d = durationOf(t, cal);
-        return { value: d != null ? String(d) : "", editable: true };
+        const text = formatDuration(d, t.duration_unit);
+        return { value: text, display: text, editable: true };
       }
       case "start":
         return { value: t.start_date ?? "", display: t.start_date ? formatDate(t.start_date) : undefined, editable: true };

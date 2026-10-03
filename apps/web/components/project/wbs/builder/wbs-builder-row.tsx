@@ -24,10 +24,12 @@ import {
 import type { NodeApi } from "react-arborist";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { formatDuration } from "@/lib/planning/work-calendar";
 import { WbsBuilderCell, type CellNav } from "./wbs-builder-cell";
 import type { NodeGfa, NodeLock } from "./use-wbs-builder-data";
 import {
   ID_COL_WIDTH,
+  shortDate,
   statusLabel,
   type ActivityRollup,
   type ColWidths,
@@ -59,7 +61,9 @@ function ActivityRowView({
       case "discipline": return task.discipline ?? "";
       case "status": return task.status ? statusLabel(task.status) : "";
       case "progress": return pct(task.progress);
-      case "activities": return task.duration_days != null ? `${task.duration_days}d` : "";
+      case "duration": return task.is_milestone ? "Milestone" : formatDuration(task.duration_days, task.duration_unit);
+      case "start": return shortDate(task.start_date);
+      case "finish": return shortDate(task.end_date);
       default: return "";
     }
   };
@@ -454,6 +458,23 @@ export function WbsBuilderRowView({
                   </button>
                 </>
               )}
+            </div>
+          );
+        }
+
+        if (col.field === "duration" || col.field === "start" || col.field === "finish") {
+          // Rolled up from the activities below; calculated by Schedule, not typed.
+          const v = col.field === "duration"
+            ? (rollup?.days != null ? String(rollup.days) : "")
+            : shortDate(col.field === "start" ? rollup?.start : rollup?.finish);
+          return (
+            <div
+              key={col.field}
+              className="flex h-full items-center justify-end border-r border-border/60 px-1.5 text-xs tabular-nums text-muted-foreground"
+              style={{ width: colWidths[col.field] }}
+              title={col.field === "duration" && v ? `${v} working days (from the activities below)` : undefined}
+            >
+              {v || <span className="text-muted-foreground/40">—</span>}
             </div>
           );
         }

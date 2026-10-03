@@ -4,12 +4,12 @@ import { dispatchScheduleAlert } from "@/lib/notifications/dispatch";
 import {
   scheduleProject,
   depsFromArrays,
+  engineDuration,
   type EngineTask,
 } from "@/lib/planning/schedule-engine";
 import {
   buildWorkCalendar,
   todayISO,
-  workingDaysBetween,
   type PlanCalendarExceptionRow,
   type PlanCalendarRow,
 } from "@/lib/planning/work-calendar";
@@ -32,6 +32,8 @@ interface TaskRow {
   task_name: string;
   start_date: string | null;
   end_date: string | null;
+  duration_days?: number | null;
+  duration_unit?: string | null;
   is_milestone: boolean | null;
   manually_scheduled: boolean | null;
   constraint_type: string | null;
@@ -44,14 +46,19 @@ interface TaskRow {
 }
 
 function toEngineTask(t: TaskRow, cal: ReturnType<typeof buildWorkCalendar>): EngineTask {
-  let durationWd = 1;
-  if (t.is_milestone) durationWd = 0;
-  else if (t.start_date && t.end_date) durationWd = Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date));
+  const { durationWd, elapsed } = engineDuration(cal, {
+    start: t.start_date,
+    finish: t.end_date,
+    isMilestone: t.is_milestone,
+    durationDays: t.duration_days,
+    unit: t.duration_unit,
+  });
   return {
     id: t.id,
     start: t.start_date,
     finish: t.end_date,
     durationWd,
+    elapsed,
     manuallyScheduled: t.manually_scheduled ?? false,
     constraintType: t.constraint_type,
     constraintDate: t.constraint_date,
@@ -101,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       supabase
         .from("wbs_tasks")
         .select(
-          "id, wbs_node_id, task_code, task_name, start_date, end_date, is_milestone, manually_scheduled, constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days, progress, status",
+          "id, wbs_node_id, task_code, task_name, start_date, end_date, duration_days, duration_unit, is_milestone, manually_scheduled, constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days, progress, status",
         )
         .eq("project_id", projectId)
         .limit(1000),

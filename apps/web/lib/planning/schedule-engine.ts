@@ -9,17 +9,21 @@
 //    finish_no_later_than, as_late_as_possible) are NOT enforced — the engine
 //    records them in `violations` and the view flags the row. Enforcing them
 //    requires negative-float levelling, which is out of scope here.
-//  * Durations are working days. A duration of 0 is a milestone (finish = start).
+//  * Durations are working days, or calendar days for an `elapsed` task (curing,
+//    lead times). A duration of 0 is a milestone (finish = start). An elapsed task
+//    can finish on a non-working day; its FS successor starts on the next working day.
 //  * Summary (WBS node) rows are never passed in — they roll up in the UI.
 
 import {
   addWorkingDays,
-  finishFromStart,
+  calendarDaysBetween,
+  finishInUnit,
+  isWorkingDay,
   maxISO,
   minISO,
   nextWorkingDay,
   parseISO,
-  startFromFinish,
+  startInUnit,
   workingDaysBetween,
   type WorkCalendar,
 } from "./work-calendar";
@@ -43,8 +47,10 @@ export interface EngineTask {
   id: string;
   start: string | null;
   finish: string | null;
-  /** Working days. 0 = milestone. */
+  /** Working days (calendar days when `elapsed`). 0 = milestone. */
   durationWd: number;
+  /** Duration counts calendar days instead of working days. */
+  elapsed?: boolean;
   manuallyScheduled: boolean;
   constraintType: string | null;
   constraintDate: string | null;
@@ -161,17 +167,19 @@ export function scheduleProject(
   if ("cycle" in topo) return { ok: false, cycle: topo.cycle };
 
   const origin = nextWorkingDay(cal, projectStart, 1);
+  const unitOf = (t: EngineTask) => (t.elapsed ? "cd" : "wd") as "cd" | "wd";
+  const fin = (t: EngineTask, start: string) => finishInUnit(cal, start, Math.max(0, Math.trunc(t.durationWd)), unitOf(t));
+  const sta = (t: EngineTask, finish: string) => startInUnit(cal, finish, Math.max(0, Math.trunc(t.durationWd)), unitOf(t));
   const dates = new Map<string, TaskDates>();
   const violations = new Map<string, string>();
 
   // ---- Forward pass -------------------------------------------------------
   for (const t of topo.order) {
-    const dur = Math.max(0, Math.trunc(t.durationWd));
 
     if (t.manuallyScheduled) {
       // Pinned: keep the stored dates verbatim; successors still ripple from them.
       const start = t.start ?? origin;
-      const finish = t.finish ?? finishFromStart(cal, start, dur);
+      const finish = t.finish ?? fin(t, start);
       dates.set(t.id, { start, finish });
       continue;
     }
@@ -188,7 +196,7 @@ export function scheduleProject(
       const lag = Number.isFinite(d.lag) ? d.lag : 0;
       switch (d.type) {
         case "fs":
-          start = maxISO(start, addWorkingDays(cal, pred.finish, 1 + lag));
+          start = maxISO(start, afterFinish(cal, pred.finish, lag));
           break;
         case "ss":
           start = maxISO(start, addWorkingDays(cal, pred.start, lag));
@@ -196,13 +204,13 @@ export function scheduleProject(
         case "ff": {
           const candFinish = addWorkingDays(cal, pred.finish, lag);
           finish = finish ? maxISO(finish, candFinish) : candFinish;
-          start = maxISO(start, startFromFinish(cal, candFinish, dur));
+          start = maxISO(start, sta(t, candFinish));
           break;
         }
         case "sf": {
           const candFinish = addWorkingDays(cal, pred.start, -1 + lag);
           finish = finish ? maxISO(finish, candFinish) : candFinish;
-          start = maxISO(start, startFromFinish(cal, candFinish, dur));
+          start = maxISO(start, sta(t, candFinish));
           break;
         }
       }
@@ -219,9 +227,9 @@ export function scheduleProject(
       } else if (ct === "must_start_on") {
         start = nextWorkingDay(cal, cd, 1);
       } else if (ct === "finish_no_earlier_than") {
-        start = maxISO(start, startFromFinish(cal, cd, dur));
+        start = maxISO(start, sta(t, cd));
       } else if (ct === "must_finish_on") {
-        start = startFromFinish(cal, cd, dur);
+        start = sta(t, cd);
       }
       if (
         HARD_CONSTRAINTS.has(ct) &&
@@ -235,7 +243,7 @@ export function scheduleProject(
     }
 
     start = nextWorkingDay(cal, start, 1);
-    const computedFinish = finishFromStart(cal, start, dur);
+    const computedFinish = fin(t, start);
     // An FF/SF link can demand a later finish than the duration implies.
     const finalFinish = finish ? maxISO(computedFinish, finish) : computedFinish;
 
@@ -285,7 +293,6 @@ export function scheduleProject(
     const t = topo.order[i];
     const self = dates.get(t.id);
     if (!self) continue;
-    const dur = Math.max(0, Math.trunc(t.durationWd));
 
     let lf = projectFinish;
     let lsDirect: string | null = null;
@@ -314,9 +321,9 @@ export function scheduleProject(
       }
     }
 
-    let ls = startFromFinish(cal, lf, dur);
+    let ls = sta(t, lf);
     if (lsDirect) ls = minISO(ls, lsDirect);
-    lf = finishFromStart(cal, ls, dur);
+    lf = fin(t, ls);
     lateBy.set(t.id, { ls, lf });
 
     const totalFloat = signedWorkingDayGap(cal, self.start, ls);
@@ -330,7 +337,7 @@ export function scheduleProject(
       let gap: number;
       switch (s.type) {
         case "fs":
-          gap = signedWorkingDayGap(cal, addWorkingDays(cal, self.finish, 1 + lag), succ.start);
+          gap = signedWorkingDayGap(cal, afterFinish(cal, self.finish, lag), succ.start);
           break;
         case "ss":
           gap = signedWorkingDayGap(cal, addWorkingDays(cal, self.start, lag), succ.start);
@@ -379,7 +386,6 @@ export function scheduleProject(
     if (t.manuallyScheduled) continue;
     const self = dates.get(t.id);
     if (!self) continue;
-    const dur = Math.max(0, Math.trunc(t.durationWd));
     let start = self.start;
     let finish: string | null = null;
     for (const d of t.deps) {
@@ -389,7 +395,7 @@ export function scheduleProject(
       let candStart = start;
       switch (d.type) {
         case "fs":
-          candStart = addWorkingDays(cal, pred.finish, 1 + lag);
+          candStart = afterFinish(cal, pred.finish, lag);
           break;
         case "ss":
           candStart = addWorkingDays(cal, pred.start, lag);
@@ -397,13 +403,13 @@ export function scheduleProject(
         case "ff": {
           const cf = addWorkingDays(cal, pred.finish, lag);
           finish = finish ? maxISO(finish, cf) : cf;
-          candStart = startFromFinish(cal, cf, dur);
+          candStart = sta(t, cf);
           break;
         }
         case "sf": {
           const cf = addWorkingDays(cal, pred.start, -1 + lag);
           finish = finish ? maxISO(finish, cf) : cf;
-          candStart = startFromFinish(cal, cf, dur);
+          candStart = sta(t, cf);
           break;
         }
       }
@@ -413,7 +419,7 @@ export function scheduleProject(
     const late = lateBy.get(t.id);
     if (late && parseISO(start).getTime() > parseISO(late.ls).getTime()) start = late.ls;
     start = nextWorkingDay(cal, start, 1);
-    const computedFinish = finishFromStart(cal, start, dur);
+    const computedFinish = fin(t, start);
     const finalFinish = finish ? maxISO(computedFinish, finish) : computedFinish;
     if (parseISO(start).getTime() > parseISO(self.start).getTime()) {
       dates.set(t.id, { start, finish: finalFinish });
@@ -492,6 +498,44 @@ export function depsToArrays(deps: EngineDep[]): {
     dependency_types: deps.map((d) => d.type),
     dependency_lag_days: deps.map((d) => d.lag),
   };
+}
+
+/**
+ * First working day a Finish-to-Start successor may start, `lag` working days after
+ * `finish`. A finish on a non-working day (calendar-day tasks) counts as ending
+ * before the next working day.
+ */
+export function afterFinish(cal: WorkCalendar, finish: string, lag: number): string {
+  return isWorkingDay(cal, finish) ? addWorkingDays(cal, finish, 1 + lag) : addWorkingDays(cal, finish, lag);
+}
+
+/** The fields a task row carries that decide its schedule duration. */
+export interface DurationFields {
+  start: string | null;
+  finish: string | null;
+  isMilestone?: boolean | null;
+  /** Stored duration — used when the task has no dates yet (e.g. straight after a template). */
+  durationDays?: number | string | null;
+  /** "wd" (working days, default) | "cd" (calendar days). */
+  unit?: string | null;
+}
+
+/**
+ * The duration the engine schedules a task with. Dates win when both are set (the DB
+ * keeps duration_days in step with them); otherwise the stored duration; otherwise 1.
+ */
+export function engineDuration(cal: WorkCalendar, f: DurationFields): { durationWd: number; elapsed: boolean } {
+  const elapsed = f.unit === "cd";
+  if (f.isMilestone) return { durationWd: 0, elapsed };
+  if (f.start && f.finish) {
+    const n = elapsed ? calendarDaysBetween(f.start, f.finish) : workingDaysBetween(cal, f.start, f.finish);
+    return { durationWd: Math.max(1, n), elapsed };
+  }
+  const stored = Number(f.durationDays);
+  if (f.durationDays != null && f.durationDays !== "" && Number.isFinite(stored) && stored >= 0) {
+    return { durationWd: Math.round(stored), elapsed };
+  }
+  return { durationWd: 1, elapsed };
 }
 
 /** True if adding `predId` as a predecessor of `succId` would close a loop. */

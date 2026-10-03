@@ -14,8 +14,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { logScheduleAudit, logScheduleFieldChanges } from "./schedule-audit";
 import { getProjectCalendarRow, recomputeProjectWork } from "./productivity-service";
-import { depsFromArrays, scheduleProject, type EngineTask } from "./schedule-engine";
-import { buildWorkCalendar, finishFromStart, todayISO, workingDaysBetween, type WorkCalendar } from "./work-calendar";
+import { depsFromArrays, engineDuration, scheduleProject, type EngineTask } from "./schedule-engine";
+import { buildWorkCalendar, finishFromStart, todayISO, type WorkCalendar } from "./work-calendar";
 
 interface ScheduleTaskLite {
   id: string;
@@ -24,6 +24,8 @@ interface ScheduleTaskLite {
   task_name: string;
   start_date: string | null;
   end_date: string | null;
+  duration_days?: number | null;
+  duration_unit?: string | null;
   is_milestone: boolean;
   dependency_task_ids: string[] | null;
   dependency_types: string[] | null;
@@ -76,14 +78,19 @@ export function resolveLockedNodeIds(nodes: NodeLite[]): Set<string> {
 
 function toEngineTasks(tasks: ScheduleTaskLite[], cal: WorkCalendar): EngineTask[] {
   return tasks.map((t) => {
-    let durationWd = 1;
-    if (t.is_milestone) durationWd = 0;
-    else if (t.start_date && t.end_date) durationWd = Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date));
+    const { durationWd, elapsed } = engineDuration(cal, {
+      start: t.start_date,
+      finish: t.end_date,
+      isMilestone: t.is_milestone,
+      durationDays: t.duration_days,
+      unit: t.duration_unit,
+    });
     return {
       id: t.id,
       start: t.start_date,
       finish: t.end_date,
       durationWd,
+      elapsed,
       manuallyScheduled: t.manually_scheduled,
       constraintType: t.constraint_type,
       constraintDate: t.constraint_date,
@@ -177,7 +184,7 @@ export async function fetchDurationApplyContext(projectId: string): Promise<Dura
   const [tasksRes, nodesRes, workRes, projectRes] = await Promise.all([
     supabase
       .from("wbs_tasks")
-      .select("id, wbs_node_id, task_code, task_name, start_date, end_date, is_milestone, dependency_task_ids, dependency_types, dependency_lag_days, constraint_type, constraint_date, manually_scheduled")
+      .select("id, wbs_node_id, task_code, task_name, start_date, end_date, duration_days, duration_unit, is_milestone, dependency_task_ids, dependency_types, dependency_lag_days, constraint_type, constraint_date, manually_scheduled")
       .eq("project_id", projectId)
       .limit(1000),
     supabase.from("wbs_nodes").select("id, parent_id, is_locked").eq("project_id", projectId).limit(1000),

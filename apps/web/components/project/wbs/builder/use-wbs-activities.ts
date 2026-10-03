@@ -3,7 +3,20 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_MASK, maskFromRow, type WbsCodeMask, type WbsMaskRow } from "@/lib/planning/wbs-code-mask";
 import { getWbsCodeMaskByProjectId, listWbsTaskSummariesPage } from "@/lib/project/wbs/wbs-queries";
+import { loadProjectCalendar } from "@/lib/planning/project-schedule";
+import type { WorkCalendar } from "@/lib/planning/work-calendar";
 import type { WbsActivitySummary } from "./wbs-builder-types";
+
+/** The project's working calendar (Planning › Working time); Mon–Sat until it loads or when none. */
+export function useProjectCalendar(projectId: string): WorkCalendar | undefined {
+  const [cal, setCal] = useState<WorkCalendar | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    loadProjectCalendar(projectId).then((c) => { if (!cancelled) setCal(c); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+  return cal;
+}
 
 /** The project's WBS Code Definition (Planning), or the default mask (2-digit numbers, "."). */
 export function useWbsCodeMask(projectId: string): WbsCodeMask {

@@ -7,13 +7,13 @@ import {
   buildWorkCalendar,
   DEFAULT_CALENDAR,
   nextWorkingDay,
-  workingDaysBetween,
   type PlanCalendarExceptionRow,
   type PlanCalendarRow,
   type WorkCalendar,
 } from "@/lib/planning/work-calendar";
 import {
   depsFromArrays,
+  engineDuration,
   depsToArrays,
   scheduleProject,
   wouldCycle,
@@ -68,7 +68,7 @@ import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, deleteWbsNodeByI
 
 const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
-  "sort_order, is_milestone, dependency_task_ids, dependency_types, dependency_lag_days, " +
+  "sort_order, is_milestone, duration_days, duration_unit, dependency_task_ids, dependency_types, dependency_lag_days, " +
   "constraint_type, constraint_date, manually_scheduled, baseline_start_date, " +
   "baseline_finish_date, delay_status, wbs_outline_code, discipline, owner_id, owner_name, priority";
 const NODE_COLS =
@@ -99,15 +99,19 @@ function findContainer(nodes: SheetNode[]): string | null {
 /** Map the grid's task rows onto the scheduling engine's input shape. */
 function toEngineTasks(tasks: SheetTask[], cal: WorkCalendar): EngineTask[] {
   return tasks.map((t) => {
-    let durationWd = 1;
-    if (t.is_milestone) durationWd = 0;
-    else if (t.start_date && t.end_date)
-      durationWd = Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date));
+    const { durationWd, elapsed } = engineDuration(cal, {
+      start: t.start_date,
+      finish: t.end_date,
+      isMilestone: t.is_milestone,
+      durationDays: t.duration_days,
+      unit: t.duration_unit,
+    });
     return {
       id: t.id,
       start: t.start_date,
       finish: t.end_date,
       durationWd,
+      elapsed,
       manuallyScheduled: t.manually_scheduled,
       constraintType: t.constraint_type,
       constraintDate: t.constraint_date,
@@ -967,7 +971,7 @@ export function useSheetData(
         case "duration": {
           const r = recalcOnDuration(task, raw, dataDate ?? todayISO(), cal);
           if (!r) {
-            toast.error("Duration must be a whole number of working days (0 = milestone)");
+            toast.error("Duration must be whole days, e.g. 5 (working days) or 7cd (calendar days); 0 = milestone");
             return;
           }
           schedules = true;

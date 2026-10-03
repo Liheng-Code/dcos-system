@@ -260,7 +260,7 @@ export function getWbsCodeMaskByProjectId(projectId: string) {
 export function listWbsTaskSummariesPage(projectId: string, from: number, to: number) {
   return db()
     .from("wbs_tasks")
-    .select("id, wbs_node_id, task_code, wbs_outline_code, task_name, status, progress, duration_days, discipline, sort_order")
+    .select("id, wbs_node_id, task_code, wbs_outline_code, task_name, status, progress, duration_days, duration_unit, start_date, end_date, is_milestone, discipline, sort_order")
     .eq("project_id", projectId)
     .order("id")
     .range(from, to);
@@ -269,11 +269,6 @@ export function listWbsTaskSummariesPage(projectId: string, from: number, to: nu
 // @table wbs_tasks
 export function deleteWbsTaskByIdReturning(id: string | number | boolean) {
   return db().from("wbs_tasks").delete().eq("id", id).select("id").maybeSingle();
-}
-
-// @table wbs_tasks
-export function getWbsTaskById(id: string | number | boolean) {
-  return db().from("wbs_tasks").select("dependency_task_id").eq("id", id).maybeSingle();
 }
 
 // @table wbs_tasks
@@ -301,15 +296,31 @@ export function listWbsTasksByProjectId(projectId: string | number | boolean, co
   return db().from("wbs_tasks").select(columns as "*").eq("project_id", projectId);
 }
 
+export interface WbsTaskLink {
+  id: string;
+  task_code: string;
+  task_name: string;
+  dependency_task_ids: string[] | null;
+}
+
 // @table wbs_tasks
-export function listWbsTasksByProjectIdAndExceptId(projectId: string | number | boolean, exceptId: string | number | boolean) {
-  return db()
-    .from("wbs_tasks")
-    .select("id, task_code, task_name")
-    .eq("project_id", projectId)
-    .neq("id", exceptId)
-    .order("task_code")
-    .limit(200);
+/** Every activity in the project with its predecessor ids (paged) — for predecessor pickers and loop checks. */
+export async function listWbsTaskLinks(projectId: string): Promise<WbsTaskLink[]> {
+  const out: WbsTaskLink[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db()
+      .from("wbs_tasks")
+      .select("id, task_code, task_name, dependency_task_ids")
+      .eq("project_id", projectId)
+      .order("task_code")
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...((data ?? []) as WbsTaskLink[]));
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
 }
 
 // @table wbs_tasks

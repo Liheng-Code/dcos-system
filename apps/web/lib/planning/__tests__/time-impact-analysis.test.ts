@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runTia, type FragnetActivity, type TiaTask } from "../time-impact-analysis";
 import { DEFAULT_CALENDAR } from "../work-calendar";
 
-const cal = DEFAULT_CALENDAR; // Mon–Fri
+const cal = { ...DEFAULT_CALENDAR, workdays: [false, true, true, true, true, true, false] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean] }; // Mon–Fri
 
 function task(id: string, overrides: Partial<TiaTask>): TiaTask {
   return {

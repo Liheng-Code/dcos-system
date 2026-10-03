@@ -4,10 +4,12 @@
 // so durations skip weekends and holidays from the project's plan_calendars row.
 
 import {
-  finishFromStart,
+  finishInUnit,
   nextWorkingDay,
+  parseDurationInput,
   parseISO as parseISOUtc,
-  workingDaysBetween,
+  spanInUnit,
+  type DurationUnit,
   type WorkCalendar,
 } from "@/lib/planning/work-calendar";
 import {
@@ -29,21 +31,29 @@ export {
   calendarDaysBetween as diffDaysInclusive,
 } from "@/lib/planning/work-calendar";
 
-/** Duration in WORKING days, or null when either date is missing. */
+/** The task's duration unit; anything unknown is working days. */
+export function unitOf(task: Pick<SheetTask, "duration_unit">): DurationUnit {
+  return task.duration_unit === "cd" ? "cd" : "wd";
+}
+
+/**
+ * Duration in the task's unit (working days, or calendar days for "cd" tasks). From the
+ * dates when both are set, else the stored duration (e.g. straight after a template), else null.
+ */
 export function durationOf(
-  task: Pick<SheetTask, "start_date" | "end_date" | "is_milestone">,
+  task: Pick<SheetTask, "start_date" | "end_date" | "is_milestone" | "duration_days" | "duration_unit">,
   cal: WorkCalendar,
 ): number | null {
-  if (!task.start_date || !task.end_date) return null;
   if (task.is_milestone) return 0;
-  return workingDaysBetween(cal, task.start_date, task.end_date);
+  if (task.start_date && task.end_date) return spanInUnit(cal, task.start_date, task.end_date, unitOf(task));
+  return task.duration_days != null ? Number(task.duration_days) : null;
 }
 
 // ---------------------------------------------------------------------------
 // Duration ↔ date recalculation. Returns the DB patch for a single-cell edit.
 // ---------------------------------------------------------------------------
 export type SchedulePatch = Partial<
-  Pick<SheetTask, "start_date" | "end_date" | "is_milestone">
+  Pick<SheetTask, "start_date" | "end_date" | "is_milestone" | "duration_days" | "duration_unit">
 >;
 
 export function recalcOnStart(
@@ -53,7 +63,7 @@ export function recalcOnStart(
 ): SchedulePatch {
   const start = nextWorkingDay(cal, newStart, 1);
   const dur = durationOf(task, cal) ?? 1;
-  return { start_date: start, end_date: finishFromStart(cal, start, dur) };
+  return { start_date: start, end_date: finishInUnit(cal, start, dur, unitOf(task)) };
 }
 
 /** Returns the patch plus whether the finish was clamped to the start. */
@@ -84,15 +94,18 @@ export function recalcOnDuration(
   fallbackStart: string,
   cal: WorkCalendar,
 ): { patch: SchedulePatch; seededStart: string | null } | null {
-  const d = Math.floor(Number(raw));
-  if (!Number.isFinite(d) || d < 0 || raw.trim() === "") return null;
+  const parsed = parseDurationInput(raw, unitOf(task));
+  if (!parsed) return null;
+  const { days: d, unit } = parsed;
   const start = nextWorkingDay(cal, task.start_date ?? fallbackStart, 1);
   const seededStart = task.start_date ? null : start;
   return {
     patch: {
       start_date: start,
-      end_date: finishFromStart(cal, start, d),
+      end_date: finishInUnit(cal, start, d, unit),
       is_milestone: d === 0,
+      duration_days: d,
+      duration_unit: unit,
     },
     seededStart,
   };

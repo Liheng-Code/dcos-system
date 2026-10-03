@@ -16,7 +16,8 @@ import { findOrCreateResourceForProfile, addAssignment as addPlanAssignment } fr
 import { useProject } from "@/components/dashboard/project-context";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
 import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
-import { getDepartmentById, getProfileById, getWbsNodeById, getWbsTaskById, getWbsTaskByProjectIdAndTaskCode, insertTaskRecurrence, insertWbsAuditLogReturning, insertWbsTasksReturning, listDepartments, listProfiles, listWbsAuditLogByWbsTaskId, listWbsNodesByProjectIdOrderedByFullPath, listWbsTasksByProjectIdAndExceptId, updateWbsTaskById } from "@/lib/project/wbs/wbs-queries";
+import { getDepartmentById, getProfileById, getWbsNodeById, getWbsTaskByProjectIdAndTaskCode, insertTaskRecurrence, insertWbsAuditLogReturning, insertWbsTasksReturning, listDepartments, listProfiles, listWbsAuditLogByWbsTaskId, listWbsNodesByProjectIdOrderedByFullPath, listWbsTaskLinks, updateWbsTaskById, type WbsTaskLink } from "@/lib/project/wbs/wbs-queries";
+import { depsFromArrays, depsToArrays, wouldCycle, type DepType, type EngineDep } from "@/lib/planning/schedule-engine";
 
 interface WbsTaskEditSheetProps {
   task: WbsTaskRecord | null;
@@ -143,12 +144,12 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
   const [baselineFinish,  setBaselineFinish]  = useState<string | null>(task?.baseline_finish_date ?? null);
   const [baselineSetAt,   setBaselineSetAt]   = useState<string | null>(task?.baseline_set_at      ?? null);
   const [settingBaseline, setSettingBaseline] = useState(false);
-  const [depTaskId,      setDepTaskId]      = useState<string | null>(task?.dependency_task_id ?? null);
-  const [depType,        setDepType]        = useState(task?.dependency_type ?? "fs");
-  const [depLagDays,     setDepLagDays]     = useState(String(task?.lag_days ?? 0));
+  // Predecessors: the same link arrays Planning schedules from.
+  const [deps,           setDeps]           = useState<EngineDep[]>(() =>
+    depsFromArrays(task?.dependency_task_ids, task?.dependency_types, task?.dependency_lag_days));
   const [depPickerOpen,  setDepPickerOpen]  = useState(false);
   const [depSearch,      setDepSearch]      = useState("");
-  const [depTasks,       setDepTasks]       = useState<{ id: string; task_code: string; task_name: string }[]>([]);
+  const [depTasks,       setDepTasks]       = useState<WbsTaskLink[]>([]);
   const [depTasksLoaded, setDepTasksLoaded] = useState(false);
   const [savingDep,      setSavingDep]      = useState(false);
   const [depCycleError,  setDepCycleError]  = useState(false);
@@ -223,15 +224,15 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     return () => { cancelled = true; };
   }, [projectId, supabase, isCreating, wbsNodeId]);
 
-  // Load candidate predecessor tasks when the picker opens (lazy, once per mount)
+  // Load the project's activities (names for the listed predecessors + picker + loop check), once.
+  const hasDeps = deps.length > 0;
   useEffect(() => {
-    if (!depPickerOpen || depTasksLoaded || !task) return;
-    listWbsTasksByProjectIdAndExceptId(projectId, task.id)
-      .then(({ data }) => {
-        if (data) setDepTasks(data as { id: string; task_code: string; task_name: string }[]);
-        setDepTasksLoaded(true);
-      });
-  }, [depPickerOpen, depTasksLoaded, task, supabase, projectId]);
+    if ((!depPickerOpen && !hasDeps) || depTasksLoaded || !task) return;
+    listWbsTaskLinks(projectId)
+      .then((rows) => setDepTasks(rows))
+      .catch(() => setDepTasks([]))
+      .finally(() => setDepTasksLoaded(true));
+  }, [depPickerOpen, hasDeps, depTasksLoaded, task, projectId]);
 
   useEffect(() => {
     if (isCreating || !task) return;
@@ -674,52 +675,44 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     toast.success("Baseline locked");
   }
 
-  async function hasDependencyCycle(predecessorId: string): Promise<boolean> {
-    let currentId: string | null = predecessorId;
-    const visited = new Set<string>();
-    while (currentId && !visited.has(currentId)) {
-      if (currentId === task!.id) return true;
-      visited.add(currentId);
-      const depRes = await getWbsTaskById(currentId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const depRow = depRes.data as any;
-      currentId = depRow?.dependency_task_id ?? null;
+  /** Adding `predId` would loop back to this task through the saved links. */
+  function closesLoop(predId: string): boolean {
+    if (!task) return false;
+    const graph = new Map<string, EngineDep[]>(
+      depTasks.map((t) => [t.id, (t.dependency_task_ids ?? []).map((id) => ({ predId: id, type: "fs" as DepType, lag: 0 }))]),
+    );
+    graph.set(task.id, deps);
+    return wouldCycle(predId, task.id, graph);
+  }
+
+  function addDep(predId: string) {
+    setDepPickerOpen(false);
+    setDepSearch("");
+    if (deps.some((d) => d.predId === predId)) return;
+    if (closesLoop(predId)) {
+      setDepCycleError(true);
+      toast.error("That predecessor would create a scheduling loop");
+      return;
     }
-    return false;
+    setDepCycleError(false);
+    setDeps((prev) => [...prev, { predId, type: "fs", lag: 0 }]);
   }
 
   async function handleSaveDependency() {
     if (!task) return;
     setSavingDep(true);
-    setDepCycleError(false);
-    if (depTaskId) {
-      const cycle = await hasDependencyCycle(depTaskId);
-      if (cycle) {
-        setDepCycleError(true);
-        setSavingDep(false);
-        toast.error("Circular dependency detected — choose a different predecessor");
-        return;
-      }
-    }
-    const selectedTask = depTasks.find((t) => t.id === depTaskId) ?? null;
-    const newDepText = selectedTask
-      ? `${depType.toUpperCase()}: ${selectedTask.task_code} – ${selectedTask.task_name}`
-      : null;
-    const { error } = await updateWbsTaskById({
-      dependency_task_id: depTaskId,
-      dependency_type:    depTaskId ? depType : null,
-      dependency_text:    newDepText,
-      lag_days:           depTaskId ? (parseFloat(depLagDays) || 0) : 0,
-    }, task.id);
+    const before = (task.dependency_task_ids ?? []).join(",");
+    const { error } = await updateWbsTaskById(depsToArrays(deps), task.id);
     if (error) { toast.error(error.message); setSavingDep(false); return; }
+    const codeOf = (id: string) => depTasks.find((t) => t.id === id)?.task_code ?? id;
     await insertAuditLog({
-      action: depTaskId ? "Dependency Set" : "Dependency Removed",
-      field_name: "dependency_task_id",
-      old_value: task.dependency_task_id ?? "",
-      new_value: depTaskId ?? "",
+      action: "Dependency Changed",
+      field_name: "dependency_task_ids",
+      old_value: before.split(",").filter(Boolean).map(codeOf).join(", "),
+      new_value: deps.map((d) => `${codeOf(d.predId)} ${d.type.toUpperCase()}${d.lag ? ` ${d.lag > 0 ? "+" : ""}${d.lag}d` : ""}`).join(", "),
     });
     setSavingDep(false);
-    toast.success(depTaskId ? "Dependency saved" : "Dependency removed");
+    toast.success(deps.length ? "Predecessors saved" : "Predecessors removed");
   }
 
   async function handlePostComment() {
@@ -851,12 +844,13 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
     onSave();
   }
 
-  const selectedDep = depTasks.find((t) => t.id === depTaskId) ?? null;
-  const filteredDepTasks = depSearch.trim()
+  const depTaskById = new Map(depTasks.map((t) => [t.id, t]));
+  const filteredDepTasks = (depSearch.trim()
     ? depTasks.filter((t) =>
         t.task_code.toLowerCase().includes(depSearch.toLowerCase()) ||
         t.task_name.toLowerCase().includes(depSearch.toLowerCase()))
-    : depTasks;
+    : depTasks
+  ).filter((t) => t.id !== task?.id && !deps.some((d) => d.predId === t.id)).slice(0, 200);
 
   const scheduleVarianceDays =
     baselineFinish && task?.end_date
@@ -1002,95 +996,104 @@ export function WbsTaskEditSheet({ task, projectId, wbsNodeId, wbsNodes: propWbs
           {/* DEPENDENCY SECTION */}
           <div className="space-y-2">
             <Label className="text-[11px] flex items-center gap-1.5">
-              <GitBranch className="h-3 w-3" /> Predecessor
+              <GitBranch className="h-3 w-3" /> Predecessors
             </Label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => { if (canEditAssignee) setDepPickerOpen((o) => !o); }}
-                disabled={!canEditAssignee}
-                className="flex w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-left truncate text-xs">
-                  {selectedDep
-                    ? `${selectedDep.task_code} · ${selectedDep.task_name}`
-                    : <span className="text-muted-foreground italic text-xs">No predecessor</span>}
-                </span>
-                {depTaskId && canEditAssignee && (
-                  <span
-                    role="button" tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); setDepTaskId(null); setDepPickerOpen(false); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); setDepTaskId(null); } }}
-                    className="shrink-0 text-muted-foreground hover:text-red-500 cursor-pointer"
-                  >
-                    <X className="h-3 w-3" />
+            {deps.length === 0 && (
+              <p className="text-[11px] italic text-muted-foreground">No predecessors</p>
+            )}
+            {deps.map((d, k) => {
+              const p = depTaskById.get(d.predId);
+              return (
+                <div key={d.predId} className="flex items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-xs" title={p ? `${p.task_code} · ${p.task_name}` : d.predId}>
+                    {p ? <><span className="font-mono">{p.task_code}</span> · {p.task_name}</> : depTasksLoaded ? "Unknown activity" : "…"}
                   </span>
-                )}
-              </button>
-              {depPickerOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setDepPickerOpen(false)} />
-                  <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-background shadow-lg">
-                    <div className="p-2 border-b border-border">
-                      <input
-                        autoFocus
-                        value={depSearch}
-                        onChange={(e) => setDepSearch(e.target.value)}
-                        placeholder="Search by code or name…"
-                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-hidden focus:border-primary"
-                      />
-                    </div>
-                    <div className="max-h-48 overflow-y-auto p-1">
-                      {!depTasksLoaded && <p className="px-2 py-3 text-[10px] text-center text-muted-foreground">Loading…</p>}
-                      {depTasksLoaded && filteredDepTasks.length === 0 && (
-                        <p className="px-2 py-3 text-[10px] text-center text-muted-foreground">No tasks found</p>
-                      )}
-                      {filteredDepTasks.map((t) => (
-                        <button key={t.id} type="button"
-                          onClick={() => { setDepTaskId(t.id); setDepPickerOpen(false); setDepCycleError(false); }}
-                          className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-muted transition-colors ${t.id === depTaskId ? "bg-blue-50 text-blue-700" : ""}`}
-                        >
-                          <span className="text-[11px] font-medium">{t.task_code}</span>
-                          <span className="text-[10px] text-muted-foreground truncate">{t.task_name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            {depTaskId && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Type</Label>
-                  <select value={depType} onChange={(e) => setDepType(e.target.value)}
+                  <select
+                    value={d.type}
+                    aria-label="Link type"
+                    onChange={(e) => setDeps((prev) => prev.map((x, i) => (i === k ? { ...x, type: e.target.value as DepType } : x)))}
                     disabled={!canEditAssignee}
-                    className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-hidden focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed">
-                    <option value="fs">FS — Finish to Start</option>
-                    <option value="ss">SS — Start to Start</option>
-                    <option value="ff">FF — Finish to Finish</option>
-                    <option value="sf">SF — Start to Finish</option>
+                    className="w-14 rounded-md border border-border bg-background px-1 py-1 text-[11px] disabled:opacity-50"
+                    title="FS finish→start · SS start→start · FF finish→finish · SF start→finish"
+                  >
+                    <option value="fs">FS</option>
+                    <option value="ss">SS</option>
+                    <option value="ff">FF</option>
+                    <option value="sf">SF</option>
                   </select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Lag (days)</Label>
-                  <input type="number" step="0.5" value={depLagDays}
-                    onChange={(e) => setDepLagDays(e.target.value)}
+                  <input
+                    type="number"
+                    step="1"
+                    value={d.lag}
+                    aria-label="Lag (working days)"
+                    title="Lag in working days (negative = lead)"
+                    onChange={(e) => setDeps((prev) => prev.map((x, i) => (i === k ? { ...x, lag: Math.round(Number(e.target.value) || 0) } : x)))}
                     disabled={!canEditAssignee}
-                    placeholder="0"
-                    className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs outline-hidden focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed" />
+                    className="w-14 rounded-md border border-border bg-background px-1.5 py-1 text-right text-[11px] disabled:opacity-50"
+                  />
+                  {canEditAssignee && (
+                    <button
+                      type="button"
+                      aria-label="Remove predecessor"
+                      onClick={() => setDeps((prev) => prev.filter((_, i) => i !== k))}
+                      className="shrink-0 text-muted-foreground hover:text-red-500"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
+              );
+            })}
+            {canEditAssignee && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDepPickerOpen((o) => !o)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
+                >
+                  <GitBranch className="h-3.5 w-3.5 shrink-0" /> Add predecessor
+                </button>
+                {depPickerOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setDepPickerOpen(false)} />
+                    <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-background shadow-lg">
+                      <div className="p-2 border-b border-border">
+                        <input
+                          autoFocus
+                          value={depSearch}
+                          onChange={(e) => setDepSearch(e.target.value)}
+                          placeholder="Search by code or name…"
+                          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-hidden focus:border-primary"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto p-1">
+                        {!depTasksLoaded && <p className="px-2 py-3 text-[10px] text-center text-muted-foreground">Loading…</p>}
+                        {depTasksLoaded && filteredDepTasks.length === 0 && (
+                          <p className="px-2 py-3 text-[10px] text-center text-muted-foreground">No activities found</p>
+                        )}
+                        {filteredDepTasks.map((t) => (
+                          <button key={t.id} type="button"
+                            onClick={() => addDep(t.id)}
+                            className="flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-muted transition-colors"
+                          >
+                            <span className="text-[11px] font-medium">{t.task_code}</span>
+                            <span className="text-[10px] text-muted-foreground truncate">{t.task_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {depCycleError && (
-              <p className="text-[10px] text-red-600">Circular dependency — this predecessor creates a scheduling loop.</p>
+              <p className="text-[10px] text-red-600">That predecessor would create a scheduling loop.</p>
             )}
             {canEditAssignee && (
               <Button onClick={handleSaveDependency} disabled={savingDep} size="sm" variant="outline"
                 className="w-full rounded-lg text-xs">
                 {savingDep && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                Save Dependency
+                Save predecessors
               </Button>
             )}
           </div>

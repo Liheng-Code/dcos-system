@@ -3,7 +3,7 @@ import { captureDelayFloat } from "../delay-governance";
 import { DEFAULT_CALENDAR } from "../work-calendar";
 import type { DelayTask } from "../delay-analysis";
 
-const cal = DEFAULT_CALENDAR; // Mon–Fri
+const cal = { ...DEFAULT_CALENDAR, workdays: [false, true, true, true, true, true, false] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean] }; // Mon–Fri
 
 function task(id: string, overrides: Partial<DelayTask>): DelayTask {
   return {

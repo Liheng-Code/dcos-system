@@ -1,5 +1,6 @@
 "use client";
 
+import type { WorkCalendar } from "@/lib/planning/work-calendar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Tree, type RowRendererProps, type TreeApi } from "react-arborist";
@@ -84,6 +85,8 @@ interface WbsBuilderGridProps {
   activities: WbsActivitySummary[];
   /** The project's WBS Code Definition (Planning) — the grid shows the same codes. */
   codeMask: WbsCodeMask;
+  /** Project working calendar — package durations (working days between rolled-up dates). */
+  calendar?: WorkCalendar;
   /** Bumped on every View change, so re-choosing the same depth (Expand / Collapse all) re-applies it. */
   depthNonce: number;
 }
@@ -101,6 +104,7 @@ export function WbsBuilderGrid({
   activities,
   depthNonce,
   codeMask,
+  calendar,
 }: WbsBuilderGridProps) {
   const {
     tree,
@@ -127,15 +131,15 @@ export function WbsBuilderGrid({
   const codes = useMemo(() => wbsDisplayCodes(attachActivities(tree, activities), codeMask), [tree, activities, codeMask]);
   const rollup = useMemo(() => {
     const nodes = flatRows.map((r) => r.node).filter((n) => n.node_type !== PROJECT_NODE_TYPE);
-    const m = activityRollup(nodes, activities);
+    const m = activityRollup(nodes, activities, calendar);
     const project = flatRows.find((r) => r.node.node_type === PROJECT_NODE_TYPE);
     if (project) {
-      const all = activityRollup(nodes.map((n) => (n.parent_id ? n : { ...n, parent_id: project.node.id })), activities)
+      const all = activityRollup(nodes.map((n) => (n.parent_id ? n : { ...n, parent_id: project.node.id })), activities, calendar)
         .get(project.node.id);
       if (all) m.set(project.node.id, all);
     }
     return m;
-  }, [flatRows, activities]);
+  }, [flatRows, activities, calendar]);
 
   // No internal scrollbars — the list is sized to the rows currently shown (collapsed branches
   // take no space) so the grid grows with its content and the page does the scrolling.

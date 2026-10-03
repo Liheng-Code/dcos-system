@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
-import { depsFromArrays, scheduleProject, type EngineTask } from "./schedule-engine";
-import { buildWorkCalendar, todayISO, workingDaysBetween, type PlanCalendarExceptionRow, type PlanCalendarRow, type WorkCalendar } from "./work-calendar";
+import { depsFromArrays, engineDuration, scheduleProject, type EngineTask } from "./schedule-engine";
+import { buildWorkCalendar, todayISO, type PlanCalendarExceptionRow, type PlanCalendarRow, type WorkCalendar } from "./work-calendar";
 import { levelResources, type LevelTask, type ResourceLevellingResult } from "./resource-levelling";
 import { recomputeProjectWork } from "./productivity-service";
 import { dedupe } from "@/lib/request-dedup";
@@ -19,6 +19,8 @@ interface TaskRow {
   task_name: string;
   start_date: string | null;
   end_date: string | null;
+  duration_days?: number | null;
+  duration_unit?: string | null;
   is_milestone: boolean | null;
   manually_scheduled: boolean | null;
   constraint_type: string | null;
@@ -33,14 +35,19 @@ interface TaskRow {
 const PRIORITY_RANK: Record<string, number> = { critical: 1, high: 2, medium: 3, low: 4 };
 
 function toEngineTask(t: TaskRow, cal: WorkCalendar): EngineTask {
-  let durationWd = 1;
-  if (t.is_milestone) durationWd = 0;
-  else if (t.start_date && t.end_date) durationWd = Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date));
+  const { durationWd, elapsed } = engineDuration(cal, {
+    start: t.start_date,
+    finish: t.end_date,
+    isMilestone: t.is_milestone,
+    durationDays: t.duration_days,
+    unit: t.duration_unit,
+  });
   return {
     id: t.id,
     start: t.start_date,
     finish: t.end_date,
     durationWd,
+    elapsed,
     manuallyScheduled: t.manually_scheduled ?? false,
     constraintType: t.constraint_type,
     constraintDate: t.constraint_date,
@@ -73,7 +80,7 @@ async function fetchLevellingContext(projectId: string): Promise<LevellingContex
     supabase
       .from("wbs_tasks")
       .select(
-        "id, task_code, task_name, start_date, end_date, is_milestone, manually_scheduled, constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days, priority",
+        "id, task_code, task_name, start_date, end_date, duration_days, duration_unit, is_milestone, manually_scheduled, constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days, priority",
       )
       .eq("project_id", projectId)
       .limit(1000),
@@ -130,7 +137,7 @@ async function fetchLevellingContext(projectId: string): Promise<LevellingContex
     const d = dates.get(t.id);
     const f = float.get(t.id);
     if (!d || !f) continue;
-    const durationWd = t.is_milestone ? 0 : t.start_date && t.end_date ? Math.max(1, workingDaysBetween(cal, t.start_date, t.end_date)) : 1;
+    const { durationWd } = engineDuration(cal, { start: t.start_date, finish: t.end_date, isMilestone: t.is_milestone, durationDays: t.duration_days, unit: t.duration_unit });
 
     // Two assignment rows for the same resource (shouldn't normally happen, but the Resource
     // Loading UI doesn't prevent it) sum into one demand rather than silently dropping the second.

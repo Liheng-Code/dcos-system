@@ -4,6 +4,7 @@
 
 import type { HierNode } from "@/lib/wbs-hierarchy";
 import { computeWbsCode, type WbsCodeMask } from "@/lib/planning/wbs-code-mask";
+import { spanInUnit, type WorkCalendar } from "@/lib/planning/work-calendar";
 
 /** Explicit subset of public.wbs_nodes the grid reads/writes. */
 export interface WbsBuilderNode extends HierNode {
@@ -42,6 +43,11 @@ export interface WbsActivitySummary {
   status: string | null;
   progress: number | null;
   duration_days: number | null;
+  /** "wd" working days (default) | "cd" calendar days. */
+  duration_unit?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_milestone?: boolean | null;
   discipline: string | null;
   sort_order: number | null;
 }
@@ -70,8 +76,16 @@ export type WbsBuilderField =
   | "cost_code"
   | "status";
 
-/** Every column key, including the non-editable Progress / Activities / GFA / Action columns. */
-export type WbsColumnKey = WbsBuilderField | "progress" | "activities" | "gfa" | "action";
+/** Every column key, including the read-only schedule, Progress / Activities / GFA / Action columns. */
+export type WbsColumnKey =
+  | WbsBuilderField
+  | "duration"
+  | "start"
+  | "finish"
+  | "progress"
+  | "activities"
+  | "gfa"
+  | "action";
 
 /** Columns navigable left/right by keyboard, in visual order. */
 export const NAV_COLUMNS: WbsBuilderField[] = [
@@ -135,6 +149,9 @@ export const WBS_BUILDER_COLUMNS: WbsBuilderColumn[] = [
     variant: "select",
     options: STATUS_OPTIONS.map((s) => ({ value: s, label: statusLabel(s) })),
   },
+  { field: "duration", label: "Duration", width: 84, variant: "number", align: "right" },
+  { field: "start", label: "Start", width: 96, variant: "text", align: "right" },
+  { field: "finish", label: "Finish", width: 96, variant: "text", align: "right" },
   { field: "progress", label: "Progress", width: 90, variant: "number", align: "right" },
   { field: "activities", label: "Activities", width: 120, variant: "text", align: "right" },
   { field: "gfa", label: "GFA (m²)", width: 110, variant: "number", align: "right" },
@@ -151,8 +168,8 @@ export const COLUMN_PRESETS: { id: string; label: string; columns: WbsColumnKey[
   { id: "standard", label: "Standard", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "activities", "gfa"] },
   { id: "structure", label: "Structure", columns: ["node_type", "area_label", "status"] },
   { id: "cost", label: "Cost", columns: ["cost_code", "activities", "gfa"] },
-  { id: "schedule", label: "Schedule", columns: ["discipline", "status", "progress", "activities"] },
-  { id: "all", label: "All", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "progress", "activities", "gfa"] },
+  { id: "schedule", label: "Schedule", columns: ["discipline", "duration", "start", "finish", "progress", "activities"] },
+  { id: "all", label: "All", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "duration", "start", "finish", "progress", "activities", "gfa"] },
 ];
 
 export type WbsDepth = "all" | 1 | 2 | 3 | 4;
@@ -345,26 +362,59 @@ export interface ActivityRollup {
   count: number;
   /** Duration-weighted % complete of the activities under the node (0–100), null when none. */
   progress: number | null;
+  /** Earliest start / latest finish of the dated activities below; null when none are dated. */
+  start: string | null;
+  finish: string | null;
+  /** Working days from start to finish (needs a calendar); null without dates. */
+  days: number | null;
 }
 
-/** Activity count and % complete for every node, including everything below it. */
-export function activityRollup(nodes: WbsBuilderNode[], activities: WbsActivitySummary[]): Map<string, ActivityRollup> {
+/** Activity count, % complete and date span for every node, including everything below it. */
+export function activityRollup(
+  nodes: WbsBuilderNode[],
+  activities: WbsActivitySummary[],
+  cal?: WorkCalendar,
+): Map<string, ActivityRollup> {
   const parentOf = new Map(nodes.map((n) => [n.id, n.parent_id]));
-  const acc = new Map<string, { count: number; weight: number; done: number }>();
+  const acc = new Map<string, { count: number; weight: number; done: number; start: string | null; finish: string | null }>();
   for (const a of activities) {
     const w = Math.max(1, Number(a.duration_days) || 1);
     const done = (Math.min(100, Math.max(0, Number(a.progress) || 0)) / 100) * w;
+    const s = a.start_date ?? null;
+    const f = a.end_date ?? null;
     let id: string | null | undefined = a.wbs_node_id;
     let guard = 0;
     while (id && guard++ < 64) {
-      const cur = acc.get(id) ?? { count: 0, weight: 0, done: 0 };
-      acc.set(id, { count: cur.count + 1, weight: cur.weight + w, done: cur.done + done });
+      const cur = acc.get(id) ?? { count: 0, weight: 0, done: 0, start: null, finish: null };
+      acc.set(id, {
+        count: cur.count + 1,
+        weight: cur.weight + w,
+        done: cur.done + done,
+        start: s && (!cur.start || s < cur.start) ? s : cur.start,
+        finish: f && (!cur.finish || f > cur.finish) ? f : cur.finish,
+      });
       id = parentOf.get(id);
     }
   }
   const out = new Map<string, ActivityRollup>();
-  for (const [id, v] of acc) out.set(id, { count: v.count, progress: v.weight ? Math.round((v.done / v.weight) * 100) : null });
+  for (const [id, v] of acc) {
+    out.set(id, {
+      count: v.count,
+      progress: v.weight ? Math.round((v.done / v.weight) * 100) : null,
+      start: v.start,
+      finish: v.finish,
+      days: cal && v.start && v.finish ? spanInUnit(cal, v.start, v.finish, "wd") : null,
+    });
+  }
   return out;
+}
+
+/** "07 Oct 26" for a YYYY-MM-DD date; "" for none. */
+export function shortDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m) - 1] ?? m;
+  return `${d} ${mon} ${y.slice(2)}`;
 }
 
 // ---------------------------------------------------------------------------

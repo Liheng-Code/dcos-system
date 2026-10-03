@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { phaseCostByWeek, type PhasableTask } from "../cost-phasing";
-import { DEFAULT_CALENDAR } from "../work-calendar";
+import { DEFAULT_CALENDAR as DEFAULT_MON_SAT } from "../work-calendar";
+
+// These cases are written for a Mon–Fri week.
+const DEFAULT_CALENDAR = { ...DEFAULT_MON_SAT, workdays: [false, true, true, true, true, true, false] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean] };
 
 // Mon-Fri calendar; 2026-10-05 is a Monday.
 function task(over: Partial<PhasableTask>): PhasableTask {

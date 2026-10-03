@@ -13,7 +13,7 @@ const DAY_MS = 86_400_000;
 const MAX_SCAN = 3650;
 
 export interface WorkCalendar {
-  /** `null` = the built-in Mon–Fri fallback (no plan_calendars row for the project). */
+  /** `null` = the built-in Mon–Sat fallback (no plan_calendars row for the project). */
   id: string | null;
   name: string;
   /** Index = UTC getUTCDay(): 0 = Sunday … 6 = Saturday. */
@@ -29,8 +29,8 @@ export const DEFAULT_HOURS_PER_DAY = 8;
 
 export const DEFAULT_CALENDAR: WorkCalendar = {
   id: null,
-  name: "Mon–Fri (default)",
-  workdays: [false, true, true, true, true, true, false],
+  name: "Mon–Sat (default)",
+  workdays: [false, true, true, true, true, true, true],
   exceptions: new Map(),
   hoursPerDay: DEFAULT_HOURS_PER_DAY,
 };
@@ -162,6 +162,53 @@ export function startFromFinish(
   return addWorkingDays(cal, finish, -(durationWd - 1));
 }
 
+// ---------------------------------------------------------------------------
+// Duration units: working days ("wd", the default) skip non-working days;
+// calendar days ("cd" — curing, lead times, approvals) run straight through.
+// ---------------------------------------------------------------------------
+export type DurationUnit = "wd" | "cd";
+
+export const isDurationUnit = (v: unknown): v is DurationUnit => v === "wd" || v === "cd";
+
+/** Inclusive length of start..end in `unit`. */
+export function spanInUnit(cal: WorkCalendar, startISO: string, endISO: string, unit: DurationUnit): number {
+  return unit === "cd" ? calendarDaysBetween(startISO, endISO) : workingDaysBetween(cal, startISO, endISO);
+}
+
+/** Finish of a task lasting `n` units from `startISO` (the start always snaps to a working day). */
+export function finishInUnit(cal: WorkCalendar, startISO: string, n: number, unit: DurationUnit): string {
+  if (unit !== "cd") return finishFromStart(cal, startISO, n);
+  const start = nextWorkingDay(cal, startISO, 1);
+  return n <= 0 ? start : addCalendarDays(start, n - 1);
+}
+
+/** Start of a task lasting `n` units and finishing on `finishISO`. */
+export function startInUnit(cal: WorkCalendar, finishISO: string, n: number, unit: DurationUnit): string {
+  if (unit !== "cd") return startFromFinish(cal, finishISO, n);
+  return nextWorkingDay(cal, n <= 0 ? finishISO : addCalendarDays(finishISO, -(n - 1)), -1);
+}
+
+/**
+ * Typed duration: "7", "7d", "7wd" = working days; "7cd", "7 cd", "7ed" = calendar days.
+ * No suffix keeps `fallbackUnit`. `null` = not a whole number of days.
+ */
+export function parseDurationInput(
+  raw: string,
+  fallbackUnit: DurationUnit = "wd",
+): { days: number; unit: DurationUnit } | null {
+  const m = /^\s*(\d+)\s*(wd|d|cd|ed)?\s*$/i.exec(raw);
+  if (!m) return null;
+  const suffix = m[2]?.toLowerCase();
+  const unit: DurationUnit = !suffix ? fallbackUnit : suffix === "cd" || suffix === "ed" ? "cd" : "wd";
+  return { days: parseInt(m[1], 10), unit };
+}
+
+/** "12" for working days, "12 cd" for calendar days. */
+export function formatDuration(days: number | null | undefined, unit: DurationUnit | string | null | undefined): string {
+  if (days == null || !Number.isFinite(days)) return "";
+  return unit === "cd" ? `${days} cd` : String(days);
+}
+
 /** Later of two ISO dates. */
 export function maxISO(a: string, b: string): string {
   return parseISO(a).getTime() >= parseISO(b).getTime() ? a : b;
@@ -217,7 +264,7 @@ export function buildWorkCalendar(
       row.wednesday ?? true,
       row.thursday ?? true,
       row.friday ?? true,
-      row.saturday ?? false,
+      row.saturday ?? true,
     ],
     exceptions: new Map(exceptions.map((e) => [e.exception_date, e.is_working ?? false])),
   };

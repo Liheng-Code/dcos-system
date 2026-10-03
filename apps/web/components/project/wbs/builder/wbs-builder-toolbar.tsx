@@ -6,6 +6,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   BookmarkPlus,
+  CalendarClock,
   FileSpreadsheet,
   History,
   LayoutTemplate,
@@ -35,6 +36,8 @@ interface WbsBuilderToolbarProps {
   onSaveWbsTemplate: () => void;
   /** Import WBS + activities from an Excel / CSV file. */
   onImportFile: () => void;
+  /** Calculate activity dates from the project start (durations + links). */
+  onSchedule: () => void;
   /** View menu (depth, activities, columns). */
   viewMenu?: React.ReactNode;
 }
@@ -55,6 +58,7 @@ export function WbsBuilderToolbar({
   onApplyWbsTemplate,
   onSaveWbsTemplate,
   onImportFile,
+  onSchedule,
   viewMenu,
 }: WbsBuilderToolbarProps) {
   const noSelection = !selectedRowId;
@@ -150,6 +154,9 @@ export function WbsBuilderToolbar({
       </Button>
       <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onImportFile} title="Import WBS and activities from an Excel or CSV file">
         <FileSpreadsheet className="h-3.5 w-3.5" /> Import Excel / CSV
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onSchedule} title="Calculate start and finish dates from durations and links">
+        <CalendarClock className="h-3.5 w-3.5" /> Schedule
       </Button>
 
       <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
