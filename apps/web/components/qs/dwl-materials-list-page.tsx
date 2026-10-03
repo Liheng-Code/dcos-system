@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
   AlertTriangle, Camera, Eye, FileDown, FileSpreadsheet, History,
-  ImageOff, LayoutGrid, Loader2, MoreHorizontal, Package, Pencil, Plus,
+  ImageOff, LayoutGrid, Loader2, MoreHorizontal, Network, Package, Pencil, Plus,
   Search, Table2, Tags, Trash2, Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -29,8 +29,8 @@ import { DwlMaterialFormDialog } from "@/components/qs/dwl-material-form-dialog"
 import { DwlMaterialCategoryDialog } from "@/components/qs/dwl-material-category-dialog";
 import { DwlMaterialImportDialog } from "@/components/qs/dwl-material-import-dialog";
 import { DwlMaterialDuplicatesDialog } from "@/components/qs/dwl-material-duplicates-dialog";
-import type { DwlMaterialCategory, DwlMaterialRow } from "@/components/qs/dwl-types";
-import { deleteDwlResourceByIdReturning, getProfileById, listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlMaterialPhotosByResourceIds, listDwlVMaterialsOrderedByCode } from "@/lib/qs/qs-queries";
+import type { DwlMaterialCategory, DwlMaterialDivision, DwlMaterialRow } from "@/components/qs/dwl-types";
+import { deleteDwlResourceByIdReturning, getProfileById, listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlMaterialDivisionsOrderedBySortOrderAndCode, listDwlMaterialPhotosByResourceIds, listDwlVMaterialsOrderedByCode } from "@/lib/qs/qs-queries";
 
 type StatusFilter = "active" | "inactive" | "all";
 type ViewMode = "cards" | "table";
@@ -107,6 +107,8 @@ export default function DwlMaterialsListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [disciplineFilter, setDisciplineFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [divisions, setDivisions] = useState<DwlMaterialDivision[]>([]);
+  const [divisionFilter, setDivisionFilter] = useState<string>("all");
   const [elementFilter, setElementFilter] = useState<string>("all");
 
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
@@ -151,9 +153,25 @@ export default function DwlMaterialsListPage() {
   }, [supabase]);
 
   const loadCategories = useCallback(async () => {
-    const { data, error } = await listDwlMaterialCategoriesOrderedBySortOrderAndName("id, group_name, name, sort_order, is_active, created_at, updated_at");
+    const { data, error } = await listDwlMaterialCategoriesOrderedBySortOrderAndName("id, group_name, name, division_code, sort_order, is_active, created_at, updated_at");
     if (!error) setCategories((data ?? []) as DwlMaterialCategory[]);
+    const { data: divisionRows } = await listDwlMaterialDivisionsOrderedBySortOrderAndCode();
+    setDivisions((divisionRows ?? []) as DwlMaterialDivision[]);
   }, [supabase]);
+
+  // "Open in Material Master" on the Material Divisions page links here with ?division=09.
+  useEffect(() => {
+    const division = new URLSearchParams(window.location.search).get("division");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (division) setDivisionFilter(division);
+  }, []);
+
+  // A material takes its division from its category.
+  const divisionOfCategory = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categories) if (c.division_code) map.set(c.id, c.division_code);
+    return map;
+  }, [categories]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadData(); void loadCategories(); }, [loadData, loadCategories]);
@@ -214,6 +232,7 @@ export default function DwlMaterialsListPage() {
     if (statusFilter === "inactive") result = result.filter((r) => !r.is_active);
     if (disciplineFilter !== "all") result = result.filter((r) => r.discipline === disciplineFilter);
     if (categoryFilter !== "all") result = result.filter((r) => r.category_id === categoryFilter);
+    if (divisionFilter !== "all") result = result.filter((r) => r.category_id != null && divisionOfCategory.get(r.category_id) === divisionFilter);
     if (elementFilter !== "all") result = result.filter((r) => r.application_element === elementFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -237,7 +256,7 @@ export default function DwlMaterialsListPage() {
       }
     }
     return result;
-  }, [rows, statusFilter, disciplineFilter, categoryFilter, elementFilter, search, librarySearch.ranks]);
+  }, [rows, statusFilter, disciplineFilter, categoryFilter, divisionFilter, divisionOfCategory, elementFilter, search, librarySearch.ranks]);
 
   const canView = !permsLoaded || can("qs_libraries", "view");
   const canCreate = can("qs_libraries", "can_create");
@@ -391,6 +410,9 @@ export default function DwlMaterialsListPage() {
             <Tags className="h-3.5 w-3.5" /> Manage Categories
             <Badge variant="secondary" className="ml-1">{categories.length}</Badge>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/qs/dwl-material-divisions"><Network className="h-3.5 w-3.5" /> Divisions</Link>
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExcelExport} disabled={filtered.length === 0}>
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel Export
           </Button>
@@ -423,6 +445,12 @@ export default function DwlMaterialsListPage() {
           )}
         </div>
         {canEdit && <QsSearchIndexRefreshButton />}
+        <select value={divisionFilter} onChange={(e) => setDivisionFilter(e.target.value)} className="h-8 max-w-56 rounded-lg border border-input bg-transparent px-2.5 text-sm">
+          <option value="all">All Divisions</option>
+          {divisions.filter((d) => d.is_active && categories.some((c) => c.division_code === d.code)).map((d) => (
+            <option key={d.code} value={d.code}>{d.code} — {d.name}</option>
+          ))}
+        </select>
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm">
           <option value="all">All Categories ({rows.length})</option>
           {categories.filter((c) => c.is_active).map((c) => (

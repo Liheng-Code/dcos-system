@@ -539,6 +539,48 @@ export function updateDwlMaterialCategoryById(patch: object, id: string | number
   return db().from("dwl_material_categories").update(patch).eq("id", id);
 }
 
+// ── dwl_material_division_sections ────────────────────────────────────────────
+
+// @table dwl_material_division_sections
+export function deleteDwlMaterialDivisionSectionById(id: string | number | boolean) {
+  return db().from("dwl_material_division_sections").delete().eq("id", id);
+}
+
+// @table dwl_material_division_sections
+export function insertDwlMaterialDivisionSection(row: object) {
+  return db().from("dwl_material_division_sections").insert([row]);
+}
+
+// @table dwl_material_division_sections
+export function listDwlMaterialDivisionSectionsOrderedBySortOrderAndCode() {
+  return db()
+    .from("dwl_material_division_sections")
+    .select("id, division_code, code, name, parent_code, sort_order")
+    .order("sort_order")
+    .order("code");
+}
+
+// ── dwl_material_divisions ────────────────────────────────────────────────────
+
+// @table dwl_material_divisions
+export function insertDwlMaterialDivision(row: object) {
+  return db().from("dwl_material_divisions").insert([row]);
+}
+
+// @table dwl_material_divisions
+export function listDwlMaterialDivisionsOrderedBySortOrderAndCode() {
+  return db()
+    .from("dwl_material_divisions")
+    .select("code, name, group_name, sort_order, is_active")
+    .order("sort_order")
+    .order("code");
+}
+
+// @table dwl_material_divisions
+export function updateDwlMaterialDivisionByCode(patch: object, code: string) {
+  return db().from("dwl_material_divisions").update(patch).eq("code", code);
+}
+
 // ── dwl_material_photos ───────────────────────────────────────────────────────
 
 // @table dwl_material_photos

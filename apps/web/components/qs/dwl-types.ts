@@ -893,10 +893,34 @@ export interface DwlMaterialCategory {
   cost_code_prefix: string | null;
   color_tag: string | null;
   description: string | null;
+  // MasterFormat division (dwl_material_divisions.code); defaults from the
+  // first two digits of cost_code_prefix. Migration 20261003000006.
+  division_code?: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// public.dwl_material_divisions row — CSI MasterFormat division above the
+// Material Master categories. Reference library, not tenant-scoped.
+export interface DwlMaterialDivision {
+  code: string;
+  name: string;
+  group_name: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+// public.dwl_material_division_sections row — a section of a division
+// ("09 30 00"), or a subclass of a section when parent_code is set.
+export interface DwlMaterialDivisionSection {
+  id: string;
+  division_code: string;
+  code: string;
+  name: string;
+  parent_code: string | null;
+  sort_order: number;
 }
 
 // public.dwl_material_photos row — tenant-scoped Material Master photo /

@@ -35,6 +35,7 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     // resource type, then the cross-type price register and supplier side.
     items: [
       { label: "Material Master", href: "/dashboard/qs/dwl-materials" },
+      { label: "Material Divisions", href: "/dashboard/qs/dwl-material-divisions" },
       { label: "Labor Rates", href: "/dashboard/qs/dwl-labor-rates" },
       { label: "Equipment Rates", href: "/dashboard/qs/dwl-equipment-rates" },
       { label: "Subcontractor Rates", href: "/dashboard/qs/dwl-subcontractor-rates" },
