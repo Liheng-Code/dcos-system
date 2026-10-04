@@ -52,9 +52,13 @@ export function TaskAlertsMenu() {
   const router = useRouter();
   const { alerts, unreadCount, loading, markRead, markAllRead } = useTaskAlerts();
 
-  async function openAlert(alert: { id: string; alert_type: string; wbs_task_id: string | null }) {
+  async function openAlert(alert: { id: string; alert_type: string; wbs_task_id: string | null; metadata?: Record<string, unknown> }) {
     await markRead(alert.id);
-    if (alert.wbs_task_id) {
+    // Alerts that carry their own in-app destination (e.g. Daily Reporting).
+    const href = alert.metadata?.href;
+    if (typeof href === "string" && href.startsWith("/dashboard/")) {
+      router.push(href);
+    } else if (alert.wbs_task_id) {
       router.push(`/dashboard/tasks/${alert.wbs_task_id}`);
     } else if (alert.alert_type === "leave_pending_approval") {
       router.push("/dashboard/hr/leave/approvals");

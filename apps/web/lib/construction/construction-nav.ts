@@ -17,7 +17,8 @@ export const CONSTRUCTION_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/site",
     items: [
       { label: "Dashboard", href: "/dashboard/site" },
-      { label: "Daily Reports", href: "/dashboard/site/daily-reports" },
+      { label: "Daily Reporting", href: "/dashboard/site/daily-reporting" },
+      { label: "Site Diary (legacy)", href: "/dashboard/site/daily-reports" },
       { label: "Manpower", href: "/dashboard/site/manpower" },
       { label: "Equipment", href: "/dashboard/site/equipment" },
       { label: "Progress Photos", href: "/dashboard/site/progress-photos" },

@@ -72,6 +72,10 @@ export const MODULE_PATHS = {
     "app/dashboard/site",
     "app/dashboard/qaqc",
     "app/dashboard/hse",
+    // Module 10-01 Daily Reporting gateway routes.
+    "app/api/dr",
+    // Module 10-01 Field App (offline daily report).
+    "app/field",
   ],
   document_control: ["components/documents", "lib/documents", "app/dashboard/documents", "app/verify/doc"],
   account: ["components/account", "lib/account", "app/dashboard/account"],

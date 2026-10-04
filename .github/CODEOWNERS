@@ -81,6 +81,8 @@
 /apps/web/app/dashboard/site/                       @Liheng-Code
 /apps/web/app/dashboard/qaqc/                       @Liheng-Code
 /apps/web/app/dashboard/hse/                        @Liheng-Code
+/apps/web/app/api/dr/                               @Liheng-Code
+/apps/web/app/field/                                @Liheng-Code
 /apps/web/lib/modules/manifests/construction.ts     @Liheng-Code
 
 # Document Control
