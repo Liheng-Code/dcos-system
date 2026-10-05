@@ -1,6 +1,6 @@
 # 10-01 Daily Reporting
 
-Module code `DCOS-MOD-10-01-DR`. Source design: `DCOS_10-01_Daily_Reporting_Module_Design_R1.md` (supplied by the owner; not stored in the repo yet).
+Module code `DCOS-MOD-10-01-DR`. Source design: [DCOS_10-01_Daily_Reporting_Module_Design_R1.md](DCOS_10-01_Daily_Reporting_Module_Design_R1.md).
 
 ## Phase 0 outputs
 
