@@ -37,6 +37,7 @@ import {
 } from "@/lib/construction/daily-reporting/service";
 import { SECTION_LABELS } from "@/lib/construction/daily-reporting/status";
 import type { ReportingUnit, SectionKey } from "@/lib/construction/daily-reporting/types";
+import { DrTelegramBindings } from "./dr-telegram";
 import { Field, Flag, inputClass, SectionCard, todayIso } from "./dr-ui";
 
 const OPTIONAL_SECTIONS: SectionKey[] = ["equipment", "materials"];
@@ -459,6 +460,8 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
           </div>
         </SectionCard>
       ) : null}
+
+      <DrTelegramBindings projectId={projectId} units={units} canManage={capabilities.canReview} />
 
       <SectionCard title="Approvers">
         <p className="text-sm text-muted-foreground">

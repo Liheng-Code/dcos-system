@@ -108,6 +108,7 @@ export function DrReportForm({
   onDone,
   onCancel,
   offline,
+  retryWhenOnline = false,
 }: {
   unitId: string;
   date: string;
@@ -116,6 +117,8 @@ export function DrReportForm({
   onDone: (reportId: string | null) => void;
   onCancel: () => void;
   offline?: OfflineFormSource;
+  /** Telegram Mini App: after a failed send, keep trying while the form stays open (same idempotency key). */
+  retryWhenOnline?: boolean;
 }) {
   const [ctx, setCtx] = useState<FormContext | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,6 +131,7 @@ export function DrReportForm({
   const [submitting, setSubmitting] = useState(false);
   const [serverResults, setServerResults] = useState<RuleResult[]>([]);
   const [draftState, setDraftState] = useState<"idle" | "saved" | "local">("idle");
+  const [queued, setQueued] = useState(false);
   // One key per form session: a retry after a dropped connection returns the
   // original receipt instead of creating a second report.
   const idempotencyKey = useRef(newIdempotencyKey());
@@ -183,8 +187,26 @@ export function DrReportForm({
     return () => clearTimeout(timer);
   }, [payload, mode, ctx, unitId, date, localKey, offline]);
 
+  // Short signal loss: the report waits on the device and is re-sent when
+  // the connection returns. The idempotency key makes a repeat harmless.
+  const submitRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    submitRef.current = submit;
+  });
+  useEffect(() => {
+    if (!queued || submitting) return;
+    const retry = () => submitRef.current();
+    const timer = setInterval(retry, 15_000);
+    window.addEventListener("online", retry);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", retry);
+    };
+  }, [queued, submitting]);
+
   const patch = useCallback((changes: Partial<DrPayload>) => {
     dirty.current = true;
+    setQueued(false);
     setServerResults([]);
     setPayload((p) => ({ ...p, ...changes }));
   }, []);
@@ -299,6 +321,7 @@ export function DrReportForm({
       );
       onDone(res.receipt.report_id);
     } catch (e) {
+      if (e instanceof DrApiError) setQueued(false);
       if (e instanceof DrApiError && e.results.length > 0) {
         setServerResults(e.results);
         setStep(STEPS.length - 1);
@@ -308,7 +331,12 @@ export function DrReportForm({
       } else {
         // Network failure: the draft is on the device and the same key is reused on retry.
         setDraftState("local");
-        toast.error("Could not reach the server. Your report is saved on this device — try Submit again.");
+        if (retryWhenOnline) {
+          if (!queued) toast.message("No connection. Your report is saved on this device and will be sent when the connection returns. Keep this page open.");
+          setQueued(true);
+        } else {
+          toast.error("Could not reach the server. Your report is saved on this device — try Submit again.");
+        }
       }
     } finally {
       setSubmitting(false);

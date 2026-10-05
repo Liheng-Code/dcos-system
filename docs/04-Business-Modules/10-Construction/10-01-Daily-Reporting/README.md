@@ -25,6 +25,12 @@ Module code `DCOS-MOD-10-01-DR`. Source design: [DCOS_10-01_Daily_Reporting_Modu
 |---|---|
 | [Phase1B-Delivery-Notes.md](Phase1B-Delivery-Notes.md) | Field App and offline sync: what was built, verified, not verified |
 
+## Phase 1C output
+
+| File | Purpose |
+|---|---|
+| [Phase1C-Delivery-Notes.md](Phase1C-Delivery-Notes.md) | Telegram group binding and Mini App: what was built, verified, not verified |
+
 ## 12-document pack (as built, Phase 1A)
 
 | # | Document |
@@ -42,4 +48,4 @@ Module code `DCOS-MOD-10-01-DR`. Source design: [DCOS_10-01_Daily_Reporting_Modu
 | 11 | [SOP](11-SOP.md) |
 | 12 | [Training-Guide](12-Training-Guide.md) |
 
-The pack describes Phase 1A. Phase 1B (offline) is described in `Phase1B-Delivery-Notes.md` and is not yet folded into the twelve documents. Telegram (1C) and AI (2) are not built.
+The pack describes Phase 1A. Phase 1B (offline) and Phase 1C (Telegram) are described in their delivery notes and are not yet folded into the twelve documents. AI (Phase 2) is not built.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { drainOutbox } from "@/lib/construction/daily-reporting/server";
+import { drainGroupOutbox, refreshLaunchMessages } from "@/lib/construction/daily-reporting/telegram/telegram-server";
 
 // Scheduled tick for Daily Reporting: raises reminders, missing reports and
 // escalations (idempotent in the database), then delivers pending Telegram and
@@ -19,7 +20,10 @@ async function tick(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   const delivery = await drainOutbox(admin, 100);
-  return NextResponse.json({ schedule, delivery });
+  // Status lines for bound Telegram groups, and their launch buttons (tokens last at most 24 hours).
+  const group = await drainGroupOutbox(admin, 100);
+  const launch = await refreshLaunchMessages(admin);
+  return NextResponse.json({ schedule, delivery, group, launch });
 }
 
 export const GET = tick;

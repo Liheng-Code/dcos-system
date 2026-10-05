@@ -51,6 +51,9 @@ export async function handleSubmission(
     );
   }
   const body = parsed.data;
+  // The channel is a fact about how the caller authenticated, not something the client states.
+  if (actor.miniApp) body.channel = "TELEGRAM_MINIAPP";
+  else if (body.channel === "TELEGRAM_MINIAPP") body.channel = "WEB";
 
   const ctx = await loadFormContext(actor, target.unitId, target.reportDate);
   if (!ctx) return NextResponse.json({ error: "Reporting unit not found", code: "DR_INV_UNIT" }, { status: 403 });

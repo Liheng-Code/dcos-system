@@ -19,11 +19,13 @@ import {
   handlePendingApprovalsCommand,
   handleRejectCommand,
 } from "@/lib/hr/telegram/leave-handlers";
+import { handleDrGroupUpdate, isDrGroupUpdate, type DrTelegramUpdate } from "@/lib/construction/daily-reporting/telegram/webhook";
 
 const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 interface TelegramUpdate {
   message?: TelegramMessage;
+  my_chat_member?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -34,6 +36,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const update = (await request.json().catch(() => null)) as TelegramUpdate | null;
+    // Project groups belong to Daily Reporting. Attendance and leave are
+    // private-chat flows and must never run from a group.
+    if (isDrGroupUpdate(update as DrTelegramUpdate | null)) {
+      await handleDrGroupUpdate(createAdminClient(), update as DrTelegramUpdate);
+      return NextResponse.json({ ok: true });
+    }
+
     const message = update?.message;
 
     if (message) {

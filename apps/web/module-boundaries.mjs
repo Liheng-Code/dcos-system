@@ -76,6 +76,8 @@ export const MODULE_PATHS = {
     "app/api/dr",
     // Module 10-01 Field App (offline daily report).
     "app/field",
+    // Module 10-01 Daily Report Mini App (inside the shared Telegram Mini App shell).
+    "app/telegram-app/daily-report",
   ],
   document_control: ["components/documents", "lib/documents", "app/dashboard/documents", "app/verify/doc"],
   account: ["components/account", "lib/account", "app/dashboard/account"],
@@ -97,6 +99,9 @@ export const PUBLIC_API = {
     "components/hr/leave/who-is-on-leave-today.tsx",
     // Telegram message sender, used by the notification dispatcher.
     "lib/hr/telegram/bot.ts",
+    // Mini App initData signature check and bootstrap context, shared with the Daily Report Mini App.
+    "lib/hr/telegram/init-data.ts",
+    "lib/hr/telegram/miniapp-context.tsx",
   ],
   qs: [
     "lib/qs/qs-nav.ts",
@@ -143,6 +148,8 @@ export const PUBLIC_API = {
     "lib/construction/construction-nav.ts",
     // Named exports of the site daily-report service that others may use.
     "lib/construction/site/public.ts",
+    // What the shared Telegram bot does in project groups (Daily Reporting).
+    "lib/construction/daily-reporting/telegram/webhook.ts",
   ],
   document_control: [
     "lib/documents/document-control-nav.ts",

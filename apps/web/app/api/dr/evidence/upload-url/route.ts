@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { EVIDENCE_BUCKET, isUnitMember, requireActor } from "@/lib/construction/daily-reporting/server";
+import { actorMayUseUnit, EVIDENCE_BUCKET, isUnitMember, requireReporterActor, WRONG_UNIT } from "@/lib/construction/daily-reporting/server";
 
 const EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -23,12 +23,13 @@ const bodySchema = z.object({
  * checked its content and computed its hash.
  */
 export async function POST(request: NextRequest) {
-  const actor = await requireActor();
+  const actor = await requireReporterActor(request);
   if (actor instanceof NextResponse) return actor;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const { unit_id, report_date, mime_type } = parsed.data;
+  if (!actorMayUseUnit(actor, unit_id)) return WRONG_UNIT();
 
   const ext = EXT[mime_type];
   if (!ext) {

@@ -1,0 +1,425 @@
+// Module 10-01 Daily Reporting — Phase 1C Telegram: tokens, session exchange
+// abuse cases, group bot handlers and the Mini App session on the gateway.
+
+import { createHmac } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/supabase/server", () => ({
+  createAdminClient: () => ({ marker: "admin" }),
+  createUserClient: async () => ({ auth: { getUser: async () => ({ data: { user: null } }) } }),
+}));
+
+import { actorMayUseUnit, requireReporterActor } from "../server";
+import { drainGroupOutbox, exchangeMiniAppSession, launchUrl, miniAppSessionSecret } from "../telegram/telegram-server";
+import {
+  hashToken,
+  launchStartParam,
+  newBindingCode,
+  newLaunchToken,
+  normalizeBindingCode,
+  parseLaunchStartParam,
+  signMiniAppSession,
+  verifyMiniAppSession,
+} from "../telegram/tokens";
+import { handleDrGroupUpdate, isDrGroupUpdate } from "../telegram/webhook";
+
+const BOT_TOKEN = "123456:TEST-TOKEN";
+const USER = "11111111-1111-4111-8111-111111111111";
+const UNIT = "22222222-2222-4222-8222-222222222222";
+const OTHER_UNIT = "33333333-3333-4333-8333-333333333333";
+const BINDING = "44444444-4444-4444-8444-444444444444";
+const PROJECT = "55555555-5555-4555-8555-555555555555";
+const CHAT = -1001234;
+const TG_USER = 777001;
+
+/** Builds initData signed the way Telegram signs it. */
+function initData(opts: { startParam?: string; userId?: number; ageSeconds?: number; botToken?: string } = {}): string {
+  const params = new URLSearchParams();
+  params.set("auth_date", String(Math.floor(Date.now() / 1000) - (opts.ageSeconds ?? 5)));
+  params.set("user", JSON.stringify({ id: opts.userId ?? TG_USER, first_name: "Sok" }));
+  if (opts.startParam !== undefined) params.set("start_param", opts.startParam);
+  const check = [...params.entries()].map(([k, v]) => `${k}=${v}`).sort().join("\n");
+  const secret = createHmac("sha256", "WebAppData").update(opts.botToken ?? BOT_TOKEN).digest();
+  params.set("hash", createHmac("sha256", secret).update(check).digest("hex"));
+  return params.toString();
+}
+
+interface FakeOptions {
+  profile?: { id: string; status: string } | null;
+  memberships?: { valid_from: string; valid_to: string | null }[];
+  binding?: { id: string } | null;
+  recentTokens?: { id: string }[];
+  outbox?: { id: string; chat_id: number; text: string; attempts: number }[];
+  rpc?: Record<string, { data?: unknown; error?: { message: string } | null }>;
+}
+
+/** Just enough of the Supabase client for these code paths. */
+function fakeAdmin(opts: FakeOptions = {}) {
+  const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+  const updates: { table: string; values: Record<string, unknown> }[] = [];
+  const tableData: Record<string, unknown> = {
+    profiles: opts.profile === undefined ? { id: USER, status: "active" } : opts.profile,
+    dr_reporting_unit_members: opts.memberships ?? [{ valid_from: "2020-01-01", valid_to: null }],
+    dr_telegram_bindings: opts.binding === undefined ? { id: BINDING } : opts.binding,
+    dr_telegram_launch_tokens: opts.recentTokens ?? [],
+    dr_telegram_group_outbox: opts.outbox ?? [],
+  };
+  const chain = (table: string) => {
+    const result = { data: tableData[table] ?? null, error: null };
+    const c: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "in", "is", "gt", "lt", "order", "limit"]) c[m] = () => c;
+    c.update = (values: Record<string, unknown>) => {
+      updates.push({ table, values });
+      return c;
+    };
+    c.maybeSingle = async () => result;
+    c.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
+    return c;
+  };
+  const admin = {
+    from: (table: string) => chain(table),
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      const preset = opts.rpc?.[name];
+      if (preset) return { data: preset.data ?? null, error: preset.error ?? null };
+      if (name === "dr_tg_resolve_launch") {
+        return { data: { binding_id: BINDING, unit_id: UNIT, project_id: PROJECT, chat_id: CHAT, unit_name: "Sub One", unit_code: "SC-1" }, error: null };
+      }
+      if (name === "dr_unit_schedule") return { data: [{ timezone: "Asia/Phnom_Penh" }], error: null };
+      return { data: null, error: null };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { admin: admin as any, rpcCalls, updates };
+}
+
+interface BotCall {
+  method: string;
+  body: Record<string, unknown>;
+}
+
+/** Stubs the Bot API. `answers` maps a method to its result, or to an HTTP status to fail with. */
+function stubTelegram(answers: Record<string, unknown> = {}): BotCall[] {
+  const calls: BotCall[] = [];
+  vi.stubGlobal("fetch", async (url: string, init: { body: string }) => {
+    const method = url.split("/").pop() as string;
+    calls.push({ method, body: JSON.parse(init.body) });
+    const answer = answers[method];
+    if (typeof answer === "number") {
+      return { ok: false, status: answer, json: async () => ({ ok: false, description: "failed" }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: answer ?? { message_id: 99 } }) };
+  });
+  return calls;
+}
+
+beforeEach(() => {
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", BOT_TOKEN);
+  vi.stubEnv("TELEGRAM_DR_MINIAPP_LINK", "https://t.me/dcos_test_bot/report");
+  vi.stubEnv("DR_MINIAPP_SESSION_SECRET", "");
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+describe("codes and launch tokens", () => {
+  it("binding codes are 8 unambiguous characters and survive being typed in lower case", () => {
+    const code = newBindingCode();
+    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect(normalizeBindingCode(`  ${code.toLowerCase()} `)).toBe(code);
+    expect(normalizeBindingCode("SHORT")).toBeNull();
+    expect(normalizeBindingCode("ABCD-EFGH")).toBeNull();
+  });
+
+  it("a launch start parameter fits Telegram's 64-character limit and round-trips", () => {
+    const token = newLaunchToken();
+    const param = launchStartParam(token);
+    expect(param.length).toBeLessThanOrEqual(64);
+    expect(param).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(parseLaunchStartParam(param)).toBe(token);
+  });
+
+  it("start parameters that are not ours are ignored", () => {
+    expect(parseLaunchStartParam(undefined)).toBeNull();
+    expect(parseLaunchStartParam("link_123456")).toBeNull();
+    expect(parseLaunchStartParam("dr_short")).toBeNull();
+    expect(parseLaunchStartParam("dr_bad token with spaces!!")).toBeNull();
+  });
+
+  it("only a hash of a token is stored, and the launch URL carries the token", () => {
+    const token = newLaunchToken();
+    expect(hashToken(token)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashToken(token)).not.toContain(token);
+    expect(launchUrl(token)).toBe(`https://t.me/dcos_test_bot/report?startapp=dr_${token}`);
+  });
+});
+
+describe("Mini App session token", () => {
+  const claims = { uid: USER, unit: UNIT, binding: BINDING, exp: Math.floor(Date.now() / 1000) + 600 };
+
+  it("verifies its own signature", () => {
+    expect(verifyMiniAppSession(signMiniAppSession(claims, "s1"), "s1")).toEqual(claims);
+  });
+
+  it("rejects another secret, a tampered body, an expired token and garbage", () => {
+    const token = signMiniAppSession(claims, "s1");
+    expect(verifyMiniAppSession(token, "s2")).toBeNull();
+
+    const [, body, mac] = /^drm\.([^.]+)\.(.+)$/.exec(token) as RegExpExecArray;
+    const forged = Buffer.from(JSON.stringify({ ...claims, unit: OTHER_UNIT })).toString("base64url");
+    expect(verifyMiniAppSession(`drm.${forged}.${mac}`, "s1")).toBeNull();
+    expect(verifyMiniAppSession(`drm.${body}.`, "s1")).toBeNull();
+
+    expect(verifyMiniAppSession(signMiniAppSession({ ...claims, exp: 1 }, "s1"), "s1")).toBeNull();
+    expect(verifyMiniAppSession("drm.not-a-token", "s1")).toBeNull();
+    expect(verifyMiniAppSession("Bearer something", "s1")).toBeNull();
+  });
+});
+
+describe("session exchange", () => {
+  const launch = launchStartParam(newLaunchToken());
+
+  it("issues a session for the launched unit when every check passes", async () => {
+    const calls = stubTelegram({ getChatMember: { status: "member" } });
+    const { admin, rpcCalls } = fakeAdmin();
+    const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.unit.id).toBe(UNIT);
+    expect(result.report_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(verifyMiniAppSession(result.token, miniAppSessionSecret())).toMatchObject({ uid: USER, unit: UNIT, binding: BINDING });
+    // The database sees only the hash of the launch token.
+    const resolve = rpcCalls.find((c) => c.name === "dr_tg_resolve_launch");
+    expect(resolve?.args.p_token_hash).toBe(hashToken(parseLaunchStartParam(launch) as string));
+    // Membership is asked about the bound chat and the Telegram user who signed the initData.
+    expect(calls[0]).toEqual({ method: "getChatMember", body: { chat_id: CHAT, user_id: TG_USER } });
+  });
+
+  it("refuses initData signed with another bot token", async () => {
+    stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin();
+    const result = await exchangeMiniAppSession(admin, initData({ startParam: launch, botToken: "999:OTHER" }));
+    expect(result).toMatchObject({ ok: false, status: 401, code: "DR_TG_INIT_DATA" });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("refuses initData whose start parameter was swapped after signing", async () => {
+    stubTelegram();
+    const { admin } = fakeAdmin();
+    const tampered = initData({ startParam: "dr_someone-elses-token-0000" }).replace(/start_param=[^&]+/, `start_param=${launch}`);
+    expect(await exchangeMiniAppSession(admin, tampered)).toMatchObject({ ok: false, status: 401, code: "DR_TG_INIT_DATA" });
+  });
+
+  it("refuses stale initData (a replayed capture)", async () => {
+    stubTelegram();
+    const { admin } = fakeAdmin();
+    const result = await exchangeMiniAppSession(admin, initData({ startParam: launch, ageSeconds: 7200 }));
+    expect(result).toMatchObject({ ok: false, status: 401, code: "DR_TG_INIT_DATA" });
+  });
+
+  it("refuses a launch without a launch token", async () => {
+    stubTelegram();
+    const { admin } = fakeAdmin();
+    expect(await exchangeMiniAppSession(admin, initData())).toMatchObject({ ok: false, status: 403, code: "DR_TG_LAUNCH" });
+    expect(await exchangeMiniAppSession(admin, initData({ startParam: "link_123456" }))).toMatchObject({ ok: false, code: "DR_TG_LAUNCH" });
+  });
+
+  it("refuses a Telegram account that is not linked to an active DCOS user", async () => {
+    stubTelegram();
+    for (const profile of [null, { id: USER, status: "inactive" }]) {
+      const { admin, rpcCalls } = fakeAdmin({ profile });
+      const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+      expect(result).toMatchObject({ ok: false, status: 403, code: "DR_TG_NOT_LINKED" });
+      expect(rpcCalls.some((c) => c.name === "dr_tg_resolve_launch")).toBe(false);
+    }
+  });
+
+  it("refuses an expired, revoked or foreign launch token and audits the attempt", async () => {
+    stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin({
+      rpc: { dr_tg_resolve_launch: { error: { message: "DR_FORBIDDEN: the launch link is invalid or has expired; ask for a new one" } } },
+    });
+    const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+    expect(result).toMatchObject({ ok: false, status: 403, code: "DR_TG_LAUNCH" });
+    if (!result.ok) expect(result.error).toContain("expired");
+    const audit = rpcCalls.find((c) => c.name === "dr_audit");
+    expect(audit?.args).toMatchObject({ p_event: "DR.LAUNCH_TOKEN_REJECTED", p_actor: USER });
+    // The raw Telegram id never goes into the audit trail.
+    expect(JSON.stringify(audit?.args)).not.toContain(String(TG_USER));
+  });
+
+  it("refuses someone in the group who is not a reporter of the unit", async () => {
+    const calls = stubTelegram({ getChatMember: { status: "member" } });
+    for (const memberships of [[], [{ valid_from: "2020-01-01", valid_to: "2020-12-31" }], [{ valid_from: "2999-01-01", valid_to: null }]]) {
+      const { admin } = fakeAdmin({ memberships });
+      const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+      expect(result).toMatchObject({ ok: false, status: 403, code: "DR_TG_NOT_REPORTER" });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a reporter who has left or been removed from the group", async () => {
+    for (const member of [{ status: "left" }, { status: "kicked" }, { status: "restricted", is_member: false }]) {
+      stubTelegram({ getChatMember: member });
+      const { admin, rpcCalls } = fakeAdmin();
+      const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+      expect(result).toMatchObject({ ok: false, status: 403, code: "DR_TG_NOT_IN_GROUP" });
+      expect(rpcCalls.some((c) => c.name === "dr_audit")).toBe(true);
+    }
+    stubTelegram({ getChatMember: 400 }); // Telegram: user not found in chat
+    expect(await exchangeMiniAppSession(fakeAdmin().admin, initData({ startParam: launch }))).toMatchObject({ code: "DR_TG_NOT_IN_GROUP" });
+  });
+
+  it("accepts a restricted member who is still in the group", async () => {
+    stubTelegram({ getChatMember: { status: "restricted", is_member: true } });
+    expect((await exchangeMiniAppSession(fakeAdmin().admin, initData({ startParam: launch }))).ok).toBe(true);
+  });
+
+  it("fails closed when Telegram cannot confirm membership", async () => {
+    stubTelegram({ getChatMember: 502 });
+    const result = await exchangeMiniAppSession(fakeAdmin().admin, initData({ startParam: launch }));
+    expect(result).toMatchObject({ ok: false, status: 503, code: "DR_TG_UNAVAILABLE" });
+  });
+});
+
+describe("Mini App session on the gateway", () => {
+  const request = (authorization?: string) =>
+    new Request("http://localhost/api/dr/reports", { headers: authorization ? { authorization } : {} });
+  const validToken = () =>
+    signMiniAppSession({ uid: USER, unit: UNIT, binding: BINDING, exp: Math.floor(Date.now() / 1000) + 600 }, miniAppSessionSecret());
+
+  it("is limited to the unit it was launched for", async () => {
+    const actor = await requireReporterActor(request(`Bearer ${validToken()}`));
+    expect(actor).toMatchObject({ userId: USER, miniApp: { unitId: UNIT } });
+    if ("userId" in actor) {
+      expect(actorMayUseUnit(actor, UNIT)).toBe(true);
+      expect(actorMayUseUnit(actor, OTHER_UNIT)).toBe(false);
+    }
+  });
+
+  it("rejects a forged or expired session", async () => {
+    const forged = signMiniAppSession({ uid: USER, unit: UNIT, binding: BINDING, exp: Math.floor(Date.now() / 1000) + 600 }, "wrong-secret");
+    const expired = signMiniAppSession({ uid: USER, unit: UNIT, binding: BINDING, exp: 1 }, miniAppSessionSecret());
+    for (const token of [forged, expired, "drm.garbage"]) {
+      const res = await requireReporterActor(request(`Bearer ${token}`));
+      expect(res).toBeInstanceOf(Response);
+      expect((res as Response).status).toBe(401);
+    }
+  });
+
+  it("falls back to the dashboard session when there is no Mini App token", async () => {
+    const res = await requireReporterActor(request());
+    expect((res as Response).status).toBe(401); // no cookie session in this test
+  });
+
+  it("a dashboard actor is not restricted to one unit", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(actorMayUseUnit({ userId: USER, admin: {} as any }, OTHER_UNIT)).toBe(true);
+  });
+});
+
+describe("the bot in a group", () => {
+  const group = { id: CHAT, type: "supergroup", title: "Site A" };
+
+  it("only group updates are routed to Daily Reporting", () => {
+    expect(isDrGroupUpdate({ message: { chat: group, text: "/bind X" } })).toBe(true);
+    expect(isDrGroupUpdate({ my_chat_member: { chat: group, new_chat_member: { status: "left" } } })).toBe(true);
+    expect(isDrGroupUpdate({ message: { chat: { id: 5, type: "private" }, text: "/checkin" } })).toBe(false);
+    expect(isDrGroupUpdate({ message: { chat: { id: 5 }, text: "/checkin" } })).toBe(false);
+    expect(isDrGroupUpdate(null)).toBe(false);
+  });
+
+  it("/bind from a linked approver binds the group and posts the launch button", async () => {
+    const calls = stubTelegram();
+    const { admin, rpcCalls, updates } = fakeAdmin({
+      rpc: { dr_tg_bind_chat: { data: { binding_id: BINDING, unit_name: "Sub One", unit_code: "SC-1" } } },
+      binding: { id: BINDING, chat_id: CHAT, status: "Active", pinned_message_id: null } as never,
+    });
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind@dcos_test_bot k7qm2xpa" } });
+
+    const bind = rpcCalls.find((c) => c.name === "dr_tg_bind_chat");
+    expect(bind?.args).toMatchObject({ p_actor: USER, p_chat_id: CHAT, p_chat_type: "supergroup", p_code_hash: hashToken("K7QM2XPA") });
+    expect(rpcCalls.some((c) => c.name === "dr_tg_issue_launch_token")).toBe(true);
+
+    const button = calls.find((c) => c.method === "sendMessage" && c.body.reply_markup);
+    const url = (button?.body.reply_markup as { inline_keyboard: { url: string }[][] }).inline_keyboard[0][0].url;
+    expect(url).toMatch(/^https:\/\/t\.me\/dcos_test_bot\/report\?startapp=dr_[A-Za-z0-9_-]+$/);
+    expect(calls.some((c) => c.method === "pinChatMessage")).toBe(true);
+    expect(updates).toContainEqual({ table: "dr_telegram_bindings", values: { pinned_message_id: 99 } });
+  });
+
+  it("/bind from an unlinked Telegram account binds nothing", async () => {
+    const calls = stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin({ profile: null });
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    expect(rpcCalls).toHaveLength(0);
+    expect(String(calls[0].body.text)).toContain("Link your DCOS account");
+  });
+
+  it("a refused code is answered with the reason and no button", async () => {
+    const calls = stubTelegram();
+    const { admin } = fakeAdmin({
+      rpc: { dr_tg_bind_chat: { error: { message: "DR_NOT_FOUND: the binding code is invalid, used or expired" } } },
+    });
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0].body.text)).toContain("invalid, used or expired");
+  });
+
+  it("ordinary chat, private chats and malformed codes do nothing in the database", async () => {
+    stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin();
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "poured slab L5 today, 45 m3" } });
+    await handleDrGroupUpdate(admin, { message: { chat: { id: 5, type: "private" }, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind nope" } });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("bot removed, bot re-added and group migration reach the database", async () => {
+    stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin();
+    await handleDrGroupUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "kicked" } } });
+    await handleDrGroupUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "administrator" } } });
+    await handleDrGroupUpdate(admin, { message: { chat: group, migrate_to_chat_id: -100999 } });
+    expect(rpcCalls.map((c) => [c.name, c.args])).toEqual([
+      ["dr_tg_set_bot_presence", { p_chat_id: CHAT, p_present: false }],
+      ["dr_tg_set_bot_presence", { p_chat_id: CHAT, p_present: true }],
+      ["dr_tg_migrate_chat", { p_old_chat_id: CHAT, p_new_chat_id: -100999 }],
+    ]);
+  });
+
+  it("/report is rate limited to one new link a minute", async () => {
+    const calls = stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin({ recentTokens: [{ id: "t" }] });
+    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/report" } });
+    expect(rpcCalls).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("never throws, whatever Telegram or the database does", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down");
+    });
+    const { admin } = fakeAdmin({ rpc: { dr_tg_bind_chat: { data: { binding_id: BINDING, unit_name: "S", unit_code: "S" } } } });
+    await expect(
+      handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("group status lines", () => {
+  it("sends each queued line once and records a failure for retry", async () => {
+    const calls = stubTelegram();
+    const { admin, updates } = fakeAdmin({ outbox: [{ id: "o1", chat_id: CHAT, text: "DR-2026-000148 submitted", attempts: 0 }] });
+    expect(await drainGroupOutbox(admin)).toEqual({ sent: 1, failed: 0 });
+    expect(calls[0].body).toMatchObject({ chat_id: CHAT, text: "DR-2026-000148 submitted" });
+    expect(updates[0].values).toMatchObject({ status: "sent", attempts: 1 });
+
+    stubTelegram({ sendMessage: 429 });
+    const second = fakeAdmin({ outbox: [{ id: "o2", chat_id: CHAT, text: "DR-2026-000149 approved", attempts: 2 }] });
+    expect(await drainGroupOutbox(second.admin)).toEqual({ sent: 0, failed: 1 });
+    expect(second.updates[0].values).toMatchObject({ status: "failed", attempts: 3 });
+  });
+});

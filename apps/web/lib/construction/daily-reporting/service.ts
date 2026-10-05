@@ -36,9 +36,20 @@ export class DrApiError extends Error {
   }
 }
 
+let apiAuthorization: string | null = null;
+
+/**
+ * Telegram Mini App only: there is no dashboard cookie inside Telegram, so the
+ * gateway calls carry the Mini App session instead (`Bearer drm.…`).
+ */
+export function setApiAuthorization(value: string | null): void {
+  apiAuthorization = value;
+}
+
 async function api<T>(path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
+  if (apiAuthorization) headers.Authorization = apiAuthorization;
   const res = await fetch(path, { ...init, headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -483,6 +494,46 @@ export const decideReview = (reportId: string, input: DecisionInput) =>
     `/api/dr/review/${reportId}`,
     { method: "POST", body: JSON.stringify(input) },
   );
+
+// ── Telegram group bindings ─────────────────────────────────────────────────
+export type TelegramBindingStatus = "Pending" | "Active" | "Migrated" | "Suspended" | "Unbound";
+
+export interface TelegramBinding {
+  id: string;
+  unit_id: string;
+  chat_title: string | null;
+  chat_type: string | null;
+  migrated_from_chat_id: number | null;
+  bot_present: boolean;
+  status: TelegramBindingStatus;
+  valid_from: string | null;
+  created_at: string;
+}
+
+/** Current bindings of a project (history rows are left out). */
+export async function listTelegramBindings(projectId: string): Promise<TelegramBinding[]> {
+  const { data, error } = await createClient()
+    .from("dr_telegram_bindings")
+    .select("id, unit_id, chat_title, chat_type, migrated_from_chat_id, bot_present, status, valid_from, created_at")
+    .eq("project_id", projectId)
+    .in("status", ["Pending", "Active", "Suspended"])
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TelegramBinding[];
+}
+
+export interface NewTelegramBinding {
+  binding_id: string;
+  code: string;
+  command: string;
+  expires_at: string;
+}
+
+export const startTelegramBinding = (unitId: string) =>
+  api<NewTelegramBinding>("/api/dr/telegram/bindings", { method: "POST", body: JSON.stringify({ unit_id: unitId }) });
+
+export const telegramBindingAction = (bindingId: string, action: "confirm_migration" | "unbind" | "reissue_launch") =>
+  api<{ launch_posted?: boolean }>(`/api/dr/telegram/bindings/${bindingId}`, { method: "PATCH", body: JSON.stringify({ action }) });
 
 // ── Evidence ────────────────────────────────────────────────────────────────
 /** Uploads one file to the unit's evidence area and returns its storage key. */

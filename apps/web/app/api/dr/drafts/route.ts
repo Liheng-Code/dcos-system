@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { drErrorResponse, requireActor } from "@/lib/construction/daily-reporting/server";
+import { actorMayUseUnit, drErrorResponse, requireReporterActor, WRONG_UNIT } from "@/lib/construction/daily-reporting/server";
 
 const bodySchema = z.object({
   unit_id: z.string().uuid(),
@@ -11,11 +11,12 @@ const bodySchema = z.object({
 
 /** Saves the server-side draft for a unit and date. */
 export async function PUT(request: NextRequest) {
-  const actor = await requireActor();
+  const actor = await requireReporterActor(request);
   if (actor instanceof NextResponse) return actor;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid draft" }, { status: 400 });
+  if (!actorMayUseUnit(actor, parsed.data.unit_id)) return WRONG_UNIT();
 
   const { error } = await actor.admin.rpc("dr_save_draft", {
     p_actor: actor.userId,

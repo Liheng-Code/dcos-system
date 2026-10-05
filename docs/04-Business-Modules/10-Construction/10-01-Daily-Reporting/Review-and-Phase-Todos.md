@@ -77,7 +77,7 @@ Legend: `[x]` done and verified locally · `[~]` built, not fully verified · `[
 | 0 | Decisions, vocabulary, cut-over plan | Done except two device spikes | Real devices, bot token |
 | 1A | Online core: units, form, rules, review, summary | Built and walked through locally | Independent review, live delivery test, real-data import, release switch |
 | 1B | Field App, full offline | Built, tested on headless desktop only | Real Android and iOS devices |
-| 1C | Telegram identity, binding, Mini App | Not started | Bot token, a test group, phones |
+| 1C | Telegram identity, binding, Mini App | Built, tested with a stubbed Telegram API only | Mini App registration, a test group, phones |
 | 2 | Assurance: AI, statistical rules, delegation, overview | Not started | 10+ approved report days per unit; Khmer samples |
 | 3 | Integration: planning, RFI/QAQC/HSE, cost, IPC support, React Native | Not started | Phase 2 data; owner priorities |
 | 4 | Intelligence: anomaly, benchmarking, scoring, EVM inputs | Not started | Months of approved history |
@@ -136,19 +136,24 @@ Built; the remaining work is verification, release and cut-over.
 
 **Exit criteria:** a reporter in a basement with no signal files a report with photos on a real phone, and it syncs without loss when signal returns.
 
-### Phase 1C — Telegram (not started)
+### Phase 1C — Telegram (built, not tested live)
 
-Reuse what already exists for HR: the bot, webhook, `initData` verification, `profiles.telegram_user_id`, `telegram_link_codes`, and a Mini App authenticating with `Authorization: tma <initData>`. The Phase 0 "session minting" spike is not needed.
+Built 2026-10-05 without a live Telegram connection. Detail and what is still unverified: `Phase1C-Delivery-Notes.md`.
 
-- [ ] BE: Telegram live checks (R1 §25 items 1–8) and choose the launch pattern for groups (R1 §7.5): a signed launch token bound to a binding, not relying on `initData` for the chat id.
-- [ ] DB: `telegram_group_binding` (one active per unit, one active per chat id, migration history) and launch-token tracking; reuse the existing link-code table rather than adding a second.
-- [ ] BE: Bot flows: binding code posted by an admin, migrate-to-supergroup handling, bot removed → `SUSPENDED`, privacy mode, pinned "Submit Daily Report" message.
-- [ ] BE: Launch-token issue and validation with a `getChatMember` check at session start; per-request `tma` authorization for `/api/dr/*`.
-- [ ] BE: Telegram notification adapter: status-only group messages (no quantities, findings or comments), DM with fallback to in-app and SMS, rate-limit handling.
-- [ ] FE: Mini App shell reusing the report form; draft autosave and queued submit for short signal loss, with the "Saved on device — not yet sent" banner.
-- [ ] FE: Admin Telegram bindings screen and migration alerts.
-- [ ] OWNER: Pick the SMS fallback provider (R1 §25 item 9).
-- [ ] QA: Abuse tests: forged `initData`, replayed token, user removed from the group, foreign group, unlinked user.
+- [x] DB: `dr_telegram_bindings` (one active per unit, one active per chat, history kept), binding codes, launch tokens, group status outbox. Identity reuses the HR link flow; no second link table.
+- [x] BE: Bot flows in groups: `/bind <code>`, `/report`, bot removed → Suspended, bot re-added, migration to a supergroup held for confirmation.
+- [x] BE: Launch token (opaque, 24 h, rotated by cron) and session exchange with the `getChatMember` check; Mini App session limited to one unit and to the four reporter routes.
+- [x] BE: Status-only group lines from the audit trail (no quantities, findings or comments).
+- [x] FE: Mini App page reusing the report form; re-send after short signal loss.
+- [x] FE: Telegram groups card in Setup (bind, change, confirm migration, re-issue button, unbind).
+- [x] QA: Abuse tests, 48 database assertions and 30 unit tests (forged or stale `initData`, swapped start parameter, expired or foreign token, non-reporter, user removed from the group, session used for another unit).
+- [ ] BE: **Live checks against the real bot** (R1 §25 items 1–8): Mini App launch from a group and the start parameter in `initData`, privacy mode, `my_chat_member` updates reaching the webhook, pinning, group migration, rate limits, camera and file access in the web view.
+- [ ] OWNER: Register the Mini App with BotFather and set `TELEGRAM_DR_MINIAPP_LINK`.
+- [ ] OWNER: Confirm the seven decisions in `Phase1C-Delivery-Notes.md` §5, in particular reusing the HR bot and no longer running attendance commands from groups.
+- [ ] FE: Walk the Setup card and the Mini App through on a real phone.
+- [ ] BE: SMS fallback for users who have not started the bot privately; pick the provider (R1 §25 item 9).
+- [ ] BE: Gateway integration test with a Mini App session (needs a disposable database).
+- [ ] FE: Khmer text for bot messages and the Mini App (depends on the i18n decision in Phase 2).
 
 **Exit criteria:** a foreman submits from the project group on a real phone; a user removed from the group cannot launch.
 
@@ -192,7 +197,7 @@ Prerequisite: pilot units have approved history and Phase 1 is stable.
 
 1. **First:** independent review of 1A; live email and Telegram DM test; `dr_backfill_project()` on a copy of real data; owner confirms the build-time decisions. These are cheap and decide whether anything needs rework.
 2. **Next:** release switch, cron, one pilot project; start the Android and iPhone field test in parallel (1B sign-off).
-3. **Then:** Phase 1C, starting with the live Telegram checks, since the launch pattern in groups is the biggest unknown.
+3. **Then:** Phase 1C live checks with the real bot and a test group; the launch pattern in groups is the biggest unknown and is still unproven.
 4. **After 10+ approved days of pilot data:** Phase 2 statistical rules first (deterministic, cheap), AI after the Khmer evaluation.
 5. Phases 3 and 4 are planned once Phase 2 data exists; do not start them early.
 

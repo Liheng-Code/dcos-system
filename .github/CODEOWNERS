@@ -83,6 +83,7 @@
 /apps/web/app/dashboard/hse/                        @Liheng-Code
 /apps/web/app/api/dr/                               @Liheng-Code
 /apps/web/app/field/                                @Liheng-Code
+/apps/web/app/telegram-app/daily-report/          @Liheng-Code
 /apps/web/lib/modules/manifests/construction.ts     @Liheng-Code
 
 # Document Control

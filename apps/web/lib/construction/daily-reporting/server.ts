@@ -11,6 +11,8 @@ import { sendMessage } from "@/lib/hr/telegram/bot";
 import { sendEmail } from "@/lib/email/resend";
 import { evaluateRules, resolveRules } from "./rules";
 import { scanBuffer, scanRequired } from "./scanner";
+import { drainGroupOutbox, miniAppSessionSecret } from "./telegram/telegram-server";
+import { SESSION_TOKEN_PREFIX, verifyMiniAppSession } from "./telegram/tokens";
 import type {
   CorrectionRequest,
   DrEvidence,
@@ -31,6 +33,8 @@ const MAX_EVIDENCE_BYTES = 20 * 1024 * 1024;
 export interface Actor {
   userId: string;
   admin: SupabaseClient;
+  /** Set when the caller came through the Telegram Mini App: the one unit the session may report for. */
+  miniApp?: { unitId: string; bindingId: string };
 }
 
 /** Authenticates the session user. Returns a 401 response when there is none. */
@@ -42,6 +46,39 @@ export async function requireActor(): Promise<Actor | NextResponse> {
   if (!user) return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   return { userId: user.id, admin: createAdminClient() };
 }
+
+/**
+ * For the routes a reporter uses to fill and submit a report. Accepts the
+ * dashboard session, or a Telegram Mini App session (`Authorization: Bearer
+ * drm.…`), which is limited to one unit — check it with actorMayUseUnit().
+ * Every other route uses requireActor() and so never accepts a Mini App session.
+ */
+export async function requireReporterActor(request: Request): Promise<Actor | NextResponse> {
+  const header = request.headers.get("authorization") ?? "";
+  if (!header.startsWith(`Bearer ${SESSION_TOKEN_PREFIX}`)) return requireActor();
+
+  let claims: ReturnType<typeof verifyMiniAppSession> = null;
+  try {
+    claims = verifyMiniAppSession(header.slice("Bearer ".length), miniAppSessionSecret());
+  } catch {
+    claims = null; // bot token not configured: no Mini App session can be valid
+  }
+  if (!claims) {
+    return NextResponse.json(
+      { error: "Your Telegram session has ended. Open the report from the group again.", code: "DR_TG_SESSION" },
+      { status: 401 },
+    );
+  }
+  return { userId: claims.uid, admin: createAdminClient(), miniApp: { unitId: claims.unit, bindingId: claims.binding } };
+}
+
+/** A Mini App session may act only for the unit it was launched for. */
+export function actorMayUseUnit(actor: Actor, unitId: string): boolean {
+  return !actor.miniApp || actor.miniApp.unitId === unitId;
+}
+
+export const WRONG_UNIT = () =>
+  NextResponse.json({ error: "This Telegram session is for a different reporting unit.", code: "DR_INV_UNIT" }, { status: 403 });
 
 const STATUS_BY_CODE: Record<string, number> = {
   DR_FORBIDDEN: 403,
@@ -505,6 +542,7 @@ function escapeHtml(s: string): string {
 export async function drainOutboxQuietly(admin: SupabaseClient): Promise<void> {
   try {
     await drainOutbox(admin, 15);
+    await drainGroupOutbox(admin, 15);
   } catch (e) {
     console.error("daily-reporting: outbox drain failed:", e instanceof Error ? e.message : e);
   }
