@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       expires_at: result.expires_at,
       unit: result.unit,
       report_date: result.report_date,
+      can_submit: result.can_submit,
     });
   } catch (e) {
     console.error("dr telegram session:", e instanceof Error ? e.message : e);

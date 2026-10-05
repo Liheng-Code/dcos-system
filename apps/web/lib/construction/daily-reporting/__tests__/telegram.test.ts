@@ -10,6 +10,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { actorMayUseUnit, requireReporterActor } from "../server";
+import { formatReportForGroup } from "../telegram/report-summary";
 import { drainGroupOutbox, exchangeMiniAppSession, launchUrl, miniAppSessionSecret, sendDirectMessage } from "../telegram/telegram-server";
 import {
   hashToken,
@@ -51,6 +52,8 @@ interface FakeOptions {
   recentTokens?: { id: string }[];
   outbox?: { id: string; chat_id: number; text: string; attempts: number }[];
   linkCode?: { id: string; employee_id: string } | null;
+  /** Extra tables, by name. */
+  tables?: Record<string, unknown>;
   profileUpdateError?: { code: string; message: string };
   rpc?: Record<string, { data?: unknown; error?: { message: string } | null }>;
 }
@@ -66,6 +69,7 @@ function fakeAdmin(opts: FakeOptions = {}) {
     dr_telegram_launch_tokens: opts.recentTokens ?? [],
     dr_telegram_group_outbox: opts.outbox ?? [],
     telegram_link_codes: opts.linkCode ?? null,
+    ...(opts.tables ?? {}),
   };
   const chain = (table: string) => {
     const result: { data: unknown; error: unknown } = { data: tableData[table] ?? null, error: null };
@@ -194,6 +198,7 @@ describe("session exchange", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.unit.id).toBe(UNIT);
+    expect(result.can_submit).toBe(true);
     expect(result.report_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(verifyMiniAppSession(result.token, miniAppSessionSecret())).toMatchObject({ uid: USER, unit: UNIT, binding: BINDING });
     // The database sees only the hash of the launch token.
@@ -265,6 +270,31 @@ describe("session exchange", () => {
       expect(result).toMatchObject({ ok: false, status: 403, code: "DR_TG_NOT_REPORTER" });
     }
     expect(calls).toHaveLength(0);
+  });
+
+  it("lets an approver or administrator of the project open the form, read-only", async () => {
+    stubTelegram({ getChatMember: { status: "administrator" } });
+    const { admin, rpcCalls } = fakeAdmin({ memberships: [], rpc: { dr_can_review: { data: true } } });
+    const result = await exchangeMiniAppSession(admin, initData({ startParam: launch }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.can_submit).toBe(false);
+    expect(rpcCalls.find((c) => c.name === "dr_can_review")?.args).toEqual({ p_project_id: PROJECT, p_user: USER });
+    expect(verifyMiniAppSession(result.token, miniAppSessionSecret())).toMatchObject({ uid: USER, unit: UNIT, ro: true });
+
+    // The read-only session can load the form and nothing else.
+    const get = await requireReporterActor(new Request("http://localhost/api/dr/forms/x", { headers: { authorization: `Bearer ${result.token}` } }));
+    expect(get).toMatchObject({ userId: USER, miniApp: { unitId: UNIT, readOnly: true } });
+    const post = await requireReporterActor(
+      new Request("http://localhost/api/dr/reports", { method: "POST", headers: { authorization: `Bearer ${result.token}` } }),
+    );
+    expect((post as Response).status).toBe(403);
+  });
+
+  it("an approver must still be a member of the group", async () => {
+    stubTelegram({ getChatMember: { status: "left" } });
+    const { admin } = fakeAdmin({ memberships: [], rpc: { dr_can_review: { data: true } } });
+    expect(await exchangeMiniAppSession(admin, initData({ startParam: launch }))).toMatchObject({ ok: false, code: "DR_TG_NOT_IN_GROUP" });
   });
 
   it("refuses a reporter who has left or been removed from the group", async () => {
@@ -543,6 +573,154 @@ describe("direct messages", () => {
     expect(urls[0]).toContain(`/bot${BOT_TOKEN}/sendMessage`);
     vi.stubEnv("TELEGRAM_DR_BOT_TOKEN", "");
     await expect(sendDirectMessage(TG_USER, "hello")).rejects.toThrow("TELEGRAM_DR_BOT_TOKEN is not configured");
+  });
+});
+
+describe("the submitted report in the group", () => {
+  const TASK = "66666666-6666-4666-8666-666666666666";
+  const payload = {
+    schema_version: 1 as const,
+    weather: { condition: "Sunny", hours_lost: 0, note: null },
+    manpower: [{ line_id: "m1", trade: "Masonry", reported_count: 24 }],
+    activities: [{ line_id: "a1", task_id: TASK, progress_before: 40, progress_today: 65, headcount: 24, work_status: "in_progress" as const }],
+    equipment: [],
+    materials: [],
+    delays: [],
+    issues: [],
+    instructions: [],
+    inspections: [],
+    safety: { toolbox_talk_held: true, observations: null, incident_count: 0, near_miss_count: 0 },
+    area_access: [],
+    next_day: [{ line_id: "n1", description: "Continue L06 blockwork", planned_manpower: 24 }],
+    custom_fields: { wall_type: "Hollow Clay Brick", wall_thickness: 100, area_completed: 125, crew_leader: "Mr. Sok" },
+    custom_field_def_version: 1,
+  };
+  const fields = [
+    { key: "wall_type", label: "Wall Type", type: "select" as const, options: ["Hollow Clay Brick"] },
+    { key: "wall_thickness", label: "Wall Thickness", type: "number" as const, unit: "mm" },
+    { key: "area_completed", label: "Area Completed", type: "number" as const, unit: "m²" },
+    { key: "crew_leader", label: "Crew Leader", type: "text" as const },
+  ];
+  const summary = (overrides: Partial<Parameters<typeof formatReportForGroup>[0]> = {}) =>
+    formatReportForGroup({
+      heading: "DR-2026-000001 submitted",
+      unitName: "ABC Masonry",
+      reportDate: "2026-10-04",
+      reporterName: "Mr. Sok",
+      reportKind: "WORK",
+      payload,
+      tasks: { [TASK]: { name: "Blockwork", location: "Building A › L06" } },
+      customFields: fields,
+      photoCount: 2,
+      ...overrides,
+    });
+
+  it("shows everything the reporter filled in", () => {
+    expect(summary()).toBe(
+      [
+        "DR-2026-000001 submitted",
+        "ABC Masonry · 2026-10-04",
+        "Reported by Mr. Sok",
+        "",
+        "Weather: Sunny",
+        "Manpower: 24 workers",
+        "Toolbox talk: Yes",
+        "",
+        "Activity",
+        "1. Blockwork — Building A › L06",
+        "   Progress 40% → 65% · 24 workers",
+        "",
+        "Issue / constraint: No issue",
+        "Tomorrow: Continue L06 blockwork (24 workers)",
+        "",
+        "Wall Type: Hollow Clay Brick",
+        "Wall Thickness: 100 mm",
+        "Area Completed: 125 m²",
+        "Crew Leader: Mr. Sok",
+        "",
+        "Photos: 2",
+      ].join("\n"),
+    );
+  });
+
+  it("lists issues, delays and several activities, and says when there are no photos", () => {
+    const text = summary({
+      photoCount: 0,
+      payload: {
+        ...payload,
+        activities: [...payload.activities, { line_id: "a2", free_text_activity: "Clean up", progress_today: 100, headcount: 1 }],
+        issues: [{ line_id: "i1", description: "Scaffold not released at L06" }],
+        delays: [{ line_id: "d1", cause_category: "WEATHER", description: "Rain stopped work", hours_lost: 2 }],
+      },
+    });
+    expect(text).toContain("Activities\n1. Blockwork — Building A › L06");
+    expect(text).toContain("2. Clean up\n   Progress 100% · 1 worker");
+    expect(text).toContain("Issue / constraint: Scaffold not released at L06");
+    expect(text).not.toContain("No issue");
+    expect(text).toContain("Delay: Rain stopped work (2 h lost)");
+    expect(text).toContain("Photos: none");
+  });
+
+  it("a No Work report shows only the reason", () => {
+    const text = summary({ reportKind: "NO_WORK", payload: { ...payload, no_work_reason: "Heavy rain all day" } });
+    expect(text).toBe("DR-2026-000001 submitted\nABC Masonry · 2026-10-04\nReported by Mr. Sok\n\nNo work today: Heavy rain all day");
+  });
+
+  it("stays under Telegram's message limit", () => {
+    const long = { ...payload, issues: Array.from({ length: 60 }, (_, i) => ({ line_id: `i${i}`, description: "x".repeat(200) })) };
+    const text = summary({ payload: long });
+    expect(text.length).toBeLessThan(4096);
+    expect(text).toContain("open the report in DCOS for the rest");
+  });
+
+  it("a submission is posted in full; the outbox line is its heading", async () => {
+    const calls = stubTelegram();
+    const { admin } = fakeAdmin({
+      outbox: [{ id: "o1", chat_id: CHAT, text: "DR-2026-000001 submitted", attempts: 0, source_key: "audit:a1" } as never],
+      tables: {
+        dr_audit_log: { event_code: "DR.REPORT_SUBMITTED", report_id: "r1", version_no: 1 },
+        dr_reports: { report_date: "2026-10-04", report_kind: "WORK", unit_id: UNIT, project_id: PROJECT },
+        dr_report_versions: { id: "v1", payload, submitted_by: USER },
+        dr_reporting_units: { display_name: "ABC Masonry" },
+        wbs_tasks: [{ id: TASK, task_name: "Blockwork", wbs_node_id: "n2" }],
+        wbs_nodes: [
+          { id: "n1", parent_id: null, wbs_name: "Building A" },
+          { id: "n2", parent_id: "n1", wbs_name: "L06" },
+        ],
+        dr_custom_field_definitions: { fields },
+        dr_evidence: [{ id: "e1" }, { id: "e2" }],
+      },
+    });
+    expect(await drainGroupOutbox(admin)).toEqual({ sent: 1, failed: 0 });
+    const text = String(calls[0].body.text);
+    expect(text.startsWith("DR-2026-000001 submitted\nABC Masonry · 2026-10-04")).toBe(true);
+    expect(text).toContain("1. Blockwork — Building A › L06");
+    expect(text).toContain("Wall Thickness: 100 mm");
+    expect(text).toContain("Photos: 2");
+  });
+
+  it("an approval or a return stays a one-line status: no report content, no reviewer comment", async () => {
+    const calls = stubTelegram();
+    const { admin } = fakeAdmin({
+      outbox: [{ id: "o1", chat_id: CHAT, text: "DR-2026-000001 approved", attempts: 0, source_key: "audit:a2" } as never],
+      tables: {
+        dr_audit_log: { event_code: "DR.REVIEW_DECISION", report_id: "r1", version_no: 1 },
+        dr_reports: { report_date: "2026-10-04", report_kind: "WORK", unit_id: UNIT, project_id: PROJECT },
+        dr_report_versions: { id: "v1", payload, submitted_by: USER },
+      },
+    });
+    await drainGroupOutbox(admin);
+    expect(calls[0].body.text).toBe("DR-2026-000001 approved");
+  });
+
+  it("if the report cannot be read, the one-line status still goes out", async () => {
+    const calls = stubTelegram();
+    const { admin } = fakeAdmin({
+      outbox: [{ id: "o1", chat_id: CHAT, text: "DR-2026-000001 submitted", attempts: 0, source_key: "audit:a1" } as never],
+      tables: { dr_audit_log: { event_code: "DR.REPORT_SUBMITTED", report_id: "r1", version_no: 1 } },
+    });
+    expect(await drainGroupOutbox(admin)).toEqual({ sent: 1, failed: 0 });
+    expect(calls[0].body.text).toBe("DR-2026-000001 submitted");
   });
 });
 

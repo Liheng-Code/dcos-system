@@ -34,7 +34,7 @@ export interface Actor {
   userId: string;
   admin: SupabaseClient;
   /** Set when the caller came through the Telegram Mini App: the one unit the session may report for. */
-  miniApp?: { unitId: string; bindingId: string };
+  miniApp?: { unitId: string; bindingId: string; readOnly: boolean };
 }
 
 /** Authenticates the session user. Returns a 401 response when there is none. */
@@ -69,7 +69,18 @@ export async function requireReporterActor(request: Request): Promise<Actor | Ne
       { status: 401 },
     );
   }
-  return { userId: claims.uid, admin: createAdminClient(), miniApp: { unitId: claims.unit, bindingId: claims.binding } };
+  // An approver's session is for looking at the form; it can read and nothing else.
+  if (claims.ro && request.method !== "GET") {
+    return NextResponse.json(
+      { error: "Only a reporter of this unit can save or submit the report.", code: "DR_FORBIDDEN" },
+      { status: 403 },
+    );
+  }
+  return {
+    userId: claims.uid,
+    admin: createAdminClient(),
+    miniApp: { unitId: claims.unit, bindingId: claims.binding, readOnly: claims.ro === true },
+  };
 }
 
 /** A Mini App session may act only for the unit it was launched for. */

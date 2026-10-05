@@ -71,6 +71,8 @@ export interface MiniAppSessionClaims {
   binding: string;
   /** Expiry, seconds since the epoch. */
   exp: number;
+  /** Read-only: an approver looking at the form. The gateway refuses every write. */
+  ro?: boolean;
 }
 
 function sign(body: string, secret: string): Buffer {

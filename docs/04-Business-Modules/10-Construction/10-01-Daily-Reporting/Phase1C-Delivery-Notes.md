@@ -84,6 +84,20 @@ The short form can be opened in a browser by someone signed in to DCOS, for demo
 
 Tests: `supabase/tests/dr_custom_fields_invites.test.sql` (28 assertions), `__tests__/mini-form.test.ts` (14), two more bot tests. Checked through the running app: a report with custom fields was submitted as the test foreman, an undefined field was dropped, the definition version was stamped and the group received its status line.
 
+### Changes after the first production test (2026-10-05, owner's request)
+
+| Change | Detail |
+|---|---|
+| **A submission is posted to the group in full** | When a report is submitted or resubmitted, the group message now shows everything the reporter filled in: weather, manpower, toolbox talk, each activity with location and progress, issues, delays, tomorrow's plan, custom fields and the photo count. This replaces design decision D21 (status only) for submissions. The reasoning: each group belongs to one reporting unit, so the unit is shown its own report. **Still never posted:** rule warnings, verified quantities and anything the reviewer writes. Approved, returned and information-requested stay one-line statuses. Built in `telegram/report-summary.ts`; if the report cannot be read, the one-line status is posted instead. No database change. |
+| **Approvers and administrators can open the Mini App** | Someone who may review the project (approver, Project Manager when no approver is set, or system administrator) can open the form from the group to see what the reporter sees. Their session is read-only: the gateway refuses every write, and the form shows a notice with Save Draft and Submit disabled. Submitting stays with the unit's reporters; an administrator who needs to submit adds themselves as a reporter in Setup. They must still be linked and in the group. |
+
+### Changes after the first production test (2026-10-05, owner's request)
+
+| Change | Detail |
+|---|---|
+| **A submission is posted to the group in full** | When a report is submitted or resubmitted, the group message now shows everything the reporter filled in: weather, manpower, toolbox talk, each activity with location and progress, issues, delays, tomorrow's plan, custom fields and the photo count. This replaces design decision D21 (status only) for submissions. The reasoning: each group belongs to one reporting unit, so the unit is shown its own report. **Still never posted:** rule warnings, verified quantities and anything the reviewer writes. Approved, returned and information-requested stay one-line statuses. Built in `telegram/report-summary.ts`; if the report cannot be read, the one-line status is posted instead. No database change. |
+| **Approvers and administrators can open the Mini App** | Someone who may review the project (approver, Project Manager when no approver is set, or system administrator) can open the form from the group to see what the reporter sees. Their session is read-only: the gateway refuses every write, and the form shows a notice with Save Draft and Submit disabled. Submitting stays with the unit's reporters; an administrator who needs to submit adds themselves as a reporter in Setup. They must still be linked and in the group. |
+
 ## 3. Verified
 
 | Check | Result |

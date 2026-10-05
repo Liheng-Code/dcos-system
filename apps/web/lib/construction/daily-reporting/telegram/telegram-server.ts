@@ -14,6 +14,8 @@
 import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { verifyTelegramInitData } from "@/lib/hr/telegram/init-data";
+import type { CustomField, DrPayload } from "../types";
+import { formatReportForGroup } from "./report-summary";
 import {
   SESSION_TTL_SECONDS,
   INVITE_PARAM_PREFIX,
@@ -96,6 +98,8 @@ export type SessionExchangeResult =
       user_id: string;
       unit: { id: string; code: string; name: string; project_id: string };
       report_date: string;
+      /** False for an approver or administrator who is not a reporter of the unit: they can look, not submit. */
+      can_submit: boolean;
     }
   | { ok: false; status: 401 | 403 | 503; code: SessionFailure; error: string };
 
@@ -185,7 +189,15 @@ export async function exchangeMiniAppSession(admin: SupabaseClient, initDataRaw:
   const isReporter = (memberships ?? []).some(
     (m) => (m.valid_from as string) <= today && (!m.valid_to || (m.valid_to as string) >= today),
   );
+  // An approver or administrator of the project may open the form to see what
+  // the reporter sees. Submitting stays with the unit's reporters: the database
+  // refuses a report from anyone else.
+  let canView = isReporter;
   if (!isReporter) {
+    const { data: reviewer } = await admin.rpc("dr_can_review", { p_project_id: binding.project_id, p_user: userId });
+    canView = reviewer === true;
+  }
+  if (!canView) {
     await auditRejected(admin, ids, "DR_TG_NOT_REPORTER", verified.userId);
     return fail(403, "DR_TG_NOT_REPORTER", "You are not a reporter of this reporting unit.");
   }
@@ -208,10 +220,14 @@ export async function exchangeMiniAppSession(admin: SupabaseClient, initDataRaw:
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
   return {
     ok: true,
-    token: signMiniAppSession({ uid: userId, unit: binding.unit_id, binding: binding.binding_id, exp }, miniAppSessionSecret()),
+    token: signMiniAppSession(
+      { uid: userId, unit: binding.unit_id, binding: binding.binding_id, exp, ...(isReporter ? {} : { ro: true }) },
+      miniAppSessionSecret(),
+    ),
     expires_at: new Date(exp * 1000).toISOString(),
     user_id: userId,
     unit: { id: binding.unit_id, code: binding.unit_code, name: binding.unit_name, project_id: binding.project_id },
+    can_submit: isReporter,
     report_date: new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
   };
 }
@@ -352,18 +368,93 @@ interface GroupOutboxRow {
   chat_id: number;
   text: string;
   attempts: number;
+  source_key?: string | null;
+}
+
+const SUBMISSION_EVENTS = new Set(["DR.REPORT_SUBMITTED", "DR.CORRECTION_RESUBMITTED"]);
+
+/**
+ * For a submission, the full text of what the reporter filled in. The group
+ * belongs to that one reporting unit, so this shows the unit its own report.
+ * Returns null for any other event, or when the report cannot be read; the
+ * caller then posts the one-line status instead.
+ */
+async function submissionDetail(admin: SupabaseClient, sourceKey: string, heading: string): Promise<string | null> {
+  if (!sourceKey.startsWith("audit:")) return null;
+  const { data: audit } = await admin
+    .from("dr_audit_log")
+    .select("event_code, report_id, version_no")
+    .eq("id", sourceKey.slice("audit:".length))
+    .maybeSingle();
+  if (!audit || !SUBMISSION_EVENTS.has(audit.event_code as string) || !audit.report_id || !audit.version_no) return null;
+
+  const [{ data: report }, { data: version }] = await Promise.all([
+    admin.from("dr_reports").select("report_date, report_kind, unit_id, project_id").eq("id", audit.report_id).maybeSingle(),
+    admin
+      .from("dr_report_versions")
+      .select("id, payload, submitted_by")
+      .eq("report_id", audit.report_id)
+      .eq("version_no", audit.version_no)
+      .maybeSingle(),
+  ]);
+  if (!report || !version) return null;
+  const payload = version.payload as DrPayload;
+
+  const taskIds = [...new Set([...(payload.activities ?? []), ...(payload.next_day ?? [])].map((x) => x.task_id).filter(Boolean))] as string[];
+  const [unit, reporter, tasks, nodes, definition, evidence] = await Promise.all([
+    admin.from("dr_reporting_units").select("display_name").eq("id", report.unit_id).maybeSingle(),
+    version.submitted_by
+      ? admin.from("profiles").select("full_name").eq("id", version.submitted_by).maybeSingle()
+      : Promise.resolve({ data: null }),
+    taskIds.length
+      ? admin.from("wbs_tasks").select("id, task_name, wbs_node_id").in("id", taskIds)
+      : Promise.resolve({ data: [] as { id: string; task_name: string; wbs_node_id: string | null }[] }),
+    admin.from("wbs_nodes").select("id, parent_id, wbs_name").eq("project_id", report.project_id),
+    payload.custom_field_def_version
+      ? admin
+          .from("dr_custom_field_definitions")
+          .select("fields")
+          .eq("unit_id", report.unit_id)
+          .eq("version", payload.custom_field_def_version)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin.from("dr_evidence").select("id").eq("version_id", version.id),
+  ]);
+
+  const nodeById = new Map((nodes.data ?? []).map((n) => [n.id as string, n as { parent_id: string | null; wbs_name: string }]));
+  const locationOf = (nodeId: string | null): string | null => {
+    const node = nodeId ? nodeById.get(nodeId) : undefined;
+    if (!node) return null;
+    const parent = node.parent_id ? nodeById.get(node.parent_id) : undefined;
+    return parent ? `${parent.wbs_name} › ${node.wbs_name}` : node.wbs_name;
+  };
+
+  return formatReportForGroup({
+    heading,
+    unitName: (unit.data?.display_name as string | undefined) ?? "Reporting unit",
+    reportDate: report.report_date as string,
+    reporterName: (reporter.data?.full_name as string | null | undefined) ?? null,
+    reportKind: report.report_kind as "WORK" | "NO_WORK",
+    payload,
+    tasks: Object.fromEntries(
+      (tasks.data ?? []).map((t) => [t.id as string, { name: t.task_name as string, location: locationOf((t.wbs_node_id as string | null) ?? null) }]),
+    ),
+    customFields: ((definition.data?.fields as CustomField[] | undefined) ?? []),
+    photoCount: (evidence.data ?? []).length,
+  });
 }
 
 /**
- * Posts queued status lines ("DR-2026-000148 submitted") to their groups. The
- * text is written by the database from the audit trail and never contains
- * report content, findings or review comments.
+ * Posts queued lines to their groups. A submission is posted in full, so the
+ * unit sees what it sent; every other event ("approved", "returned") stays a
+ * one-line status written by the database. Review comments, verified
+ * quantities and rule warnings are never posted.
  */
 export async function drainGroupOutbox(admin: SupabaseClient, limit = 25): Promise<{ sent: number; failed: number }> {
   if (!drBotConfigured()) return { sent: 0, failed: 0 };
   const { data } = await admin
     .from("dr_telegram_group_outbox")
-    .select("id, chat_id, text, attempts")
+    .select("id, chat_id, text, attempts, source_key")
     .eq("status", "pending")
     .lt("attempts", 3)
     .order("created_at")
@@ -375,7 +466,9 @@ export async function drainGroupOutbox(admin: SupabaseClient, limit = 25): Promi
   for (const row of rows) {
     let error: string | null = null;
     try {
-      await botCall("sendMessage", { chat_id: Number(row.chat_id), text: row.text, disable_notification: true });
+      // Building the full text must never stop the status line from going out.
+      const detail = await submissionDetail(admin, row.source_key ?? "", row.text).catch(() => null);
+      await botCall("sendMessage", { chat_id: Number(row.chat_id), text: detail ?? row.text, disable_notification: true });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }

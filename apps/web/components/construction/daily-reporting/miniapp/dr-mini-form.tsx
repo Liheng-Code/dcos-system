@@ -62,9 +62,12 @@ export function DrMiniForm({
   date,
   onDone,
   onCorrect,
+  readOnly = false,
 }: {
   unitId: string;
   date: string;
+  /** An approver or administrator looking at the form: nothing can be saved or sent. */
+  readOnly?: boolean;
   /** Called with the report number once the report is accepted. */
   onDone: (reportNo: string) => void;
   /** The day's report was returned: open the correction form for the returned items. */
@@ -335,6 +338,11 @@ export function DrMiniForm({
   return (
     <div className="space-y-3 p-3 pb-28">
       {header}
+      {readOnly ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          You are viewing this form as an approver. Only the reporters of {ctx.unit.display_name} can submit the report.
+        </p>
+      ) : null}
 
       <div className={cn(card, "space-y-3")}>
         <div className="flex items-center justify-between">
@@ -525,6 +533,7 @@ export function DrMiniForm({
             {uploading > 0 ? "Uploading…" : "Add photos / documents"}
             <input
               type="file"
+              disabled={readOnly}
               accept="image/*,application/pdf"
               multiple
               className="hidden"
@@ -551,12 +560,12 @@ export function DrMiniForm({
           </p>
         ) : null}
         <div className="flex items-center gap-3">
-          <button type="button" disabled={savingDraft || submitting} className="h-12 px-3 text-sm font-medium disabled:opacity-60" onClick={saveAsDraft}>
+          <button type="button" disabled={readOnly || savingDraft || submitting} className="h-12 px-3 text-sm font-medium disabled:opacity-60" onClick={saveAsDraft}>
             {savingDraft ? "Saving…" : "Save Draft"}
           </button>
           <button
             type="button"
-            disabled={submitting || uploading > 0}
+            disabled={readOnly || submitting || uploading > 0}
             className="flex h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
             onClick={submit}
           >

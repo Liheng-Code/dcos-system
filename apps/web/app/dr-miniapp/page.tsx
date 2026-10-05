@@ -17,6 +17,8 @@ import { setApiAuthorization } from "@/lib/construction/daily-reporting/service"
 interface Session {
   unit: { id: string; code: string; name: string };
   report_date: string;
+  /** False for an approver or administrator looking at the form: only the unit's reporters submit. */
+  canSubmit: boolean;
 }
 
 const TELEGRAM_SCRIPT = "https://telegram.org/js/telegram-web-app.js";
@@ -71,7 +73,7 @@ export default function DailyReportMiniAppPage() {
         const today = new Intl.DateTimeFormat("en-CA").format(new Date());
         setState({
           status: "ready",
-          session: { unit: { id: unitParam, code: "", name: "" }, report_date: dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today },
+          session: { unit: { id: unitParam, code: "", name: "" }, report_date: dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today, canSubmit: true },
           correcting: false,
         });
         return;
@@ -86,7 +88,11 @@ export default function DailyReportMiniAppPage() {
           return;
         }
         setApiAuthorization(`Bearer ${body.token}`);
-        setState({ status: "ready", session: { unit: body.unit, report_date: body.report_date }, correcting: false });
+        setState({
+          status: "ready",
+          session: { unit: body.unit, report_date: body.report_date, canSubmit: body.can_submit !== false },
+          correcting: false,
+        });
       } catch {
         if (!cancelled) setState({ status: "refused", message: "No connection. Check your signal and try again." });
       }
@@ -161,6 +167,7 @@ export default function DailyReportMiniAppPage() {
     <DrMiniForm
       unitId={session.unit.id}
       date={session.report_date}
+      readOnly={!session.canSubmit}
       onDone={(reportNo) => setState({ status: "done", reportNo })}
       onCorrect={() => setState({ ...state, correcting: true })}
     />
