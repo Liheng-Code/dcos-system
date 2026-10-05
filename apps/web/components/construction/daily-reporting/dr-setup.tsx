@@ -40,6 +40,8 @@ import { SECTION_LABELS } from "@/lib/construction/daily-reporting/status";
 import type { ReportingUnit, SectionKey } from "@/lib/construction/daily-reporting/types";
 import { DrCustomFieldsEditor } from "./dr-custom-fields";
 import { DrTelegramBindings } from "./dr-telegram";
+import { DrAiSettings } from "./dr-ai";
+import { DrRules } from "./dr-rules";
 import { Field, Flag, inputClass, SectionCard, todayIso } from "./dr-ui";
 
 const OPTIONAL_SECTIONS: SectionKey[] = ["equipment", "materials"];
@@ -96,6 +98,7 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
   const [invite, setInvite] = useState<{ userId: string; url: string; expires_at: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [approverRole, setApproverRole] = useState<"PRIMARY" | "ALTERNATE">("ALTERNATE");
+  const [approverFrom, setApproverFrom] = useState("");
   const [approverUntil, setApproverUntil] = useState("");
 
   const [refresh, setRefresh] = useState(0);
@@ -502,11 +505,15 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
 
       <DrTelegramBindings projectId={projectId} units={units} canManage={capabilities.canReview} />
 
+      <DrRules projectId={projectId} />
+
+      <DrAiSettings projectId={projectId} />
+
       <SectionCard title="Approvers">
         <p className="text-sm text-muted-foreground">
           The primary approver reviews and approves reports and publishes the daily summary. With no primary approver set, the project&apos;s
-          Project Manager is the approver. An alternate has the same authority inside its dates, for leave or absence. Only a system
-          administrator can change approvers.
+          Project Manager is the approver. An alternate has the same authority inside its dates, for leave or absence; set a future start date to
+          arrange cover ahead of time. Only a system administrator can change approvers, and every change is recorded in the audit trail.
         </p>
         <ul className="mt-3 space-y-1">
           {approvers.length === 0 ? <li className="text-sm text-muted-foreground">No approvers set — the Project Manager approves.</li> : null}
@@ -519,6 +526,8 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
                   from {a.valid_from}
                   {a.valid_to ? ` to ${a.valid_to}` : ""}
                 </span>
+                {a.valid_from > todayIso() ? <span className="ml-2"><Flag tone="neutral">Not started</Flag></span> : null}
+                {a.valid_to && a.valid_to < todayIso() ? <span className="ml-2"><Flag tone="neutral">Ended</Flag></span> : null}
               </span>
               {capabilities.isSystemAdmin ? (
                 <Button
@@ -540,18 +549,30 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
           ))}
         </ul>
         {capabilities.isSystemAdmin ? (
-          <div className="mt-3 grid gap-2 md:grid-cols-4">
-            <select aria-label="Approver role" className={inputClass} value={approverRole} onChange={(e) => setApproverRole(e.target.value as "PRIMARY" | "ALTERNATE")}>
-              <option value="ALTERNATE">Alternate</option>
-              <option value="PRIMARY">Primary</option>
-            </select>
-            <input type="date" aria-label="Valid until" className={inputClass} value={approverUntil} min={todayIso()} onChange={(e) => setApproverUntil(e.target.value)} />
-            <div className="md:col-span-2">
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <Field label="Role">
+              <select aria-label="Approver role" className={inputClass} value={approverRole} onChange={(e) => setApproverRole(e.target.value as "PRIMARY" | "ALTERNATE")}>
+                <option value="ALTERNATE">Alternate</option>
+                <option value="PRIMARY">Primary</option>
+              </select>
+            </Field>
+            <Field label="From">
+              <input type="date" aria-label="Valid from" className={inputClass} value={approverFrom} min={todayIso()} onChange={(e) => setApproverFrom(e.target.value)} />
+            </Field>
+            <Field label="Until (empty = no end)">
+              <input type="date" aria-label="Valid until" className={inputClass} value={approverUntil} min={approverFrom || todayIso()} onChange={(e) => setApproverUntil(e.target.value)} />
+            </Field>
+            <div className="md:col-span-3">
               <PersonPicker
                 label="Add an approver by name or email"
                 onPick={async (p) => {
                   try {
-                    await addApprover({ project_id: projectId, user_id: p.id, approver_role: approverRole, valid_from: todayIso(), valid_to: approverUntil || null });
+                    const from = approverFrom || todayIso();
+                    if (approverUntil && approverUntil < from) {
+                      toast.error("The end date is before the start date.");
+                      return;
+                    }
+                    await addApprover({ project_id: projectId, user_id: p.id, approver_role: approverRole, valid_from: from, valid_to: approverUntil || null });
                     setApprovers(await listApprovers(projectId));
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : String(e));

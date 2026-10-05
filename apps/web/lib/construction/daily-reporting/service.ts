@@ -5,6 +5,7 @@
 // written under RLS.
 
 import { createClient } from "@/lib/supabase/client";
+import type { OverviewSummary } from "./overview";
 import type {
   CorrectionItem,
   CustomField,
@@ -21,6 +22,7 @@ import type {
   ReportKind,
   ReportingUnit,
   ReviewDecision,
+  RuleDefinition,
   RuleResult,
 } from "./types";
 
@@ -68,19 +70,28 @@ export interface DrCapabilities {
   canReview: boolean;
   canAdmin: boolean;
   isSystemAdmin: boolean;
+  /** May see the whole project's reports and summaries (approvers, management, planners, QS), not just one unit's. */
+  canViewProject: boolean;
 }
 
 export async function getCapabilities(projectId: string): Promise<DrCapabilities> {
   const supabase = createClient();
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id ?? null;
-  if (!userId) return { userId, canReview: false, canAdmin: false, isSystemAdmin: false };
-  const [review, admin, sys] = await Promise.all([
+  if (!userId) return { userId, canReview: false, canAdmin: false, isSystemAdmin: false, canViewProject: false };
+  const [review, admin, sys, view] = await Promise.all([
     supabase.rpc("dr_can_review", { p_project_id: projectId, p_user: userId }),
     supabase.rpc("dr_can_admin", { p_project_id: projectId }),
     supabase.rpc("is_admin", { uid: userId }),
+    supabase.rpc("dr_can_view_project", { p_project_id: projectId }),
   ]);
-  return { userId, canReview: review.data === true, canAdmin: admin.data === true, isSystemAdmin: sys.data === true };
+  return {
+    userId,
+    canReview: review.data === true,
+    canAdmin: admin.data === true,
+    isSystemAdmin: sys.data === true,
+    canViewProject: view.data === true || review.data === true,
+  };
 }
 
 // ── Units ───────────────────────────────────────────────────────────────────
@@ -305,6 +316,164 @@ export async function addApprover(input: {
 
 export async function removeApprover(id: string): Promise<void> {
   const { error } = await createClient().from("dr_project_approvers").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// ── AI assurance (approvers only; row-level security hides it from reporting units) ──
+export interface AiRun {
+  id: string;
+  status: "SUCCEEDED" | "FAILED" | "SKIPPED_BUDGET" | "SKIPPED_NO_PHOTOS";
+  error: string | null;
+  model: string | null;
+  prompt_version: string | null;
+  images: number;
+  finished_at: string;
+}
+
+export interface AiFinding {
+  id: string;
+  run_id: string;
+  finding_type: string;
+  severity: "INFO" | "WARNING";
+  assessment: "SUPPORTED" | "UNCLEAR" | "CONTRADICTED" | "NOT_ASSESSABLE";
+  message: string;
+  target: { section?: string; line_id?: string };
+  source_refs: string[];
+  recommended_action: string;
+  /** The approver's rating of the finding, if given. */
+  verdict: "ACCEPTED" | "DISMISSED" | null;
+}
+
+export interface AiAssurance {
+  /** Newest first. */
+  runs: AiRun[];
+  /** Findings of the newest successful run. */
+  findings: AiFinding[];
+}
+
+type FeedbackEmbed = { verdict: AiFinding["verdict"] } | { verdict: AiFinding["verdict"] }[] | null;
+const verdictOf = (f: FeedbackEmbed): AiFinding["verdict"] => (Array.isArray(f) ? f[0]?.verdict ?? null : f?.verdict ?? null);
+
+export async function getAiAssurance(versionId: string): Promise<AiAssurance> {
+  const supabase = createClient();
+  const { data: runs, error } = await supabase
+    .from("dr_ai_runs")
+    .select("id, status, error, model, prompt_version, images, finished_at")
+    .eq("version_id", versionId)
+    .order("finished_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const list = (runs as AiRun[]) ?? [];
+  const last = list.find((r) => r.status === "SUCCEEDED");
+  if (!last) return { runs: list, findings: [] };
+  const { data: findings } = await supabase
+    .from("dr_ai_findings")
+    .select("id, run_id, finding_type, severity, assessment, message, target, source_refs, recommended_action, feedback:dr_ai_finding_feedback(verdict)")
+    .eq("run_id", last.id)
+    .order("created_at");
+  return {
+    runs: list,
+    findings: ((findings as unknown as (Omit<AiFinding, "verdict"> & { feedback: FeedbackEmbed })[]) ?? []).map(({ feedback, ...f }) => ({
+      ...f,
+      verdict: verdictOf(feedback),
+    })),
+  };
+}
+
+export async function setAiFindingVerdict(findingId: string, verdict: "ACCEPTED" | "DISMISSED"): Promise<void> {
+  const supabase = createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  // project_id is filled in by the database from the finding.
+  const { error } = await supabase
+    .from("dr_ai_finding_feedback")
+    .upsert({ finding_id: findingId, verdict, decided_by: auth.user?.id }, { onConflict: "finding_id" });
+  if (error) throw new Error(error.message);
+}
+
+export interface AiSettings {
+  evidence_assessment_enabled: boolean;
+  daily_report_limit: number;
+}
+
+export async function getAiSettings(projectId: string): Promise<AiSettings> {
+  const { data } = await createClient()
+    .from("dr_ai_project_settings")
+    .select("evidence_assessment_enabled, daily_report_limit")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  return (data as AiSettings | null) ?? { evidence_assessment_enabled: false, daily_report_limit: 30 };
+}
+
+export async function saveAiSettings(projectId: string, settings: AiSettings): Promise<void> {
+  const supabase = createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("dr_ai_project_settings")
+    .upsert({ project_id: projectId, ...settings, updated_by: auth.user?.id ?? null, updated_at: new Date().toISOString() }, { onConflict: "project_id" });
+  if (error) throw new Error(error.message);
+}
+
+export interface AiAcceptance {
+  /** Findings that raised a flag (unclear or contradicted). */
+  flagged: number;
+  /** Of those, how many an approver rated. */
+  reviewed: number;
+  /** Of those rated, how many were marked useful. */
+  accepted: number;
+}
+
+/** How approvers rated the flagged findings of the last `days` days (design §11: measure before trusting). */
+export async function getAiAcceptance(projectId: string, days: number): Promise<AiAcceptance> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data } = await createClient()
+    .from("dr_ai_findings")
+    .select("id, feedback:dr_ai_finding_feedback(verdict)")
+    .eq("project_id", projectId)
+    .eq("severity", "WARNING")
+    .gte("created_at", since)
+    .limit(5000);
+  const verdicts = ((data as unknown as { feedback: FeedbackEmbed }[]) ?? []).map((r) => verdictOf(r.feedback));
+  return {
+    flagged: verdicts.length,
+    reviewed: verdicts.filter((v) => v !== null).length,
+    accepted: verdicts.filter((v) => v === "ACCEPTED").length,
+  };
+}
+
+// ── Rules (Setup) ───────────────────────────────────────────────────────────
+export interface RuleRow extends RuleDefinition {
+  id: string;
+  min_history_days: number;
+}
+
+/** Global defaults and this project's overrides. */
+export async function listRuleDefinitions(projectId: string): Promise<RuleRow[]> {
+  const { data, error } = await createClient()
+    .from("dr_rule_definitions")
+    .select("*")
+    .or(`project_id.is.null,project_id.eq.${projectId}`);
+  if (error) throw new Error(error.message);
+  return (data as RuleRow[]) ?? [];
+}
+
+/** Saves this project's setting for a rule: changes its override, or creates one from the default. */
+export async function saveProjectRule(
+  projectId: string,
+  effective: RuleRow,
+  values: { severity: RuleDefinition["severity"]; is_active: boolean; min_history_days: number; params: Record<string, unknown> },
+): Promise<void> {
+  const supabase = createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const patch = { ...values, updated_by: auth.user?.id ?? null };
+  const { error } =
+    effective.project_id === projectId
+      ? await supabase.from("dr_rule_definitions").update(patch).eq("id", effective.id)
+      : await supabase.from("dr_rule_definitions").insert({ ...patch, project_id: projectId, rule_code: effective.rule_code, point: effective.point });
+  if (error) throw new Error(error.message);
+}
+
+/** Removes the project's override, so the global default applies again. */
+export async function removeProjectRule(id: string): Promise<void> {
+  const { error } = await createClient().from("dr_rule_definitions").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 
@@ -603,6 +772,26 @@ export async function getSummaries(projectId: string, date: string): Promise<Dai
     .order("revision_no", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as DailySummary[]) ?? [];
+}
+
+/**
+ * Summaries of every project the user may see, for the Management Overview.
+ * Row-level security decides which projects those are.
+ */
+export async function listOverviewSummaries(from: string, to: string): Promise<OverviewSummary[]> {
+  const { data, error } = await createClient()
+    .from("dr_project_daily_summaries")
+    .select("project_id, summary_date, revision_no, status, coverage, totals, project:projects(project_code, project_name)")
+    .gte("summary_date", from)
+    .lte("summary_date", to)
+    .in("status", ["Official", "Live"])
+    .order("summary_date")
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  return ((data as unknown as (OverviewSummary & { project: OverviewSummary["project"] | OverviewSummary["project"][] })[]) ?? []).map((r) => ({
+    ...r,
+    project: Array.isArray(r.project) ? r.project[0] ?? null : r.project,
+  }));
 }
 
 export const publishSummary = (projectId: string, date: string, narrative: string | null) =>

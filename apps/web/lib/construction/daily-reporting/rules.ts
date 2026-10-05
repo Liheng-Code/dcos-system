@@ -10,12 +10,14 @@ import {
   type DrPayload,
   type EvidenceRef,
   type FormActivity,
+  type HistoryDay,
   type ReportKind,
   type ReportingUnit,
   type RuleDefinition,
   type RuleResult,
   type RuleSeverity,
   type SectionKey,
+  type UnitHistory,
 } from "./types";
 
 export interface RuleInput {
@@ -37,6 +39,8 @@ export interface RuleInput {
   previousNextDay?: DrPayload["next_day"];
   approvedProgress?: Record<string, number>;
   knownUom?: Record<string, string>;
+  /** Approved history of the unit. Without it the statistical rules stay silent. */
+  history?: UnitHistory;
   /** The unit's custom fields; required ones must be filled and values must fit their type. */
   customFields?: CustomField[];
 }
@@ -52,6 +56,50 @@ export function resolveRules(defs: RuleDefinition[], projectId: string | null): 
 
 const blank = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 const sameUom = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const positiveParam = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback);
+
+function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+interface Sample {
+  value: number;
+  headcount: number | null;
+}
+
+/**
+ * What one activity produced per approved day, oldest first. Quantity is used
+ * when today's line and enough history carry one in the same unit; otherwise
+ * the gain in cumulative %. Days with no production are left out, so a pause
+ * does not lower the baseline.
+ */
+function productionSeries(
+  days: HistoryDay[],
+  today: { qty: number | null; uom: string | null; gain: number | null; headcount: number | null },
+  minSamples: number,
+): { measure: "qty" | "progress"; unit: string; samples: Sample[]; today: Sample } | null {
+  if (today.qty !== null && today.uom) {
+    const samples = days
+      .filter((d) => typeof d.qty === "number" && d.qty > 0 && !!d.uom && sameUom(d.uom, today.uom as string))
+      .map((d) => ({ value: d.qty as number, headcount: d.headcount }));
+    if (samples.length >= minSamples) {
+      return { measure: "qty", unit: today.uom, samples, today: { value: today.qty, headcount: today.headcount } };
+    }
+  }
+  if (today.gain === null) return null;
+  const samples: Sample[] = [];
+  let previous: number | null = null;
+  for (const d of days) {
+    if (typeof d.progress !== "number") continue;
+    if (previous !== null && d.progress > previous) samples.push({ value: d.progress - previous, headcount: d.headcount });
+    previous = d.progress;
+  }
+  if (samples.length < minSamples) return null;
+  return { measure: "progress", unit: "%", samples, today: { value: today.gain, headcount: today.headcount } };
+}
 
 export function evaluateRules(input: RuleInput): RuleResult[] {
   const { payload: p, unit } = input;
@@ -76,6 +124,11 @@ export function evaluateRules(input: RuleInput): RuleResult[] {
       params,
       target,
     });
+  };
+  /** A rule that needs history runs only once the unit has enough approved days (design §10.3). */
+  const ready = (code: string) => {
+    const def = defs.get(code);
+    return !!def && (def.min_history_days ?? 0) <= (input.history?.approved_days ?? 0);
   };
 
   if (unit.status !== "Active") fail("INV_UNIT", "This reporting unit is not active.", { section: "header" });
@@ -178,6 +231,76 @@ export function evaluateRules(input: RuleInput): RuleResult[] {
     }
     if (!blank(a.reported_qty) && blank(a.uom)) {
       fail("REQ_FIELD", "A quantity needs a unit of measure.", target);
+    }
+  }
+
+  // ── Statistical rules (design §10.3) ─────────────────────────────────────
+  // Compared with the unit's own approved history. Deterministic, and silent
+  // until the unit has the minimum number of approved days.
+  const jump = defs.get("PROGRESS_JUMP")?.params ?? {};
+  const band = defs.get("PRODUCTIVITY_ABNORMAL")?.params ?? {};
+  const range = defs.get("QTY_RANGE")?.params ?? {};
+  for (const a of p.activities) {
+    const target = { section: "activities" as const, line_id: a.line_id };
+    const qty = typeof a.reported_qty === "number" ? a.reported_qty : null;
+    const approved = a.task_id ? input.approvedProgress?.[a.task_id] : undefined;
+    const base = approved ?? (typeof a.progress_before === "number" ? a.progress_before : null);
+    const gain = typeof a.progress_today === "number" && base !== null ? a.progress_today - base : null;
+
+    if (ready("QTY_RANGE")) {
+      const byUom = (range.by_uom ?? {}) as Record<string, { min?: number; max?: number }>;
+      const key = a.uom ? Object.keys(byUom).find((k) => sameUom(k, a.uom as string)) : undefined;
+      const limits = key ? byUom[key] : undefined;
+      if (qty !== null && limits) {
+        const below = typeof limits.min === "number" && qty < limits.min;
+        const above = typeof limits.max === "number" && qty > limits.max;
+        if (below || above) {
+          fail("QTY_RANGE", `Quantity ${qty} ${a.uom} is ${below ? `below the minimum ${limits.min}` : `above the maximum ${limits.max}`} set for one day.`,
+            target, { reported: qty, uom: a.uom, min: limits.min ?? null, max: limits.max ?? null });
+        }
+      }
+      const maxGain = range.max_daily_progress_pct;
+      if (typeof maxGain === "number" && gain !== null && gain > maxGain) {
+        fail("QTY_RANGE", `Progress rose ${round1(gain)}% in one day; the limit set for one day is ${maxGain}%.`,
+          target, { reported: round1(gain), max: maxGain, measure: "progress" });
+      }
+    }
+
+    const days = a.task_id ? input.history?.tasks[a.task_id] : undefined;
+    if (!days || days.length === 0) continue;
+    const today = { qty, uom: a.uom ?? null, gain, headcount: typeof a.headcount === "number" ? a.headcount : null };
+
+    if (ready("PROGRESS_JUMP")) {
+      const windowDays = positiveParam(jump.window_days, 10);
+      const multiplier = positiveParam(jump.multiplier, 3);
+      const series = productionSeries(days.slice(-windowDays), today, positiveParam(jump.min_samples, 3));
+      if (series && series.today.value > 0) {
+        const baseline = series.samples.reduce((s, x) => s + x.value, 0) / series.samples.length;
+        if (series.today.value > baseline * multiplier) {
+          fail("PROGRESS_JUMP",
+            `Reported production is ${round1(series.today.value / baseline)}x the ${windowDays}-day average for this activity.`,
+            target,
+            { baseline: round1(baseline), reported: round1(series.today.value), window_days: windowDays, multiplier, measure: series.measure, unit: series.unit });
+        }
+      }
+    }
+
+    if (ready("PRODUCTIVITY_ABNORMAL")) {
+      const windowDays = positiveParam(band.window_days, 10);
+      const low = positiveParam(band.low_ratio, 0.4);
+      const high = positiveParam(band.high_ratio, 2.5);
+      const series = productionSeries(days.slice(-windowDays), today, 1);
+      const perWorker = (series?.samples ?? []).filter((s) => (s.headcount ?? 0) > 0).map((s) => s.value / (s.headcount as number));
+      if (series && series.today.value > 0 && (series.today.headcount ?? 0) > 0 && perWorker.length >= positiveParam(band.min_samples, 3)) {
+        const usual = median(perWorker);
+        const now = series.today.value / (series.today.headcount as number);
+        if (usual > 0 && (now < usual * low || now > usual * high)) {
+          fail("PRODUCTIVITY_ABNORMAL",
+            `Output per worker is ${round1(now)} ${series.unit}, ${now > usual ? "above" : "below"} the usual ${round1(usual)} ${series.unit} for this activity.`,
+            target,
+            { baseline: round1(usual), reported: round1(now), low_ratio: low, high_ratio: high, window_days: windowDays, measure: series.measure, unit: series.unit });
+        }
+      }
     }
   }
 

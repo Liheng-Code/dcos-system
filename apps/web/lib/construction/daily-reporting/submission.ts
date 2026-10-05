@@ -14,7 +14,9 @@ import {
   drainOutboxQuietly,
   EvidenceError,
   loadFormContext,
+  photoReuseResults,
   runRules,
+  scheduleAiAssurance,
   verifyEvidence,
   type Actor,
 } from "./server";
@@ -179,6 +181,8 @@ export async function handleSubmission(
     }
     throw e;
   }
+  // Needs the hashes computed above, so it runs after the other rules. A warning only.
+  results.push(...(await photoReuseResults(actor.admin, ctx.unit, ctx.rules, evidence, ctx.existing?.id ?? null)));
 
   const common = {
     p_actor: actor.userId,
@@ -215,5 +219,6 @@ export async function handleSubmission(
   if (error) return drErrorResponse(error);
 
   await drainOutboxQuietly(actor.admin);
+  scheduleAiAssurance(actor.admin);
   return NextResponse.json({ receipt: data, warnings: warnings(results) }, { status: mode === "submit" ? 201 : 200 });
 }

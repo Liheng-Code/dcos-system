@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { runEvidenceAssessments } from "@/lib/construction/daily-reporting/ai/assurance-server";
 import { drainOutbox } from "@/lib/construction/daily-reporting/server";
 import { drainGroupOutbox, refreshLaunchMessages } from "@/lib/construction/daily-reporting/telegram/telegram-server";
 
@@ -23,7 +24,9 @@ async function tick(request: NextRequest) {
   // Status lines for bound Telegram groups, and their launch buttons (tokens last at most 24 hours).
   const group = await drainGroupOutbox(admin, 100);
   const launch = await refreshLaunchMessages(admin);
-  return NextResponse.json({ schedule, delivery, group, launch });
+  // AI photo checks that did not run right after their report was sent (or failed and are due a retry).
+  const ai = await runEvidenceAssessments(admin, { limit: 5 });
+  return NextResponse.json({ schedule, delivery, group, launch, ai });
 }
 
 export const GET = tick;

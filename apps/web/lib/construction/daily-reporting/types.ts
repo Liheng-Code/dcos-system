@@ -335,6 +335,28 @@ export interface RuleDefinition {
   version: number;
   is_active: boolean;
   project_id: string | null;
+  /** The rule stays off for a unit until it has this many approved working days. */
+  min_history_days?: number;
+}
+
+/** One approved day of one activity, as approved (the verified quantity where the approver changed it). */
+export interface HistoryDay {
+  /** yyyy-mm-dd */
+  date: string;
+  /** Cumulative %, as approved. */
+  progress: number | null;
+  /** Quantity done that day. */
+  qty: number | null;
+  uom: string | null;
+  headcount: number | null;
+}
+
+/** A unit's approved history before the report date, for the statistical rules. */
+export interface UnitHistory {
+  /** Approved working days of the unit before the report date. */
+  approved_days: number;
+  /** Per task, oldest day first. */
+  tasks: Record<string, HistoryDay[]>;
 }
 
 export interface ReportingUnit {
@@ -520,6 +542,8 @@ export interface FormContext {
   approved_progress: Record<string, number>;
   /** Unit of measure seen on previously approved lines, per task. */
   known_uom: Record<string, string>;
+  /** Approved history for the statistical rules; absent on contexts cached before it existed. */
+  history?: UnitHistory;
   today_local: string;
   /** The unit's active custom fields, if it has any. */
   custom_fields?: CustomFieldSet | null;

@@ -4,10 +4,12 @@
 // these helpers authenticate the caller and pass them on as p_actor.
 
 import { createHash } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient, createUserClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email/resend";
+import { runEvidenceAssessments } from "./ai/assurance-server";
+import { dhashFromGray, findReuse, PHASH_HEIGHT, PHASH_WIDTH } from "./phash";
 import { evaluateRules, resolveRules } from "./rules";
 import { scanBuffer, scanRequired } from "./scanner";
 import { drainGroupOutbox, drBotConfigured, miniAppSessionSecret, sendDirectMessage } from "./telegram/telegram-server";
@@ -25,6 +27,7 @@ import type {
   ReportingUnit,
   RuleDefinition,
   RuleResult,
+  UnitHistory,
 } from "./types";
 
 export const EVIDENCE_BUCKET = "dr-evidence";
@@ -297,16 +300,25 @@ export async function loadFormContext(
   // Previous approved day of this unit: next-day plan, approved progress, units of measure.
   const { data: history } = await admin
     .from("dr_reports")
-    .select("id, report_date, approved_version_no")
+    .select("id, report_date, approved_version_no, report_kind")
     .eq("unit_id", unitId)
     .lt("report_date", reportDate)
     .not("approved_version_no", "is", null)
     .order("report_date", { ascending: false })
     .limit(30);
+  // The statistical rules stay off until the unit has enough approved working days.
+  const { count: approvedDays } = await admin
+    .from("dr_reports")
+    .select("id", { count: "exact", head: true })
+    .eq("unit_id", unitId)
+    .eq("report_kind", "WORK")
+    .lt("report_date", reportDate)
+    .not("approved_version_no", "is", null);
 
   let previousNextDay: DrPayload["next_day"] = [];
   const approvedProgress: Record<string, number> = {};
   const knownUom: Record<string, string> = {};
+  const historyTasks: UnitHistory["tasks"] = {};
 
   if (history && history.length > 0) {
     const reportIds = history.map((h) => h.id as string);
@@ -330,6 +342,27 @@ export async function loadFormContext(
         if (knownUom[a.task_id] === undefined && a.uom) knownUom[a.task_id] = a.uom;
       }
     }
+
+    // Where the approver changed a quantity, the verified figure is the history.
+    const versionIds = [...approvedVersion.values()].map((v) => v.id);
+    const { data: verifiedRows } = versionIds.length
+      ? await admin.from("dr_verified_quantities").select("version_id, line_id, verified_qty").in("version_id", versionIds)
+      : { data: [] as { version_id: string; line_id: string; verified_qty: number }[] };
+    const verified = new Map((verifiedRows ?? []).map((v) => [`${v.version_id}:${v.line_id}`, Number(v.verified_qty)]));
+    for (const h of [...history].reverse()) {
+      const version = approvedVersion.get(h.id as string);
+      if (!version || h.report_kind !== "WORK") continue;
+      for (const a of version.payload.activities ?? []) {
+        if (!a.task_id) continue;
+        (historyTasks[a.task_id] ??= []).push({
+          date: h.report_date as string,
+          progress: typeof a.progress_today === "number" ? a.progress_today : null,
+          qty: verified.get(`${version.id}:${a.line_id}`) ?? (typeof a.reported_qty === "number" ? a.reported_qty : null),
+          uom: a.uom ?? null,
+          headcount: typeof a.headcount === "number" ? a.headcount : null,
+        });
+      }
+    }
   }
 
   return {
@@ -346,6 +379,7 @@ export async function loadFormContext(
     previous_next_day: previousNextDay,
     approved_progress: approvedProgress,
     known_uom: knownUom,
+    history: { approved_days: approvedDays ?? 0, tasks: historyTasks },
     today_local: localDate(schedule.timezone),
     custom_fields: customRes.data
       ? { version: customRes.data.version as number, fields: (customRes.data.fields as CustomField[]) ?? [] }
@@ -354,6 +388,20 @@ export async function loadFormContext(
       ? { code: projectRes.data.project_code as string, name: projectRes.data.project_name as string }
       : undefined,
   };
+}
+
+/**
+ * Starts the AI photo check for reports that are waiting, after the response
+ * has been sent. Never delays or fails the request it is called from.
+ */
+export function scheduleAiAssurance(admin: SupabaseClient): void {
+  try {
+    after(async () => {
+      await runEvidenceAssessments(admin, { limit: 2 });
+    });
+  } catch {
+    // Outside a request (tests, scripts): the cron tick picks the report up.
+  }
 }
 
 /** Runs the full rule catalogue for a submission against a loaded context. */
@@ -380,6 +428,7 @@ export function runRules(
     previousNextDay: ctx.previous_next_day,
     approvedProgress: ctx.approved_progress,
     knownUom: ctx.known_uom,
+    history: ctx.history,
     // A correction or amendment of a report written against an older
     // definition is not held to fields that did not exist then.
     customFields:
@@ -397,10 +446,102 @@ const MAGIC: { mime: string; test: (b: Buffer) => boolean }[] = [
   { mime: "application/pdf", test: (b) => b.subarray(0, 5).toString("ascii") === "%PDF-" },
 ];
 
+const HASHABLE = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+/**
+ * Perceptual hash of a photo (see phash.ts). Never throws: a file that cannot
+ * be decoded simply has no hash and is left out of the reuse check.
+ */
+export async function perceptualHash(bytes: Buffer, mime: string): Promise<string | null> {
+  if (!HASHABLE.has(mime)) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    const gray = await sharp(bytes)
+      .rotate() // as the camera held it, so a re-saved copy hashes the same
+      .greyscale()
+      .resize(PHASH_WIDTH, PHASH_HEIGHT, { fit: "fill" })
+      .raw()
+      .toBuffer();
+    return dhashFromGray(gray);
+  } catch (e) {
+    console.error("daily-reporting: perceptual hash failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * PHOTO_REUSE (design §10.2): a newly attached photo that is the same file as,
+ * or looks the same as, a photo the unit attached to an earlier report. A
+ * warning for the approver; it never blocks. Compared within the unit only,
+ * so a finding never points at another unit's report. Never throws.
+ */
+export async function photoReuseResults(
+  admin: SupabaseClient,
+  unit: Pick<ReportingUnit, "id" | "project_id">,
+  rules: RuleDefinition[],
+  evidence: VerifiedEvidence[],
+  reportId: string | null,
+): Promise<RuleResult[]> {
+  const def = rules.find((r) => r.rule_code === "PHOTO_REUSE");
+  const fresh = evidence.filter((e) => e.sha256);
+  if (!def || fresh.length === 0) return [];
+  const maxDistance = typeof def.params.max_distance === "number" ? def.params.max_distance : 5;
+  const lookbackDays = typeof def.params.lookback_days === "number" ? def.params.lookback_days : 60;
+  try {
+    const { data } = await admin
+      .from("dr_evidence")
+      .select("storage_key, report_id, sha256, phash, dr_reports(report_no, report_date)")
+      .eq("project_id", unit.project_id)
+      .like("storage_key", `${unit.project_id}/${unit.id}/%`)
+      .gte("received_at_server", new Date(Date.now() - lookbackDays * 86_400_000).toISOString())
+      .order("received_at_server", { ascending: false })
+      .limit(3000);
+    type Row = {
+      storage_key: string;
+      report_id: string;
+      sha256: string | null;
+      phash: string | null;
+      dr_reports: { report_no: string; report_date: string } | { report_no: string; report_date: string }[] | null;
+    };
+    const previous = ((data as Row[] | null) ?? []).filter((r) => r.report_id !== reportId);
+    const out: RuleResult[] = [];
+    for (const e of fresh) {
+      const hit = findReuse(e, previous, maxDistance);
+      if (!hit) continue;
+      const report = Array.isArray(hit.match.dr_reports) ? hit.match.dr_reports[0] : hit.match.dr_reports;
+      const where = report ? `${report.report_no} (${report.report_date})` : "an earlier report";
+      out.push({
+        rule_code: "PHOTO_REUSE",
+        rule_version: def.version,
+        status: "FAILED",
+        severity: def.severity,
+        message: hit.exact
+          ? `An attached file is identical to one attached to ${where}.`
+          : `An attached photo looks the same as one attached to ${where}.`,
+        params: {
+          storage_key: e.storage_key,
+          matched_storage_key: hit.match.storage_key,
+          matched_report_id: hit.match.report_id,
+          exact: hit.exact,
+          distance: hit.distance,
+          max_distance: maxDistance,
+        },
+        target: { section: e.target_section, line_id: e.target_line_id ?? undefined },
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error("daily-reporting: photo reuse check failed:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
 export interface VerifiedEvidence extends EvidenceRef {
   mime_type?: string;
   size_bytes?: number;
   sha256?: string;
+  /** Perceptual hash of a photo, for PHOTO_REUSE; null when the file could not be decoded. */
+  phash?: string | null;
   scan_status?: "Available";
   scan_engine?: string;
 }
@@ -417,7 +558,7 @@ export class EvidenceError extends Error {
  *      deleted from storage, the event is audited, and the submission stops;
  *   3. its content must match a permitted type by signature, not by the
  *      client-supplied name;
- *   4. its SHA-256 is computed here.
+ *   4. its SHA-256 is computed here, and for a photo its perceptual hash.
  * Files already registered on the report are passed through; the database
  * carries their original hash forward. scan_engine records what checked the
  * file: "clamav", or "signature-check" when no scan was made.
@@ -476,6 +617,7 @@ export async function verifyEvidence(
       mime_type: kind.mime,
       size_bytes: bytes.length,
       sha256,
+      phash: await perceptualHash(bytes, kind.mime),
       scan_status: "Available",
       scan_engine: scan.status === "clean" ? scan.engine : "signature-check",
     });

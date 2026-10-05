@@ -12,6 +12,7 @@ import {
   drainOutboxQuietly,
   EvidenceError,
   loadFormContext,
+  photoReuseResults,
   runRules,
   verifyEvidence,
   type Actor,
@@ -164,6 +165,7 @@ export async function handleSyncPush(actor: Actor, request: NextRequest): Promis
       rejected.push(ref.storage_key);
     }
   }
+  results.push(...(await photoReuseResults(actor.admin, ctx.unit, ctx.rules, evidence, ctx.existing?.id ?? null)));
 
   const { data, error } = await actor.admin.rpc("dr_submit_offline_report", {
     p_actor: actor.userId,

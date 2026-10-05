@@ -77,6 +77,12 @@
 | PROGRESS_REGRESS | Progress below the last approved figure, no remark | After submit | Warning |
 | NEXT_DAY_MISSING_RESOURCE | Next-day activity with no manpower | After submit | Warning |
 | DELAY_NO_NOTICE_FLAG | Employer-related delay without "notice required" | After submit | Warning |
+| PROGRESS_JUMP | Production of the day above 3x the activity's 10-day average | After submit | Warning |
+| PRODUCTIVITY_ABNORMAL | Output per worker below 0.4x or above 2.5x the activity's usual (median) | After submit | Warning |
+| QTY_RANGE | Quantity outside the range set for its unit of measure, or progress up by more than the daily limit | After submit | Per project |
+| PHOTO_REUSE | A new photo is the same file as, or looks the same as, one the unit attached to an earlier report (last 60 days) | After submit | Warning |
+
+PROGRESS_JUMP and PRODUCTIVITY_ABNORMAL compare a report with the unit's own approved history (the verified quantity where the approver changed it). They stay off until the unit has 10 approved working days and the activity itself has 3 days with production. They use the quantity when the line and its history carry one in the same unit of measure, otherwise the gain in cumulative progress. QTY_RANGE needs no history and does nothing until a range is configured in its parameters (`by_uom`, `max_daily_progress_pct`).
 
 Severity and parameters are data. A project may override or switch off a rule.
 

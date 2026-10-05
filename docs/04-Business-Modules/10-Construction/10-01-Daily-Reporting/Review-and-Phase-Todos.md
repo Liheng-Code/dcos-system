@@ -77,8 +77,8 @@ Legend: `[x]` done and verified locally · `[~]` built, not fully verified · `[
 | 0 | Decisions, vocabulary, cut-over plan | Done except two device spikes | Real devices, bot token |
 | 1A | Online core: units, form, rules, review, summary | Built and walked through locally | Independent review, live delivery test, real-data import, release switch |
 | 1B | Field App, full offline | Built, tested on headless desktop only | Real Android and iOS devices |
-| 1C | Telegram identity, binding, Mini App | Built, tested with a stubbed Telegram API only | Mini App registration, a test group, phones |
-| 2 | Assurance: AI, statistical rules, delegation, overview | Not started | 10+ approved report days per unit; Khmer samples |
+| 1C | Telegram identity, binding, Mini App | Live in production since 2026-10-05; first report submitted from a group | Remaining live checks, SMS fallback, Khmer text |
+| 2 | Assurance: AI, statistical rules, delegation, overview | Started 2026-10-05: statistical rules built | 10+ approved report days per unit; Khmer samples |
 | 3 | Integration: planning, RFI/QAQC/HSE, cost, IPC support, React Native | Not started | Phase 2 data; owner priorities |
 | 4 | Intelligence: anomaly, benchmarking, scoring, EVM inputs | Not started | Months of approved history |
 
@@ -110,7 +110,7 @@ Built; the remaining work is verification, release and cut-over.
 - [ ] FE: Add the page to `apps/web/lib/modules/release.ts` once verification above is done (the default is development, so it stays hidden until listed).
 - [ ] OWNER: Pick one pilot project; configure units, reporters, schedule and approver in Setup; switch it on.
 - [ ] DB: Run `dr_backfill_project()` on a **copy** of real data first, review the `LEGACY` unit result, then on the pilot project. Take a backup before running.
-- [ ] OWNER: Promote migrations `20261004000010`–`…020` to production via `/dbpush` after the above (not done by Claude).
+- [x] OWNER: Migrations `20261004000010`–`20261005000020` promoted to production via `/dbpush` on 2026-10-05.
 
 **Cut-over (per project, after the pilot is stable)**
 - [ ] FE: Retire the old register and editor ("Site Diary (legacy)") for migrated projects; keep the old tables read-only (never dropped in Phase 1).
@@ -136,9 +136,9 @@ Built; the remaining work is verification, release and cut-over.
 
 **Exit criteria:** a reporter in a basement with no signal files a report with photos on a real phone, and it syncs without loss when signal returns.
 
-### Phase 1C — Telegram (built, not tested live)
+### Phase 1C — Telegram (live in production)
 
-Built 2026-10-05 without a live Telegram connection. Detail and what is still unverified: `Phase1C-Delivery-Notes.md`.
+Built and deployed 2026-10-05. A foreman submitted DR-2026-000001 from the project group on a real phone. Detail: `Phase1C-Delivery-Notes.md`.
 
 - [x] DB: `dr_telegram_bindings` (one active per unit, one active per chat, history kept), binding codes, launch tokens, group status outbox. Identity reuses the HR link flow; no second link table.
 - [x] BE: Bot flows in groups: `/bind <code>`, `/report`, bot removed → Suspended, bot re-added, migration to a supergroup held for confirmation.
@@ -148,14 +148,15 @@ Built 2026-10-05 without a live Telegram connection. Detail and what is still un
 - [x] FE: Telegram groups card in Setup (bind, change, confirm migration, re-issue button, unbind).
 - [x] QA: Abuse tests, 48 database assertions and 37 unit tests (forged or stale `initData`, swapped start parameter, expired or foreign token, non-reporter, user removed from the group, session used for another unit).
 - [x] FE/BE: Telegram-only reporter: one-page Mini App form (owner's mock-up), custom fields per unit (R1 §9.5), one-tap Telegram invite, and correction and information answers inside the Mini App.
-- [ ] OWNER: Give the app a public HTTPS address (deployment or a temporary tunnel) so the Mini App can open inside Telegram; nothing else blocks it.
-- [ ] BE: **Live checks against the real bot** (R1 §25 items 1–8): Mini App launch from a group and the start parameter in `initData`, privacy mode, `my_chat_member` updates reaching the webhook, pinning, group migration, rate limits, camera and file access in the web view.
+- [x] OWNER: Public HTTPS address: the Vercel production deployment.
+- [x] BE: Live against the real bot: Mini App launch from a group with the start parameter in `initData`, `/bind`, pinning, photo upload in the web view.
+- [x] FE/BE: A submission is posted to the group in full; approvers can open the Mini App read-only; the Mini App shows the submitted report.
+- [ ] BE: Live checks still open: a user removed from the group is refused, bot removed and re-added, group migration to a supergroup, rate limits.
 - [x] BE: Dedicated bot `@DCOSSiteReport_Bot` connected: own token, webhook route, private-chat linking, direct messages, command menus. The attendance bot is untouched.
-- [ ] OWNER: Test locally with `node scripts/dr-telegram-poll.mjs`: link an account, bind a test group, check status lines, remove and re-add the bot.
-- [ ] OWNER: Register the Mini App with BotFather (`/newapp`, URL `<app url>/dr-miniapp`) and set `TELEGRAM_DR_MINIAPP_LINK`.
-- [ ] OWNER: After deployment, set the bot's environment variables and register the webhook (`Phase1C-Delivery-Notes.md` §6).
+- [x] OWNER: Mini App registered with BotFather; `TELEGRAM_DR_MINIAPP_LINK` set.
+- [x] OWNER: Bot environment variables set in Vercel and the webhook registered.
 - [ ] OWNER: Confirm the decisions in `Phase1C-Delivery-Notes.md` §5, in particular that Daily Reporting direct messages now come from the new bot.
-- [ ] FE: Walk the Setup card and the Mini App through on a real phone.
+- [x] FE: Setup card and Mini App walked through on a real phone.
 - [ ] BE: SMS fallback for users who have not started the bot privately; pick the provider (R1 §25 item 9).
 - [ ] BE: Gateway integration test with a Mini App session (needs a disposable database).
 - [ ] FE: Khmer text for bot messages and the Mini App (depends on the i18n decision in Phase 2).
@@ -166,16 +167,18 @@ Built 2026-10-05 without a live Telegram connection. Detail and what is still un
 
 Prerequisite: pilot units have approved history and Phase 1 is stable.
 
-- [ ] BE: Statistical rules (`PROGRESS_JUMP`, `PROGRESS_REGRESS`, `PRODUCTIVITY_ABNORMAL`, `QTY_RANGE`) behind the minimum-history gate (default 10 approved days).
-- [ ] BE: Perceptual hash on evidence and the `PHOTO_REUSE` rule.
-- [ ] ARCH/DB: Delegated reviewer step as a workflow configuration change, not code; settle O8 (who publishes in the PM's absence).
-- [ ] DB: `ai_capability_registry`, `ai_run`, `ai_finding` with an **insert-only** database role and no write path to report, version, review or summary tables.
-- [ ] BE: AI capabilities: evidence assessment, text and cross-report reasoning, correction and summary drafting. Advisory and asynchronous, schema-validated output, untrusted-input prompting, categorical assessments (no numeric confidence), per-project daily budget.
+- [~] BE: Statistical rules (`PROGRESS_JUMP`, `PRODUCTIVITY_ABNORMAL`, `QTY_RANGE`; `PROGRESS_REGRESS` existed since 1A) behind the minimum-history gate (default 10 approved days). Built 2026-10-05, migration `20261005000030`, 16 unit tests. Not yet seen against real approved history: no unit has 10 approved days. Thresholds are first guesses to tune on pilot data.
+- [~] FE/DB: Rules card in Setup, built 2026-10-05, migration `20261005000060`: a project administrator switches an after-submit rule off, changes its thresholds (including the `QTY_RANGE` ranges per unit of measure) or returns it to the default. Intake rules are listed and cannot be changed per project. Every change bumps the rule version and is written to the audit log. 11 database assertions, 11 unit tests. Not yet clicked through in a browser. Global defaults are still changed in the database only.
+- [~] BE: Perceptual hash on evidence and the `PHOTO_REUSE` rule. Built 2026-10-05, migration `20261005000040`, 13 unit tests. Compares within the unit, 60 days back; warns on the same file or a look-alike. Not yet tried with real site photos; photos registered earlier have no perceptual hash (same-file match only); HEIC photos are matched by same file only; photos attached late by the offline app are hashed but not checked.
+- [~] ARCH/DB: Delegated reviewer. O8 settled by the owner 2026-10-05: the alternate approver that exists since 1A covers the PM's absence (same authority inside its dates, set by a system administrator); no second review step. Added 2026-10-05, migration `20261005000050`: cover can be dated to start in the future, and setting, changing or removing an approver is written to the audit log. 15 database assertions. The Setup screen change has not been clicked through in a browser. Open: the alternate is not told when appointed (they get review notifications once the cover starts).
+- [~] DB: AI tables, built 2026-10-05, migration `20261005000070`: `dr_ai_capabilities` (registry), `dr_ai_project_settings` (off by default, daily limit), `dr_ai_runs` and `dr_ai_findings` (append-only), `dr_ai_finding_feedback`. Deviation from the design: there is no separate database role. The app has one server role, so the limit is enforced by the two functions that are the only write path (`dr_ai_claim`, `dr_ai_record_run`); the only report column they write is `assurance_state`. 40 database assertions.
+- [~] BE/FE: **Evidence assessment** capability, built 2026-10-05. Runs after the response to a submission (and from the cron tick), on photos tied to activities only (at most 8 activities, 3 photos each, downscaled). Four categorical assessments, no confidence figure; reporter text and photo content are marked as untrusted; the answer is accepted only through a fixed schema. Shown in the approver's review package only, with a useful / not useful rating per flagged finding; the acceptance rate is shown in Setup. 16 unit tests with a stubbed model. **Not verified against the real model**: no API key was available locally, so the request shape and model name are untested. Needs `ANTHROPIC_API_KEY` on the server, and the project switched on in Setup. Not covered: photos the offline app attaches after its report.
+- [ ] BE: Remaining AI capabilities: text and cross-report reasoning, correction and summary drafting (held for the Khmer evaluation below). Advisory and asynchronous, schema-validated output, untrusted-input prompting, categorical assessments (no numeric confidence), per-project daily budget.
 - [ ] OWNER/QA: Collect real Khmer and mixed-language samples and evaluate before enabling text interpretation on any project; otherwise limit AI to evidence assessment.
 - [ ] FE: Show AI findings only in the PM review package; correction requests show only what the PM approved.
 - [ ] BE: Track the PM acceptance rate per finding type; disable weak capabilities.
-- [ ] FE: Management Overview dashboard (a view across published summaries) and compliance board.
-- [ ] BE: Delay-event feed to Contract Administration (formal task on approval; the potential notice at submission already exists).
+- [~] FE: Management Overview dashboard (a view across published summaries) and compliance board. Built 2026-10-05 as the "Overview" tab: totals, one row per project the user may see (compliance, late, missing, manpower trend, delays, issues, incidents) and the unit compliance board of the selected project, over 7, 14 or 30 days. Official summaries only; unpublished days are listed and not counted. 10 unit tests on the calculation. No migration. Not yet opened in a browser, and no summary has been published yet, so it has not been seen with real figures. Open: progress versus plan, project comparison charts, export.
+- [x] BE: Delay-event feed to Contract Administration. Checked 2026-10-05: already in place since 1A. A delay marked "notice required" alerts QS at submission and again, as Critical, on approval, and approved delays are written to the delay register. Still open as an owner decision: there is no Contract Administrator role, so the alert goes to QS (see Phase 1A gaps).
 - [ ] FE/ARCH: Decide on an i18n layer. None was found in the app, so a Khmer UI (O6) needs infrastructure first.
 
 **Exit criteria:** AI findings never block a report; the PM acceptance rate is measured for at least one project.

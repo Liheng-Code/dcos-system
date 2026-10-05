@@ -244,6 +244,7 @@ export function DrReportForm({
       previousNextDay: ctx.previous_next_day,
       approvedProgress: ctx.approved_progress,
       knownUom: ctx.known_uom,
+      history: ctx.history,
       customFields: ctx.custom_fields?.fields,
     });
   }, [ctx, payload, kind, date, allEvidence]);

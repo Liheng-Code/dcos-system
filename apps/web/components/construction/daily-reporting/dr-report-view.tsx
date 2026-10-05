@@ -40,6 +40,7 @@ import {
   type ReviewDecision,
   type SectionKey,
 } from "@/lib/construction/daily-reporting/types";
+import { DrAiFindings } from "./dr-ai";
 import { DrCustomFieldsView } from "./dr-custom-fields";
 import { Field, Flag, formatDateTime, inputClass, RuleList, SectionCard, StateBadge, textareaClass } from "./dr-ui";
 
@@ -386,6 +387,20 @@ export function DrReportView({
         <SectionCard title={`Checks — ${versionRules.length} flagged`}>
           <RuleList results={versionRules} />
         </SectionCard>
+      ) : null}
+
+      {capabilities.canReview && version.report_kind !== "NO_WORK" ? (
+        <DrAiFindings
+          key={version.id}
+          versionId={version.id}
+          assuranceState={version.version_no === report.current_version_no ? report.assurance_state : "COMPLETE"}
+          lineLabels={Object.fromEntries(
+            (version.payload.activities ?? []).map((a) => [
+              a.line_id,
+              (a.task_id ? detail.taskNames[a.task_id]?.task_name : null) ?? a.free_text_activity ?? "Activity",
+            ]),
+          )}
+        />
       ) : null}
 
       {version.report_kind === "NO_WORK" ? (
