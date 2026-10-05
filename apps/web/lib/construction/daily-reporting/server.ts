@@ -7,11 +7,10 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient, createUserClient } from "@/lib/supabase/server";
-import { sendMessage } from "@/lib/hr/telegram/bot";
 import { sendEmail } from "@/lib/email/resend";
 import { evaluateRules, resolveRules } from "./rules";
 import { scanBuffer, scanRequired } from "./scanner";
-import { drainGroupOutbox, miniAppSessionSecret } from "./telegram/telegram-server";
+import { drainGroupOutbox, drBotConfigured, miniAppSessionSecret, sendDirectMessage } from "./telegram/telegram-server";
 import { SESSION_TOKEN_PREFIX, verifyMiniAppSession } from "./telegram/tokens";
 import type {
   CorrectionRequest,
@@ -460,6 +459,7 @@ interface OutboxRow {
 
 interface RecipientPrefs {
   email: string | null;
+  telegram_user_id: number | null;
   notification_preferences: { email?: boolean; telegram?: boolean; telegram_chat_id?: string | null } | null;
 }
 
@@ -482,7 +482,7 @@ export async function drainOutbox(admin: SupabaseClient, limit = 25): Promise<{ 
 
   const { data: profiles } = await admin
     .from("profiles")
-    .select("id, email, notification_preferences")
+    .select("id, email, telegram_user_id, notification_preferences")
     .in("id", [...new Set(pending.map((r) => r.recipient_id))]);
   const prefsById = new Map((profiles ?? []).map((p) => [p.id as string, p as unknown as RecipientPrefs]));
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -495,14 +495,14 @@ export async function drainOutbox(admin: SupabaseClient, limit = 25): Promise<{ 
     const link = row.href && base ? `${base}${row.href}` : null;
     const errors: string[] = [];
 
-    if (row.channels.includes("telegram") && np?.telegram && np.telegram_chat_id) {
-      const chatId = Number(np.telegram_chat_id);
-      if (Number.isFinite(chatId)) {
-        try {
-          await sendMessage(chatId, `${row.title}\n${row.body}${link ? `\n${link}` : ""}`);
-        } catch (e) {
-          errors.push(`telegram: ${e instanceof Error ? e.message : String(e)}`);
-        }
+    // Sent by the Daily Reporting bot to anyone whose Telegram account is
+    // linked. Someone who never started that bot cannot be messaged; they
+    // still have the in-app alert, and email below.
+    if (row.channels.includes("telegram") && drBotConfigured() && prefs?.telegram_user_id && np?.telegram !== false) {
+      try {
+        await sendDirectMessage(Number(prefs.telegram_user_id), `${row.title}\n${row.body}${link ? `\n${link}` : ""}`);
+      } catch (e) {
+        errors.push(`telegram: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
     // Critical items are emailed even when the general email toggle is off.

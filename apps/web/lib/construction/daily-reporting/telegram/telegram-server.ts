@@ -1,5 +1,10 @@
 // Module 10-01 Daily Reporting — Telegram channel adapter (server-only).
 //
+// Daily Reporting has its own bot (TELEGRAM_DR_BOT_TOKEN), separate from the
+// attendance bot and the task-alert bot: its own webhook, its own Mini App,
+// its own direct messages. A Telegram user id is the same for every bot, so
+// the account link (profiles.telegram_user_id) is shared.
+//
 // Telegram is an interface, never a record: the group tells the bot where to
 // post status lines and which unit a launch link belongs to. Group membership
 // grants nothing. A Mini App session is issued only when all of these hold:
@@ -8,7 +13,6 @@
 
 import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getBotToken } from "@/lib/hr/telegram/bot";
 import { verifyTelegramInitData } from "@/lib/hr/telegram/init-data";
 import {
   SESSION_TTL_SECONDS,
@@ -34,8 +38,17 @@ export class TelegramApiError extends Error {
   }
 }
 
+/** Token of the Daily Reporting bot. There is deliberately no fallback to another bot's token. */
+export function drBotToken(): string {
+  const token = process.env.TELEGRAM_DR_BOT_TOKEN;
+  if (!token) throw new Error("TELEGRAM_DR_BOT_TOKEN is not configured");
+  return token;
+}
+
+export const drBotConfigured = () => !!process.env.TELEGRAM_DR_BOT_TOKEN;
+
 async function botCall<T>(method: string, payload: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${TELEGRAM_API_BASE}/bot${getBotToken()}/${method}`, {
+  const res = await fetch(`${TELEGRAM_API_BASE}/bot${drBotToken()}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -49,7 +62,7 @@ async function botCall<T>(method: string, payload: Record<string, unknown>): Pro
 export function miniAppSessionSecret(): string {
   return (
     process.env.DR_MINIAPP_SESSION_SECRET ||
-    createHmac("sha256", "dcos-dr-miniapp-session").update(getBotToken()).digest("hex")
+    createHmac("sha256", "dcos-dr-miniapp-session").update(drBotToken()).digest("hex")
   );
 }
 
@@ -126,7 +139,7 @@ async function auditRejected(
  */
 export async function exchangeMiniAppSession(admin: SupabaseClient, initDataRaw: string): Promise<SessionExchangeResult> {
   const maxAge = Number(process.env.TELEGRAM_MINIAPP_INITDATA_MAX_AGE_SECONDS) || 3600;
-  const verified = verifyTelegramInitData(initDataRaw, getBotToken(), maxAge);
+  const verified = verifyTelegramInitData(initDataRaw, drBotToken(), maxAge);
   if (!verified.ok) return fail(401, "DR_TG_INIT_DATA", "Open the report from the Telegram group again.");
 
   const launch = parseLaunchStartParam(verified.startParam);
@@ -139,7 +152,7 @@ export async function exchangeMiniAppSession(admin: SupabaseClient, initDataRaw:
     .maybeSingle();
   if (!profile || profile.status !== "active") {
     await auditRejected(admin, {}, "DR_TG_NOT_LINKED", verified.userId);
-    return fail(403, "DR_TG_NOT_LINKED", "Link your DCOS account to Telegram first: open the bot privately and send /link.");
+    return fail(403, "DR_TG_NOT_LINKED", "Link your DCOS account first: open a private chat with this bot and send /start.");
   }
   const userId = profile.id as string;
 
@@ -277,7 +290,7 @@ export async function postLaunchMessage(admin: SupabaseClient, bindingId: string
 
 /** Cron: keeps every active group's launch button valid (tokens last at most 24 hours). */
 export async function refreshLaunchMessages(admin: SupabaseClient): Promise<{ refreshed: number; failed: number }> {
-  if (!process.env.TELEGRAM_DR_MINIAPP_LINK || !process.env.TELEGRAM_BOT_TOKEN) return { refreshed: 0, failed: 0 };
+  if (!process.env.TELEGRAM_DR_MINIAPP_LINK || !drBotConfigured()) return { refreshed: 0, failed: 0 };
 
   const { data: bindings } = await admin.from("dr_telegram_bindings").select("id").eq("status", "Active").eq("bot_present", true);
   const ids = (bindings ?? []).map((b) => b.id as string);
@@ -321,7 +334,7 @@ interface GroupOutboxRow {
  * report content, findings or review comments.
  */
 export async function drainGroupOutbox(admin: SupabaseClient, limit = 25): Promise<{ sent: number; failed: number }> {
-  if (!process.env.TELEGRAM_BOT_TOKEN) return { sent: 0, failed: 0 };
+  if (!drBotConfigured()) return { sent: 0, failed: 0 };
   const { data } = await admin
     .from("dr_telegram_group_outbox")
     .select("id, chat_id, text, attempts")
@@ -353,6 +366,21 @@ export async function drainGroupOutbox(admin: SupabaseClient, limit = 25): Promi
     else failed++;
   }
   return { sent, failed };
+}
+
+/**
+ * Direct message from the Daily Reporting bot. A private chat's id is the
+ * user's Telegram id. Telegram refuses (403) when the user has never started
+ * this bot or has blocked it; that is reported as "unreachable", not an error.
+ */
+export async function sendDirectMessage(telegramUserId: number, text: string): Promise<"sent" | "unreachable"> {
+  try {
+    await botCall("sendMessage", { chat_id: telegramUserId, text });
+    return "sent";
+  } catch (e) {
+    if (e instanceof TelegramApiError && (e.status === 403 || e.status === 400)) return "unreachable";
+    throw e;
+  }
 }
 
 /** Replies in a chat; failures are swallowed because the webhook must always answer 200. */

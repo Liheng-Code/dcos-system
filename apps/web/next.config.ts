@@ -38,6 +38,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Daily Report Mini App (its own bot), same framing requirement.
+        source: "/dr-miniapp/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors https://web.telegram.org https://telegram.org;",
+          },
+        ],
+      },
     ];
   },
   async rewrites() {

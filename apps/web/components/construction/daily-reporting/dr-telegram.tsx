@@ -66,8 +66,8 @@ export function DrTelegramBindings({ projectId, units, canManage }: { projectId:
   return (
     <SectionCard title="Telegram groups">
       <p className="text-sm text-muted-foreground">
-        Bind one Telegram group to each reporting unit. Add the DCOS bot to the group, start a binding here, then post the code in the
-        group. The bot pins a Submit Daily Report button and posts one-line status updates. Being in the group gives nobody access:
+        Bind one Telegram group to each reporting unit. Add the DCOS site report bot to the group, start a binding here, then post the
+        code in the group. The bot pins a Submit Daily Report button and posts one-line status updates. Being in the group gives nobody access:
         only linked reporters of the unit can open the form.
       </p>
 

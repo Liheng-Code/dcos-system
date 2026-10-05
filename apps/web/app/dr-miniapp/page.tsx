@@ -1,17 +1,16 @@
 "use client";
 
 // Module 10-01 Daily Reporting — Telegram Mini App entry (design §7.3, §12.2).
-// Opened from the "Submit Daily Report" button in a project group. The launch
-// token travels in the start parameter inside Telegram's signed initData; the
-// server turns it into a session for that one reporting unit. The form is the
-// same one the dashboard and the Field App use.
+// Opened from the "Submit Daily Report" button the Daily Reporting bot pins in
+// a project group. The launch token travels in the start parameter inside
+// Telegram's signed initData; the server turns it into a session for that one
+// reporting unit. The form is the same one the dashboard and the Field App use.
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DrReportForm } from "@/components/construction/daily-reporting/dr-report-form";
 import { setApiAuthorization } from "@/lib/construction/daily-reporting/service";
-import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 
 interface Session {
   unit: { id: string; code: string; name: string };
@@ -25,12 +24,17 @@ type State =
   | { status: "done"; sent: boolean };
 
 export default function DailyReportMiniAppPage() {
-  const { initData } = useMiniApp();
   const [state, setState] = useState<State>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    const webApp = window.Telegram?.WebApp;
+    webApp?.ready();
+    webApp?.expand();
+    // Outside Telegram initData is empty and the server refuses it.
+    const initData = webApp?.initData ?? "";
+
     fetch("/api/dr/telegram/session", { method: "POST", headers: { Authorization: `tma ${initData}` } })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -47,12 +51,12 @@ export default function DailyReportMiniAppPage() {
       cancelled = true;
       setApiAuthorization(null);
     };
-  }, [initData, attempt]);
+  }, [attempt]);
 
   if (state.status === "loading") {
     return (
       <div className="flex justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--tg-hint-color,#6b7280)]" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -89,7 +93,7 @@ export default function DailyReportMiniAppPage() {
 
   const { unit, report_date } = state.session;
   return (
-    <div className="space-y-3 bg-background p-3 text-foreground">
+    <div className="space-y-3 p-3">
       <div>
         <h1 className="text-base font-semibold">Daily report</h1>
         <p className="text-xs text-muted-foreground">

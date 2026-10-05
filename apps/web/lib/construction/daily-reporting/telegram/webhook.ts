@@ -1,9 +1,10 @@
-// Module 10-01 Daily Reporting — what the Telegram bot does in project groups.
-// Public API of the construction module: called by the shared bot webhook
-// (app/api/telegram/webhook). Server-only.
+// Module 10-01 Daily Reporting — what the Daily Reporting bot does with an
+// update from Telegram (app/api/dr/telegram/webhook). Server-only.
 //
-// The bot runs in privacy mode, so in a group it only receives commands and
+// In a group the bot runs in privacy mode, so it only receives commands and
 // service messages. Ordinary chat never reaches it and is never a report.
+// In a private chat it links a Telegram account to a DCOS user and explains
+// where the report button is.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { postLaunchMessage, reply } from "./telegram-server";
@@ -30,19 +31,18 @@ export interface DrTelegramUpdate {
 
 const isGroup = (chat: TgChat | undefined) => chat?.type === "group" || chat?.type === "supergroup";
 
-/** True for updates that belong to a group. The webhook must not pass these to the private-chat handlers. */
-export function isDrGroupUpdate(update: DrTelegramUpdate | null): boolean {
-  return !!update && (isGroup(update.my_chat_member?.chat) || isGroup(update.message?.chat));
-}
-
 function drMessage(error: { message?: string } | null, fallback: string): string {
   return /^DR_[A-Z_]+:\s*([\s\S]*)$/.exec(error?.message ?? "")?.[1] ?? fallback;
 }
 
-async function profileIdFor(admin: SupabaseClient, telegramUserId: number | undefined): Promise<string | null> {
+async function linkedProfile(admin: SupabaseClient, telegramUserId: number | undefined): Promise<{ id: string; full_name: string | null } | null> {
   if (!telegramUserId) return null;
-  const { data } = await admin.from("profiles").select("id, status").eq("telegram_user_id", telegramUserId).maybeSingle();
-  return data && data.status === "active" ? (data.id as string) : null;
+  const { data } = await admin
+    .from("profiles")
+    .select("id, full_name, status")
+    .eq("telegram_user_id", telegramUserId)
+    .maybeSingle();
+  return data && data.status === "active" ? { id: data.id as string, full_name: (data.full_name as string | null) ?? null } : null;
 }
 
 async function tryPostLaunch(admin: SupabaseClient, bindingId: string, chatId: number): Promise<void> {
@@ -54,19 +54,20 @@ async function tryPostLaunch(admin: SupabaseClient, bindingId: string, chatId: n
   }
 }
 
+// ── Group ───────────────────────────────────────────────────────────────────
 async function handleBind(admin: SupabaseClient, chat: TgChat, fromId: number | undefined, rawCode: string): Promise<void> {
   const code = normalizeBindingCode(rawCode);
   if (!code) {
     await reply(chat.id, "Send /bind followed by the 8-character code shown in DCOS.");
     return;
   }
-  const actor = await profileIdFor(admin, fromId);
+  const actor = await linkedProfile(admin, fromId);
   if (!actor) {
-    await reply(chat.id, "Link your DCOS account to Telegram first, then post the code again.");
+    await reply(chat.id, "Link your DCOS account first: open a private chat with me and send /start. Then post the code again.");
     return;
   }
   const { data, error } = await admin.rpc("dr_tg_bind_chat", {
-    p_actor: actor,
+    p_actor: actor.id,
     p_code_hash: hashToken(code),
     p_chat_id: chat.id,
     p_chat_title: chat.title ?? "",
@@ -106,35 +107,121 @@ async function handleReportCommand(admin: SupabaseClient, chat: TgChat): Promise
   await tryPostLaunch(admin, binding.id as string, chat.id);
 }
 
-/** Handles one group update. Never throws: the webhook always answers 200. */
-export async function handleDrGroupUpdate(admin: SupabaseClient, update: DrTelegramUpdate): Promise<void> {
+async function handleGroup(admin: SupabaseClient, update: DrTelegramUpdate): Promise<void> {
+  const membership = update.my_chat_member;
+  if (membership && isGroup(membership.chat)) {
+    const status = membership.new_chat_member?.status;
+    if (status === "left" || status === "kicked") {
+      await admin.rpc("dr_tg_set_bot_presence", { p_chat_id: membership.chat.id, p_present: false });
+    } else if (status === "member" || status === "administrator") {
+      const { data } = await admin.rpc("dr_tg_set_bot_presence", { p_chat_id: membership.chat.id, p_present: true });
+      const restored = data as { changed?: boolean; binding_id?: string } | null;
+      if (restored?.changed && restored.binding_id) await tryPostLaunch(admin, restored.binding_id, membership.chat.id);
+    }
+    return;
+  }
+
+  const message = update.message;
+  if (!message || !isGroup(message.chat)) return;
+
+  if (message.migrate_to_chat_id) {
+    await admin.rpc("dr_tg_migrate_chat", { p_old_chat_id: message.chat.id, p_new_chat_id: message.migrate_to_chat_id });
+    return;
+  }
+
+  const [first = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
+  const command = first.toLowerCase().replace(/@\S+$/, "");
+  if (command === "/bind") await handleBind(admin, message.chat, message.from?.id, rest[0] ?? "");
+  else if (command === "/report") await handleReportCommand(admin, message.chat);
+}
+
+// ── Private chat ────────────────────────────────────────────────────────────
+const HOW_TO_LINK =
+  "To link your DCOS account: sign in to DCOS, open Daily Reporting, choose Link Telegram and send me the 6-digit code like this: /link 123456";
+
+/**
+ * Links this Telegram account to the DCOS user who generated the code. The
+ * code table is the one the attendance bot uses; a Telegram user id is the
+ * same for every bot, so one link serves both.
+ */
+async function handleLink(admin: SupabaseClient, chatId: number, fromId: number, code: string | undefined): Promise<void> {
+  const invalid = "That code is not valid or has expired. Generate a new one in DCOS and send it within 10 minutes.";
+  if (!code || !/^\d{6}$/.test(code)) {
+    await reply(chatId, HOW_TO_LINK);
+    return;
+  }
+  const { data: linkCode } = await admin
+    .from("telegram_link_codes")
+    .select("id, employee_id")
+    .eq("code", code)
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!linkCode) {
+    await reply(chatId, invalid);
+    return;
+  }
+
+  const { data: profile, error } = await admin
+    .from("profiles")
+    .update({ telegram_user_id: fromId })
+    .eq("id", linkCode.employee_id)
+    .select("full_name")
+    .maybeSingle();
+  if (error) {
+    await reply(
+      chatId,
+      error.code === "23505"
+        ? "This Telegram account is already linked to another DCOS user. Ask an administrator to unlink it first."
+        : "Your account could not be linked. Try again, or contact an administrator.",
+    );
+    return;
+  }
+  await admin.from("telegram_link_codes").update({ used_at: new Date().toISOString() }).eq("id", linkCode.id);
+  await admin.rpc("dr_audit", {
+    p_project_id: null,
+    p_unit_id: null,
+    p_report_id: null,
+    p_version_no: null,
+    p_event: "DR.TELEGRAM_LINKED",
+    p_actor: linkCode.employee_id,
+    p_channel: "TELEGRAM",
+    p_details: { telegram_user: hashToken(String(fromId)).slice(0, 16) },
+  });
+  await reply(
+    chatId,
+    `Linked to ${(profile?.full_name as string | null) ?? "your DCOS account"}. To report, use the Submit Daily Report button in your project group. I will message you here when a report needs your attention.`,
+  );
+}
+
+async function handlePrivate(admin: SupabaseClient, message: NonNullable<DrTelegramUpdate["message"]>): Promise<void> {
+  const fromId = message.from?.id;
+  if (!fromId) return;
+  const [first = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
+  const command = first.toLowerCase().replace(/@\S+$/, "");
+
+  if (command === "/link") {
+    await handleLink(admin, message.chat.id, fromId, rest[0]);
+  } else if (command === "/start" && rest[0]?.startsWith("link_")) {
+    await handleLink(admin, message.chat.id, fromId, rest[0].slice("link_".length));
+  } else if (command === "/start" || command === "/help") {
+    const profile = await linkedProfile(admin, fromId);
+    await reply(
+      message.chat.id,
+      profile
+        ? `You are linked as ${profile.full_name ?? "a DCOS user"}. To report, use the Submit Daily Report button in your project group. Messages typed in a chat are not a report.`
+        : `This is the DCOS daily site report bot. ${HOW_TO_LINK}`,
+    );
+  }
+}
+
+/** Handles one update. Never throws: the webhook always answers 200. */
+export async function handleDrBotUpdate(admin: SupabaseClient, update: DrTelegramUpdate | null): Promise<void> {
   try {
-    const membership = update.my_chat_member;
-    if (membership && isGroup(membership.chat)) {
-      const status = membership.new_chat_member?.status;
-      if (status === "left" || status === "kicked") {
-        await admin.rpc("dr_tg_set_bot_presence", { p_chat_id: membership.chat.id, p_present: false });
-      } else if (status === "member" || status === "administrator") {
-        const { data } = await admin.rpc("dr_tg_set_bot_presence", { p_chat_id: membership.chat.id, p_present: true });
-        const restored = data as { changed?: boolean; binding_id?: string } | null;
-        if (restored?.changed && restored.binding_id) await tryPostLaunch(admin, restored.binding_id, membership.chat.id);
-      }
-      return;
-    }
-
-    const message = update.message;
-    if (!message || !isGroup(message.chat)) return;
-
-    if (message.migrate_to_chat_id) {
-      await admin.rpc("dr_tg_migrate_chat", { p_old_chat_id: message.chat.id, p_new_chat_id: message.migrate_to_chat_id });
-      return;
-    }
-
-    const [first = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
-    const command = first.toLowerCase().replace(/@\S+$/, "");
-    if (command === "/bind") await handleBind(admin, message.chat, message.from?.id, rest[0] ?? "");
-    else if (command === "/report") await handleReportCommand(admin, message.chat);
+    if (!update) return;
+    if (update.my_chat_member || isGroup(update.message?.chat)) await handleGroup(admin, update);
+    else if (update.message?.chat?.type === "private") await handlePrivate(admin, update.message);
   } catch (e) {
-    console.error("dr telegram group update:", e instanceof Error ? e.message : e);
+    console.error("dr telegram update:", e instanceof Error ? e.message : e);
   }
 }

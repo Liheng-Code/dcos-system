@@ -146,10 +146,13 @@ Built 2026-10-05 without a live Telegram connection. Detail and what is still un
 - [x] BE: Status-only group lines from the audit trail (no quantities, findings or comments).
 - [x] FE: Mini App page reusing the report form; re-send after short signal loss.
 - [x] FE: Telegram groups card in Setup (bind, change, confirm migration, re-issue button, unbind).
-- [x] QA: Abuse tests, 48 database assertions and 30 unit tests (forged or stale `initData`, swapped start parameter, expired or foreign token, non-reporter, user removed from the group, session used for another unit).
+- [x] QA: Abuse tests, 48 database assertions and 37 unit tests (forged or stale `initData`, swapped start parameter, expired or foreign token, non-reporter, user removed from the group, session used for another unit).
 - [ ] BE: **Live checks against the real bot** (R1 §25 items 1–8): Mini App launch from a group and the start parameter in `initData`, privacy mode, `my_chat_member` updates reaching the webhook, pinning, group migration, rate limits, camera and file access in the web view.
-- [ ] OWNER: Register the Mini App with BotFather and set `TELEGRAM_DR_MINIAPP_LINK`.
-- [ ] OWNER: Confirm the seven decisions in `Phase1C-Delivery-Notes.md` §5, in particular reusing the HR bot and no longer running attendance commands from groups.
+- [x] BE: Dedicated bot `@DCOSSiteReport_Bot` connected: own token, webhook route, private-chat linking, direct messages, command menus. The attendance bot is untouched.
+- [ ] OWNER: Test locally with `node scripts/dr-telegram-poll.mjs`: link an account, bind a test group, check status lines, remove and re-add the bot.
+- [ ] OWNER: Register the Mini App with BotFather (`/newapp`, URL `<app url>/dr-miniapp`) and set `TELEGRAM_DR_MINIAPP_LINK`.
+- [ ] OWNER: After deployment, set the bot's environment variables and register the webhook (`Phase1C-Delivery-Notes.md` §6).
+- [ ] OWNER: Confirm the decisions in `Phase1C-Delivery-Notes.md` §5, in particular that Daily Reporting direct messages now come from the new bot.
 - [ ] FE: Walk the Setup card and the Mini App through on a real phone.
 - [ ] BE: SMS fallback for users who have not started the bot privately; pick the provider (R1 §25 item 9).
 - [ ] BE: Gateway integration test with a Mini App session (needs a disposable database).

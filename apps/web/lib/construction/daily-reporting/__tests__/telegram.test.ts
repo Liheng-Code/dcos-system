@@ -10,7 +10,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import { actorMayUseUnit, requireReporterActor } from "../server";
-import { drainGroupOutbox, exchangeMiniAppSession, launchUrl, miniAppSessionSecret } from "../telegram/telegram-server";
+import { drainGroupOutbox, exchangeMiniAppSession, launchUrl, miniAppSessionSecret, sendDirectMessage } from "../telegram/telegram-server";
 import {
   hashToken,
   launchStartParam,
@@ -21,7 +21,7 @@ import {
   signMiniAppSession,
   verifyMiniAppSession,
 } from "../telegram/tokens";
-import { handleDrGroupUpdate, isDrGroupUpdate } from "../telegram/webhook";
+import { handleDrBotUpdate } from "../telegram/webhook";
 
 const BOT_TOKEN = "123456:TEST-TOKEN";
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -50,6 +50,8 @@ interface FakeOptions {
   binding?: { id: string } | null;
   recentTokens?: { id: string }[];
   outbox?: { id: string; chat_id: number; text: string; attempts: number }[];
+  linkCode?: { id: string; employee_id: string } | null;
+  profileUpdateError?: { code: string; message: string };
   rpc?: Record<string, { data?: unknown; error?: { message: string } | null }>;
 }
 
@@ -63,13 +65,15 @@ function fakeAdmin(opts: FakeOptions = {}) {
     dr_telegram_bindings: opts.binding === undefined ? { id: BINDING } : opts.binding,
     dr_telegram_launch_tokens: opts.recentTokens ?? [],
     dr_telegram_group_outbox: opts.outbox ?? [],
+    telegram_link_codes: opts.linkCode ?? null,
   };
   const chain = (table: string) => {
-    const result = { data: tableData[table] ?? null, error: null };
+    const result: { data: unknown; error: unknown } = { data: tableData[table] ?? null, error: null };
     const c: Record<string, unknown> = {};
     for (const m of ["select", "eq", "in", "is", "gt", "lt", "order", "limit"]) c[m] = () => c;
     c.update = (values: Record<string, unknown>) => {
       updates.push({ table, values });
+      if (table === "profiles" && opts.profileUpdateError) result.error = opts.profileUpdateError;
       return c;
     };
     c.maybeSingle = async () => result;
@@ -114,7 +118,9 @@ function stubTelegram(answers: Record<string, unknown> = {}): BotCall[] {
 }
 
 beforeEach(() => {
-  vi.stubEnv("TELEGRAM_BOT_TOKEN", BOT_TOKEN);
+  vi.stubEnv("TELEGRAM_DR_BOT_TOKEN", BOT_TOKEN);
+  // The attendance bot has its own token; Daily Reporting must never fall back to it.
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", "999:ATTENDANCE-BOT");
   vi.stubEnv("TELEGRAM_DR_MINIAPP_LINK", "https://t.me/dcos_test_bot/report");
   vi.stubEnv("DR_MINIAPP_SESSION_SECRET", "");
 });
@@ -197,9 +203,10 @@ describe("session exchange", () => {
     expect(calls[0]).toEqual({ method: "getChatMember", body: { chat_id: CHAT, user_id: TG_USER } });
   });
 
-  it("refuses initData signed with another bot token", async () => {
+  it("refuses initData signed by another bot, including the attendance bot", async () => {
     stubTelegram();
     const { admin, rpcCalls } = fakeAdmin();
+    expect(await exchangeMiniAppSession(admin, initData({ startParam: launch, botToken: "999:ATTENDANCE-BOT" }))).toMatchObject({ ok: false, status: 401 });
     const result = await exchangeMiniAppSession(admin, initData({ startParam: launch, botToken: "999:OTHER" }));
     expect(result).toMatchObject({ ok: false, status: 401, code: "DR_TG_INIT_DATA" });
     expect(rpcCalls).toHaveLength(0);
@@ -323,21 +330,13 @@ describe("Mini App session on the gateway", () => {
 describe("the bot in a group", () => {
   const group = { id: CHAT, type: "supergroup", title: "Site A" };
 
-  it("only group updates are routed to Daily Reporting", () => {
-    expect(isDrGroupUpdate({ message: { chat: group, text: "/bind X" } })).toBe(true);
-    expect(isDrGroupUpdate({ my_chat_member: { chat: group, new_chat_member: { status: "left" } } })).toBe(true);
-    expect(isDrGroupUpdate({ message: { chat: { id: 5, type: "private" }, text: "/checkin" } })).toBe(false);
-    expect(isDrGroupUpdate({ message: { chat: { id: 5 }, text: "/checkin" } })).toBe(false);
-    expect(isDrGroupUpdate(null)).toBe(false);
-  });
-
   it("/bind from a linked approver binds the group and posts the launch button", async () => {
     const calls = stubTelegram();
     const { admin, rpcCalls, updates } = fakeAdmin({
       rpc: { dr_tg_bind_chat: { data: { binding_id: BINDING, unit_name: "Sub One", unit_code: "SC-1" } } },
       binding: { id: BINDING, chat_id: CHAT, status: "Active", pinned_message_id: null } as never,
     });
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind@dcos_test_bot k7qm2xpa" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind@dcos_test_bot k7qm2xpa" } });
 
     const bind = rpcCalls.find((c) => c.name === "dr_tg_bind_chat");
     expect(bind?.args).toMatchObject({ p_actor: USER, p_chat_id: CHAT, p_chat_type: "supergroup", p_code_hash: hashToken("K7QM2XPA") });
@@ -353,7 +352,7 @@ describe("the bot in a group", () => {
   it("/bind from an unlinked Telegram account binds nothing", async () => {
     const calls = stubTelegram();
     const { admin, rpcCalls } = fakeAdmin({ profile: null });
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
     expect(rpcCalls).toHaveLength(0);
     expect(String(calls[0].body.text)).toContain("Link your DCOS account");
   });
@@ -363,7 +362,7 @@ describe("the bot in a group", () => {
     const { admin } = fakeAdmin({
       rpc: { dr_tg_bind_chat: { error: { message: "DR_NOT_FOUND: the binding code is invalid, used or expired" } } },
     });
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
     expect(calls).toHaveLength(1);
     expect(String(calls[0].body.text)).toContain("invalid, used or expired");
   });
@@ -371,18 +370,18 @@ describe("the bot in a group", () => {
   it("ordinary chat, private chats and malformed codes do nothing in the database", async () => {
     stubTelegram();
     const { admin, rpcCalls } = fakeAdmin();
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "poured slab L5 today, 45 m3" } });
-    await handleDrGroupUpdate(admin, { message: { chat: { id: 5, type: "private" }, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind nope" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "poured slab L5 today, 45 m3" } });
+    await handleDrBotUpdate(admin, { message: { chat: { id: 5, type: "private" }, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind nope" } });
     expect(rpcCalls).toHaveLength(0);
   });
 
   it("bot removed, bot re-added and group migration reach the database", async () => {
     stubTelegram();
     const { admin, rpcCalls } = fakeAdmin();
-    await handleDrGroupUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "kicked" } } });
-    await handleDrGroupUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "administrator" } } });
-    await handleDrGroupUpdate(admin, { message: { chat: group, migrate_to_chat_id: -100999 } });
+    await handleDrBotUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "kicked" } } });
+    await handleDrBotUpdate(admin, { my_chat_member: { chat: group, new_chat_member: { status: "administrator" } } });
+    await handleDrBotUpdate(admin, { message: { chat: group, migrate_to_chat_id: -100999 } });
     expect(rpcCalls.map((c) => [c.name, c.args])).toEqual([
       ["dr_tg_set_bot_presence", { p_chat_id: CHAT, p_present: false }],
       ["dr_tg_set_bot_presence", { p_chat_id: CHAT, p_present: true }],
@@ -393,7 +392,7 @@ describe("the bot in a group", () => {
   it("/report is rate limited to one new link a minute", async () => {
     const calls = stubTelegram();
     const { admin, rpcCalls } = fakeAdmin({ recentTokens: [{ id: "t" }] });
-    await handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/report" } });
+    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/report" } });
     expect(rpcCalls).toHaveLength(0);
     expect(calls).toHaveLength(0);
   });
@@ -404,8 +403,92 @@ describe("the bot in a group", () => {
     });
     const { admin } = fakeAdmin({ rpc: { dr_tg_bind_chat: { data: { binding_id: BINDING, unit_name: "S", unit_code: "S" } } } });
     await expect(
-      handleDrGroupUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } }),
+      handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind K7QM2XPA" } }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("the bot in a private chat", () => {
+  const chat = { id: TG_USER, type: "private" };
+
+  it("/link with a valid code links the Telegram account and marks the code used", async () => {
+    const calls = stubTelegram();
+    const { admin, updates, rpcCalls } = fakeAdmin({ linkCode: { id: "code-1", employee_id: USER } });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: "/link 123456" } });
+
+    expect(updates).toContainEqual({ table: "profiles", values: { telegram_user_id: TG_USER } });
+    expect(updates.some((u) => u.table === "telegram_link_codes" && "used_at" in u.values)).toBe(true);
+    expect(rpcCalls.find((c) => c.name === "dr_audit")?.args).toMatchObject({ p_event: "DR.TELEGRAM_LINKED", p_actor: USER });
+    expect(String(calls[0].body.text)).toContain("Linked to");
+    expect(calls[0].body.chat_id).toBe(TG_USER);
+  });
+
+  it("the one-tap deep link (/start link_<code>) does the same", async () => {
+    stubTelegram();
+    const { admin, updates } = fakeAdmin({ linkCode: { id: "code-1", employee_id: USER } });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: "/start link_123456" } });
+    expect(updates).toContainEqual({ table: "profiles", values: { telegram_user_id: TG_USER } });
+  });
+
+  it("an unknown or expired code links nothing", async () => {
+    const calls = stubTelegram();
+    const { admin, updates } = fakeAdmin({ linkCode: null });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: "/link 000000" } });
+    expect(updates).toHaveLength(0);
+    expect(String(calls[0].body.text)).toContain("not valid or has expired");
+  });
+
+  it("a Telegram account already linked to someone else is refused and the code stays unused", async () => {
+    const calls = stubTelegram();
+    const { admin, updates } = fakeAdmin({
+      linkCode: { id: "code-1", employee_id: USER },
+      profileUpdateError: { code: "23505", message: "duplicate key" },
+    });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: "/link 123456" } });
+    expect(updates.some((u) => u.table === "telegram_link_codes")).toBe(false);
+    expect(String(calls[0].body.text)).toContain("already linked to another DCOS user");
+  });
+
+  it("/start explains linking to a stranger and confirms to a linked user", async () => {
+    let calls = stubTelegram();
+    await handleDrBotUpdate(fakeAdmin({ profile: null }).admin, { message: { chat, from: { id: TG_USER }, text: "/start" } });
+    expect(String(calls[0].body.text)).toContain("/link 123456");
+
+    calls = stubTelegram();
+    await handleDrBotUpdate(fakeAdmin().admin, { message: { chat, from: { id: TG_USER }, text: "/start" } });
+    expect(String(calls[0].body.text)).toContain("You are linked");
+  });
+
+  it("anything else typed privately is ignored: a chat message is never a report", async () => {
+    const calls = stubTelegram();
+    const { admin, rpcCalls, updates } = fakeAdmin();
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: "today we poured 45 m3" } });
+    expect(calls).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
+});
+
+describe("direct messages", () => {
+  it("a user who never started the bot is unreachable, not an error", async () => {
+    stubTelegram({ sendMessage: 403 });
+    expect(await sendDirectMessage(TG_USER, "DR-1 returned")).toBe("unreachable");
+    stubTelegram();
+    expect(await sendDirectMessage(TG_USER, "DR-1 returned")).toBe("sent");
+    stubTelegram({ sendMessage: 502 });
+    await expect(sendDirectMessage(TG_USER, "DR-1 returned")).rejects.toThrow();
+  });
+
+  it("uses the Daily Reporting bot's token, never the attendance bot's", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+    });
+    await sendDirectMessage(TG_USER, "hello");
+    expect(urls[0]).toContain(`/bot${BOT_TOKEN}/sendMessage`);
+    vi.stubEnv("TELEGRAM_DR_BOT_TOKEN", "");
+    await expect(sendDirectMessage(TG_USER, "hello")).rejects.toThrow("TELEGRAM_DR_BOT_TOKEN is not configured");
   });
 });
 

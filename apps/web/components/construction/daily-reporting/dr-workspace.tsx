@@ -24,6 +24,7 @@ import { DrMissingBoard } from "./dr-missing-board";
 import { DrReportForm, type FormMode } from "./dr-report-form";
 import { DrReportView } from "./dr-report-view";
 import { DrSetup } from "./dr-setup";
+import { DrTelegramLink } from "./dr-telegram-link";
 import { DrSummary } from "./dr-summary";
 import { addDays, EmptyState, Flag, formatDateTime, inputClass, StateBadge, todayIso } from "./dr-ui";
 
@@ -238,6 +239,7 @@ function Workspace() {
           </EmptyState>
         ) : (
           <div className="space-y-4">
+            <DrTelegramLink userId={capabilities.userId} />
             <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-4">
               {myUnits.length > 1 ? (
                 <label className="flex flex-col gap-1 text-sm">

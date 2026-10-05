@@ -535,6 +535,21 @@ export const startTelegramBinding = (unitId: string) =>
 export const telegramBindingAction = (bindingId: string, action: "confirm_migration" | "unbind" | "reissue_launch") =>
   api<{ launch_posted?: boolean }>(`/api/dr/telegram/bindings/${bindingId}`, { method: "PATCH", body: JSON.stringify({ action }) });
 
+/** Whether the signed-in user has a Telegram account linked (the link is shared by every DCOS bot). */
+export async function isTelegramLinked(userId: string): Promise<boolean> {
+  const { data, error } = await createClient().from("profiles").select("telegram_user_id").eq("id", userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return !!data?.telegram_user_id;
+}
+
+/** A 6-digit, 10-minute code for the signed-in user to send to the bot as `/link <code>`. */
+export async function requestTelegramLinkCode(): Promise<{ code: string; expires_at: string }> {
+  const res = await fetch("/api/hr/attendance/telegram/link-code", { method: "POST" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Could not create a link code");
+  return { code: body.code, expires_at: body.expires_at };
+}
+
 // ── Evidence ────────────────────────────────────────────────────────────────
 /** Uploads one file to the unit's evidence area and returns its storage key. */
 export async function uploadEvidence(unitId: string, date: string, file: File): Promise<string> {
