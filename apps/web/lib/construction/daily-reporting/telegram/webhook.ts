@@ -7,7 +7,7 @@
 // where the report button is.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { postLaunchMessage, reply } from "./telegram-server";
+import { askForReply, postLaunchMessage, reply } from "./telegram-server";
 import { hashToken, normalizeBindingCode } from "./tokens";
 
 interface TgChat {
@@ -18,10 +18,12 @@ interface TgChat {
 
 export interface DrTelegramUpdate {
   message?: {
+    message_id?: number;
     chat: TgChat;
     from?: { id: number };
     text?: string;
     migrate_to_chat_id?: number;
+    reply_to_message?: { from?: { is_bot?: boolean }; text?: string };
   };
   my_chat_member?: {
     chat: TgChat;
@@ -55,10 +57,20 @@ async function tryPostLaunch(admin: SupabaseClient, bindingId: string, chatId: n
 }
 
 // ── Group ───────────────────────────────────────────────────────────────────
-async function handleBind(admin: SupabaseClient, chat: TgChat, fromId: number | undefined, rawCode: string): Promise<void> {
+// Telegram's command menu sends "/bind" the moment it is picked, before a code
+// can be typed. The bot then asks for the code as a reply to this prompt.
+const BIND_PROMPT = "Reply to this message with the 8-character binding code shown in DCOS.";
+
+async function handleBind(
+  admin: SupabaseClient,
+  chat: TgChat,
+  fromId: number | undefined,
+  rawCode: string,
+  messageId?: number,
+): Promise<void> {
   const code = normalizeBindingCode(rawCode);
   if (!code) {
-    await reply(chat.id, "Send /bind followed by the 8-character code shown in DCOS.");
+    await askForReply(chat.id, BIND_PROMPT, messageId, "8-character code");
     return;
   }
   const actor = await linkedProfile(admin, fromId);
@@ -131,8 +143,12 @@ async function handleGroup(admin: SupabaseClient, update: DrTelegramUpdate): Pro
 
   const [first = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
   const command = first.toLowerCase().replace(/@\S+$/, "");
-  if (command === "/bind") await handleBind(admin, message.chat, message.from?.id, rest[0] ?? "");
+  if (command === "/bind") await handleBind(admin, message.chat, message.from?.id, rest[0] ?? "", message.message_id);
   else if (command === "/report") await handleReportCommand(admin, message.chat);
+  else if (message.reply_to_message?.from?.is_bot && message.reply_to_message.text === BIND_PROMPT) {
+    // The answer to the prompt above: the code on its own.
+    await handleBind(admin, message.chat, message.from?.id, first, message.message_id);
+  }
 }
 
 // ── Private chat ────────────────────────────────────────────────────────────

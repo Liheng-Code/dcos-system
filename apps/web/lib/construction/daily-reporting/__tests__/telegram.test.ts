@@ -349,6 +349,39 @@ describe("the bot in a group", () => {
     expect(updates).toContainEqual({ table: "dr_telegram_bindings", values: { pinned_message_id: 99 } });
   });
 
+  it("a bare /bind (picked from the command menu) asks for the code, and the reply binds", async () => {
+    const calls = stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin({
+      rpc: { dr_tg_bind_chat: { data: { binding_id: BINDING, unit_name: "Sub One", unit_code: "SC-1" } } },
+      binding: { id: BINDING, chat_id: CHAT, status: "Active", pinned_message_id: null } as never,
+    });
+    await handleDrBotUpdate(admin, { message: { message_id: 7, chat: group, from: { id: TG_USER }, text: "/bind@dcos_test_bot" } });
+    expect(rpcCalls).toHaveLength(0);
+    expect(calls[0].body).toMatchObject({
+      chat_id: CHAT,
+      reply_parameters: { message_id: 7 },
+      reply_markup: { force_reply: true, selective: true },
+    });
+
+    const prompt = String(calls[0].body.text);
+    await handleDrBotUpdate(admin, {
+      message: { message_id: 8, chat: group, from: { id: TG_USER }, text: "k7qm2xpa", reply_to_message: { from: { is_bot: true }, text: prompt } },
+    });
+    expect(rpcCalls.find((c) => c.name === "dr_tg_bind_chat")?.args).toMatchObject({ p_code_hash: hashToken("K7QM2XPA"), p_chat_id: CHAT });
+  });
+
+  it("a reply to some other message, or to a person, is not taken as a code", async () => {
+    stubTelegram();
+    const { admin, rpcCalls } = fakeAdmin();
+    await handleDrBotUpdate(admin, {
+      message: { chat: group, from: { id: TG_USER }, text: "K7QM2XPA", reply_to_message: { from: { is_bot: true }, text: "DR-2026-000001 submitted" } },
+    });
+    await handleDrBotUpdate(admin, {
+      message: { chat: group, from: { id: TG_USER }, text: "K7QM2XPA", reply_to_message: { from: { is_bot: false }, text: "Reply to this message with the 8-character binding code shown in DCOS." } },
+    });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
   it("/bind from an unlinked Telegram account binds nothing", async () => {
     const calls = stubTelegram();
     const { admin, rpcCalls } = fakeAdmin({ profile: null });
@@ -372,7 +405,6 @@ describe("the bot in a group", () => {
     const { admin, rpcCalls } = fakeAdmin();
     await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "poured slab L5 today, 45 m3" } });
     await handleDrBotUpdate(admin, { message: { chat: { id: 5, type: "private" }, from: { id: TG_USER }, text: "/bind K7QM2XPA" } });
-    await handleDrBotUpdate(admin, { message: { chat: group, from: { id: TG_USER }, text: "/bind nope" } });
     expect(rpcCalls).toHaveLength(0);
   });
 

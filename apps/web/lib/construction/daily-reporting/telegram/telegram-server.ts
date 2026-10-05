@@ -383,6 +383,21 @@ export async function sendDirectMessage(telegramUserId: number, text: string): P
   }
 }
 
+/**
+ * Asks one user in a group to answer by replying. Telegram opens the reply box
+ * for them, and a reply to the bot reaches it even in privacy mode.
+ */
+export async function askForReply(chatId: number, text: string, toMessageId: number | undefined, placeholder: string): Promise<void> {
+  await botCall("sendMessage", {
+    chat_id: chatId,
+    text,
+    ...(toMessageId ? { reply_parameters: { message_id: toMessageId, allow_sending_without_reply: true } } : {}),
+    reply_markup: { force_reply: true, selective: true, input_field_placeholder: placeholder },
+  }).catch((e) => {
+    console.error("dr telegram ask:", e instanceof Error ? e.message : e);
+  });
+}
+
 /** Replies in a chat; failures are swallowed because the webhook must always answer 200. */
 export async function reply(chatId: number, text: string): Promise<void> {
   await botCall("sendMessage", { chat_id: chatId, text }).catch((e) => {
