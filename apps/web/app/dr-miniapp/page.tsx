@@ -19,6 +19,26 @@ interface Session {
   report_date: string;
 }
 
+const TELEGRAM_SCRIPT = "https://telegram.org/js/telegram-web-app.js";
+
+/** Loads Telegram's bridge script once. Resolves either way: outside Telegram the page still works as a preview. */
+function loadTelegramBridge(): Promise<void> {
+  if (window.Telegram?.WebApp) return Promise.resolve();
+  return new Promise((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TELEGRAM_SCRIPT}"]`);
+    const script = existing ?? document.createElement("script");
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => resolve(), { once: true });
+    if (!existing) {
+      script.src = TELEGRAM_SCRIPT;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    // Never wait on Telegram's server for long.
+    setTimeout(resolve, 4000);
+  });
+}
+
 type State =
   | { status: "loading" }
   | { status: "ready"; session: Session; correcting: boolean }
@@ -31,34 +51,34 @@ export default function DailyReportMiniAppPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const webApp = window.Telegram?.WebApp;
-    webApp?.ready();
-    webApp?.expand();
-    const initData = webApp?.initData ?? "";
 
-    // Outside Telegram there is no initData. Someone signed in to DCOS can
-    // still open the same short form in a browser with ?unit=<id> (and
-    // optionally &date=yyyy-mm-dd); the gateway then uses their own session
-    // and permissions, exactly as the website does.
-    const query = new URLSearchParams(window.location.search);
-    const unitParam = query.get("unit");
-    if (!initData && unitParam && /^[0-9a-f-]{36}$/i.test(unitParam)) {
-      const dateParam = query.get("date");
-      const today = new Intl.DateTimeFormat("en-CA").format(new Date());
-      const ready = setTimeout(
-        () =>
-          setState({
-            status: "ready",
-            session: { unit: { id: unitParam, code: "", name: "" }, report_date: dateParam && /^d{4}-d{2}-d{2}$/.test(dateParam) ? dateParam : today },
-            correcting: false,
-          }),
-        0,
-      );
-      return () => clearTimeout(ready);
-    }
+    async function start() {
+      await loadTelegramBridge();
+      if (cancelled) return;
+      const webApp = window.Telegram?.WebApp;
+      webApp?.ready();
+      webApp?.expand();
+      const initData = webApp?.initData ?? "";
 
-    fetch("/api/dr/telegram/session", { method: "POST", headers: { Authorization: `tma ${initData}` } })
-      .then(async (res) => {
+      // Outside Telegram there is no initData. Someone signed in to DCOS can
+      // still open the same short form in a browser with ?unit=<id> (and
+      // optionally &date=yyyy-mm-dd); the gateway then uses their own session
+      // and permissions, exactly as the website does.
+      const query = new URLSearchParams(window.location.search);
+      const unitParam = query.get("unit");
+      if (!initData && unitParam && /^[0-9a-f-]{36}$/i.test(unitParam)) {
+        const dateParam = query.get("date");
+        const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+        setState({
+          status: "ready",
+          session: { unit: { id: unitParam, code: "", name: "" }, report_date: dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today },
+          correcting: false,
+        });
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/dr/telegram/session", { method: "POST", headers: { Authorization: `tma ${initData}` } });
         const body = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) {
@@ -67,8 +87,12 @@ export default function DailyReportMiniAppPage() {
         }
         setApiAuthorization(`Bearer ${body.token}`);
         setState({ status: "ready", session: { unit: body.unit, report_date: body.report_date }, correcting: false });
-      })
-      .catch(() => !cancelled && setState({ status: "refused", message: "No connection. Check your signal and try again." }));
+      } catch {
+        if (!cancelled) setState({ status: "refused", message: "No connection. Check your signal and try again." });
+      }
+    }
+
+    void start();
     return () => {
       cancelled = true;
       setApiAuthorization(null);
