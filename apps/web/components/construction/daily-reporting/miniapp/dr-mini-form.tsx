@@ -21,6 +21,7 @@ import {
   uploadEvidence,
 } from "@/lib/construction/daily-reporting/service";
 import { derivedLabel } from "@/lib/construction/daily-reporting/status";
+import { formatReportForGroup } from "@/lib/construction/daily-reporting/telegram/report-summary";
 import {
   blankLine,
   blankState,
@@ -288,6 +289,24 @@ export function DrMiniForm({
   if (existing && !replacingNoWork) {
     const returned = existing.review_state === "RETURNED";
     const infoRequested = existing.review_state === "INFO_REQUESTED";
+    // What was sent, so the reporter and the approver can read it here.
+    const sent = ctx.existing_payload
+      ? formatReportForGroup({
+          heading: "",
+          unitName: ctx.unit.display_name,
+          reportDate: date,
+          reporterName: null,
+          reportKind: existing.report_kind,
+          payload: ctx.existing_payload,
+          tasks: Object.fromEntries(ctx.activities.map((a) => [a.task_id, { name: a.task_name, location: a.location }])),
+          customFields: ctx.custom_fields?.fields ?? [],
+          photoCount: ctx.existing_evidence.length,
+        })
+          .split("\n")
+          .slice(2) // drop the heading and unit lines: the cards above already show them
+          .join("\n")
+          .trim()
+      : null;
     return (
       <div className="space-y-3 p-3">
         {header}
@@ -331,6 +350,12 @@ export function DrMiniForm({
           ) : null}
           {!returned && !infoRequested ? <p className="text-muted-foreground">Nothing more to do for today.</p> : null}
         </div>
+        {sent ? (
+          <div className={cn(card, "space-y-2")}>
+            <h2 className="text-xs font-bold uppercase tracking-wide">Submitted report</h2>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{sent}</p>
+          </div>
+        ) : null}
       </div>
     );
   }
