@@ -64,130 +64,136 @@ Cut order if scope must shrink: 1C polish, then 1B background features. Never cu
 
 ---
 
-## 2. Todos by Phase
+## 2. Todo plan by phase (status as of 2026-10-05)
 
-Legend: `[ ]` open. Owner hints use existing agents: **DB** database-engineer, **BE** backend-engineer, **FE** frontend-engineer, **ARCH** system-architect, **QA** code-reviewer.
+Source of truth for scope: `DCOS_10-01_Daily_Reporting_Module_Design_R1.md` §22 (phasing) and `Phase0-03-Design-R2-Amendments.md`. Detail of what was built and what is unverified: `Phase1A-Delivery-Notes.md`, `Phase1B-Delivery-Notes.md`.
 
-### Phase 0 — Decisions and foundations
+Legend: `[x]` done and verified locally · `[~]` built, not fully verified · `[ ]` open. Owners: **DB** database-engineer, **BE** backend-engineer, **FE** frontend-engineer, **ARCH** system-architect, **QA** code-reviewer, **OWNER** needs a decision or action from the project owner. Production steps are the owner's (`/dbpush`); nothing below touches production.
 
-- [~] ARCH: Resolve Q1–Q5 and record as ADRs. *Drafted as proposals in `Phase0-01`; awaiting owner confirmation.*
-- [x] ARCH: Map R1 vocabulary to repo. See `Phase0-02`. O3/O4 defaulted.
-- [~] ARCH: Resolve open items O1, O2, O5, O6, O8. *Defaults proposed in `Phase0-01`; awaiting confirmation.*
-- [x] ARCH: Fix the G1–G16 design points. See `Phase0-03` (R2 amendments; R1 itself not reissued).
-- [x] ARCH: Write the cut-over plan. See `Phase0-04`.
-- [~] BE: Spike Telegram / Supabase session. *Desk research done; live checks and session spike not run (need bot token and devices). See `Phase0-05`. Gates 1C only.*
-- [~] BE: Spike PWA offline on Android and iOS. *Checklist written; not run (needs devices). Gates 1B only.*
-- [~] QA: Test runner. *Vitest already exists. DB/RLS harness still to build in 1A (G14).*
-- [~] DOCS: 12-doc pack. *Folder and tracker README created; documents themselves start in 1A.*
-- [x] DB: `construction` boundary entries. *Already covered in `module-boundaries.mjs`; new route/lib paths fall under existing `lib/construction` and `components/construction`. Nav entry deferred to 1A.*
+### Status at a glance
 
-### Phase 1A — Online core
+| Phase | Scope (R1 §22) | Status | Blocked by |
+|---|---|---|---|
+| 0 | Decisions, vocabulary, cut-over plan | Done except two device spikes | Real devices, bot token |
+| 1A | Online core: units, form, rules, review, summary | Built and walked through locally | Independent review, live delivery test, real-data import, release switch |
+| 1B | Field App, full offline | Built, tested on headless desktop only | Real Android and iOS devices |
+| 1C | Telegram identity, binding, Mini App | Not started | Bot token, a test group, phones |
+| 2 | Assurance: AI, statistical rules, delegation, overview | Not started | 10+ approved report days per unit; Khmer samples |
+| 3 | Integration: planning, RFI/QAQC/HSE, cost, IPC support, React Native | Not started | Phase 2 data; owner priorities |
+| 4 | Intelligence: anomaly, benchmarking, scoring, EVM inputs | Not started | Months of approved history |
 
-Built 2026-10-04. Detail and what is still unverified: `Phase1A-Delivery-Notes.md`.
+---
 
-**Database**
-- [x] Reporting units, members, WBS scope table, schedule, non-working days, approvers.
-- [x] `dr_reports`, immutable `dr_report_versions`, line tables, running numbers.
-- [x] `dr_evidence` with hash and device/server timestamps; private bucket.
-- [x] Rule definitions and results; seed of intake and no-history post-submit rules.
-- [x] Review decisions, verified quantities, delay classification, correction requests and items.
-- [x] Missing reports, project daily summaries, audit log, notification outbox.
-- [x] RLS per unit and per project, with negative tests.
-- [~] Backfill of old `site_daily_reports`: function written and tested on fixtures; **not run on real data**.
+### Phase 0 — Decisions and foundations (close out)
 
-**Backend**
-- [x] Submit pipeline (auth → context → rules → atomic persist → idempotent receipt).
-- [x] Intake and post-submit rules.
-- [x] Draft save, withdraw, item-level resubmit, No Work report and its replacement (G11).
-- [~] Evidence upload: signed upload, content-type signature check and hash written; **no malware scanner**; upload path untested end to end.
-- [x] Review service with verified quantities and mandatory comments.
-- [x] Post-approval amendment and summary revision.
-- [x] Alternate approver (G7).
-- [x] Missing-report job, reminders, escalation timers.
-- [~] Notifications: in-app tested; Telegram/email delivery written, **not tested against live services**.
-- [x] Summary compile, coverage, publish, no-change guard (G10).
-- [x] Planning sync on approval (R2); potential delay notice at submission (G9).
-- [x] Audit events.
+- [x] ARCH: Q1–Q5 confirmed by the owner 2026-10-04 (`Phase0-01`); vocabulary mapped (`Phase0-02`); G1–G16 resolved as amendments (`Phase0-03`); cut-over plan (`Phase0-04`).
+- [ ] ARCH: Reissue the design as **R2** by applying `Phase0-03` to R1 (R1 is now stored in the repo; the amendments still live in a side file). Also fix the numbering mismatch (`04-14` vs `10-01`) in the Documentation Tracker.
+- [ ] OWNER: Confirm the eight "decisions made while building" in `Phase1A-Delivery-Notes.md` §5 and the six in `Phase1B-Delivery-Notes.md` §6 (segregation of duties, who sets approvers, empty scope = whole project, recipients, 72 h grant, etc.).
+- [ ] OWNER: Close the R1 §26 open items still on defaults: O1 deadline and cut-off, O2 evidence minimum per discipline, O5 bulk approve, O6 languages, O7 photo retention, O8 who publishes when the PM is absent.
+- [ ] BE: PWA offline spike on a real Android phone and a real iPhone (checklist in `Phase0-05`). Gates the 1B sign-off.
+- [ ] BE: Telegram live checks for R1 §25 items 1–4 against the real bot. Gates 1C.
 
-**Frontend** — walked through in a browser on 2026-10-04 (09-Test-Plan §4)
-- [x] Setup: create unit with scope, add reporter, save schedule, project switch.
-- [x] Report form with pre-filled activities, live rules, review-before-submit, No Work report.
-- [x] Evidence capture, upload and viewing.
-- [x] My Reports / returned items, item-level correction, withdraw, answer to an information request, amendment.
-- [x] Review inbox and review package (return, request information, approve with verified quantity).
-- [x] Daily summary, publish, revision 2.
-- [x] Missing Reports board and excuse.
-- [~] Notification bell opening the report: changed, **not verified by click**.
-- [ ] Retire the old register/editor (per project, after cut-over).
+### Phase 1A — Online core (finish and release)
 
-**Quality**
-- [x] Tests: 96 database assertions, 26 unit tests, 10 integration tests (opt-in).
-- [x] Malware scanning with ClamAV, tested against a real daemon with the EICAR file.
-- [x] Security self-review and hardening (`20261004000013`).
-- [x] 12-document pack.
-- [ ] Independent code and security review (not done by a second reviewer).
-- [ ] Live Telegram and email delivery test.
-- [ ] Legacy import on real data.
+Built; the remaining work is verification, release and cut-over.
 
-### Phase 1B — Field App PWA, full offline
+**Verification**
+- [ ] QA: Independent code and security review of migrations `…010`–`…020`, the `app/api/dr` routes and RLS. So far there has only been a self-review.
+- [ ] BE: Live email delivery test (set `RESEND_API_KEY`, `RESEND_FROM`) and live Telegram DM test with the existing HR bot token.
+- [ ] FE: Click-test the notification bell opening a Daily Reporting report.
+- [ ] BE: Run the app with `CLAMAV_HOST` and `DR_EVIDENCE_SCAN_REQUIRED=true` and see scan-required behaviour through the UI.
+- [ ] QA: Extend RLS tests with an external (`EXT-SUB`) account created through User Management; the Q5 invitation flow was never exercised.
 
-Built 2026-10-04. Detail and what is still unverified: `Phase1B-Delivery-Notes.md`.
+**Release**
+- [ ] DB/BE: Regenerate `database.types.ts` and remove any casts that exist only because the types were stale.
+- [ ] BE: Schedule `GET /api/dr/cron/tick` (every 5–15 min, `CRON_SECRET`) in the deployment; without it, time-based reminders and escalations only fire when someone uses the module.
+- [ ] FE: Add the page to `apps/web/lib/modules/release.ts` once verification above is done (the default is development, so it stays hidden until listed).
+- [ ] OWNER: Pick one pilot project; configure units, reporters, schedule and approver in Setup; switch it on.
+- [ ] DB: Run `dr_backfill_project()` on a **copy** of real data first, review the `LEGACY` unit result, then on the pilot project. Take a backup before running.
+- [ ] OWNER: Promote migrations `20261004000010`–`…020` to production via `/dbpush` after the above (not done by Claude).
 
-- [x] Offline credential model: per-device grant with expiry, extension on check-in, revocation, device registration.
-- [x] Never-drop handling (G1): flagged REQUIRES_REVIEW, conflict, or quarantine. Only a never-authorised push is refused.
-- [x] DB: `dr_devices`, `dr_offline_grants`, `dr_version_origins`, `dr_sync_conflicts`, `dr_reports.review_flags`.
-- [x] `/api/dr/sync/pull` (forms, rule set, assignments, recent reports, grant).
-- [x] `/api/dr/sync/push` (idempotent), `/sync/evidence` (EVIDENCE_PENDING → SYNCED), `/sync/conflicts/:id/resolve`.
-- [x] PWA: `/field` with its own manifest, service worker cache, IndexedDB local-first store, persistent-storage request.
-- [x] Local rule execution from the cached rule set (same engine as the server).
-- [~] Photo upload: stored on the device, compressed on a constrained connection, uploaded after the report with retry. **Not chunked or resumable.**
-- [x] Sync status bar and per-item state; conflict resolution in the Field App and for the approver (G2).
-- [ ] PIN / biometric unlock. Not built.
-- [ ] Merge editor for conflicts. Not built (keep existing / keep offline as new version only).
-- [ ] Admin screen to revoke offline access. Function only.
-- [ ] Field tests on real Android and iOS devices; sync-lag measurement. **Not done: headless desktop browser only.**
+**Cut-over (per project, after the pilot is stable)**
+- [ ] FE: Retire the old register and editor ("Site Diary (legacy)") for migrated projects; keep the old tables read-only (never dropped in Phase 1).
+- [ ] BE: Remove the submit-time planning sync for migrated projects so only the approval-time sync remains.
 
-### Phase 1C — Telegram
+**Gaps to fill**
+- [ ] OWNER/DB: There is no Contract Administrator role in the role list, so delay notices currently go to QS. Decide whether to add the role.
+- [ ] OWNER: Approvers and the alternate approver can only be set by a system administrator (by decision). Confirm that is workable for day-to-day PM leave cover (G7).
 
-- [ ] DB: `identity_link` (telegram), `telegram_link_code`, `telegram_group_binding` with one-active constraints.
-- [ ] BE: Bot webhook (signature-verified), privacy mode, link-code flow, binding flow, migration and removal handling.
-- [ ] BE: Launch token issue/validate; `getChatMember` check at session exchange; session exchange edge function (Q4).
-- [ ] BE: Telegram notification adapter with status-only group messages, DM fallback to in-app/SMS, rate-limit handling.
-- [ ] FE: Mini App shell reusing the form; draft autosave and queued submit for short signal loss.
+**Exit criteria:** the pilot project has run 10 working days with no data loss; independent review findings are closed; delivery tests pass against live email and Telegram.
+
+### Phase 1B — Field App, full offline (finish)
+
+- [ ] QA: Field tests on a real Android phone and iPhone: install to home screen, persistent storage granted and denied, airplane-mode capture, reload offline, sync on focus, measure sync lag.
+- [ ] QA: Long offline period, large queue (30+ photos), low storage, expired grant.
+- [ ] FE: PIN / biometric unlock (design §12.3). Today the app relies on the device lock and the 72 h grant.
+- [ ] FE/BE: Admin screen to revoke offline access (the function `dr_revoke_offline_access` already exists).
+- [ ] FE: Merge editor for conflicts (the server already supports `MERGE`).
+- [ ] BE: Chunked, resumable photo upload (currently one signed upload, 20 MB limit, retried whole).
+- [ ] FE: Clean up photos left in IndexedDB after being removed from a draft.
+- [ ] QA: Quarantine path through the browser (covered by database tests only so far).
+- [ ] BE: Investigate the sign-out on immediate reload seen on the production build (refresh-token reuse interval). It is in the shared sign-in layer, not this module.
+
+**Exit criteria:** a reporter in a basement with no signal files a report with photos on a real phone, and it syncs without loss when signal returns.
+
+### Phase 1C — Telegram (not started)
+
+Reuse what already exists for HR: the bot, webhook, `initData` verification, `profiles.telegram_user_id`, `telegram_link_codes`, and a Mini App authenticating with `Authorization: tma <initData>`. The Phase 0 "session minting" spike is not needed.
+
+- [ ] BE: Telegram live checks (R1 §25 items 1–8) and choose the launch pattern for groups (R1 §7.5): a signed launch token bound to a binding, not relying on `initData` for the chat id.
+- [ ] DB: `telegram_group_binding` (one active per unit, one active per chat id, migration history) and launch-token tracking; reuse the existing link-code table rather than adding a second.
+- [ ] BE: Bot flows: binding code posted by an admin, migrate-to-supergroup handling, bot removed → `SUSPENDED`, privacy mode, pinned "Submit Daily Report" message.
+- [ ] BE: Launch-token issue and validation with a `getChatMember` check at session start; per-request `tma` authorization for `/api/dr/*`.
+- [ ] BE: Telegram notification adapter: status-only group messages (no quantities, findings or comments), DM with fallback to in-app and SMS, rate-limit handling.
+- [ ] FE: Mini App shell reusing the report form; draft autosave and queued submit for short signal loss, with the "Saved on device — not yet sent" banner.
 - [ ] FE: Admin Telegram bindings screen and migration alerts.
-- [ ] Verify remaining §25 items (6–9); pick SMS provider.
-- [ ] QA: Abuse tests (forged initData, replayed token, user removed from group, foreign group).
+- [ ] OWNER: Pick the SMS fallback provider (R1 §25 item 9).
+- [ ] QA: Abuse tests: forged `initData`, replayed token, user removed from the group, foreign group, unlinked user.
+
+**Exit criteria:** a foreman submits from the project group on a real phone; a user removed from the group cannot launch.
 
 ### Phase 2 — Assurance
 
-- [ ] Delegated reviewer step (template/config change, not code).
-- [ ] Statistical rules (PROGRESS_JUMP, PROGRESS_REGRESS, PRODUCTIVITY_ABNORMAL, QTY_RANGE) with minimum-history gate.
-- [ ] Photo perceptual hash and PHOTO_REUSE.
-- [ ] AI: capability registry, `ai_run` / `ai_finding`, insert-only DB role, prompt-injection controls, per-project budget.
-- [ ] AI: evidence assessment, text/cross-report reasoning, correction and summary drafting.
-- [ ] Khmer/mixed-language evaluation on real samples before enabling per project.
-- [ ] PM acceptance-rate tracking for AI findings.
-- [ ] Management overview dashboard.
-- [ ] Delay-event feed to Contract Administration.
+Prerequisite: pilot units have approved history and Phase 1 is stable.
+
+- [ ] BE: Statistical rules (`PROGRESS_JUMP`, `PROGRESS_REGRESS`, `PRODUCTIVITY_ABNORMAL`, `QTY_RANGE`) behind the minimum-history gate (default 10 approved days).
+- [ ] BE: Perceptual hash on evidence and the `PHOTO_REUSE` rule.
+- [ ] ARCH/DB: Delegated reviewer step as a workflow configuration change, not code; settle O8 (who publishes in the PM's absence).
+- [ ] DB: `ai_capability_registry`, `ai_run`, `ai_finding` with an **insert-only** database role and no write path to report, version, review or summary tables.
+- [ ] BE: AI capabilities: evidence assessment, text and cross-report reasoning, correction and summary drafting. Advisory and asynchronous, schema-validated output, untrusted-input prompting, categorical assessments (no numeric confidence), per-project daily budget.
+- [ ] OWNER/QA: Collect real Khmer and mixed-language samples and evaluate before enabling text interpretation on any project; otherwise limit AI to evidence assessment.
+- [ ] FE: Show AI findings only in the PM review package; correction requests show only what the PM approved.
+- [ ] BE: Track the PM acceptance rate per finding type; disable weak capabilities.
+- [ ] FE: Management Overview dashboard (a view across published summaries) and compliance board.
+- [ ] BE: Delay-event feed to Contract Administration (formal task on approval; the potential notice at submission already exists).
+- [ ] FE/ARCH: Decide on an i18n layer. None was found in the app, so a Khmer UI (O6) needs infrastructure first.
+
+**Exit criteria:** AI findings never block a report; the PM acceptance rate is measured for at least one project.
 
 ### Phase 3 — Integration
 
-- [ ] Planning actuals feed from approved data (finalise R2 design).
-- [ ] RFI / QA/QC / HSE linkage (issues → RFI, inspection requests → QA/QC, incidents → HSE).
-- [ ] Equipment and material usage → cost allocation to WBS.
-- [ ] Measurement support for sub-IPC (read-only, no write path to IPC).
-- [ ] KPI dashboards and trends.
-- [ ] React Native Field App with background sync (mobile-engineer).
+- [ ] BE: Planning actuals feed from approved data (finalise the R2 design; the basic approval-time sync already exists).
+- [ ] BE: Issues → RFI, inspection requests → QA/QC, incidents → HSE (today these are link fields only).
+- [ ] BE: Equipment hours and material usage → cost allocation to WBS.
+- [ ] BE: Measurement support for sub-IPC: read-only reported and verified quantities, **no write path to IPC** (D15).
+- [ ] FE: KPI dashboards and trend analysis (R1 §20).
+- [ ] BE/mobile-engineer: React Native Field App with background sync (this also removes the iOS Background Sync limit).
 
 ### Phase 4 — Intelligence
 
 - [ ] Cross-project anomaly detection.
-- [ ] Productivity benchmarking.
-- [ ] Unit performance scoring.
+- [ ] Productivity benchmarking from approved history.
+- [ ] Unit performance scoring (timeliness, accuracy, correction rate).
 - [ ] Forecasting inputs for EVM.
 
 ---
 
-## 3. Suggested next step
+## 3. Suggested order of work
 
-Run Phase 0. Q1 (new model beside the old one) and Q2 (planning sync at approval) decide the Phase 1A schema, so settle those first.
+1. **First:** independent review of 1A; live email and Telegram DM test; `dr_backfill_project()` on a copy of real data; owner confirms the build-time decisions. These are cheap and decide whether anything needs rework.
+2. **Next:** release switch, cron, one pilot project; start the Android and iPhone field test in parallel (1B sign-off).
+3. **Then:** Phase 1C, starting with the live Telegram checks, since the launch pattern in groups is the biggest unknown.
+4. **After 10+ approved days of pilot data:** Phase 2 statistical rules first (deterministic, cheap), AI after the Khmer evaluation.
+5. Phases 3 and 4 are planned once Phase 2 data exists; do not start them early.
+
+Cut order if scope must shrink (R1 §22): Mini App convenience features first; never offline capture or the immutable version model.
