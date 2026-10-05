@@ -49,6 +49,20 @@ export function parseLaunchStartParam(startParam: string | null | undefined): st
   return /^[A-Za-z0-9_-]{16,61}$/.test(token) ? token : null;
 }
 
+/** Prefix of the bot start parameter that carries a reporter invite. */
+export const INVITE_PARAM_PREFIX = "inv_";
+
+/** Opaque invite token; like a launch token it must fit Telegram's 64-character start parameter. */
+export function newInviteToken(): string {
+  return randomBytes(24).toString("base64url");
+}
+
+export function parseInviteStartParam(startParam: string | null | undefined): string | null {
+  if (!startParam || !startParam.startsWith(INVITE_PARAM_PREFIX)) return null;
+  const token = startParam.slice(INVITE_PARAM_PREFIX.length);
+  return /^[A-Za-z0-9_-]{16,60}$/.test(token) ? token : null;
+}
+
 export interface MiniAppSessionClaims {
   /** DCOS user id. */
   uid: string;

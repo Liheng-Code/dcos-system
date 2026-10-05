@@ -462,6 +462,28 @@ describe("the bot in a private chat", () => {
     expect(updates).toContainEqual({ table: "profiles", values: { telegram_user_id: TG_USER } });
   });
 
+  it("/start inv_<token> redeems a reporter invite for the Telegram account that opened it", async () => {
+    const calls = stubTelegram();
+    const token = "A".repeat(32);
+    const { admin, rpcCalls } = fakeAdmin({
+      rpc: { dr_tg_redeem_invite: { data: { full_name: "Sok Dara", unit_code: "SC-01", unit_name: "ABC Masonry" } } },
+    });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: `/start inv_${token}` } });
+    expect(rpcCalls[0]).toEqual({ name: "dr_tg_redeem_invite", args: { p_token_hash: hashToken(token), p_telegram_user_id: TG_USER } });
+    expect(String(calls[0].body.text)).toContain("Welcome, Sok Dara");
+    expect(String(calls[0].body.text)).toContain("SC-01 ABC Masonry");
+  });
+
+  it("a used, expired or foreign invite is refused with the reason", async () => {
+    const calls = stubTelegram();
+    const { admin, updates } = fakeAdmin({
+      rpc: { dr_tg_redeem_invite: { error: { message: "DR_NOT_FOUND: this invite is not valid any more; ask for a new one" } } },
+    });
+    await handleDrBotUpdate(admin, { message: { chat, from: { id: TG_USER }, text: `/start inv_${"B".repeat(32)}` } });
+    expect(String(calls[0].body.text)).toContain("not valid any more");
+    expect(updates).toHaveLength(0);
+  });
+
   it("an unknown or expired code links nothing", async () => {
     const calls = stubTelegram();
     const { admin, updates } = fakeAdmin({ linkCode: null });

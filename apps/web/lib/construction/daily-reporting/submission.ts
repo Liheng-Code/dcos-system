@@ -79,6 +79,19 @@ export async function handleSubmission(
   }
 
   let payload: DrPayload = body.payload;
+  // Custom fields: keep only what the unit's current definition defines, and
+  // record which version the values were entered against.
+  const defined = ctx.custom_fields;
+  if (defined && defined.fields.length > 0) {
+    const values = payload.custom_fields ?? {};
+    payload = {
+      ...payload,
+      custom_fields: Object.fromEntries(defined.fields.filter((f) => f.key in values).map((f) => [f.key, values[f.key]])),
+      custom_field_def_version: defined.version,
+    };
+  } else if (payload.custom_fields) {
+    payload = { ...payload, custom_fields: undefined, custom_field_def_version: undefined };
+  }
   const reportKind = mode === "submit" ? body.report_kind ?? "WORK" : ctx.existing?.report_kind ?? "WORK";
 
   if (mode !== "submit" && (!ctx.existing || ctx.existing.id !== target.reportId || !ctx.existing_payload)) {

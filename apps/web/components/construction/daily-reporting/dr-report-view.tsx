@@ -40,6 +40,7 @@ import {
   type ReviewDecision,
   type SectionKey,
 } from "@/lib/construction/daily-reporting/types";
+import { DrCustomFieldsView } from "./dr-custom-fields";
 import { Field, Flag, formatDateTime, inputClass, RuleList, SectionCard, StateBadge, textareaClass } from "./dr-ui";
 
 type Line = { line_id: string } & Record<string, unknown>;
@@ -393,6 +394,7 @@ export function DrReportView({
         </SectionCard>
       ) : (
         <>
+          <DrCustomFieldsView unitId={report.unit_id} version={p.custom_field_def_version} values={p.custom_fields} />
           <SectionCard title={SECTION_LABELS.weather} action={returnBox("weather")}>
             <p className={cn("text-sm", mark("weather") && "rounded bg-amber-50 px-1")}>
               {p.weather?.condition ?? "—"} · {p.weather?.hours_lost ?? 0} h lost{p.weather?.note ? ` · ${p.weather.note}` : ""}

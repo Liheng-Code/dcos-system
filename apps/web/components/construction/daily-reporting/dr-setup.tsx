@@ -5,13 +5,14 @@
 // per-project switch from the legacy site diary.
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Save, UserPlus } from "lucide-react";
+import { Copy, Loader2, Plus, Save, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   addApprover,
   addUnitMember,
+  createTelegramInvite,
   getProjectDrEnabled,
   getProjectSchedule,
   getUnitScope,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/construction/daily-reporting/service";
 import { SECTION_LABELS } from "@/lib/construction/daily-reporting/status";
 import type { ReportingUnit, SectionKey } from "@/lib/construction/daily-reporting/types";
+import { DrCustomFieldsEditor } from "./dr-custom-fields";
 import { DrTelegramBindings } from "./dr-telegram";
 import { Field, Flag, inputClass, SectionCard, todayIso } from "./dr-ui";
 
@@ -91,6 +93,7 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
   const [selected, setSelected] = useState<Partial<ReportingUnit> | null>(null);
   const [members, setMembers] = useState<UnitMember[]>([]);
   const [scope, setScope] = useState<string[]>([]);
+  const [invite, setInvite] = useState<{ userId: string; url: string; expires_at: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [approverRole, setApproverRole] = useState<"PRIMARY" | "ALTERNATE">("ALTERNATE");
   const [approverUntil, setApproverUntil] = useState("");
@@ -369,6 +372,7 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
                   </div>
                   <p className="mb-2 text-xs text-muted-foreground">
                     A reporter must already have a DCOS account. Create subcontractor accounts in User Management with the Subcontractor role first.
+                    Then send each reporter a Telegram invite: they tap it once and from then on report only from Telegram.
                   </p>
                   {members.length === 0 ? <p className="text-sm text-muted-foreground">No members yet.</p> : null}
                   <ul className="space-y-1">
@@ -381,6 +385,21 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
                         </span>
                         <span className="flex items-center gap-2">
                           <Flag tone={m.status === "active" ? "good" : "neutral"}>{m.status}</Flag>
+                          {capabilities.canReview && m.status === "active" && m.member_role === "REPORTER" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  setInvite({ userId: m.user_id, ...(await createTelegramInvite(selected.id as string, m.user_id)) });
+                                } catch (e) {
+                                  toast.error(e instanceof Error ? e.message : String(e));
+                                }
+                              }}
+                            >
+                              Telegram invite
+                            </Button>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -399,8 +418,28 @@ export function DrSetup({ projectId, capabilities }: { projectId: string; capabi
                       </li>
                     ))}
                   </ul>
+                  {invite && members.some((m) => m.user_id === invite.userId) ? (
+                    <div className="mt-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
+                      <p>
+                        Send this link to{" "}
+                        <span className="font-medium">
+                          {members.find((m) => m.user_id === invite.userId)?.profile?.full_name ?? "the reporter"}
+                        </span>{" "}
+                        only. Opening it in Telegram links their account. It works once, until{" "}
+                        {new Date(invite.expires_at).toLocaleString()}, and is not shown again.
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <code className="break-all rounded bg-background px-2 py-1 font-mono text-xs">{invite.url}</code>
+                        <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(invite.url).then(() => toast.success("Copied."))}>
+                          <Copy className="mr-1 h-4 w-4" /> Copy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </SectionCard>
               ) : null}
+
+              {selected.id ? <DrCustomFieldsEditor key={selected.id} unitId={selected.id} canEdit={capabilities.canAdmin} /> : null}
             </>
           )}
         </div>

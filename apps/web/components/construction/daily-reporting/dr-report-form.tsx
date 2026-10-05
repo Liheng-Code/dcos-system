@@ -38,6 +38,7 @@ import {
   type RuleResult,
   type SectionKey,
 } from "@/lib/construction/daily-reporting/types";
+import { DrCustomFieldInputs } from "./dr-custom-fields";
 import { LineList, newLineId, type Column } from "./dr-line-list";
 import { Field, Flag, inputClass, RuleList, SectionCard, textareaClass } from "./dr-ui";
 
@@ -243,6 +244,7 @@ export function DrReportForm({
       previousNextDay: ctx.previous_next_day,
       approvedProgress: ctx.approved_progress,
       knownUom: ctx.known_uom,
+      customFields: ctx.custom_fields?.fields,
     });
   }, [ctx, payload, kind, date, allEvidence]);
 
@@ -476,6 +478,16 @@ export function DrReportForm({
       {/* ── Step: site & manpower ─────────────────────────────────────────── */}
       {current === "Site & manpower" ? (
         <>
+          {mode === "new" && (ctx.custom_fields?.fields.length ?? 0) > 0 ? (
+            <SectionCard title={`${ctx.unit.display_name} fields`}>
+              <DrCustomFieldInputs
+                className="md:grid-cols-3"
+                fields={ctx.custom_fields?.fields ?? []}
+                values={payload.custom_fields ?? {}}
+                onChange={(custom_fields) => patch({ custom_fields })}
+              />
+            </SectionCard>
+          ) : null}
           <SectionCard title={SECTION_LABELS.weather} locked={!canEdit("weather")}>
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Condition">

@@ -7,6 +7,8 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
   CorrectionItem,
+  CustomField,
+  CustomFieldSet,
   CorrectionRequest,
   DailySummary,
   DelayType,
@@ -494,6 +496,30 @@ export const decideReview = (reportId: string, input: DecisionInput) =>
     `/api/dr/review/${reportId}`,
     { method: "POST", body: JSON.stringify(input) },
   );
+
+// ── Custom fields ───────────────────────────────────────────────────────────
+/** A unit's custom fields: the active definition, or the given version for an older report. */
+export async function getCustomFields(unitId: string, version?: number | null): Promise<CustomFieldSet | null> {
+  let q = createClient().from("dr_custom_field_definitions").select("version, fields").eq("unit_id", unitId);
+  q = version ? q.eq("version", version) : q.eq("is_active", true);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? { version: data.version as number, fields: (data.fields as CustomField[]) ?? [] } : null;
+}
+
+/** Saves a new version of the unit's custom fields; earlier reports keep the version they were written with. */
+export async function saveCustomFields(unitId: string, fields: CustomField[]): Promise<number> {
+  const { data, error } = await createClient().rpc("dr_save_custom_fields", { p_unit_id: unitId, p_fields: fields });
+  if (error) throw new Error(error.message.replace(/^DR_[A-Z_]+:\s*/, ""));
+  return data as number;
+}
+
+/** A one-time link the reporter opens in Telegram to link their account, with no website login. */
+export const createTelegramInvite = (unitId: string, userId: string) =>
+  api<{ url: string; expires_at: string }>("/api/dr/telegram/invites", {
+    method: "POST",
+    body: JSON.stringify({ unit_id: unitId, user_id: userId }),
+  });
 
 // ── Telegram group bindings ─────────────────────────────────────────────────
 export type TelegramBindingStatus = "Pending" | "Active" | "Migrated" | "Suspended" | "Unbound";

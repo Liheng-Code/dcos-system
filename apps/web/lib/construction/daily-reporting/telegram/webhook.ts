@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { askForReply, postLaunchMessage, reply } from "./telegram-server";
-import { hashToken, normalizeBindingCode } from "./tokens";
+import { hashToken, normalizeBindingCode, parseInviteStartParam } from "./tokens";
 
 interface TgChat {
   id: number;
@@ -211,13 +211,30 @@ async function handleLink(admin: SupabaseClient, chatId: number, fromId: number,
   );
 }
 
+/** /start inv_<token>: the reporter opened the invite an approver sent them. */
+async function handleInvite(admin: SupabaseClient, chatId: number, fromId: number, token: string): Promise<void> {
+  const { data, error } = await admin.rpc("dr_tg_redeem_invite", { p_token_hash: hashToken(token), p_telegram_user_id: fromId });
+  if (error || !data) {
+    await reply(chatId, drMessage(error, "This invite could not be used. Ask for a new one."));
+    return;
+  }
+  const linked = data as { full_name: string | null; unit_code: string; unit_name: string };
+  await reply(
+    chatId,
+    `Welcome${linked.full_name ? `, ${linked.full_name}` : ""}. You are now the reporter for ${linked.unit_code} ${linked.unit_name}. To send the daily report, tap Submit Daily Report in your project group. I will message you here when a report needs your attention.`,
+  );
+}
+
 async function handlePrivate(admin: SupabaseClient, message: NonNullable<DrTelegramUpdate["message"]>): Promise<void> {
   const fromId = message.from?.id;
   if (!fromId) return;
   const [first = "", ...rest] = (message.text ?? "").trim().split(/\s+/);
   const command = first.toLowerCase().replace(/@\S+$/, "");
 
-  if (command === "/link") {
+  const invite = command === "/start" ? parseInviteStartParam(rest[0]) : null;
+  if (invite) {
+    await handleInvite(admin, message.chat.id, fromId, invite);
+  } else if (command === "/link") {
     await handleLink(admin, message.chat.id, fromId, rest[0]);
   } else if (command === "/start" && rest[0]?.startsWith("link_")) {
     await handleLink(admin, message.chat.id, fromId, rest[0].slice("link_".length));

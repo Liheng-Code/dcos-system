@@ -247,7 +247,29 @@ export const payloadSchema = z.object({
       }),
     )
     .max(MAX_LINES).default([]),
+  /** Values of the unit's custom fields, by field key (design §9.5). */
+  custom_fields: z.record(z.string().max(40), z.union([z.string().max(500), z.number(), z.null()])).optional(),
+  /** Version of the custom field definition the values were entered against. */
+  custom_field_def_version: z.number().int().nullable().optional(),
 });
+
+export const CUSTOM_FIELD_TYPES = ["text", "number", "select"] as const;
+
+/** One custom field of a reporting unit, e.g. "Wall Type" for a masonry subcontractor. */
+export interface CustomField {
+  key: string;
+  label: string;
+  type: (typeof CUSTOM_FIELD_TYPES)[number];
+  options?: string[];
+  /** Shown after a number, e.g. "mm" or "m²". */
+  unit?: string | null;
+  required?: boolean;
+}
+
+export interface CustomFieldSet {
+  version: number;
+  fields: CustomField[];
+}
 
 export type DrPayload = z.infer<typeof payloadSchema>;
 export type DrActivity = z.infer<typeof activitySchema>;
@@ -476,6 +498,8 @@ export interface FormActivity {
   steps: { id: string; step_no: number; step_name: string; weight: number; progress: number }[];
   /** Scheduled to be in progress on the report date. */
   planned_today: boolean;
+  /** Where the activity is, from the WBS (e.g. "BA – MAIN BUILDING › 3F"). */
+  location?: string | null;
 }
 
 export interface FormContext {
@@ -497,4 +521,7 @@ export interface FormContext {
   /** Unit of measure seen on previously approved lines, per task. */
   known_uom: Record<string, string>;
   today_local: string;
+  /** The unit's active custom fields, if it has any. */
+  custom_fields?: CustomFieldSet | null;
+  project?: { code: string; name: string };
 }

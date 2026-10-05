@@ -14,6 +14,7 @@ import { drainGroupOutbox, drBotConfigured, miniAppSessionSecret, sendDirectMess
 import { SESSION_TOKEN_PREFIX, verifyMiniAppSession } from "./telegram/tokens";
 import type {
   CorrectionRequest,
+  CustomField,
   DrEvidence,
   DrPayload,
   DrReport,
@@ -209,7 +210,7 @@ export async function loadFormContext(
     return null;
   }
 
-  const [scheduleRes, planningRes, taskNodesRes, rulesRes, scope, existingRes, draftRes] = await Promise.all([
+  const [scheduleRes, planningRes, taskNodesRes, rulesRes, scope, existingRes, draftRes, nodesRes, customRes, projectRes] = await Promise.all([
     admin.rpc("dr_unit_schedule", { p_unit_id: unitId }),
     admin.rpc("get_daily_report_planning_context", { p_project_id: unit.project_id, p_date: reportDate }),
     admin.from("wbs_tasks").select("id, wbs_node_id").eq("project_id", unit.project_id),
@@ -217,7 +218,19 @@ export async function loadFormContext(
     scopeNodeIds(admin, unit),
     admin.from("dr_reports").select("*").eq("unit_id", unitId).eq("report_date", reportDate).maybeSingle(),
     admin.from("dr_drafts").select("payload").eq("unit_id", unitId).eq("report_date", reportDate).maybeSingle(),
+    admin.from("wbs_nodes").select("id, parent_id, wbs_name").eq("project_id", unit.project_id),
+    admin.from("dr_custom_field_definitions").select("version, fields").eq("unit_id", unitId).eq("is_active", true).maybeSingle(),
+    admin.from("projects").select("project_code, project_name").eq("id", unit.project_id).maybeSingle(),
   ]);
+
+  // Location of a task for the reporter: its WBS node and that node's parent.
+  const nodeById = new Map((nodesRes.data ?? []).map((n) => [n.id as string, n as { id: string; parent_id: string | null; wbs_name: string }]));
+  const locationOf = (nodeId: string | null): string | null => {
+    const node = nodeId ? nodeById.get(nodeId) : undefined;
+    if (!node) return null;
+    const parent = node.parent_id ? nodeById.get(node.parent_id) : undefined;
+    return parent ? `${parent.wbs_name} › ${node.wbs_name}` : node.wbs_name;
+  };
 
   const schedule = (scheduleRes.data as FormContext["schedule"][] | null)?.[0] ?? {
     deadline_time: "18:00:00", reminder_time: "16:00:00", late_window_hours: 15, timezone: "Asia/Phnom_Penh",
@@ -239,6 +252,7 @@ export async function loadFormContext(
       suggested_trade: r.suggested_trade,
       steps: r.steps_json ?? [],
       planned_today: !!r.start_date && !!r.end_date && r.start_date <= reportDate && r.end_date >= reportDate,
+      location: locationOf(nodeOfTask.get(r.task_id) ?? null),
     }));
 
   const existing = (existingRes.data as DrReport | null) ?? null;
@@ -322,6 +336,12 @@ export async function loadFormContext(
     approved_progress: approvedProgress,
     known_uom: knownUom,
     today_local: localDate(schedule.timezone),
+    custom_fields: customRes.data
+      ? { version: customRes.data.version as number, fields: (customRes.data.fields as CustomField[]) ?? [] }
+      : null,
+    project: projectRes.data
+      ? { code: projectRes.data.project_code as string, name: projectRes.data.project_name as string }
+      : undefined,
   };
 }
 
@@ -349,6 +369,12 @@ export function runRules(
     previousNextDay: ctx.previous_next_day,
     approvedProgress: ctx.approved_progress,
     knownUom: ctx.known_uom,
+    // A correction or amendment of a report written against an older
+    // definition is not held to fields that did not exist then.
+    customFields:
+      payload.custom_field_def_version != null && payload.custom_field_def_version !== ctx.custom_fields?.version
+        ? undefined
+        : ctx.custom_fields?.fields,
   });
 }
 

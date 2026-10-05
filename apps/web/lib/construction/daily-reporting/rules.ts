@@ -6,6 +6,7 @@
 
 import {
   ALWAYS_REQUIRED_SECTIONS,
+  type CustomField,
   type DrPayload,
   type EvidenceRef,
   type FormActivity,
@@ -36,6 +37,8 @@ export interface RuleInput {
   previousNextDay?: DrPayload["next_day"];
   approvedProgress?: Record<string, number>;
   knownUom?: Record<string, string>;
+  /** The unit's custom fields; required ones must be filled and values must fit their type. */
+  customFields?: CustomField[];
 }
 
 /** Global defaults overlaid with this project's overrides; inactive rules dropped. */
@@ -104,6 +107,18 @@ export function evaluateRules(input: RuleInput): RuleResult[] {
   need("next_day", p.next_day.length > 0, "Add the plan for the next day.");
   need("equipment", p.equipment.length > 0, "Add at least one equipment line.");
   need("materials", p.materials.length > 0, "Add at least one material line.");
+
+  for (const f of input.customFields ?? []) {
+    const value = p.custom_fields?.[f.key];
+    const target = { section: "header" as const };
+    if (blank(value)) {
+      if (f.required) fail("REQ_FIELD", `${f.label} is required.`, target, { field: f.key });
+    } else if (f.type === "number" && (typeof value !== "number" || !Number.isFinite(value))) {
+      fail("REQ_FIELD", `${f.label} must be a number.`, target, { field: f.key });
+    } else if (f.type === "select" && !(f.options ?? []).includes(String(value))) {
+      fail("REQ_FIELD", `${f.label}: choose one of the listed options.`, target, { field: f.key });
+    }
+  }
 
   for (const m of p.manpower) {
     if (blank(m.trade)) fail("REQ_FIELD", "Manpower line needs a trade.", { section: "manpower", line_id: m.line_id });

@@ -147,6 +147,8 @@ Built 2026-10-05 without a live Telegram connection. Detail and what is still un
 - [x] FE: Mini App page reusing the report form; re-send after short signal loss.
 - [x] FE: Telegram groups card in Setup (bind, change, confirm migration, re-issue button, unbind).
 - [x] QA: Abuse tests, 48 database assertions and 37 unit tests (forged or stale `initData`, swapped start parameter, expired or foreign token, non-reporter, user removed from the group, session used for another unit).
+- [x] FE/BE: Telegram-only reporter: one-page Mini App form (owner's mock-up), custom fields per unit (R1 §9.5), one-tap Telegram invite, and correction and information answers inside the Mini App.
+- [ ] OWNER: Give the app a public HTTPS address (deployment or a temporary tunnel) so the Mini App can open inside Telegram; nothing else blocks it.
 - [ ] BE: **Live checks against the real bot** (R1 §25 items 1–8): Mini App launch from a group and the start parameter in `initData`, privacy mode, `my_chat_member` updates reaching the webhook, pinning, group migration, rate limits, camera and file access in the web view.
 - [x] BE: Dedicated bot `@DCOSSiteReport_Bot` connected: own token, webhook route, private-chat linking, direct messages, command menus. The attendance bot is untouched.
 - [ ] OWNER: Test locally with `node scripts/dr-telegram-poll.mjs`: link an account, bind a test group, check status lines, remove and re-add the bot.

@@ -4,12 +4,14 @@
 // Opened from the "Submit Daily Report" button the Daily Reporting bot pins in
 // a project group. The launch token travels in the start parameter inside
 // Telegram's signed initData; the server turns it into a session for that one
-// reporting unit. The form is the same one the dashboard and the Field App use.
+// reporting unit. The reporter does everything here: today's report, the
+// correction of a returned report, and the answer to a question from the PM.
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DrReportForm } from "@/components/construction/daily-reporting/dr-report-form";
+import { DrMiniForm } from "@/components/construction/daily-reporting/miniapp/dr-mini-form";
 import { setApiAuthorization } from "@/lib/construction/daily-reporting/service";
 
 interface Session {
@@ -19,9 +21,9 @@ interface Session {
 
 type State =
   | { status: "loading" }
-  | { status: "ready"; session: Session }
+  | { status: "ready"; session: Session; correcting: boolean }
   | { status: "refused"; message: string }
-  | { status: "done"; sent: boolean };
+  | { status: "done"; reportNo: string | null };
 
 export default function DailyReportMiniAppPage() {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -32,8 +34,28 @@ export default function DailyReportMiniAppPage() {
     const webApp = window.Telegram?.WebApp;
     webApp?.ready();
     webApp?.expand();
-    // Outside Telegram initData is empty and the server refuses it.
     const initData = webApp?.initData ?? "";
+
+    // Outside Telegram there is no initData. Someone signed in to DCOS can
+    // still open the same short form in a browser with ?unit=<id> (and
+    // optionally &date=yyyy-mm-dd); the gateway then uses their own session
+    // and permissions, exactly as the website does.
+    const query = new URLSearchParams(window.location.search);
+    const unitParam = query.get("unit");
+    if (!initData && unitParam && /^[0-9a-f-]{36}$/i.test(unitParam)) {
+      const dateParam = query.get("date");
+      const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+      const ready = setTimeout(
+        () =>
+          setState({
+            status: "ready",
+            session: { unit: { id: unitParam, code: "", name: "" }, report_date: dateParam && /^d{4}-d{2}-d{2}$/.test(dateParam) ? dateParam : today },
+            correcting: false,
+          }),
+        0,
+      );
+      return () => clearTimeout(ready);
+    }
 
     fetch("/api/dr/telegram/session", { method: "POST", headers: { Authorization: `tma ${initData}` } })
       .then(async (res) => {
@@ -44,7 +66,7 @@ export default function DailyReportMiniAppPage() {
           return;
         }
         setApiAuthorization(`Bearer ${body.token}`);
-        setState({ status: "ready", session: { unit: body.unit, report_date: body.report_date } });
+        setState({ status: "ready", session: { unit: body.unit, report_date: body.report_date }, correcting: false });
       })
       .catch(() => !cancelled && setState({ status: "refused", message: "No connection. Check your signal and try again." }));
     return () => {
@@ -82,8 +104,11 @@ export default function DailyReportMiniAppPage() {
   if (state.status === "done") {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-        {state.sent ? <CheckCircle2 className="h-8 w-8 text-emerald-600" /> : null}
-        <p className="text-sm">{state.sent ? "Your daily report was sent for review." : "Nothing was sent."}</p>
+        <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+        <p className="text-sm">
+          {state.reportNo ? <span className="font-semibold">{state.reportNo}</span> : "Your report"} was sent to the project manager for
+          review.
+        </p>
         <Button size="sm" onClick={() => window.Telegram?.WebApp?.close()}>
           Close
         </Button>
@@ -91,23 +116,29 @@ export default function DailyReportMiniAppPage() {
     );
   }
 
-  const { unit, report_date } = state.session;
-  return (
-    <div className="space-y-3 p-3">
-      <div>
-        <h1 className="text-base font-semibold">Daily report</h1>
-        <p className="text-xs text-muted-foreground">
-          {unit.code} {unit.name} · {report_date}
-        </p>
+  const { session } = state;
+  if (state.correcting) {
+    // Returned report: the full form locks everything except the returned items.
+    return (
+      <div className="space-y-3 p-3">
+        <DrReportForm
+          unitId={session.unit.id}
+          date={session.report_date}
+          mode="correct"
+          retryWhenOnline
+          onDone={() => setState({ status: "done", reportNo: null })}
+          onCancel={() => setState({ ...state, correcting: false })}
+        />
       </div>
-      <DrReportForm
-        unitId={unit.id}
-        date={report_date}
-        mode="new"
-        retryWhenOnline
-        onDone={() => setState({ status: "done", sent: true })}
-        onCancel={() => setState({ status: "done", sent: false })}
-      />
-    </div>
+    );
+  }
+
+  return (
+    <DrMiniForm
+      unitId={session.unit.id}
+      date={session.report_date}
+      onDone={(reportNo) => setState({ status: "done", reportNo })}
+      onCorrect={() => setState({ ...state, correcting: true })}
+    />
   );
 }

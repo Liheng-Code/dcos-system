@@ -66,6 +66,24 @@ The session is a signed token valid for 2 hours, for one user and **one unit**. 
 
 **Short signal loss.** In the Mini App, a submit that fails for lack of connection keeps the report on the device, shows "Saved on device — not yet sent" and retries every 15 seconds and on reconnect, with the same idempotency key, while the page stays open. Full offline remains the Field App's job.
 
+### Telegram-only reporter (added 2026-10-05 after the owner's mock-up)
+
+The intended flow is that a subcontractor reporter never opens the website. Three things were added for that:
+
+| Addition | What it does | Files |
+|---|---|---|
+| **One-page Mini App form** | Replaces the six-step website form inside Telegram. Report date and contractor (fixed), discipline, weather, then per activity: location, activity, manpower, progress; toolbox talk, issue, tomorrow plan; the unit's custom fields; photos; Save Draft and Submit. Also No Work Today, the status of a report already sent, the correction of a returned report and the answer to a question from the PM. | `components/construction/daily-reporting/miniapp/dr-mini-form.tsx`, `lib/construction/daily-reporting/mini-form.ts`, `app/dr-miniapp/page.tsx` |
+| **Custom fields per reporting unit** (R1 §9.5) | Setup > unit > Custom fields: text, number (with a unit) or choice, required or not, up to 20. Values travel in the report payload with the definition version, so they are immutable with the report; changing the definition adds a version and old reports stay readable. Required fields and value types are checked by the shared rules engine on the phone and on the server. Shown to the approver in the review screen and available in the website form too. | `20261005000020_dr_custom_fields_and_invites.sql`, `dr-custom-fields.tsx`, `rules.ts`, `submission.ts` |
+| **Telegram invite** | Setup > unit > Reporters > **Telegram invite** gives a one-time link (3 days) for that reporter. He opens it, Telegram starts the bot and his account is linked. No website login, no code to type. | `dr_tg_create_invite`, `dr_tg_redeem_invite`, `app/api/dr/telegram/invites`, `telegram/webhook.ts` |
+
+Weather and the toolbox-talk question are not in the mock-up; they are in the form because the design makes both mandatory on every report (R1 §9.1).
+
+The Mini App session now also covers resubmitting a returned report and answering an information request, each still limited to the session's one unit.
+
+The short form can be opened in a browser by someone signed in to DCOS, for demonstration: `/dr-miniapp?unit=<unit id>&date=yyyy-mm-dd`. It then uses that person's own session and permissions.
+
+Tests: `supabase/tests/dr_custom_fields_invites.test.sql` (28 assertions), `__tests__/mini-form.test.ts` (14), two more bot tests. Checked through the running app: a report with custom fields was submitted as the test foreman, an undefined field was dropped, the definition version was stamped and the group received its status line.
+
 ## 3. Verified
 
 | Check | Result |

@@ -16,9 +16,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { verifyTelegramInitData } from "@/lib/hr/telegram/init-data";
 import {
   SESSION_TTL_SECONDS,
+  INVITE_PARAM_PREFIX,
   hashToken,
   launchStartParam,
   newBindingCode,
+  newInviteToken,
   newLaunchToken,
   parseLaunchStartParam,
   signMiniAppSession,
@@ -233,6 +235,30 @@ export async function createBinding(admin: SupabaseClient, actorId: string, unit
   if (error) throw error;
   const row = data as { binding_id: string; expires_at: string };
   return { binding_id: row.binding_id, code, command: `/bind ${code}`, expires_at: row.expires_at };
+}
+
+/**
+ * Issues a one-time invite for one reporter and returns the link to send
+ * them. Opening it starts the bot and links their Telegram account, so they
+ * never have to sign in to the website. The token is shown once.
+ */
+export async function createInvite(
+  admin: SupabaseClient,
+  actorId: string,
+  unitId: string,
+  userId: string,
+): Promise<{ url: string; expires_at: string }> {
+  const username = process.env.NEXT_PUBLIC_TELEGRAM_DR_BOT_USERNAME;
+  if (!username) throw new Error("NEXT_PUBLIC_TELEGRAM_DR_BOT_USERNAME is not configured");
+  const token = newInviteToken();
+  const { data, error } = await admin.rpc("dr_tg_create_invite", {
+    p_actor: actorId,
+    p_unit_id: unitId,
+    p_user_id: userId,
+    p_token_hash: hashToken(token),
+  });
+  if (error) throw error;
+  return { url: `https://t.me/${username}?start=${INVITE_PARAM_PREFIX}${token}`, expires_at: data as string };
 }
 
 interface BindingRow {
