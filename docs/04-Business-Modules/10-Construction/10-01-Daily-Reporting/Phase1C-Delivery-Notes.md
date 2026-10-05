@@ -83,6 +83,17 @@ The session is a signed token valid for 2 hours, for one user and **one unit**. 
 
 Abuse cases covered by tests: `initData` signed with another bot token; start parameter swapped after signing; stale `initData`; no launch token; unlinked or inactive account; expired, revoked or foreign launch token; group member who is not a reporter; reporter who left or was removed from the group; Telegram unreachable (fails closed); forged, tampered or expired session token; a session used for another unit; binding code that is wrong, expired, already used, posted by someone not allowed, or posted in a private chat; one group bound to two units.
 
+### Live test on 2026-10-05 (real bot, real group, local dev server with the poller)
+
+| Step | Result |
+|---|---|
+| Private chat: /start and /link answered; an account linked through the attendance bot is recognised | Pass |
+| Bot added to a group and made administrator; the update reached the webhook route | Pass |
+| /bind picked from the command menu, code given as a reply; a wrong code refused; the right code bound the group to unit SC-01 | Pass (the reply prompt was added after the menu was found to send /bind with no code) |
+| Report DR-2026-000001 submitted through the gateway as the reporter; intake rule rejected the first attempt (no next-day plan) | Pass |
+| Status line "DR-2026-000001 submitted" appeared in the group, seen by the owner | Pass |
+| Launch button | Not posted, as expected: no Mini App is registered yet |
+
 ## 4. Not verified, or not done
 
 | Item | Detail |
