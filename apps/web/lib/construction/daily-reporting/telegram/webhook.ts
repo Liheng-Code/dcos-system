@@ -70,7 +70,8 @@ async function handleBind(
 ): Promise<void> {
   const code = normalizeBindingCode(rawCode);
   if (!code) {
-    await askForReply(chat.id, BIND_PROMPT, messageId, "8-character code");
+    const wrong = rawCode.trim() ? "That is not a binding code (8 letters and digits). " : "";
+    await askForReply(chat.id, wrong + BIND_PROMPT, messageId, "8-character code");
     return;
   }
   const actor = await linkedProfile(admin, fromId);
@@ -145,7 +146,7 @@ async function handleGroup(admin: SupabaseClient, update: DrTelegramUpdate): Pro
   const command = first.toLowerCase().replace(/@\S+$/, "");
   if (command === "/bind") await handleBind(admin, message.chat, message.from?.id, rest[0] ?? "", message.message_id);
   else if (command === "/report") await handleReportCommand(admin, message.chat);
-  else if (message.reply_to_message?.from?.is_bot && message.reply_to_message.text === BIND_PROMPT) {
+  else if (message.reply_to_message?.from?.is_bot && message.reply_to_message.text?.endsWith(BIND_PROMPT)) {
     // The answer to the prompt above: the code on its own.
     await handleBind(admin, message.chat, message.from?.id, first, message.message_id);
   }
