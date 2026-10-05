@@ -147,6 +147,8 @@ export const PUBLIC_API = {
     "lib/construction/construction-nav.ts",
     // Named exports of the site daily-report service that others may use.
     "lib/construction/site/public.ts",
+    // Read-only site measurement of a subcontract, shown on the QS subcontract page next to its payment certificates.
+    "components/construction/daily-reporting/dr-subcontract-measurement.tsx",
   ],
   document_control: [
     "lib/documents/document-control-nav.ts",

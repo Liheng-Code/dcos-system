@@ -186,17 +186,19 @@ Prerequisite: pilot units have approved history and Phase 1 is stable.
 ### Phase 3 — Integration
 
 - [ ] BE: Planning actuals feed from approved data (finalise the R2 design; the basic approval-time sync already exists).
-- [ ] BE: Issues → RFI, inspection requests → QA/QC, incidents → HSE (today these are link fields only).
+- [~] BE/FE: Issues → RFI, inspection requests → QA/QC, incidents → HSE. Built 2026-10-05, migration `20261005000080`: a "Follow-up records" card in the review package lets the approver raise a design RFI from an issue, an inspection request from an inspection line, or an HSE incident from the safety section, each linked back to the report line and audited. The toolbox talk of an approved report is written to the HSE register automatically. Raising is deliberate, one record at a time: nothing a reporter typed becomes a record elsewhere by itself. 22 database assertions. Not yet clicked through in a browser. Open: the link opens the other module's list, not the record itself; the other modules do not show which report a record came from except in its text; the Mini App form has no inspection or incident fields, so those lines come from the web form only.
 - [ ] BE: Equipment hours and material usage → cost allocation to WBS.
-- [ ] BE: Measurement support for sub-IPC: read-only reported and verified quantities, **no write path to IPC** (D15).
-- [ ] FE: KPI dashboards and trend analysis (R1 §20).
+- [~] BE/FE: Measurement support for sub-IPC, built 2026-10-05, migration `20261005000090`: a "Site Measurement" tab on the subcontract page shows, for a period (or a certificate's period), the reported and verified quantity per activity from approved reports of the units linked to the subcontract, with days reported, progress, the contract items on the same WBS node, and a CSV export. Reports not yet approved are counted and left out. Read-only: one stable `security invoker` function, **no write path to IPC** (D15). 11 database assertions, 3 unit tests. Not yet clicked through in a browser. Needs each reporting unit linked to its subcontract in Setup. Open: activities are pointed at contract items by WBS node only; there is no mapping of activities to contract items.
+- [~] FE: KPI dashboards and trend analysis (R1 §20). Built 2026-10-05 as part of the "Performance" tab (see Phase 4): reports per week by outcome. Not yet clicked through in a browser. Open: trends of manpower, delays and progress against plan.
 - [ ] BE/mobile-engineer: React Native Field App with background sync (this also removes the iOS Background Sync limit).
 
 ### Phase 4 — Intelligence
 
+Started 2026-10-05 at the owner's request, ahead of the months of history the plan asks for; the screens fill as reports are approved. Migration `20261005000100` (one read-only function, `dr_performance`). 9 database assertions, 9 unit tests. Not yet clicked through in a browser.
+
 - [ ] Cross-project anomaly detection.
-- [ ] Productivity benchmarking from approved history.
-- [ ] Unit performance scoring (timeliness, accuracy, correction rate).
+- [~] Productivity benchmarking from approved history. Built: output per worker per day by activity and unit, from verified quantities, against the project's median day for that activity. Within one project only: activities are not comparable across projects yet (no shared activity catalogue). Needs reports that give both a quantity and a headcount on the activity line.
+- [~] Unit performance scoring (timeliness, accuracy, correction rate). Built: "Performance" tab for project-wide viewers, weakest unit first. Score = on time 40 + accepted without return 30 + quantities left unchanged by the approver 30; no score under 5 reports due; a part with no data is left out and the rest re-weighted. The weights are a first proposal for the owner to confirm. Reporting units do not see it.
 - [ ] Forecasting inputs for EVM.
 
 ---

@@ -319,6 +319,36 @@ export async function removeApprover(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// ── Follow-up records in other modules ──────────────────────────────────────
+export type FollowUpKind = "RFI" | "INSPECTION_REQUEST" | "HSE_INCIDENT" | "TOOLBOX_TALK";
+
+export interface FollowUp {
+  id: string;
+  kind: FollowUpKind;
+  section: string;
+  line_id: string;
+  target_id: string;
+  reference: string | null;
+  created_at: string;
+}
+
+export async function listFollowUps(reportId: string): Promise<FollowUp[]> {
+  const { data, error } = await createClient()
+    .from("dr_follow_ups")
+    .select("id, kind, section, line_id, target_id, reference, created_at")
+    .eq("report_id", reportId)
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return (data as FollowUp[]) ?? [];
+}
+
+/** Raises an RFI, an inspection request or an HSE incident from a line of the report. Approvers only. */
+export const raiseFollowUp = (reportId: string, kind: FollowUpKind, lineId: string | null, fields: Record<string, string>) =>
+  api<{ kind: FollowUpKind; line_id: string; reference: string; target_id: string }>(`/api/dr/reports/${reportId}/follow-ups`, {
+    method: "POST",
+    body: JSON.stringify({ kind, line_id: lineId, fields }),
+  });
+
 // ── AI assurance (approvers only; row-level security hides it from reporting units) ──
 export interface AiRun {
   id: string;

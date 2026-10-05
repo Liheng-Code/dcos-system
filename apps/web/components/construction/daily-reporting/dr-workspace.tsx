@@ -22,6 +22,7 @@ import type { DrReport, ReportingUnit } from "@/lib/construction/daily-reporting
 import { DrConflicts } from "./dr-conflicts";
 import { DrMissingBoard } from "./dr-missing-board";
 import { DrOverview } from "./dr-overview";
+import { DrPerformance } from "./dr-performance";
 import { DrReportForm, type FormMode } from "./dr-report-form";
 import { DrReportView } from "./dr-report-view";
 import { DrSetup } from "./dr-setup";
@@ -29,7 +30,7 @@ import { DrTelegramLink } from "./dr-telegram-link";
 import { DrSummary } from "./dr-summary";
 import { addDays, EmptyState, Flag, formatDateTime, inputClass, StateBadge, todayIso } from "./dr-ui";
 
-type Tab = "reports" | "review" | "summary" | "missing" | "overview" | "setup";
+type Tab = "reports" | "review" | "summary" | "missing" | "overview" | "performance" | "setup";
 
 type View =
   | { kind: "tabs" }
@@ -154,6 +155,7 @@ function Workspace() {
       out.push({ key: "missing", label: "Missing reports" });
     }
     if (capabilities.canViewProject) out.push({ key: "overview", label: "Overview" });
+    if (capabilities.canViewProject) out.push({ key: "performance", label: "Performance" });
     if (capabilities.canAdmin) out.push({ key: "setup", label: "Setup" });
     return out;
   }, [capabilities, myUnits.length, inbox.length]);
@@ -316,6 +318,7 @@ function Workspace() {
       ) : null}
       {tab === "missing" ? <DrMissingBoard projectId={selectedProjectId} capabilities={capabilities} onOpenReport={openReport} /> : null}
       {tab === "overview" ? <DrOverview projectId={selectedProjectId} /> : null}
+      {tab === "performance" ? <DrPerformance projectId={selectedProjectId} /> : null}
       {tab === "setup" ? <DrSetup projectId={selectedProjectId} capabilities={capabilities} /> : null}
     </div>
   );

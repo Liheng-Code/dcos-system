@@ -42,6 +42,7 @@ import {
 } from "@/lib/construction/daily-reporting/types";
 import { DrAiFindings } from "./dr-ai";
 import { DrCustomFieldsView } from "./dr-custom-fields";
+import { DrFollowUps } from "./dr-follow-ups";
 import { Field, Flag, formatDateTime, inputClass, RuleList, SectionCard, StateBadge, textareaClass } from "./dr-ui";
 
 type Line = { line_id: string } & Record<string, unknown>;
@@ -401,6 +402,10 @@ export function DrReportView({
             ]),
           )}
         />
+      ) : null}
+
+      {capabilities.canReview && version.report_kind !== "NO_WORK" && report.submission_state !== "WITHDRAWN" ? (
+        <DrFollowUps reportId={report.id} payload={version.payload} canRaise={version.version_no === report.current_version_no} />
       ) : null}
 
       {version.report_kind === "NO_WORK" ? (

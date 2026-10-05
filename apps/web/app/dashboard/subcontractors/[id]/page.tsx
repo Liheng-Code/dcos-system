@@ -5,8 +5,9 @@ import { useParams } from "next/navigation";
 import { deleteSubcontractItemById, getSubcontractById, insertSubcontractItem, listSubcontractBackChargesBySubcontractId, listSubcontractIpcsBySubcontractId, listSubcontractItemsBySubcontractId, listSubcontractPerformanceNoticesBySubcontractId, listSubcontractVariationsBySubcontractId, updateSubcontractById } from "@/lib/qs/qs-queries";
 import {
   Loader2, Save, FileText, AlertTriangle, DollarSign,
-  ClipboardList, Tag, Percent, FileWarning, Plus, Trash2,
+  ClipboardList, Tag, Percent, FileWarning, Plus, Trash2, Ruler,
 } from "lucide-react";
+import { DrSubcontractMeasurement } from "@/components/construction/daily-reporting/dr-subcontract-measurement";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,12 +55,13 @@ interface Variation {
   schedule_impact_days: number | null;
 }
 
-type Tab = "details" | "items" | "ipcs" | "back-charges" | "notices" | "variations";
+type Tab = "details" | "items" | "ipcs" | "measurement" | "back-charges" | "notices" | "variations";
 
 const tabs: { key: Tab; label: string; icon: typeof FileText }[] = [
   { key: "details", label: "Details", icon: ClipboardList },
   { key: "items", label: "Items (BOQ)", icon: Tag },
   { key: "ipcs", label: "IPCs", icon: DollarSign },
+  { key: "measurement", label: "Site Measurement", icon: Ruler },
   { key: "back-charges", label: "Back Charges", icon: AlertTriangle },
   { key: "notices", label: "Performance Notices", icon: FileWarning },
   { key: "variations", label: "Variations", icon: FileText },
@@ -472,6 +474,17 @@ export default function SubcontractDetailPage() {
             ))
           )}
         </div>
+      )}
+
+      {activeTab === "measurement" && sub && (
+        <DrSubcontractMeasurement
+          subcontractId={sub.id}
+          subcontractNo={sub.subcontract_no}
+          items={items}
+          periods={ipcs
+            .filter((i) => i.period_start && i.period_end)
+            .map((i) => ({ label: `${i.ipc_no} (${i.period_start} to ${i.period_end})`, from: i.period_start, to: i.period_end }))}
+        />
       )}
 
       {activeTab === "back-charges" && (
