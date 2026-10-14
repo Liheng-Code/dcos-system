@@ -1,5 +1,7 @@
 # DCOS — Module 04: Task Management
 ## 08 — API Reference
+> **Note (2026-10-13):** where this document conflicts with `13-Team-Planning-Addendum.md` (data model on `wbs_tasks`, status model, RBAC, capacity), the addendum wins.
+
 
 | Field | Value |
 |---|---|

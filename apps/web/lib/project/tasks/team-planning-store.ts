@@ -1,7 +1,7 @@
 import { type SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
 
-export type WeeklyPlanStatus = "draft" | "submitted" | "approved";
+export type WeeklyPlanStatus = "draft" | "submitted" | "approved" | "published" | "archived";
 
 export interface WeeklyPlanRecord {
   id: string;
@@ -120,7 +120,7 @@ export async function savePlanAssignments(
 export async function setWeeklyPlanStatus(
   supabase: SupabaseClient,
   planId: string,
-  status: Exclude<WeeklyPlanStatus, "approved">,
+  status: Extract<WeeklyPlanStatus, "draft" | "submitted" | "approved">,
 ): Promise<void> {
   const { error } = await supabase
     .from("weekly_plans")

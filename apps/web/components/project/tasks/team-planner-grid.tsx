@@ -18,7 +18,7 @@ import {
 } from "@/lib/project/tasks/team-planning-store";
 import { cn } from "@/lib/utils";
 import { isActiveTask } from "@/lib/task-scope";
-import { updateWbsTaskById } from "@/lib/project/tasks/tasks-queries";
+import { setTaskPlanning } from "@/lib/project/tasks/team-plan-service";
 
 interface PlannerMember {
   id: string;
@@ -221,8 +221,7 @@ export function TeamPlannerGrid({
 
     try {
       if (!task.owner_id || task.owner_id !== targetMemberId) {
-        const { error } = await updateWbsTaskById({ owner_id: targetMemberId, owner_name: member.full_name }, task.id);
-        if (error) throw error;
+        await setTaskPlanning(supabase, task.id, { owner_id: targetMemberId });
         toast.success(`Assigned to ${member.full_name}`);
       } else if (
         dragAnchorDay !== null &&
@@ -233,8 +232,7 @@ export function TeamPlannerGrid({
         const delta = targetDayIndex - dragAnchorDay;
         const shift = (dateStr: string) =>
           format(addDays(new Date(dateStr), delta), "yyyy-MM-dd");
-        const { error } = await updateWbsTaskById({ start_date: shift(task.start_date), end_date: shift(task.end_date) }, task.id);
-        if (error) throw error;
+        await setTaskPlanning(supabase, task.id, { start_date: shift(task.start_date), end_date: shift(task.end_date) });
         toast.success(`Shifted ${Math.abs(delta)} day(s)`);
       } else {
         return;
