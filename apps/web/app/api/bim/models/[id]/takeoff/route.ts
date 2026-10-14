@@ -3,6 +3,7 @@ import { createUserClient, createAdminClient } from "@/lib/supabase/server";
 import {
   resolveTenantId,
   bulkUpsertElementTakeoff,
+  pruneNonElementTakeoff,
   listElementTakeoff,
   BimError,
 } from "@/lib/design/bim/bim-service";
@@ -55,8 +56,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { elements } = body;
-  if (!Array.isArray(elements) || elements.length === 0) {
+  const { elements, prune } = body;
+  if (prune !== true && (!Array.isArray(elements) || elements.length === 0)) {
     return NextResponse.json(
       { error: "elements array is required" },
       { status: 400 },
@@ -67,14 +68,13 @@ export async function POST(
   const tenantId = await resolveTenantId(supabase, user.id);
 
   try {
-    const count = await bulkUpsertElementTakeoff(
-      supabase,
-      tenantId,
-      id,
-      elements,
-      user.id,
-    );
-    return NextResponse.json({ data: { extracted: count } }, { status: 201 });
+    // prune: true removes the non-element rows of an older extraction (never one that a BOQ promotion uses); it may be sent
+    // alone, after the last batch of elements.
+    const count = Array.isArray(elements) && elements.length > 0
+      ? await bulkUpsertElementTakeoff(supabase, tenantId, id, elements, user.id)
+      : 0;
+    const pruned = prune === true ? await pruneNonElementTakeoff(supabase, tenantId, id) : 0;
+    return NextResponse.json({ data: { extracted: count, pruned } }, { status: 201 });
   } catch (err) {
     if (err instanceof BimError) {
       return NextResponse.json(

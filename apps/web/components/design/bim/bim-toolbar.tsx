@@ -17,7 +17,7 @@ import { Clipper, Hider } from "@thatopen/components";
 import { BimEditDialog } from "./bim-edit-dialog";
 import { BimDeleteDialog } from "./bim-delete-dialog";
 import { BimReviewPromoteDialog } from "./bim-review-promote-dialog";
-import { extractBoqFieldsFromItemData } from "@/lib/design/bim/ifc-helpers";
+import { describeExtraction, extractTakeoffRows } from "@/lib/design/bim/takeoff-extract";
 import type { BimModel } from "@/lib/design/bim/bim-types";
 
 function ClipboardListIcon({ className }: { className?: string }) {
@@ -62,7 +62,7 @@ export function BimToolbar({ modelId, model, onModelUpdated }: BimToolbarProps) 
   const {
     activeTool, setActiveTool, ghostMode, setGhostMode,
     projectionMode, setProjectionMode, setShowGrid, showGrid,
-    selectedItems, setSelectedItems, toggleItemVisibility,
+    selectedItems, setSelectedItems, toggleItemVisibility, spatialTree, elementStoryMap,
   } = useBimViewer();
   const components = useBimComponents();
   const world = useBimWorld();
@@ -81,30 +81,38 @@ export function BimToolbar({ modelId, model, onModelUpdated }: BimToolbarProps) 
     }
     setExtracting(true);
     try {
-      const elements = itemDataRef.current
-        .map((item) => extractBoqFieldsFromItemData(item))
-        .filter((row): row is NonNullable<typeof row> => row !== null);
+      // Real elements only (not relationship / property-set / type records), with quantities from the standard IFC base
+      // quantities and the storey from the model's spatial structure wherever the project's own parameters are empty.
+      const { rows: elements, stats } = extractTakeoffRows(itemDataRef.current, { spatialTree, geometricStoreys: elementStoryMap });
 
       if (elements.length === 0) {
-        toast.error("No elements with a GlobalId were found to extract");
+        toast.error("No building elements with a GlobalId were found to extract");
         return;
       }
 
-      const missing = elements.filter((el) => el.quantity == null || !el.unit).length;
-
-      const res = await fetch(`/api/bim/models/${modelId}/takeoff`, {
+      // batches keep each request small; the last request removes the non-element rows of an older extraction
+      let extracted = 0;
+      for (let i = 0; i < elements.length; i += 2000) {
+        const res = await fetch(`/api/bim/models/${modelId}/takeoff`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ elements: elements.slice(i, i + 2000) }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Failed to extract takeoff data");
+        extracted += json.data.extracted;
+      }
+      const pruneRes = await fetch(`/api/bim/models/${modelId}/takeoff`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ elements }),
+        body: JSON.stringify({ prune: true }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to extract takeoff data");
+      const pruned = pruneRes.ok ? ((await pruneRes.json()).data?.pruned ?? 0) : 0;
 
-      toast.success(
-        missing > 0
-          ? `Extracted ${json.data.extracted} elements (${missing} missing quantity/unit)`
-          : `Extracted ${json.data.extracted} elements`,
-      );
+      const missing = elements.filter((el) => el.quantity == null || !el.unit).length;
+      const summary = describeExtraction(stats) + (pruned > 0 ? ` · ${pruned} old non-element records removed` : "");
+      if (missing > 0 || stats.scales.assumed) toast.warning(`Extracted ${extracted} elements: ${summary}`);
+      else toast.success(`Extracted ${extracted} elements: ${summary}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to extract takeoff data");
     } finally {
