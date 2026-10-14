@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { ProjectProvider } from "@/components/dashboard/project-context";
 import { ProjectSwitcher } from "@/components/dashboard/project-switcher";
+import { CommandPalette } from "@/components/dashboard/command-palette";
 import { TaskAlertsMenu } from "@/components/dashboard/task-alerts-menu";
 import { TaskAlertsProvider } from "@/components/dashboard/task-alerts-provider";
 import { ModuleSettingsProvider, useModuleSettings } from "@/contexts/module-settings-context";
@@ -83,6 +84,7 @@ export default function DashboardLayout({
                   )}
                 </button>
                 <ProjectSwitcher />
+                <CommandPalette />
                 <div className="flex-1" />
                 <TaskAlertsMenu />
                 <UserMenu />

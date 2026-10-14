@@ -13,8 +13,8 @@ interface PortfolioBandProps {
 export function PortfolioBand({ kpis, loading }: PortfolioBandProps) {
   const chips = kpis
     ? [
-        { label: "Tender projects", value: kpis.preContractProjects, icon: Handshake, href: "/dashboard/projects", gradient: "from-amber-500 to-orange-600" },
-        { label: "Awarded projects", value: kpis.postContractProjects, icon: HardHat, href: "/dashboard/projects", gradient: "from-emerald-500 to-teal-600" },
+        { label: "Tender projects", value: kpis.preContractProjects, icon: Handshake, href: "/dashboard/projects?view=pipeline", gradient: "from-amber-500 to-orange-600" },
+        { label: "Awarded projects", value: kpis.postContractProjects, icon: HardHat, href: "/dashboard/projects?view=live", gradient: "from-emerald-500 to-teal-600" },
         { label: "Tasks", value: kpis.totalTasks, icon: ListChecks, href: "/dashboard/tasks", gradient: "from-indigo-500 to-violet-600" },
         { label: "Documents", value: kpis.totalDocuments, icon: FileText, href: "/dashboard/documents", gradient: "from-sky-500 to-blue-600" },
         { label: "HSE incidents", value: kpis.hseIncidents, icon: AlertTriangle, href: "/dashboard/hse", gradient: "from-orange-500 to-red-600" },

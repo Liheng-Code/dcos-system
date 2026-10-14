@@ -4,9 +4,10 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import type { Project } from "@/components/project/projects/project-edit-sheet";
+import type { Project } from "@/lib/project/projects/project-types";
 import {
   isPreparationOpen,
+  isSubmittedOrLater,
   STAGE_LABELS,
   workstreamLabel,
   type GoNoGoCriteria,
@@ -82,9 +83,15 @@ export interface PrecontractCtx {
   /** Applies a workstream change on screen immediately (optimistic); callers persist it and refresh on error. */
   patchWorkstream: (id: string, patch: Partial<Workstream>) => void;
   openInModule: (href: string) => void;
+  /** Opens the Registration section in edit mode (who may edit is checked by the caller). */
   onEdit: () => void;
+  editingRegistration: boolean;
+  setEditingRegistration: (editing: boolean) => void;
   onProjectUpdate: (project: Project) => void;
 }
+
+/** Registration can be edited by tender editors until the bid is submitted (as the header Edit button). */
+export const canEditRegistration = (ctx: PrecontractCtx) => ctx.can("tender_register", "edit") && !isSubmittedOrLater(ctx.details.tender_stage);
 
 export const stageOf = (ctx: PrecontractCtx) => ctx.details.tender_stage;
 /** Tender preparation records (registers, checklists) are editable between Go and Internal Review. */

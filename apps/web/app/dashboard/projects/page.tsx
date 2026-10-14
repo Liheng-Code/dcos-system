@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
@@ -30,11 +30,14 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
       </div>
-      <ProjectListPage />
+      {/* The list reads its view and filters from the URL (useSearchParams). */}
+      <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+        <ProjectListPage />
+      </Suspense>
     </div>
   );
 }

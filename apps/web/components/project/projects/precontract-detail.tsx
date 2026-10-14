@@ -6,11 +6,10 @@ import { ChevronLeft, Loader2, Pencil, Check, Circle, CircleDot, Minus } from "l
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/components/project/projects/project-edit-sheet";
+import type { Project } from "@/lib/project/projects/project-types";
 import { useProject } from "@/components/dashboard/project-context";
-import { PrecontractWizard } from "@/components/project/projects/precontract-wizard";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
-import { isSubmittedOrLater, STAGE_LABELS, stageIndex, type Workstream, type WorkstreamCode } from "@/lib/qs/tender-lifecycle";
+import { isSubmittedOrLater, STAGE_LABELS, stageIndex, type Workstream } from "@/lib/qs/tender-lifecycle";
 import type { PrecontractCtx, PrecontractDetails, StaffOption, TenderRecord } from "@/components/project/projects/precontract/shared";
 import { GoNoGoSection, RegistrationSection, TenderManagementSection } from "@/components/project/projects/precontract/setup-sections";
 import {
@@ -30,6 +29,7 @@ import {
   OutcomeSection,
   SubmissionSection,
 } from "@/components/project/projects/precontract/control-sections";
+import { TENDER_SECTION_GROUPS, type TenderSectionDef, type TenderSectionId } from "@/lib/project/projects/project-tabs";
 import { getProjectPrecontractDetailByProjectId, getTenderRegisterById, listProfiles, listTenderWorkstreamsByTenderId } from "@/lib/project/projects/projects-queries";
 
 interface PrecontractDetailProps {
@@ -38,55 +38,16 @@ interface PrecontractDetailProps {
   onUpdate: (project: Project) => void;
   /** Rendered inside another view (post-contract "Tender Record" tab): no page header. */
   embedded?: boolean;
+  /** Section from the URL. With onSectionChange the section is controlled by the page; otherwise kept here. */
+  section?: string | null;
+  onSectionChange?: (section: string) => void;
+  /** Open with the Registration editor showing (?edit=1, e.g. from an old /edit link). */
+  startEditing?: boolean;
 }
 
-// Sections follow the master pre-contract flow (docs/04-Business-Modules/04-02-Project-Setup/
-// 04-02-01-Pre Contract Project/PRE-CONTRACT Project Prompt.md), numbered as its flow diagram.
-type SectionId =
-  | "registration" | "management" | "go-no-go"
-  | "documents" | "technical" | "qs" | "planning" | "procurement" | "commercial" | "risk" | "hse-qaqc"
-  | "clarifications" | "compilation" | "approval" | "submission" | "outcome";
-
-interface SectionDef {
-  id: SectionId;
-  no: string;
-  label: string;
-  workstreams?: WorkstreamCode[];
-}
-
-const GROUPS: { title: string; sections: SectionDef[] }[] = [
-  {
-    title: "Setup",
-    sections: [
-      { id: "registration", no: "01", label: "Registration" },
-      { id: "management", no: "02", label: "Tender Management" },
-      { id: "go-no-go", no: "03", label: "Go / No-Go" },
-    ],
-  },
-  {
-    title: "Workstreams",
-    sections: [
-      { id: "documents", no: "04", label: "Tender Documents", workstreams: ["documents"] },
-      { id: "technical", no: "05", label: "Technical Review", workstreams: ["technical_arc", "technical_str", "technical_mep", "technical_bim"] },
-      { id: "qs", no: "06", label: "QS Tendering", workstreams: ["qs_tendering"] },
-      { id: "planning", no: "07", label: "Tender Planning", workstreams: ["planning"] },
-      { id: "procurement", no: "08", label: "Procurement", workstreams: ["procurement"] },
-      { id: "commercial", no: "09", label: "Commercial", workstreams: ["commercial"] },
-      { id: "risk", no: "10", label: "Risk & Opportunity", workstreams: ["risk"] },
-      { id: "hse-qaqc", no: "11", label: "HSE / QAQC", workstreams: ["hse_qaqc"] },
-    ],
-  },
-  {
-    title: "Control",
-    sections: [
-      { id: "clarifications", no: "12", label: "Clarifications & Addenda", workstreams: ["clarifications"] },
-      { id: "compilation", no: "13", label: "Tender Compilation", workstreams: ["compilation"] },
-      { id: "approval", no: "14", label: "Bid Approval" },
-      { id: "submission", no: "15", label: "Submission" },
-      { id: "outcome", no: "16", label: "Tender Outcome" },
-    ],
-  },
-];
+const GROUPS = TENDER_SECTION_GROUPS;
+type SectionId = TenderSectionId;
+type SectionDef = TenderSectionDef;
 const ALL_SECTIONS = GROUPS.flatMap((g) => g.sections);
 
 type NavState = "done" | "active" | "todo" | "na";
@@ -128,7 +89,7 @@ function StateIcon({ state }: { state: NavState }) {
   return <Circle className="h-3.5 w-3.5 text-muted-foreground/60" />;
 }
 
-export function PrecontractDetail({ project: initialProject, onBack, onUpdate, embedded = false }: PrecontractDetailProps) {
+export function PrecontractDetail({ project: initialProject, onBack, onUpdate, embedded = false, section, onSectionChange, startEditing = false }: PrecontractDetailProps) {
   const router = useRouter();
   const { setSelectedProjectId, refreshProjects } = useProject();
   const { can, roleCodes } = useTenderPermissions();
@@ -139,8 +100,17 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [active, setActive] = useState<SectionId | null>(null);
+  const [editingRegistration, setEditingRegistration] = useState(startEditing);
+  const [localActive, setLocalActive] = useState<SectionId | null>(null);
+  const urlSection = ALL_SECTIONS.find((s) => s.id === section)?.id ?? null;
+  const active = onSectionChange ? urlSection : localActive;
+  const setActive = (id: SectionId) => (onSectionChange ? onSectionChange(id) : setLocalActive(id));
+  // Edit = the Registration section in edit mode.
+  const startEdit = useCallback(() => {
+    if (onSectionChange) onSectionChange("registration");
+    else setLocalActive("registration");
+    setEditingRegistration(true);
+  }, [onSectionChange]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -189,13 +159,15 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
       setSelectedProjectId(project.id);
       router.push(href);
     },
-    onEdit: () => setEditing(true),
+    onEdit: startEdit,
+    editingRegistration,
+    setEditingRegistration,
     onProjectUpdate: (p: Project) => {
       setProject(p);
       refreshProjects();
       onUpdate(p);
     },
-  }, [project, details, tender, workstreams, staff, userId, roleCodes, can, load, setSelectedProjectId, router, refreshProjects, onUpdate]);
+  }, [project, details, tender, workstreams, staff, userId, roleCodes, can, load, setSelectedProjectId, router, refreshProjects, onUpdate, startEdit, editingRegistration]);
 
   if (loading) {
     return (
@@ -205,20 +177,6 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
     );
   }
 
-  if (editing) {
-    return (
-      <PrecontractWizard
-        project={project}
-        onClose={() => setEditing(false)}
-        onSave={(updated) => {
-          setEditing(false);
-          setProject(updated);
-          onUpdate(updated);
-          void load();
-        }}
-      />
-    );
-  }
 
   if (!ctx) {
     return (
@@ -285,7 +243,7 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
           </p>
         </div>
         {can("tender_register", "edit") && !isSubmittedOrLater(stage) && (
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+          <Button variant="outline" size="sm" onClick={startEdit}>
             <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
           </Button>
         )}

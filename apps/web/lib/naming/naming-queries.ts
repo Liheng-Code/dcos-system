@@ -29,11 +29,6 @@ export function listBudgetPackageSections() {
 }
 
 // @table budget_package_sections
-export function listBudgetPackageSectionsWithIsActive() {
-  return db().from("budget_package_sections").select("*").eq("is_active", true).order("sort_order");
-}
-
-// @table budget_package_sections
 export function updateBudgetPackageSectionById(patch: object, id: string | number | boolean) {
   return db().from("budget_package_sections").update(patch).eq("id", id);
 }
@@ -87,11 +82,6 @@ export function insertDisciplineCodeReturning(row: object) {
 // @table discipline_codes
 export function listDisciplineCodes() {
   return db().from("discipline_codes").select("*").order("sort_order");
-}
-
-// @table discipline_codes
-export function listDisciplineCodesWithIsActive() {
-  return db().from("discipline_codes").select("code, name").eq("is_active", true).order("sort_order");
 }
 
 // @table discipline_codes
@@ -181,11 +171,6 @@ export function listProfiles() {
 }
 
 // ── project_budget_settings ───────────────────────────────────────────────────
-
-// @table project_budget_settings
-export function getProjectBudgetSettingByProjectId(projectId: string | number | boolean) {
-  return db().from("project_budget_settings").select("*").eq("project_id", projectId).maybeSingle();
-}
 
 // @table project_budget_settings
 export function upsertProjectBudgetSettings(rows: object | object[]) {
@@ -329,11 +314,6 @@ export function updateTransmittalById(patch: object, id: string | number | boole
 // ── wbs_nodes ─────────────────────────────────────────────────────────────────
 
 // @table wbs_nodes
-export function countWbsNodesByProjectId(projectId: string | number | boolean) {
-  return db().from("wbs_nodes").select("*", { count: "exact", head: true }).eq("project_id", projectId);
-}
-
-// @table wbs_nodes
 export function insertWbsNodeReturning(row: object) {
   return db().from("wbs_nodes").insert([row]).select().single();
 }
@@ -343,14 +323,4 @@ export function insertWbsNodes(rows: object | object[]) {
   return db().from("wbs_nodes").insert(rows);
 }
 
-// @table wbs_nodes
-export function insertWbsNodesReturning(rows: object | object[]) {
-  return db().from("wbs_nodes").insert(rows).select().single();
-}
-
 // ── zone_type_codes ───────────────────────────────────────────────────────────
-
-// @table zone_type_codes
-export function listZoneTypeCodes() {
-  return db().from("zone_type_codes").select("code, name, category, description").order("sort_order");
-}

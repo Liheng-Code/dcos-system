@@ -416,28 +416,116 @@
       "count": 1
     }
   },
-  "components/design/bim/bim-model-register.tsx": {
+  "components/construction/hse/hse-incidents.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/design/bim/element-properties.tsx": {
-    "react-hooks/static-components": {
-      "count": 11
-    }
-  },
-  "components/design/bim/ifc-viewer-layout.tsx": {
+  "components/construction/hse/hse-observations.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/design/bim/preset-views.tsx": {
+  "components/construction/hse/hse-permits.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/hse/hse-risk-assessments.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/hse/hse-toolbox-talks.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/qaqc/inspection-request-list.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/qaqc/inspection-result-sheet.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/qaqc/itp-manager.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/qaqc/ncr-detail-sheet.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
   },
-  "components/design/bim/spatial-tree.tsx": {
+  "components/construction/qaqc/ncr-list.tsx": {
     "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "components/construction/site/site-daily-reports.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/site/site-equipment.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/site/site-inspections.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/site/site-manpower.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/site/site-ncrs.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/construction/site/site-progress-photos.tsx": {
+    "react-hooks/purity": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
@@ -461,6 +549,31 @@
       "count": 5
     },
     "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/design/bim/bim-model-register.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/design/bim/element-properties.tsx": {
+    "react-hooks/static-components": {
+      "count": 11
+    }
+  },
+  "components/design/bim/ifc-viewer-layout.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/design/bim/preset-views.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "components/design/bim/spatial-tree.tsx": {
+    "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
   },
@@ -510,6 +623,24 @@
       "count": 1
     }
   },
+  "components/documents/transmittals/transmittal-create.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/documents/transmittals/transmittal-detail.tsx": {
+    "prefer-const": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/documents/transmittals/transmittal-list.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
   "components/hr/leave/leave-request-detail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 6
@@ -533,54 +664,8 @@
       "count": 1
     }
   },
-  "components/construction/hse/hse-incidents.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
+  "components/hr/telegram/leave-apply-form.tsx": {
     "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/hse/hse-observations.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/hse/hse-permits.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/hse/hse-risk-assessments.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/hse/hse-toolbox-talks.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/reporting/insights/module-insight-page.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    },
-    "react-hooks/immutability": {
-      "count": 1
-    },
-    "react-hooks/refs": {
       "count": 1
     }
   },
@@ -666,41 +751,8 @@
       "count": 1
     }
   },
-  "components/naming/naming-budget-packages.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 2
-    }
-  },
   "components/naming/naming-document-create.tsx": {
     "react-hooks/preserve-manual-memoization": {
-      "count": 1
-    }
-  },
-  "components/naming/naming-numbering-rules.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/naming/naming-project-wizard.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/documents/transmittals/transmittal-create.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/documents/transmittals/transmittal-detail.tsx": {
-    "prefer-const": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/documents/transmittals/transmittal-list.tsx": {
-    "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
@@ -770,56 +822,55 @@
       "count": 1
     }
   },
-  "components/project/projects/project-edit-sheet.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/projects/project-setup-wizard.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 2
-    }
-  },
   "components/project/projects/project-stakeholders-tab.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/construction/qaqc/inspection-request-list.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 3
-    },
+  "components/project/stakeholders/staff-manager-dialog.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/construction/qaqc/inspection-result-sheet.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
+  "components/project/stakeholders/stakeholder-edit-sheet.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
-  "components/construction/qaqc/itp-manager.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 6
+  "components/project/stakeholders/template-edit-sheet.tsx": {
+    "prefer-const": {
+      "count": 1
     },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/qaqc/ncr-detail-sheet.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
-  "components/construction/qaqc/ncr-list.tsx": {
-    "@typescript-eslint/no-explicit-any": {
+    "react-hooks/immutability": {
       "count": 2
+    }
+  },
+  "components/project/stakeholders/template-list-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/project/wbs/wbs-evm-panel.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    }
+  },
+  "components/project/wbs/wbs-execution-view.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/project/wbs/wbs-task-kpi-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/project/wbs/wbs-tree-page.tsx": {
+    "prefer-const": {
+      "count": 1
     },
     "react-hooks/set-state-in-effect": {
-      "count": 2
+      "count": 1
     }
   },
   "components/qs/audit-log.tsx": {
@@ -876,81 +927,6 @@
   },
   "components/qs/progress-claim-list.tsx": {
     "react/no-unescaped-entities": {
-      "count": 1
-    }
-  },
-  "components/qs/variation-order-list.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 7
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "react/no-unescaped-entities": {
-      "count": 2
-    }
-  },
-  "components/construction/site/site-daily-reports.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/site/site-equipment.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/site/site-inspections.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/site/site-manpower.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/site/site-ncrs.tsx": {
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/construction/site/site-progress-photos.tsx": {
-    "react-hooks/purity": {
-      "count": 2
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/stakeholders/staff-manager-dialog.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/stakeholders/stakeholder-edit-sheet.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/stakeholders/template-edit-sheet.tsx": {
-    "prefer-const": {
-      "count": 1
-    },
-    "react-hooks/immutability": {
-      "count": 2
-    }
-  },
-  "components/project/stakeholders/template-list-page.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/hr/telegram/leave-apply-form.tsx": {
-    "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
@@ -1044,31 +1020,25 @@
       "count": 1
     }
   },
-  "components/project/wbs/template-management-page.tsx": {
+  "components/qs/variation-order-list.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    },
     "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react/no-unescaped-entities": {
       "count": 2
     }
   },
-  "components/project/wbs/wbs-evm-panel.tsx": {
-    "react-hooks/purity": {
-      "count": 1
-    }
-  },
-  "components/project/wbs/wbs-execution-view.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/wbs/wbs-task-kpi-page.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
-  "components/project/wbs/wbs-tree-page.tsx": {
-    "prefer-const": {
+  "components/reporting/insights/module-insight-page.tsx": {
+    "@typescript-eslint/no-explicit-any": {
       "count": 1
     },
-    "react-hooks/set-state-in-effect": {
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/refs": {
       "count": 1
     }
   },
@@ -1100,6 +1070,11 @@
       "count": 5
     }
   },
+  "lib/hr/telegram/miniapp-context.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
   "lib/project-setup-service.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
@@ -1108,11 +1083,6 @@
   "lib/qs/tender-cost-service.ts": {
     "prefer-const": {
       "count": 2
-    }
-  },
-  "lib/hr/telegram/miniapp-context.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
     }
   }
 }

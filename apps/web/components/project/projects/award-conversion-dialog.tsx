@@ -5,8 +5,10 @@ import { countTenderBidSummariesByTenderId, countTenderBoqItemsByTenderId, count
 import { X, Loader2, ArrowRight, CheckCircle2, Package, FileText, AlertTriangle, GanttChartSquare, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { Project } from "@/components/project/projects/project-edit-sheet";
-import { ProjectSetupWizard } from "@/components/project/projects/project-setup-wizard";
+import type { Project } from "@/lib/project/projects/project-types";
+import { useRouter } from "next/navigation";
+import { ensureSetupDefaults } from "@/lib/project/projects/create-project";
+import { projectHref } from "@/lib/project/projects/project-routes";
 import {
   carryOverBoq,
   carryOverPreliminaries,
@@ -55,7 +57,20 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
   const [log, setLog] = useState<string[]>([]);
   const [failures, setFailures] = useState<string[]>([]);
   const [converted, setConverted] = useState<Project | null>(null);
-  const [showSetup, setShowSetup] = useState(false);
+  const router = useRouter();
+  const [openingSetup, setOpeningSetup] = useState(false);
+
+  // After the award: give the project the default setup it lacks, then open the short guided setup.
+  async function continueToSetup(project: Project) {
+    setOpeningSetup(true);
+    try {
+      await ensureSetupDefaults(project.id);
+    } catch (err) {
+      toast.error(`Default setup not added: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+    onConvert(project);
+    router.push(projectHref(project.project_code, "setup"));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -197,21 +212,8 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
       toast.error(`${project.project_code} is post-contract, but ${failed.length} carry-over step(s) failed.`);
     } else {
       toast.success(`${project.project_code} is now a post-contract project.`);
-      setShowSetup(true);
+      void continueToSetup(updated as Project);
     }
-  }
-
-  if (converted && showSetup) {
-    return (
-      <ProjectSetupWizard
-        project={converted}
-        onClose={() => onConvert(converted)}
-        onSave={(p) => {
-          toast.success("Post-contract project setup completed");
-          onConvert(p);
-        }}
-      />
-    );
   }
 
   const option = (checked: boolean, set: (v: boolean) => void, icon: React.ReactNode, title: string, detail: string) => (
@@ -304,8 +306,8 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
 
             <div className="flex items-center justify-end gap-2 border-t px-6 py-4 sticky bottom-0 bg-background">
               {converted ? (
-                <Button onClick={() => setShowSetup(true)}>
-                  <ArrowRight className="h-4 w-4 mr-1.5" /> Continue to Post-Contract Setup
+                <Button onClick={() => continueToSetup(converted)} disabled={openingSetup}>
+                  {openingSetup ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-1.5" />} Continue to Post-Contract Setup
                 </Button>
               ) : (
                 <>
