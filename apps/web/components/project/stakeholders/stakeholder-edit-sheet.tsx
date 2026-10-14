@@ -170,6 +170,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 interface Props {
   stakeholder: Stakeholder | null;
   defaultCategory?: "external" | "internal";
+  defaultType?: string;
   onClose: () => void;
   onSave: (stakeholder: Stakeholder) => void;
   onDelete?: (stakeholder: Stakeholder) => void;
@@ -180,7 +181,7 @@ interface Props {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function StakeholderEditSheet({
-  stakeholder, defaultCategory = "external", onClose, onSave, onDelete, isAdmin, onStaffChange,
+  stakeholder, defaultCategory = "external", defaultType, onClose, onSave, onDelete, isAdmin, onStaffChange,
 }: Props) {
   const isEditing = !!stakeholder;
 
@@ -189,7 +190,7 @@ export function StakeholderEditSheet({
     organization_name: stakeholder?.organization_name ?? "",
     short_name: stakeholder?.short_name ?? "",
     company_code: stakeholder?.company_code ?? "",
-    stakeholder_type: stakeholder?.stakeholder_type ?? (defaultCategory === "internal" ? "INT" : "CLI"),
+    stakeholder_type: stakeholder?.stakeholder_type ?? defaultType ?? (defaultCategory === "internal" ? "INT" : "CLI"),
     category: stakeholder?.category ?? defaultCategory,
     registration_number: stakeholder?.registration_number ?? "",
     tax_number: stakeholder?.tax_number ?? "",
