@@ -44,9 +44,39 @@ export function hoursPerDayOf(cal: WorkCalendar): number {
 // ---------------------------------------------------------------------------
 // Date primitives (UTC-pinned)
 // ---------------------------------------------------------------------------
-export const parseISO = (s: string): Date => new Date(s + "T00:00:00Z");
+// parseISO / toISO sit in the innermost loop of the CPM engine (profiled: ~90% of an 800-activity run), so they build and read the
+// date from its parts instead of going through string parsing and toISOString. Results are identical for valid "YYYY-MM-DD" dates;
+// anything else takes the original path.
+// a programme touches the same few thousand dates over and over: remember their epoch value (bounded)
+const PARSED = new Map<string, number>();
 
-export const toISO = (d: Date): string => d.toISOString().slice(0, 10);
+export const parseISO = (s: string): Date => {
+  const hit = PARSED.get(s);
+  if (hit !== undefined) return new Date(hit);
+  if (s.length === 10 && s.charCodeAt(4) === 45 && s.charCodeAt(7) === 45) {
+    const y = +s.slice(0, 4);
+    const m = +s.slice(5, 7);
+    const d = +s.slice(8, 10);
+    if (y > 999 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      if (dt.getUTCDate() === d) {
+        if (PARSED.size > 50_000) PARSED.clear();
+        PARSED.set(s, dt.getTime());
+        return dt;
+      }
+      // 2026-02-31 would roll over: let the original path decide
+    }
+  }
+  return new Date(s + "T00:00:00Z");
+};
+
+export const toISO = (d: Date): string => {
+  const y = d.getUTCFullYear();
+  if (!(y > 999 && y < 10000)) return d.toISOString().slice(0, 10); // invalid dates throw exactly as before
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${m < 10 ? "0" : ""}${m}-${day < 10 ? "0" : ""}${day}`;
+};
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10);
 

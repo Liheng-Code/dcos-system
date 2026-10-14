@@ -90,6 +90,22 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "Site Records", href: "/dashboard/planning/productivity/site-records", visible: executionOnly },
     ],
   },
+  {
+    // Plan: docs/04-Business-Modules/06-Planning-Scheduling/18-Activity-Library-and-Schedule-Generation-Plan.md
+    key: "activity_library",
+    navKey: "group:planning:activity_library",
+    label: "Activity Library",
+    href: "/dashboard/planning/activity-library",
+    items: [
+      { label: "Activities", href: "/dashboard/planning/activity-library" },
+      { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
+      { label: "Generate", href: "/dashboard/planning/activity-library/generate" },
+      { label: "Quantity Links", href: "/dashboard/planning/activity-library/quantity-links" },
+      { label: "BIM Quantities", href: "/dashboard/planning/activity-library/bim" },
+      { label: "Recovery", href: "/dashboard/planning/activity-library/recovery" },
+      { label: "AI Assistant", href: "/dashboard/planning/activity-library/ai" },
+    ],
+  },
 ];
 
 export function getActivePlanningGroup(pathname: string): ModuleNavGroup | null {
