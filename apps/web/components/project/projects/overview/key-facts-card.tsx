@@ -133,7 +133,9 @@ export function KeyFactsCard({ project, onUpdated }: KeyFactsCardProps) {
               onBlur={() => !saving && setEditing(null)}
               className={inputClass}
             >
-              {project.project_status === "active" && <option value="active" disabled>Active</option>}
+              {(project.project_status === "active" || project.project_status === "on_hold" || project.project_status === "archived") && (
+                <option value="active">Active</option>
+              )}
               {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (STATUS_LABELS[project.project_status] ?? project.project_status)}

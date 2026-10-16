@@ -79,7 +79,7 @@ export function ProjectWorkspace({ code, tab }: ProjectWorkspaceProps) {
 
   const isTender = project.project_type === "tender";
   const home = projectHref(project.project_code);
-  const backToList = () => router.push(`${PROJECTS_PATH}?${readLastListQuery() ?? `view=${listViewForType(project.project_type)}`}`);
+  const backToList = () => router.push(`${PROJECTS_PATH}?${readLastListQuery() ?? `view=${listViewForType(project.project_type, project.project_status)}`}`);
   // Switching tabs replaces the entry, so Back leaves the project instead of stepping through tabs.
   const openTab = (next: string) => router.replace(projectHref(project.project_code, next), { scroll: false });
 

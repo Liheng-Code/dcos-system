@@ -9,6 +9,7 @@ export interface PaletteProject {
   project_code: string;
   project_name: string;
   project_type: string;
+  project_status?: string;
 }
 
 export interface PaletteResult {

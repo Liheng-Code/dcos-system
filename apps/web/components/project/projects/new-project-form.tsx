@@ -13,6 +13,7 @@ import type { ProjectCreateKind } from "@/lib/project/projects/project-routes";
 import { createProject } from "@/lib/project/projects/create-project";
 import { listWbsTemplates, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
 import { ClientField, Field, SectorFields, StaffSelect, inputClass, useStaff } from "@/components/project/projects/fields/project-fields";
+import { ProjectCodeField } from "@/components/project/projects/project-code-field";
 
 const schema = z
   .object({
@@ -122,6 +123,8 @@ export function NewProjectForm({ initialKind, onCancel, onCreated }: NewProjectF
             </button>
           ))}
         </div>
+
+        <ProjectCodeField className="sm:col-span-2" />
 
         <Field label="Project name *" htmlFor="np_name" error={errors.name?.message} className="sm:col-span-2">
           <input id="np_name" autoFocus {...register("name")} className={inputClass} />

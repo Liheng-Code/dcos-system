@@ -6,7 +6,68 @@ import { ArrowRight, CornerDownLeft, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
-import { searchPalette } from "@/lib/project/projects/command-search";
+import { searchPalette, type PaletteProject } from "@/lib/project/projects/command-search";
+
+type PaletteFilter = "all" | "tender" | "awarded" | "on_hold" | "completed" | "archived";
+
+function matchesPaletteFilter(p: PaletteProject, filter: PaletteFilter): boolean {
+  const status = p.project_status ?? "active";
+  switch (filter) {
+    case "all":
+      return true;
+    case "on_hold":
+      return status === "on_hold";
+    case "completed":
+      return status === "completed";
+    case "archived":
+      return status === "archived";
+    case "tender":
+      return p.project_type === "tender" && status !== "on_hold" && status !== "archived";
+    case "awarded":
+      return p.project_type !== "tender" && status !== "on_hold" && status !== "completed" && status !== "archived";
+  }
+}
+
+function ProjectBadges({ project }: { project: PaletteProject }) {
+  const status = project.project_status ?? "active";
+  const isTender = project.project_type === "tender";
+  const isAwarded = project.project_type === "awarded";
+
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {/* Phase / Type badge */}
+      <span
+        className={cn(
+          "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none",
+          isTender
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : isAwarded
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-slate-200 bg-slate-100 text-slate-700",
+        )}
+      >
+        {isTender ? "Tender" : isAwarded ? "Awarded" : "Internal"}
+      </span>
+
+      {/* Lifecycle status badge */}
+      {status === "on_hold" && (
+        <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-orange-700">
+          On Hold
+        </span>
+      )}
+      {status === "completed" && (
+        <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-sky-700">
+          Completed
+        </span>
+      )}
+      {status === "archived" && (
+        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-600">
+          Archived
+        </span>
+      )}
+    </span>
+  );
+}
 
 // Ctrl+K (⌘K on a Mac): jump to any project, or straight to one of its tabs ("004 boq").
 export function CommandPalette() {
@@ -14,6 +75,7 @@ export function CommandPalette() {
   const { projects } = useProject();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<PaletteFilter>("all");
   const [active, setActive] = useState(0);
   const [isMac, setIsMac] = useState(false);
 
@@ -29,11 +91,31 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const results = useMemo(() => searchPalette(query, projects), [query, projects]);
+  const counts = useMemo(() => {
+    return {
+      all: projects.length,
+      tender: projects.filter((p) => matchesPaletteFilter(p, "tender")).length,
+      awarded: projects.filter((p) => matchesPaletteFilter(p, "awarded")).length,
+      on_hold: projects.filter((p) => matchesPaletteFilter(p, "on_hold")).length,
+      completed: projects.filter((p) => matchesPaletteFilter(p, "completed")).length,
+      archived: projects.filter((p) => matchesPaletteFilter(p, "archived")).length,
+    };
+  }, [projects]);
+
+  const filteredProjects = useMemo(
+    () => projects.filter((p) => matchesPaletteFilter(p, filter)),
+    [projects, filter],
+  );
+
+  const results = useMemo(() => searchPalette(query, filteredProjects, 20), [query, filteredProjects]);
 
   function openChange(next: boolean) {
     setOpen(next);
-    if (next) { setQuery(""); setActive(0); }
+    if (next) {
+      setQuery("");
+      setFilter("all");
+      setActive(0);
+    }
   }
 
   function go(index: number) {
@@ -51,6 +133,15 @@ export function CommandPalette() {
 
   const shortcut = isMac ? "⌘K" : "Ctrl K";
 
+  const filterTabs: { id: PaletteFilter; label: string; count: number }[] = [
+    { id: "all", label: "All", count: counts.all },
+    { id: "tender", label: "Tender", count: counts.tender },
+    { id: "awarded", label: "Awarded", count: counts.awarded },
+    { id: "on_hold", label: "On Hold", count: counts.on_hold },
+    { id: "completed", label: "Completed", count: counts.completed },
+    { id: "archived", label: "Archived", count: counts.archived },
+  ];
+
   return (
     <>
       <button
@@ -65,7 +156,7 @@ export function CommandPalette() {
       </button>
 
       <Dialog open={open} onOpenChange={openChange}>
-        <DialogContent className="top-[20%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl data-open:slide-in-from-top-[18%]">
+        <DialogContent className="top-[16%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-2xl data-open:slide-in-from-top-[14%]">
           <DialogTitle className="sr-only">Jump to a project</DialogTitle>
           <div className="flex items-center gap-2 border-b px-4">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -82,9 +173,45 @@ export function CommandPalette() {
               aria-activedescendant={results[active] ? `cp-${results[active].key}` : undefined}
             />
           </div>
+
+          {/* Status & Phase Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 border-b bg-slate-50/70 px-3 py-2">
+            {filterTabs.map((tab) => {
+              const isSelected = filter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setFilter(tab.id);
+                    setActive(0);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                    isSelected
+                      ? "border-primary bg-primary text-primary-foreground shadow-2xs"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900",
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.2 text-[10px] font-semibold tabular-nums",
+                      isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600",
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <ul id="command-palette-results" role="listbox" className="max-h-80 overflow-y-auto p-1.5">
             {results.length === 0 ? (
-              <li className="px-3 py-6 text-center text-sm text-muted-foreground">No project or tab matches “{query}”.</li>
+              <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                No project or tab matches {query ? `“${query}”` : "this filter"}.
+              </li>
             ) : results.map((r, i) => (
               <li
                 key={r.key}
@@ -93,10 +220,15 @@ export function CommandPalette() {
                 aria-selected={i === active}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => go(i)}
-                className={cn("flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm", i === active && "bg-muted")}
+                className={cn("flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm", i === active && "bg-muted")}
               >
-                <span className="w-32 shrink-0 truncate font-mono text-xs text-muted-foreground">{r.project.project_code}</span>
-                <span className="min-w-0 flex-1 truncate">{r.project.project_name}</span>
+                <span className="w-32 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                  {r.project.project_code}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {r.project.project_name}
+                </span>
+                <ProjectBadges project={r.project} />
                 {r.destination && (
                   <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
                     <ArrowRight className="h-3 w-3" /> {r.destination.label}

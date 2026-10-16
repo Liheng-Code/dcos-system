@@ -1,4 +1,4 @@
-import type { ProjectListView } from "@/lib/project/projects/project-routes";
+import { isProjectListView, type ProjectListView } from "@/lib/project/projects/project-routes";
 
 // Per-viewer conveniences only; the URL stays the source of truth. Storage can be blocked
 // (private windows, cleared site data), so every access is guarded.
@@ -6,11 +6,11 @@ import type { ProjectListView } from "@/lib/project/projects/project-routes";
 const VIEW_KEY = "dcos_projects_view";
 const LIST_QUERY_KEY = "dcos_projects_list_query";
 
-/** The view last used, so the list reopens on Live for someone running jobs. */
+/** The view last used, so the list reopens on the last selected bucket. */
 export function readStoredView(): ProjectListView | undefined {
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return v === "pipeline" || v === "live" ? v : undefined;
+    return isProjectListView(v) ? v : undefined;
   } catch {
     return undefined;
   }

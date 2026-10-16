@@ -23,15 +23,43 @@ const TYPE_LABEL: Record<string, string> = {
 // either from the other.
 const TYPE_ORDER: Record<string, number> = { tender: 0, awarded: 1, internal: 2 };
 
-function PhaseBadge({ type }: { type: string }) {
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  on_hold: {
+    label: "On Hold",
+    className: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+  completed: {
+    label: "Completed",
+    className: "bg-sky-50 text-sky-700 border-sky-200",
+  },
+  archived: {
+    label: "Archived",
+    className: "bg-slate-100 text-slate-600 border-slate-300",
+  },
+};
+
+function PhaseBadge({ type, status }: { type: string; status?: string }) {
+  const statusInfo = status ? STATUS_BADGE[status] : undefined;
   return (
-    <span
-      className={cn(
-        "shrink-0 inline-flex items-center rounded-full border px-1.5 py-0 text-[9px] font-medium leading-4",
-        TYPE_BADGE[type] ?? TYPE_BADGE.internal,
+    <span className="inline-flex shrink-0 items-center gap-1">
+      <span
+        className={cn(
+          "shrink-0 inline-flex items-center rounded-full border px-1.5 py-0 text-[9px] font-medium leading-4",
+          TYPE_BADGE[type] ?? TYPE_BADGE.internal,
+        )}
+      >
+        {TYPE_LABEL[type] ?? type}
+      </span>
+      {statusInfo && (
+        <span
+          className={cn(
+            "shrink-0 inline-flex items-center rounded-full border px-1.5 py-0 text-[9px] font-medium leading-4",
+            statusInfo.className,
+          )}
+        >
+          {statusInfo.label}
+        </span>
       )}
-    >
-      {TYPE_LABEL[type] ?? type}
     </span>
   );
 }
@@ -55,13 +83,14 @@ export function ProjectSwitcher() {
 
   return (
     <Select value={selectedProjectId} onValueChange={(value) => setSelectedProjectId((value as string) ?? "")}>
-      <SelectTrigger className="h-8 w-[700px] max-w-[80vw] pl-7 relative overflow-hidden">
+      {/* Sized to the selected project's name (truncated only past the max); the list grows to its longest name. */}
+      <SelectTrigger className="relative h-8 w-auto min-w-[240px] max-w-[min(720px,55vw)] overflow-hidden pl-7">
         <HardHat className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <SelectValue placeholder="All Projects">
+        <SelectValue placeholder="All Projects" className="min-w-0">
           {() =>
             selectedProject ? (
               <span className="flex items-center gap-1.5 truncate">
-                <PhaseBadge type={selectedProject.project_type} />
+                <PhaseBadge type={selectedProject.project_type} status={selectedProject.project_status} />
                 <span className="truncate">
                   {selectedProject.project_code} — {selectedProject.project_name}
                 </span>
@@ -72,12 +101,12 @@ export function ProjectSwitcher() {
           }
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-w-[740px]">
+      <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(90vw,56rem)]">
         <SelectItem value="">All Projects</SelectItem>
         {sorted.map((p) => (
           <SelectItem key={p.id} value={p.id}>
-            <span className="flex items-center gap-1.5 truncate max-w-[400px]">
-              <PhaseBadge type={p.project_type} />
+            <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+              <PhaseBadge type={p.project_type} status={p.project_status} />
               <span className="truncate">
                 {p.project_code} — {p.project_name}
               </span>

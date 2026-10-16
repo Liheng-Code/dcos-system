@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pin, Users } from "lucide-react";
+import { Archive, PauseCircle, Pin, PlayCircle, Users } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useProject } from "@/components/dashboard/project-context";
@@ -41,18 +41,19 @@ interface ProjectTableProps {
   staffMap: Record<string, string>;
   awardedByTenderId: Record<string, Project>;
   projectById: Record<string, Project>;
+  onStatusChange?: (project: Project, nextStatus: string) => void;
 }
 
 // The default Projects view: one row per project with what needs a decision (stage, health,
 // next deadline). Row actions appear on hover; the whole row opens the project.
-export function ProjectTable({ projects, signals, staffMap, awardedByTenderId, projectById }: ProjectTableProps) {
+export function ProjectTable({ projects, signals, staffMap, awardedByTenderId, projectById, onStatusChange }: ProjectTableProps) {
   const router = useRouter();
   const { selectedProjectId, setSelectedProjectId } = useProject();
   const th = "px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground";
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/50">
@@ -73,6 +74,9 @@ export function ProjectTable({ projects, signals, staffMap, awardedByTenderId, p
             const awarded = p.project_type === "tender" ? awardedByTenderId[p.id] : undefined;
             const source = p.source_tender_project_id ? projectById[p.source_tender_project_id] : undefined;
             const isCurrent = selectedProjectId === p.id;
+            const isOnHold = p.project_status === "on_hold";
+            const isArchived = p.project_status === "archived" || p.project_status === "completed";
+            const resumeStatus = "active";
             return (
               <tr key={p.id} onClick={() => router.push(projectHref(p.project_code))} className="group cursor-pointer transition-colors hover:bg-muted/50">
                 <td className="max-w-xs px-3 py-2.5">
@@ -81,7 +85,9 @@ export function ProjectTable({ projects, signals, staffMap, awardedByTenderId, p
                   </Link>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="font-mono">{p.project_code}</span>
-                    {p.project_type === "internal" && <span className="rounded border px-1 text-[10px]">Internal</span>}
+                    <span className="rounded border border-border bg-muted/60 px-1 text-[10px] capitalize">
+                      {p.project_type === "tender" ? "Tender" : p.project_type}
+                    </span>
                     {isCurrent && <span className="rounded bg-primary/10 px-1 text-[10px] font-medium text-primary">Current</span>}
                     {awarded && (
                       <Link href={projectHref(awarded.project_code)} onClick={stop} className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">
@@ -109,6 +115,51 @@ export function ProjectTable({ projects, signals, staffMap, awardedByTenderId, p
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    {onStatusChange && (
+                      <>
+                        {isOnHold || isArchived ? (
+                          <button
+                            type="button"
+                            title={isOnHold ? "Resume project" : "Restore to active"}
+                            aria-label={`Resume ${p.project_name}`}
+                            onClick={(e) => {
+                              stop(e);
+                              onStatusChange(p, resumeStatus);
+                            }}
+                            className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                          >
+                            <PlayCircle className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            title="Put on hold"
+                            aria-label={`Put ${p.project_name} on hold`}
+                            onClick={(e) => {
+                              stop(e);
+                              onStatusChange(p, "on_hold");
+                            }}
+                            className="rounded-md p-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                          >
+                            <PauseCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {!isArchived && (
+                          <button
+                            type="button"
+                            title="Archive project"
+                            aria-label={`Archive ${p.project_name}`}
+                            onClick={(e) => {
+                              stop(e);
+                              onStatusChange(p, "archived");
+                            }}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
                     <Link
                       href={projectHref(p.project_code, "team")}
                       onClick={stop}

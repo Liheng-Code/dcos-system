@@ -3,8 +3,29 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { listProfilesOfIdAndFullName, listProjects } from "@/lib/project/projects/projects-queries";
-import { Search, Loader2, Filter, X, Plus, Users, LayoutGrid, List, Calendar, MapPin, DollarSign, Handshake, HardHat as HardHatIcon, SquareKanban } from "lucide-react";
+import { listProfilesOfIdAndFullName, listProjects, updateProjectByIdReturning } from "@/lib/project/projects/projects-queries";
+import {
+  Search,
+  Loader2,
+  Filter,
+  X,
+  Plus,
+  Users,
+  LayoutGrid,
+  List,
+  Calendar,
+  MapPin,
+  DollarSign,
+  SquareKanban,
+  ClipboardList,
+  Briefcase,
+  Archive,
+  PauseCircle,
+  PlayCircle,
+  CircleCheck,
+  type LucideIcon,
+} from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { type Project } from "@/lib/project/projects/project-types";
@@ -13,8 +34,10 @@ import {
   parseProjectListParams,
   projectHref,
   projectListQuery,
+  projectViewBucket,
   type ProjectCreateKind,
   type ProjectListState,
+  type ProjectListView,
 } from "@/lib/project/projects/project-routes";
 import { readStoredView, rememberList } from "@/components/project/projects/project-list-memory";
 import { NewProjectForm } from "@/components/project/projects/new-project-form";
@@ -37,7 +60,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-amber-500/10 text-amber-600 border-amber-200",
   pending_approval: "bg-orange-500/10 text-orange-600 border-orange-200",
   active: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
-  on_hold: "bg-blue-500/10 text-blue-600 border-blue-200",
+  on_hold: "bg-amber-500/10 text-amber-700 border-amber-200",
   completed: "bg-gray-500/10 text-gray-500 border-gray-200",
   archived: "bg-slate-500/10 text-slate-600 border-slate-200",
 };
@@ -46,7 +69,7 @@ const STATUS_BORDERS: Record<string, string> = {
   draft: "border-t-amber-500",
   pending_approval: "border-t-orange-500",
   active: "border-t-emerald-500",
-  on_hold: "border-t-blue-500",
+  on_hold: "border-t-amber-500",
   completed: "border-t-gray-400",
   archived: "border-t-slate-500",
 };
@@ -60,7 +83,59 @@ const STATUS_LABELS: Record<string, string> = {
   archived: "Archived",
 };
 
-type PhaseTab = "precontract" | "postcontract";
+// The portfolio filter, in workflow order. Every project is in exactly one view
+// (projectViewBucket in lib/project/projects/project-routes.ts).
+const VIEW_BUCKETS: {
+  view: ProjectListView;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  /** Icon colour when not selected. */
+  iconClass: string;
+  /** Count badge when selected. */
+  activeBadgeClass: string;
+}[] = [
+  {
+    view: "pipeline",
+    title: "Tenders",
+    description: "Registered, in progress, submitted and under evaluation",
+    icon: ClipboardList,
+    iconClass: "text-blue-600",
+    activeBadgeClass: "bg-blue-600 text-white",
+  },
+  {
+    view: "live",
+    title: "Awarded",
+    description: "Award review, contract preparation and active execution",
+    icon: Briefcase,
+    iconClass: "text-emerald-600",
+    activeBadgeClass: "bg-emerald-600 text-white",
+  },
+  {
+    view: "on_hold",
+    title: "On hold",
+    description: "Temporarily paused, awaiting a decision",
+    icon: PauseCircle,
+    iconClass: "text-amber-600",
+    activeBadgeClass: "bg-amber-600 text-white",
+  },
+  {
+    view: "completed",
+    title: "Completed",
+    description: "Finished projects",
+    icon: CircleCheck,
+    iconClass: "text-teal-600",
+    activeBadgeClass: "bg-teal-600 text-white",
+  },
+  {
+    view: "archived",
+    title: "Archived",
+    description: "Archived records, and lost, cancelled, withdrawn or no-bid tenders",
+    icon: Archive,
+    iconClass: "text-slate-500",
+    activeBadgeClass: "bg-slate-700 text-white",
+  },
+];
 
 // The list's view, filters and layout live in the URL (see lib/project/projects/project-routes.ts);
 // opening a project goes to /dashboard/projects/[code], and ?new=<kind> opens a create flow.
@@ -94,8 +169,13 @@ export function ProjectListPage() {
     return () => clearTimeout(timer);
   }, [search, list.q, setList]);
 
-  const phaseTab: PhaseTab = list.view === "pipeline" ? "precontract" : "postcontract";
-  const setPhaseTab = (tab: PhaseTab) => setList({ view: tab === "precontract" ? "pipeline" : "live", type: "" });
+  const activeView = list.view;
+  const setView = (view: ProjectListView) =>
+    setList({
+      view,
+      type: view === "pipeline" ? "" : list.type,
+      layout: view !== "pipeline" && list.layout === "board" ? "card" : list.layout,
+    });
   const typeFilter = list.type;
   const statusFilter = list.status;
   const sectorFilter = list.sector;
@@ -127,9 +207,6 @@ export function ProjectListPage() {
     fetchProjects();
   }, []);
 
-  const precontractProjects = useMemo(() => projects.filter((p) => p.project_type === "tender"), [projects]);
-  const postcontractProjects = useMemo(() => projects.filter((p) => p.project_type !== "tender"), [projects]);
-
   // Forward/reverse link maps between a tender row and the post-contract project
   // it was assigned to (source_tender_project_id), built from the single fetch
   // above rather than a per-card query.
@@ -146,22 +223,44 @@ export function ProjectListPage() {
     return map;
   }, [projects]);
 
+  // Classify every project into one of the five views: pipeline, live, on_hold, completed, archived.
+  const projectsByBucket = useMemo(() => {
+    const buckets: Record<ProjectListView, Project[]> = {
+      pipeline: [],
+      live: [],
+      on_hold: [],
+      completed: [],
+      archived: [],
+    };
+    for (const p of projects) {
+      const stage = signalInputs.tenders[p.id]?.tender_stage ?? null;
+      // Legacy tender already converted to a separate post-contract project belongs in archived.
+      const effectiveStage = p.project_type === "tender" && stage === "awarded" && awardedByTenderId[p.id]
+        ? "closed"
+        : stage;
+      const bucket = projectViewBucket(p, effectiveStage);
+      buckets[bucket].push(p);
+    }
+    return buckets;
+  }, [projects, signalInputs.tenders, awardedByTenderId]);
+
   // Stage, health and next deadline per project (lib/project/projects/list-signals.ts).
   const signals = useMemo(() => {
     const today = isoDay(new Date());
     const out: Record<string, ProjectSignals> = {};
     for (const p of projects) {
       out[p.id] = p.project_type === "tender"
-        ? tenderSignals(signalInputs.tenders[p.id] ?? null, today)
+        ? tenderSignals(signalInputs.tenders[p.id] ?? null, today, p.project_status)
         : liveSignals(p, signalInputs.overdueTasks[p.id] ?? 0, today);
     }
     return out;
   }, [projects, signalInputs]);
 
+  const scopedProjects = projectsByBucket[activeView];
+
   const filtered = useMemo(() => {
-    const scoped = phaseTab === "precontract" ? precontractProjects : postcontractProjects;
     const q = list.q.toLowerCase();
-    return scoped.filter((p) => {
+    return scopedProjects.filter((p) => {
       if (q && !p.project_name.toLowerCase().includes(q) && !p.project_code.toLowerCase().includes(q)) {
         return false;
       }
@@ -170,14 +269,14 @@ export function ProjectListPage() {
       if (sectorFilter && p.category !== sectorFilter) return false;
       return true;
     });
-  }, [precontractProjects, postcontractProjects, phaseTab, list.q, typeFilter, statusFilter, sectorFilter]);
+  }, [scopedProjects, list.q, typeFilter, statusFilter, sectorFilter]);
 
-  // Tenders by nearest deadline (none last); live projects keep newest first.
+  // Tenders by nearest deadline (none last); other views keep newest first.
   const ordered = useMemo(() => {
-    if (phaseTab !== "precontract") return filtered;
+    if (activeView !== "pipeline") return filtered;
     const key = (p: Project) => signals[p.id]?.deadline?.date ?? "9999";
     return [...filtered].sort((a, b) => key(a).localeCompare(key(b)));
-  }, [filtered, phaseTab, signals]);
+  }, [filtered, activeView, signals]);
 
   // Create flows are pushed, so Back closes them.
   const openCreate = (kind: ProjectCreateKind) => router.push(`${pathname}?${projectListQuery(list, { new: kind })}`);
@@ -188,6 +287,26 @@ export function ProjectListPage() {
   function handleCreated(created: Project) {
     refreshProjects();
     router.push(projectHref(created.project_code, created.project_type === "tender" ? null : "setup"));
+  }
+
+  async function handleStatusChange(project: Project, nextStatus: string) {
+    const prev = project.project_status;
+    setProjects((cur) => cur.map((p) => (p.id === project.id ? { ...p, project_status: nextStatus } : p)));
+    const { data, error } = await updateProjectByIdReturning(
+      { project_status: nextStatus, updated_at: new Date().toISOString() },
+      project.id,
+    );
+    if (error) {
+      setProjects((cur) => cur.map((p) => (p.id === project.id ? { ...p, project_status: prev } : p)));
+      toast.error(error.message);
+      return;
+    }
+    if (data) {
+      setProjects((cur) => cur.map((p) => (p.id === project.id ? (data as Project) : p)));
+    }
+    refreshProjects();
+    const label = STATUS_LABELS[nextStatus] ?? nextStatus;
+    toast.success(`${project.project_code} moved to ${label}`);
   }
 
   // Badges and the team icon sit inside a card link, so they navigate without following it.
@@ -212,55 +331,56 @@ export function ProjectListPage() {
   return (
     <div className="flex flex-col" style={{ height: '100%' }}>
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setPhaseTab("precontract")}
-                className={cn(
-                  "flex items-center gap-2 rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-all",
-                  phaseTab === "precontract"
-                    ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25"
-                    : "bg-background text-muted-foreground border-border hover:border-amber-300 hover:text-foreground",
-                )}
-              >
-                <Handshake className="h-4 w-4" />
-                Pre-Contract
-                <span className={cn(
-                  "inline-flex items-center justify-center rounded-full px-1.5 py-0 text-xs font-bold min-w-[1.25rem]",
-                  phaseTab === "precontract" ? "bg-white/25 text-white" : "bg-muted text-muted-foreground",
-                )}>
-                  {precontractProjects.length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPhaseTab("postcontract")}
-                className={cn(
-                  "flex items-center gap-2 rounded-xl border-2 px-5 py-2.5 text-sm font-semibold transition-all",
-                  phaseTab === "postcontract"
-                    ? "bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/25"
-                    : "bg-background text-muted-foreground border-border hover:border-emerald-300 hover:text-foreground",
-                )}
-              >
-                <HardHatIcon className="h-4 w-4" />
-                Post-Contract
-                <span className={cn(
-                  "inline-flex items-center justify-center rounded-full px-1.5 py-0 text-xs font-bold min-w-[1.25rem]",
-                  phaseTab === "postcontract" ? "bg-white/25 text-white" : "bg-muted text-muted-foreground",
-                )}>
-                  {postcontractProjects.length}
-                </span>
-              </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div
+              role="group"
+              aria-label="Filter projects by stage"
+              className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1 sm:mx-0 sm:rounded-xl sm:border sm:border-border sm:bg-card sm:p-1"
+            >
+              {VIEW_BUCKETS.map((bucket) => {
+                const Icon = bucket.icon;
+                const isSelected = activeView === bucket.view;
+                const count = projectsByBucket[bucket.view].length;
+                return (
+                  <button
+                    key={bucket.view}
+                    type="button"
+                    onClick={() => setView(bucket.view)}
+                    aria-pressed={isSelected}
+                    title={bucket.description}
+                    className={cn(
+                      "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                      isSelected
+                        ? "bg-foreground/[0.06] text-foreground shadow-xs ring-1 ring-border"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Icon className={cn("h-4 w-4 shrink-0", isSelected ? bucket.iconClass : "opacity-70")} />
+                    {bucket.title}
+                    <span
+                      className={cn(
+                        "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+                        isSelected ? bucket.activeBadgeClass : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-
-            <div className="flex items-center gap-2">
-              <Button onClick={() => openCreate(phaseTab === "precontract" ? "tender" : "awarded")} size="default" className="rounded-xl font-medium">
-                <Plus className="mr-1.5 h-4 w-4" />
-                New project
-              </Button>
-            </div>
+            <Button
+              onClick={() => openCreate(activeView === "live" ? "awarded" : "tender")}
+              size="default"
+              className="rounded-xl font-medium"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              New Project
+            </Button>
           </div>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {VIEW_BUCKETS.find((b) => b.view === activeView)?.description}
+          </p>
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -269,28 +389,30 @@ export function ProjectListPage() {
                 placeholder="Search by name or code..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background py-2 pl-8 pr-3 text-sm outline-hidden placeholder:text-muted-foreground focus:border-primary"
+                className="w-full rounded-lg border border-border bg-card py-2 pl-8 pr-3 text-sm outline-hidden placeholder:text-muted-foreground focus:border-primary"
               />
             </div>
-            {phaseTab === "postcontract" && (
+            {activeView !== "pipeline" && (
               <div className="relative">
                 <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-background py-2 pl-7 pr-8 text-sm appearance-none outline-hidden focus:border-primary"
+                  className="rounded-lg border border-border bg-card py-2 pl-7 pr-8 text-sm appearance-none outline-hidden focus:border-primary"
                 >
                   <option value="">All Types</option>
-                  {Object.entries(TYPE_LABELS).filter(([k]) => k !== "tender").map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
+                  {Object.entries(TYPE_LABELS)
+                    .filter(([k]) => activeView !== "live" || k !== "tender")
+                    .map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
                 </select>
               </div>
             )}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-border bg-background py-2 px-3 text-sm appearance-none outline-hidden focus:border-primary"
+              className="rounded-lg border border-border bg-card py-2 px-3 text-sm appearance-none outline-hidden focus:border-primary"
             >
               <option value="">All Status</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -300,7 +422,7 @@ export function ProjectListPage() {
             <select
               value={sectorFilter}
               onChange={(e) => setSectorFilter(e.target.value)}
-              className="rounded-lg border border-border bg-background py-2 px-3 text-sm appearance-none outline-hidden focus:border-primary"
+              className="rounded-lg border border-border bg-card py-2 px-3 text-sm appearance-none outline-hidden focus:border-primary"
             >
               <option value="">All Sectors</option>
               {PROJECT_SECTORS.map((s) => (
@@ -317,11 +439,11 @@ export function ProjectListPage() {
                 Clear
               </button>
             )}
-            <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border p-0.5" role="group" aria-label="Layout">
+            <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5" role="group" aria-label="Layout">
               {([
-                { value: "list", title: "Table", icon: List },
                 { value: "card", title: "Cards", icon: LayoutGrid },
-                ...(phaseTab === "precontract" ? [{ value: "board", title: "Board by stage", icon: SquareKanban }] : []),
+                { value: "list", title: "Table", icon: List },
+                ...(activeView === "pipeline" ? [{ value: "board", title: "Board by stage", icon: SquareKanban }] : []),
               ] as { value: ProjectListState["layout"]; title: string; icon: typeof List }[]).map((o) => (
                 <button
                   key={o.value}
@@ -450,13 +572,56 @@ export function ProjectListPage() {
                       <span className="text-[10px] text-muted-foreground">
                         {p.start_date && p.end_date ? `${p.start_date} → ${p.end_date}` : p.start_date ?? "No dates set"}
                       </span>
-                      <div
-                        role="button"
-                        title="Manage team"
-                        onClick={(e) => goTo(e, projectHref(p.project_code, "team"))}
-                        className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                      >
-                        <Users className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-1">
+                        {p.project_status === "on_hold" || p.project_status === "archived" || p.project_status === "completed" ? (
+                          <div
+                            role="button"
+                            title="Resume project"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleStatusChange(p, "active");
+                            }}
+                            className="rounded-md p-1 text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                          >
+                            <PlayCircle className="h-3.5 w-3.5" />
+                          </div>
+                        ) : (
+                          <div
+                            role="button"
+                            title="Put on hold"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleStatusChange(p, "on_hold");
+                            }}
+                            className="rounded-md p-1 text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                          >
+                            <PauseCircle className="h-3.5 w-3.5" />
+                          </div>
+                        )}
+                        {p.project_status !== "archived" && (
+                          <div
+                            role="button"
+                            title="Archive project"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleStatusChange(p, "archived");
+                            }}
+                            className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                          </div>
+                        )}
+                        <div
+                          role="button"
+                          title="Manage team"
+                          onClick={(e) => goTo(e, projectHref(p.project_code, "team"))}
+                          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                        >
+                          <Users className="h-3.5 w-3.5" />
+                        </div>
                       </div>
                     </div>
                   </Link>
@@ -470,10 +635,11 @@ export function ProjectListPage() {
               staffMap={staffMap}
               awardedByTenderId={awardedByTenderId}
               projectById={projectById}
+              onStatusChange={handleStatusChange}
             />
           )}
           <p className="text-xs text-muted-foreground">
-            Showing {filtered.length} of {(phaseTab === "precontract" ? precontractProjects : postcontractProjects).length} projects
+            Showing {filtered.length} of {scopedProjects.length} projects
           </p>
         </div>
     </div>

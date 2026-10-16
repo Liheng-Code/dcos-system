@@ -45,12 +45,22 @@ function relative(days: number): string {
 const CLOSED_STAGES: TenderStage[] = ["awarded", "unsuccessful", "closed"];
 const SUBMITTED_STAGES: TenderStage[] = ["submitted", "awaiting_result"];
 
-export function tenderSignals(t: TenderSignalInput | null, today: string): ProjectSignals {
-  if (!t) return { stage: { label: "Not registered", tone: "warn" }, health: { label: "No tender details", tone: "warn" }, deadline: null };
+export function tenderSignals(t: TenderSignalInput | null, today: string, projectStatus?: string): ProjectSignals {
+  if (!t) {
+    if (projectStatus === "on_hold") return { stage: { label: "On hold", tone: "warn" }, health: { label: "Paused — awaiting decision", tone: "warn" }, deadline: null };
+    if (projectStatus === "archived") return { stage: { label: "Archived", tone: "muted" }, health: { label: "Archived", tone: "muted" }, deadline: null };
+    return { stage: { label: "Not registered", tone: "warn" }, health: { label: "No tender details", tone: "warn" }, deadline: null };
+  }
   const stage = {
     label: STAGE_LABELS[t.tender_stage] ?? t.tender_stage,
     tone: (t.tender_stage === "awarded" ? "good" : t.tender_stage === "unsuccessful" || t.tender_stage === "closed" ? "muted" : "warn") as Tone,
   };
+  if (projectStatus === "on_hold") {
+    return { stage, health: { label: "Paused — awaiting decision", tone: "warn" }, deadline: t.submission_deadline ? { date: t.submission_deadline, label: "Submission" } : null };
+  }
+  if (projectStatus === "archived") {
+    return { stage, health: { label: "Archived", tone: "muted" }, deadline: null };
+  }
   if (CLOSED_STAGES.includes(t.tender_stage)) return { stage, health: { label: "Closed", tone: "muted" }, deadline: null };
   if (SUBMITTED_STAGES.includes(t.tender_stage)) return { stage, health: { label: "Awaiting result", tone: "muted" }, deadline: null };
   if (!t.submission_deadline) return { stage, health: { label: "No deadline", tone: "warn" }, deadline: null };
@@ -65,14 +75,16 @@ export function tenderSignals(t: TenderSignalInput | null, today: string): Proje
 export function liveSignals(p: { project_status: string; end_date: string | null }, overdueTasks: number, today: string): ProjectSignals {
   const stage = {
     label: STATUS_LABELS[p.project_status] ?? p.project_status,
-    tone: (p.project_status === "active" ? "good" : p.project_status === "draft" || p.project_status === "pending_approval" ? "warn" : "muted") as Tone,
+    tone: (p.project_status === "active" ? "good" : p.project_status === "draft" || p.project_status === "pending_approval" || p.project_status === "on_hold" ? "warn" : "muted") as Tone,
   };
   const finished = p.project_status === "completed" || p.project_status === "archived";
   const health: ProjectSignals["health"] = finished
     ? { label: "Closed", tone: "muted" }
-    : overdueTasks > 0
-      ? { label: `${overdueTasks} overdue task${overdueTasks === 1 ? "" : "s"}`, tone: overdueTasks >= 10 ? "bad" : "warn" }
-      : { label: "On track", tone: "good" };
+    : p.project_status === "on_hold"
+      ? { label: "Paused — awaiting decision", tone: "warn" }
+      : overdueTasks > 0
+        ? { label: `${overdueTasks} overdue task${overdueTasks === 1 ? "" : "s"}`, tone: overdueTasks >= 10 ? "bad" : "warn" }
+        : { label: "On track", tone: "good" };
   const deadline = !finished && p.end_date ? { date: p.end_date, label: daysUntil(p.end_date, today) < 0 ? "Finish (passed)" : "Finish" } : null;
   return { stage, health, deadline };
 }
