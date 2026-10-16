@@ -23,8 +23,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const pathname = usePathname();
   const { selectedProject } = useProject();
   const isPrecontract = selectedProject?.project_type === "tender";
-  // Design & Build / Turnkey tenders carry the design, so the bid team needs the Design module.
-  const isDesignTender = isPrecontract && ["design_build", "turnkey"].includes(selectedProject?.contract_type ?? "");
   const { isModuleActive, isModuleVisible, isModulePermitted, isNavItemActive } = useModuleSettings();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isHr, setIsHr] = useState(false);
@@ -167,59 +165,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
     return <Link href={href} className={cls}>{content}</Link>;
   }
 
-  // ── QS group button (animated) ────────────────────────────────────────────
-  function QsGroupNavItem({ href, navKey, label, icon: Icon, active, tabCount, index }: {
-    href: string; navKey: string; label: string; icon: Icon; active: boolean; tabCount: number; index: number;
-  }) {
-    if (!isNavItemActive(navKey)) return null;
-    const content = (
-      <>
-        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-200 group-hover:scale-y-125 group-hover:bg-primary/60"
-          style={{ opacity: active ? 1 : 0 }} />
-        <span className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all duration-200 group-hover:scale-110 group-hover:-translate-x-0.5",
-          active ? "bg-primary/10 text-primary" : "bg-sidebar-accent/60 text-sidebar-foreground/60 group-hover:bg-primary/10 group-hover:text-primary",
-        )}>
-          <Icon className="h-4 w-4" />
-        </span>
-        {!collapsed && (
-          <>
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-            <span className={cn(
-              "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums transition-colors",
-              active ? "bg-primary/10 text-primary" : "bg-sidebar-accent/60 text-sidebar-foreground/40 group-hover:text-primary",
-            )}>
-              {tabCount}
-            </span>
-          </>
-        )}
-      </>
-    );
-
-    const cls = cn(
-      "qs-group-shine group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 active:scale-[0.98]",
-      active
-        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold shadow-sm"
-        : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-    );
-
-    if (collapsed) {
-      return (
-        <Tooltip>
-          <TooltipTrigger>
-            <Link href={href} className={cls} style={{ animationDelay: `${index * 40}ms` }}>{content}</Link>
-          </TooltipTrigger>
-          <TooltipContent side="right">{label}</TooltipContent>
-        </Tooltip>
-      );
-    }
-    return (
-      <Link href={href} className={cn(cls, "animate-in fade-in slide-in-from-left-2 duration-300")} style={{ animationDelay: `${index * 40}ms` }}>
-        {content}
-      </Link>
-    );
-  }
-
   // ── Section header ────────────────────────────────────────────────────────
   function FolderHeader({ label, open, onToggle, icon: Icon, level, navKey }: { label: string; open: boolean; onToggle: () => void; icon?: LucideIcon; level?: 1 | 2; navKey?: string }) {
     if (navKey && !isNavItemActive(navKey)) return null;
@@ -295,7 +240,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
             ? (isAdmin || isHr) && isModuleActive(manifest.key)
             : isModulePermitted(manifest.key);
           if (!allowed || !isModuleVisible(manifest.key)) return null;
-          if (manifest.visible && !manifest.visible({ isPrecontract, isDesignTender })) return null;
 
           const open = !!openSections[manifest.key];
           const activeGroupKey = manifest.navGroups
@@ -313,19 +257,18 @@ export function Sidebar({ collapsed }: SidebarProps) {
               {(collapsed || open) && (
                 <>
                   {manifest.navItems?.map((item) => {
-                    if (isPrecontract && item.executionOnly) return null;
                     return (
                       <NavItem
                         key={item.href}
                         href={item.href}
-                        label={isPrecontract && item.precontractLabel ? item.precontractLabel : item.label}
+                        label={item.label}
                         icon={item.icon}
                         exact={item.exact}
                         badge={badges[item.href]}
                       />
                     );
                   })}
-                  {manifest.navGroups?.map((group, index) => {
+                  {manifest.navGroups?.map((group) => {
                     const Icon = manifest.groupIcons?.[group.key];
                     if (!Icon) return null;
                     if (group.visible && !group.visible({ isPrecontract })) return null;
@@ -339,20 +282,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
                           isNavItemActive(item.href),
                         )?.href;
                     if (!groupHref) return null;
-                    if (manifest.groupStyle === "animated") {
-                      return (
-                        <QsGroupNavItem
-                          key={group.key}
-                          href={groupHref}
-                          navKey={group.navKey}
-                          label={group.label}
-                          icon={Icon}
-                          active={activeGroupKey === group.key}
-                          tabCount={group.items.filter((item) => !item.hidden).length}
-                          index={index}
-                        />
-                      );
-                    }
                     return (
                       <NavItem
                         key={group.key}

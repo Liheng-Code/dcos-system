@@ -86,7 +86,7 @@ export function CostPerM2Tab({ tenderId }: { tenderId: string }) {
         {summary.gfaTotal != null ? (
           <p className="mt-1 text-2xl font-bold">{summary.gfaTotal.toLocaleString()} m²</p>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">No GFA values found in WBS Preliminary level nodes.</p>
+          <p className="mt-1 text-sm text-muted-foreground">No GFA values found in WBS level nodes.</p>
         )}
       </div>
 
@@ -154,13 +154,13 @@ export function CostPerM2Tab({ tenderId }: { tenderId: string }) {
       {!hasFloors && (
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <Ruler className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Tender-phase rate only: a single blended figure against total GFA. Tag BOQ items with floor levels and set WBS Preliminary GFA values to see the per-floor breakdown.
+          Tender-phase rate only: a single blended figure against total GFA. Tag BOQ items with floor levels and set WBS level GFA values to see the per-floor breakdown.
         </p>
       )}
 
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <Ruler className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        GFA sourced from WBS Preliminary level nodes. All WBS levels are listed. Prelims apportioned pro-rata by each floor&apos;s share of direct cost. Unallocated items (level &ldquo;All&rdquo;) shown separately.
+        GFA sourced from WBS level nodes. All WBS levels are listed. Prelims apportioned pro-rata by each floor&apos;s share of direct cost. Unallocated items (level &ldquo;All&rdquo;) shown separately.
       </p>
 
       <CostPerM2Footnote />

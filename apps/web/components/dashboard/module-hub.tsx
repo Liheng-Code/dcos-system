@@ -26,8 +26,6 @@ export function ModuleHub() {
   }, []);
 
   const isPrecontract = selectedProject?.project_type === "tender";
-  // Same rule as the sidebar: Design & Build / Turnkey tenders carry the design.
-  const isDesignTender = isPrecontract && ["design_build", "turnkey"].includes(selectedProject?.contract_type ?? "");
 
   if (modulesLoading) {
     return (
@@ -40,7 +38,6 @@ export function ModuleHub() {
   const visibleModules = HUB_MODULES.filter((manifest) => {
     if (!isModuleVisible(manifest.key)) return false;
     if (manifest.hub.adminOnly && !isAdmin) return false;
-    if (manifest.visible && !manifest.visible({ isPrecontract, isDesignTender })) return false;
     return true;
   });
 

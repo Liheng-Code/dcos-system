@@ -35,7 +35,6 @@ export const qsModule: ModuleManifest = {
     contract_admin: FileSignature,
     qto: Ruler,
   },
-  groupStyle: "animated",
   hub: {
     title: "Quantity Surveying",
     description: "Tenders, cost control, and contract admin",
