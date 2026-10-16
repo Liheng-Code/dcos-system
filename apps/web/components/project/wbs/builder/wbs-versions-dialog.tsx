@@ -28,7 +28,6 @@ import { getProfileById } from "@/lib/project/wbs/wbs-queries";
 interface WbsVersionsDialogProps {
   onClose: () => void;
   projectId: string;
-  initialMode?: "save" | "list";
   /** Called after a successful save or restore so the grid can reload. */
   onChanged: () => void;
 }
@@ -86,7 +85,6 @@ function SnapshotTree({ nodes }: { nodes: WbsVersionSnapshotNode[] }) {
 export function WbsVersionsDialog({
   onClose,
   projectId,
-  initialMode = "list",
   onChanged,
 }: WbsVersionsDialogProps) {
   const [versions, setVersions] = useState<WbsVersionSummary[]>([]);
@@ -137,14 +135,13 @@ export function WbsVersionsDialog({
       if (!cancelled) setIsAdmin((profile as { role?: string } | null)?.role === "admin");
     })();
 
-    if (initialMode === "save") {
-      requestAnimationFrame(() => nameInputRef.current?.focus());
-    }
+    // Ready to save: the name box has the cursor; the list below is for restoring.
+    requestAnimationFrame(() => nameInputRef.current?.focus());
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, initialMode]);
+  }, [projectId]);
 
   const selectVersion = useCallback((id: string) => {
     setSelectedId(id);

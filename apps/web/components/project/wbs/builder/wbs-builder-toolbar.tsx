@@ -13,22 +13,18 @@ import {
   IndentDecrease,
   IndentIncrease,
   Layers,
-  Plus,
-  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface WbsBuilderToolbarProps {
   nodeCount: number;
   selectedRowId: string | null;
-  onAddRow: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onIndent: () => void;
   onOutdent: () => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
-  onSaveVersion: () => void;
   onOpenVersions: () => void;
   /** Set when the selected row is a building: opens "Add levels from template". */
   onAddLevels?: () => void;
@@ -45,14 +41,12 @@ interface WbsBuilderToolbarProps {
 export function WbsBuilderToolbar({
   nodeCount,
   selectedRowId,
-  onAddRow,
   onMoveUp,
   onMoveDown,
   onIndent,
   onOutdent,
   onExpandAll,
   onCollapseAll,
-  onSaveVersion,
   onOpenVersions,
   onAddLevels,
   onApplyWbsTemplate,
@@ -64,9 +58,6 @@ export function WbsBuilderToolbar({
   const noSelection = !selectedRowId;
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5">
-      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onAddRow}>
-        <Plus className="h-3.5 w-3.5" /> Add row
-      </Button>
       <Button
         size="sm"
         variant="outline"
@@ -137,10 +128,7 @@ export function WbsBuilderToolbar({
 
       <span className="mx-1 h-4 w-px bg-border" />
 
-      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onSaveVersion}>
-        <Save className="h-3.5 w-3.5" /> Save Version
-      </Button>
-      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onOpenVersions}>
+      <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={onOpenVersions} title="Save a snapshot of the WBS, or restore a saved one">
         <History className="h-3.5 w-3.5" /> Versions
       </Button>
 
