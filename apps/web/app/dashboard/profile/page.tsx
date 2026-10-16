@@ -62,6 +62,10 @@ export default function ProfilePage() {
     setProfile((prev) => (prev ? { ...prev, ...fields } : prev));
   }
 
+  function handleAvatarChanged(avatarUrl: string | null) {
+    setProfile((prev) => (prev ? { ...prev, avatar_url: avatarUrl } : prev));
+  }
+
   if (checking || loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -90,7 +94,12 @@ export default function ProfilePage() {
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ProfileAccountInfoCard profile={profile} departments={departments} />
+        <ProfileAccountInfoCard
+          userId={userId}
+          profile={profile}
+          departments={departments}
+          onAvatarChanged={handleAvatarChanged}
+        />
         <PersonalInfoCard userId={userId} initial={profile} onSaved={handlePersonalInfoSaved} />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

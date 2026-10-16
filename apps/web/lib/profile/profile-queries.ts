@@ -24,7 +24,7 @@ export function listDepartments() {
 export function getProfileById(id: string | number | boolean) {
   return db()
     .from("profiles")
-    .select("id, employee_id, full_name, email, department_id, job_title, role, account_status, last_login_at, phone, current_address, gender, date_of_birth, nationality, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone")
+    .select("id, employee_id, full_name, email, avatar_url, department_id, job_title, role, account_status, last_login_at, phone, current_address, gender, date_of_birth, nationality, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone")
     .eq("id", id)
     .single();
 }
