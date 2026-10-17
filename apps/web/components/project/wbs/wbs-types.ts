@@ -62,7 +62,15 @@ export interface WbsTaskRecord {
   discipline: string | null;
   owner_id: string | null;
   owner_name: string | null;
+  /** @deprecated historically the assigning user; use assigned_by. */
   assignee_id: string | null;
+  assigned_by?: string | null;
+  reviewer_id?: string | null;
+  approver_id?: string | null;
+  estimated_hours?: number | null;
+  remaining_hours?: number | null;
+  is_blocked?: boolean | null;
+  assigned_at?: string | null;
   department_id?: string | null;
   requesting_department_id?: string | null;
   cross_dept_status?: "requested" | "accepted" | "rejected" | null;

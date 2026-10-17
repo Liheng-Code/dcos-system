@@ -98,7 +98,7 @@ export function WbsTasksPage() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const myTasks = useMemo(() => tasks.filter((t) =>
-    userId && (t.owner_id === userId || t.assignee_id === userId)
+    userId && t.owner_id === userId
   ), [tasks, userId]);
 
   const overdueTasks = useMemo(() => tasks.filter((t) =>

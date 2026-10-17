@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CalendarRange, ClipboardList, Columns3, Loader2, RefreshCw, Table2 } from "lucide-react";
+import { Building2, CalendarRange, ClipboardList, Columns3, Loader2, RefreshCw, Rocket, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
@@ -24,6 +24,7 @@ import {
   type TaskViewer,
 } from "@/lib/task-scope";
 import { TeamPlannerGrid } from "@/components/project/tasks/team-planner-grid";
+import { ManagerPlanPanel } from "@/components/project/tasks/manager-plan-panel";
 import { deleteWbsTaskByIdReturning, listProfilesByDepartmentIds, listWbsAuditLogWithFieldNameOwnerName, listWbsNodesByProjectId, listWbsTasksByDepartmentIds } from "@/lib/project/tasks/tasks-queries";
 
 interface MemberRecord {
@@ -33,7 +34,7 @@ interface MemberRecord {
   avatar_url: string | null;
 }
 
-type DeptTab = "team_tasks" | "team_planning";
+type DeptTab = "team_tasks" | "team_planning" | "plan_publish";
 type TaskView = "table" | "kanban";
 
 export function DepartmentWorkspace() {
@@ -218,6 +219,7 @@ export function DepartmentWorkspace() {
           {([
             { key: "team_tasks", label: "My Team Tasks", icon: ClipboardList },
             { key: "team_planning", label: "Team Planning", icon: CalendarRange },
+            { key: "plan_publish", label: "Capacity & Publish", icon: Rocket },
           ] as const).map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
@@ -265,7 +267,16 @@ export function DepartmentWorkspace() {
 
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          {tab === "team_planning" ? (
+          {tab === "plan_publish" ? (
+            <ManagerPlanPanel
+              tasks={tasks}
+              members={members.map(({ id, full_name, job_title }) => ({ id, full_name, job_title }))}
+              projectId={effectiveAllProjects ? null : selectedProjectId}
+              departmentId={(viewer?.departmentId ?? viewer?.managedDepartmentIds[0]) ?? null}
+              viewer={viewer}
+              onChanged={() => void refresh()}
+            />
+          ) : tab === "team_planning" ? (
             <TeamPlannerGrid
               tasks={tasks}
               members={members.map(({ id, full_name, job_title }) => ({ id, full_name, job_title }))}

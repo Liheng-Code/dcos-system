@@ -38,22 +38,13 @@ export async function assignTaskToProfile(
     ...(isNewAssignment && { status: "assigned" }),
   };
 
-  // Try to include assignee_id — falls back gracefully if the column doesn't exist yet
-  if (isNewAssignment && actor.id) {
-    const { error: assigneeErr } = await supabase
-      .from("wbs_tasks")
-      .update({ ...updatePayload, assignee_id: actor.id })
-      .eq("id", task.id);
-    if (assigneeErr?.message?.includes("assignee_id")) {
-      const { error } = await supabase.from("wbs_tasks").update(updatePayload).eq("id", task.id);
-      if (error) throw new Error(error.message);
-    } else if (assigneeErr) {
-      throw new Error(assigneeErr.message);
-    }
-  } else {
-    const { error } = await supabase.from("wbs_tasks").update(updatePayload).eq("id", task.id);
-    if (error) throw new Error(error.message);
+  // owner_id is the person in charge; assigned_by records who made the assignment.
+  if (isNewAssignment) {
+    updatePayload.assigned_by = actor.id;
+    updatePayload.assigned_at = new Date().toISOString();
   }
+  const { error: updateErr } = await supabase.from("wbs_tasks").update(updatePayload).eq("id", task.id);
+  if (updateErr) throw new Error(updateErr.message);
 
   const auditEntries: { action: string; field_name: string; old_value: string; new_value: string }[] = [];
   if ((task.owner_name ?? null) !== newOwnerName) {

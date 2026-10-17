@@ -132,6 +132,6 @@ export function isActiveTask(task: { status: string }): boolean {
   return !["closed", "cancelled", "completed", "rejected"].includes(task.status);
 }
 
-export function isMyTask(task: { owner_id: string | null; assignee_id: string | null }, userId: string): boolean {
-  return task.owner_id === userId || task.assignee_id === userId;
+export function isMyTask(task: { owner_id: string | null }, userId: string): boolean {
+  return task.owner_id === userId;
 }
