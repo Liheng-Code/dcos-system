@@ -101,8 +101,9 @@ export const BUILDING_TYPE_LABELS: Record<string, string> = Object.fromEntries(
   PROJECT_SECTORS.flatMap((s) => s.buildingTypes.map((t) => [t.value, t.label])),
 );
 
-export function buildingTypesForSector(sector?: string | null): BuildingType[] {
-  return PROJECT_SECTORS.find((s) => s.value === sector)?.buildingTypes ?? [];
+export function buildingTypesForSector(sector?: string | null, customList: CustomCategoryRecord[] = []): BuildingType[] {
+  const all = getAllSectors(customList);
+  return all.find((s) => s.value === sector)?.buildingTypes ?? [];
 }
 
 function humanize(v: string): string {
@@ -117,4 +118,85 @@ export function sectorLabel(v?: string | null): string {
 export function buildingTypeLabel(v?: string | null): string {
   if (!v) return "";
   return BUILDING_TYPE_LABELS[v] ?? humanize(v);
+}
+
+// ── Custom Categories DB Integration ─────────────────────────────────────────
+
+export interface CustomCategoryRecord {
+  id: string;
+  category_type: "sector" | "building_type";
+  sector_slug: string | null;
+  slug: string;
+  label: string;
+  created_at: string;
+}
+
+export async function fetchCustomCategories(): Promise<CustomCategoryRecord[]> {
+  try {
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("project_custom_categories")
+      .select("*")
+      .order("label", { ascending: true });
+    return (data as CustomCategoryRecord[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCustomCategory(params: {
+  category_type: "sector" | "building_type";
+  label: string;
+  sector_slug?: string | null;
+}): Promise<CustomCategoryRecord | null> {
+  const { createClient } = await import("@/lib/supabase/client");
+  const supabase = createClient();
+  const slug =
+    params.label
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "custom_" + Date.now();
+
+  const { data, error } = await supabase
+    .from("project_custom_categories")
+    .insert({
+      category_type: params.category_type,
+      sector_slug: params.sector_slug || null,
+      slug,
+      label: params.label.trim(),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as CustomCategoryRecord;
+}
+
+export function getAllSectors(customList: CustomCategoryRecord[] = []): ProjectSector[] {
+  const customSectors = customList
+    .filter((c) => c.category_type === "sector")
+    .map((c) => {
+      const customTypes = customList
+        .filter((b) => b.category_type === "building_type" && b.sector_slug === c.slug)
+        .map((b) => ({ value: b.slug, label: b.label }));
+      return {
+        value: c.slug,
+        label: c.label,
+        buildingTypes: customTypes,
+      };
+    });
+
+  const standardWithCustom = PROJECT_SECTORS.map((s) => {
+    const extraTypes = customList
+      .filter((b) => b.category_type === "building_type" && b.sector_slug === s.value)
+      .map((b) => ({ value: b.slug, label: b.label }));
+    return {
+      ...s,
+      buildingTypes: [...s.buildingTypes, ...extraTypes],
+    };
+  });
+
+  return [...standardWithCustom, ...customSectors];
 }

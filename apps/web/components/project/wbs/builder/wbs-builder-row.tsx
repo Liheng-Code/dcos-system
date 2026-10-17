@@ -118,7 +118,7 @@ const NODE_ICONS: Record<string, typeof Building2> = {
 };
 
 const NODE_COLORS: Record<string, string> = {
-  project: "text-slate-700",
+  project: "text-blue-600",
   phase: "text-violet-600",
   building: "text-blue-500",
   level: "text-emerald-500",
@@ -340,10 +340,12 @@ export function WbsBuilderRowView({
     <div
       onMouseDown={() => onSelectRow(row.id)}
       className={cn(
-        "group relative flex h-full items-stretch border-b border-border/60 text-xs",
-        isProjectRow ? "bg-slate-50 font-semibold" : "bg-background",
+        "group relative flex h-full items-stretch border-b text-xs transition-colors",
+        isProjectRow
+          ? "border-blue-200/80 bg-blue-50/80 font-semibold text-slate-900"
+          : "border-border/60 bg-white hover:bg-slate-50/80",
         lock.locked && !isProjectRow && "bg-amber-50/50",
-        selected && "bg-primary/5",
+        selected && "bg-primary/8",
         node.isDragging && "opacity-40",
         node.willReceiveDrop && "ring-1 ring-inset ring-primary/60",
       )}
@@ -355,7 +357,7 @@ export function WbsBuilderRowView({
         onDoubleClick={isProjectRow ? undefined : () => onOpenDetails(data.id)}
         title={isProjectRow ? undefined : "Double-click for details"}
       >
-        {isProjectRow ? <Building2 className="h-3.5 w-3.5 text-slate-500" /> : rowNumber}
+        {isProjectRow ? <Building2 className="h-3.5 w-3.5 text-blue-600" /> : rowNumber}
       </div>
 
       {columns.map((col) => {

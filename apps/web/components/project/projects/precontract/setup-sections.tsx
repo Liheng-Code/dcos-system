@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ThumbsDown, ThumbsUp, Play, Send, XCircle } from "lucide-react";
+import { Check, Loader2, Pencil, ThumbsDown, ThumbsUp, Play, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,10 @@ import {
   type GoNoGoCriteria,
   type Workstream,
 } from "@/lib/qs/tender-lifecycle";
+import { RegistrationEditor } from "./registration-editor";
+import { registrationFormFrom, saveTenderRegistration } from "@/lib/project/projects/tender-registration";
 import {
+  canEditRegistration,
   Card,
   EmptyState,
   Field,
@@ -64,9 +67,49 @@ export function RegistrationSection({ ctx }: { ctx: PrecontractCtx }) {
       .then(({ data }) => setNames(Object.fromEntries((data ?? []).map((s) => [s.id, s.organization_name]))));
   }, [project.client_id, project.consultant_id]);
 
+  const [activating, setActivating] = useState(false);
+  const canEdit = canEditRegistration(ctx);
+
+  // Activation (draft → active) saves the registration as it stands, so the required fields are checked.
+  async function activate() {
+    setActivating(true);
+    try {
+      const updated = await saveTenderRegistration(project, registrationFormFrom({ project, details, tender }), { activate: true });
+      ctx.onProjectUpdate(updated);
+      toast.success("Pre-contract project activated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Not activated");
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  if (ctx.editingRegistration && canEdit) {
+    return (
+      <Card title="Edit registration" description="The opportunity, the tender schedule and who is in charge.">
+        <RegistrationEditor ctx={ctx} onDone={() => ctx.setEditingRegistration(false)} />
+      </Card>
+    );
+  }
+
   const cur = details.bid_currency;
   return (
-    <Card title="Project / Tender Registration" description="The opportunity as registered. Use Edit at the top to change any field.">
+    <Card
+      title="Project / Tender Registration"
+      description={canEdit ? "The opportunity as registered." : "The opportunity as registered. It is frozen once the bid is submitted."}
+      actions={canEdit && (
+        <div className="flex gap-2">
+          {project.project_status === "draft" && (
+            <Button size="sm" variant="outline" onClick={activate} disabled={activating}>
+              {activating && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Activate
+            </Button>
+          )}
+          <Button size="sm" onClick={() => ctx.setEditingRegistration(true)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
+          </Button>
+        </div>
+      )}
+    >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Project Name" value={project.project_name} />
         <Field label="Project Code" value={project.project_code} />

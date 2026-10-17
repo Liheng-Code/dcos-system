@@ -50,18 +50,12 @@ export function WbsBuilder({
   const data = useWbsBuilderData(projectId, project, isManager);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const [versionsMode, setVersionsMode] = useState<"save" | "list">("list");
   const treeApiRef = useRef<TreeApi<WbsBuilderRow> | null>(null);
 
   const registerTree = useCallback((api: TreeApi<WbsBuilderRow> | null) => {
     treeApiRef.current = api;
   }, []);
 
-  // The grid owns "add a row + edit it"; keep a handle so the toolbar can call it.
-  const addRowRef = useRef<() => void>(() => {});
-  const registerAddRow = useCallback((fn: () => void) => {
-    addRowRef.current = fn;
-  }, []);
 
   // "Add levels": open for any building; default to the selected building, or the building
   // above a selected level/zone, else the first building.
@@ -133,10 +127,6 @@ export function WbsBuilder({
   const calendar = useProjectCalendar(projectId);
   const codeMask = useWbsCodeMask(projectId);
 
-  const openVersions = useCallback((mode: "save" | "list") => {
-    setVersionsMode(mode);
-    setVersionsOpen(true);
-  }, []);
 
   if (data.loading) {
     return (
@@ -151,7 +141,6 @@ export function WbsBuilder({
       <WbsBuilderToolbar
         nodeCount={data.nodeCount}
         selectedRowId={selectedRowId}
-        onAddRow={() => addRowRef.current()}
         onMoveUp={() => selectedRowId && data.actions.moveRowUp(selectedRowId)}
         onMoveDown={() => selectedRowId && data.actions.moveRowDown(selectedRowId)}
         onIndent={() => selectedRowId && data.actions.indentRow(selectedRowId)}
@@ -159,8 +148,7 @@ export function WbsBuilder({
         onExpandAll={() => changeView({ ...view, depth: "all" })}
         onCollapseAll={() => changeView({ ...view, depth: 1 })}
         viewMenu={<WbsBuilderViewMenu view={view} onChange={changeView} />}
-        onSaveVersion={() => openVersions("save")}
-        onOpenVersions={() => openVersions("list")}
+        onOpenVersions={() => setVersionsOpen(true)}
         onAddLevels={defaultBuildingId ? () => setLevelsFor(defaultBuildingId) : undefined}
         onApplyWbsTemplate={() => setWbsTemplateDialog("apply")}
         onSaveWbsTemplate={() => setWbsTemplateDialog("save")}
@@ -212,7 +200,6 @@ export function WbsBuilder({
         selectedRowId={selectedRowId}
         onSelectedRowChange={setSelectedRowId}
         registerTree={registerTree}
-        registerAddRow={registerAddRow}
         onOpenDetails={onOpenDetails}
         onRowSelected={onRowSelected}
         view={view}
@@ -237,7 +224,6 @@ export function WbsBuilder({
         <WbsVersionsDialog
           onClose={() => setVersionsOpen(false)}
           projectId={projectId}
-          initialMode={versionsMode}
           onChanged={() => {
             data.reload();
             onDataChanged?.();

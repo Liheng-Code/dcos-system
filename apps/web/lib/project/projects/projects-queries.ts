@@ -47,13 +47,6 @@ export function listProfilesOrderedByFullName() {
   return db().from("profiles").select("id, full_name, employee_id").order("full_name", { ascending: true });
 }
 
-// ── project_activation_log ────────────────────────────────────────────────────
-
-// @table project_activation_log
-export function upsertProjectActivationLog(row: object) {
-  return db().from("project_activation_log").upsert([row], { onConflict: "project_id" });
-}
-
 // ── project_precontract_details ───────────────────────────────────────────────
 
 // @table project_precontract_details
@@ -70,43 +63,13 @@ export function updateProjectPrecontractDetailsByProjectId(patch: object, projec
   return db().from("project_precontract_details").update(patch).eq("project_id", projectId);
 }
 
-// @table project_precontract_details
-export function upsertProjectPrecontractDetails(rows: object | object[]) {
-  return db().from("project_precontract_details").upsert(rows, { onConflict: "project_id" });
-}
-
 // ── project_stakeholder_mappings ──────────────────────────────────────────────
-
-// @table project_stakeholder_mappings
-export function deleteProjectStakeholderMappingsByProjectId(projectId: string | number | boolean) {
-  return db().from("project_stakeholder_mappings").delete().eq("project_id", projectId);
-}
-
-// @table project_stakeholder_mappings
-export function insertProjectStakeholderMapping(row: object) {
-  return db().from("project_stakeholder_mappings").insert([row]);
-}
-
-// @table project_stakeholder_mappings
-export function listProjectStakeholderMappingsByProjectId(projectId: string | number | boolean, columns: string) {
-  return db().from("project_stakeholder_mappings").select(columns as "*").eq("project_id", projectId);
-}
 
 // ── project_stakeholder_teams ─────────────────────────────────────────────────
 
 // @table project_stakeholder_teams
-export function deleteProjectStakeholderTeamsByProjectId(projectId: string | number | boolean) {
-  return db().from("project_stakeholder_teams").delete().eq("project_id", projectId);
-}
-
-// @table project_stakeholder_teams
 export function insertProjectStakeholderTeamReturning(row: object) {
   return db().from("project_stakeholder_teams").insert([row]).select().single();
-}
-
-// @table project_stakeholder_teams
-export function insertProjectStakeholderTeamsReturning(rows: object | object[]) {
-  return db().from("project_stakeholder_teams").insert(rows).select().single();
 }
 
 // @table project_stakeholder_teams
@@ -115,16 +78,6 @@ export function listProjectStakeholderTeamsByProjectId(projectId: string | numbe
 }
 
 // ── project_stakeholders ──────────────────────────────────────────────────────
-
-// @table project_stakeholders
-export function deleteProjectStakeholdersByProjectId(projectId: string | number | boolean) {
-  return db().from("project_stakeholders").delete().eq("project_id", projectId);
-}
-
-// @table project_stakeholders
-export function insertProjectStakeholder(row: object) {
-  return db().from("project_stakeholders").insert([row]);
-}
 
 // @table project_stakeholders
 export function listProjectStakeholdersByProjectId(projectId: string | number | boolean, columns: string) {
@@ -141,19 +94,6 @@ export function deleteProjectTeamMemberById(id: string | number | boolean) {
 // @table project_team_members
 export function insertProjectTeamMember(row: object) {
   return db().from("project_team_members").insert([row]);
-}
-
-// @table project_team_members
-export function insertProjectTeamMembers(rows: object | object[]) {
-  return db().from("project_team_members").insert(rows);
-}
-
-// @table project_team_members
-export function listProjectTeamMembersByProjectId(projectId: string | number | boolean) {
-  return db()
-    .from("project_team_members")
-    .select("*, project_stakeholder_teams!inner(*)")
-    .eq("project_stakeholder_teams.project_id", projectId);
 }
 
 // @table project_team_members
@@ -178,6 +118,11 @@ export function getProjectById(id: string | number | boolean) {
 }
 
 // @table projects
+export function getProjectByCode(code: string) {
+  return db().from("projects").select("*").eq("project_code", code).maybeSingle();
+}
+
+// @table projects
 export function insertProjectsReturning(rows: object | object[]) {
   return db().from("projects").insert(rows).select().single();
 }
@@ -185,11 +130,6 @@ export function insertProjectsReturning(rows: object | object[]) {
 // @table projects
 export function listProjects() {
   return db().from("projects").select("*").order("created_at", { ascending: false });
-}
-
-// @table projects
-export function updateProjectById(patch: object, id: string | number | boolean | null) {
-  return db().from("projects").update(patch).eq("id", id);
 }
 
 // @table projects
@@ -211,11 +151,6 @@ export function listRoles() {
   return db().from("roles").select("code, name").order("level");
 }
 
-// @table roles
-export function listRolesOrderedByTypeAndLevel() {
-  return db().from("roles").select("code, name, type").order("type").order("level");
-}
-
 // ── stakeholder_staff ─────────────────────────────────────────────────────────
 
 // @table stakeholder_staff
@@ -226,26 +161,11 @@ export function listStakeholderStaffByStakeholderId(stakeholderId: string | numb
     .eq("stakeholder_id", stakeholderId);
 }
 
-// @table stakeholder_staff
-export function listStakeholderStaffByStakeholderIds(stakeholderIds: readonly (string | number)[]) {
-  return db()
-    .from("stakeholder_staff")
-    .select("id, stakeholder_id, full_name, job_title")
-    .in("stakeholder_id", stakeholderIds);
-}
-
 // ── stakeholder_templates ─────────────────────────────────────────────────────
 
 // @table stakeholder_templates
 export function listStakeholderTemplates() {
   return db().from("stakeholder_templates").select("id, name").order("name", { ascending: true });
-}
-
-// @table stakeholder_templates
-export function listStakeholderTemplatesWithTemplatePlaceholders() {
-  return db()
-    .from("stakeholder_templates")
-    .select("id, name, description, template_placeholders(id, label, description, sort_order)");
 }
 
 // ── stakeholders ──────────────────────────────────────────────────────────────
@@ -278,15 +198,6 @@ export function listStakeholdersWithStatusActive() {
 }
 
 // ── template_placeholders ─────────────────────────────────────────────────────
-
-// @table template_placeholders
-export function listTemplatePlaceholdersByTemplateId(templateId: string | number | boolean) {
-  return db()
-    .from("template_placeholders")
-    .select("*, template_placeholder_teams(*)")
-    .eq("template_id", templateId)
-    .order("sort_order", { ascending: true });
-}
 
 // ── tender_bid_summaries ──────────────────────────────────────────────────────
 
@@ -384,21 +295,6 @@ export function getTenderRegisterById(id: string | number | boolean, columns: st
 }
 
 // @table tender_register
-export function getTenderRegisterByProjectId(projectId: string | number | boolean) {
-  return db().from("tender_register").select("id").eq("project_id", projectId).maybeSingle();
-}
-
-// @table tender_register
-export function getTenderRegisterByTenderNo(tenderNo: string | number | boolean) {
-  return db().from("tender_register").select("id, project_id").eq("tender_no", tenderNo).maybeSingle();
-}
-
-// @table tender_register
-export function insertTenderRegisterReturning(row: object) {
-  return db().from("tender_register").insert([row]).select().single();
-}
-
-// @table tender_register
 export function updateTenderRegisterById(patch: object, id: string | number | boolean) {
   return db().from("tender_register").update(patch).eq("id", id);
 }
@@ -438,11 +334,6 @@ export function countTenderRiskItemsByTenderId(tenderId: string | number | boole
     .from("tender_risk_items")
     .select("id", { count: "exact", head: true })
     .eq("tender_id", tenderId);
-}
-
-// @table tender_risk_items
-export function insertTenderRiskItems(rows: object | object[]) {
-  return db().from("tender_risk_items").insert(rows);
 }
 
 // ── tender_workstreams ────────────────────────────────────────────────────────

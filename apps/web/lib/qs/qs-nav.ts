@@ -17,7 +17,6 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     navKey: "group:qs:tendering",
     label: "Tender & Estimate",
     href: "/dashboard/tenders/register",
-    visible: ({ isPrecontract }) => isPrecontract,
     items: [
       { label: "Tender Register", href: "/dashboard/tenders/register" },
       { label: "Tender Management", href: "/dashboard/tenders/tender-management" },
@@ -82,7 +81,6 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     navKey: "group:qs:cost_control",
     label: "Cost Control",
     href: "/dashboard/qs",
-    visible: ({ isPrecontract }) => !isPrecontract,
     items: [
       { label: "Overview", href: "/dashboard/qs/overview" },
       { label: "Dashboard", href: "/dashboard/qs" },
@@ -147,7 +145,6 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     navKey: "group:qs:subcontractor",
     label: "Subcon Mgmt",
     href: "/dashboard/subcontractors",
-    visible: ({ isPrecontract }) => !isPrecontract,
     items: [
       { label: "Subcontracts", href: "/dashboard/subcontractors" },
       { label: "Back Charges", href: "/dashboard/subcontractors/back-charges" },
@@ -170,7 +167,6 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     navKey: "group:qs:contract_admin",
     label: "Contract Admin",
     href: "/dashboard/contracts/register",
-    visible: ({ isPrecontract }) => !isPrecontract,
     items: [
       { label: "Contract Register", href: "/dashboard/contracts/register" },
       { label: "Notices", href: "/dashboard/contracts/notices" },

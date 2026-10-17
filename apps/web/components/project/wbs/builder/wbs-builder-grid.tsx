@@ -73,8 +73,6 @@ interface WbsBuilderGridProps {
   selectedRowId: string | null;
   onSelectedRowChange: (id: string | null) => void;
   registerTree: (api: TreeApi<WbsBuilderRow> | null) => void;
-  /** Hands the parent an "add a row + start editing it" callback for the toolbar. */
-  registerAddRow?: (fn: () => void) => void;
   /** Open the detail panel for a node (details button, # double-click, activity row). */
   onOpenDetails: (nodeId: string, node?: WbsBuilderNode) => void;
   /** A node row was selected (the panel follows it while open). */
@@ -97,7 +95,6 @@ export function WbsBuilderGrid({
   selectedRowId,
   onSelectedRowChange,
   registerTree,
-  registerAddRow,
   onOpenDetails,
   onRowSelected,
   view,
@@ -189,11 +186,28 @@ export function WbsBuilderGrid({
       /* ignore */
     }
   }, [colWidths]);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const colWidthsRef = useRef(colWidths);
   useEffect(() => {
     colWidthsRef.current = colWidths;
   });
-  const rowWidth = rowWidthFrom(colWidths, columns);
+  const baseRowWidth = rowWidthFrom(colWidths, columns);
+  const extraWidth = Math.max(0, containerWidth - baseRowWidth);
+  const effectiveColWidths = useMemo<ColWidths>(
+    () => (extraWidth > 0 ? { ...colWidths, wbs_name: colWidths.wbs_name + extraWidth } : colWidths),
+    [colWidths, extraWidth],
+  );
+  const rowWidth = baseRowWidth + extraWidth;
 
   const startResize = useCallback((e: React.MouseEvent, field: WbsColumnKey) => {
     e.preventDefault();
@@ -353,10 +367,6 @@ export function WbsBuilderGrid({
     requestAnimationFrame(() => openEditor({ rowId, field: "wbs_name" }, undefined));
   }, [actions, selectedRowId, blankNodeType, onSelectedRowChange, openEditor]);
 
-  useEffect(() => {
-    registerAddRow?.(addRow);
-  }, [registerAddRow, addRow]);
-
   const handleCommit = useCallback(
     async (raw: string, nav: CellNav) => {
       const cell = editingCellRef.current;
@@ -450,13 +460,13 @@ export function WbsBuilderGrid({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleGridKeyDown}
-      className="flex flex-col rounded-lg border border-border bg-background outline-none"
+      className="flex w-full flex-col overflow-x-auto rounded-lg border border-slate-200 bg-white outline-none"
     >
       <div style={{ width: rowWidth }} className="flex flex-col">
         {/* Header */}
-        <div className="flex h-8 shrink-0 items-stretch border-b border-border bg-muted text-[11px] font-semibold text-muted-foreground">
+        <div className="flex h-8 shrink-0 items-stretch border-b border-slate-700 bg-slate-800 text-[11px] font-semibold text-slate-100">
           <div
-            className="flex items-center justify-center border-r border-border/60"
+            className="flex items-center justify-center border-r border-slate-700"
             style={{ width: ID_COL_WIDTH }}
           >
             #
@@ -465,10 +475,10 @@ export function WbsBuilderGrid({
             <div
               key={c.field}
               className={cn(
-                "relative flex items-center border-r border-border/60 px-1.5",
+                "relative flex items-center border-r border-slate-700 px-1.5",
                 c.align === "right" && "justify-end",
               )}
-              style={{ width: colWidths[c.field] }}
+              style={{ width: effectiveColWidths[c.field] }}
             >
               {c.label}
               {c.variant !== "action" && (
@@ -478,7 +488,7 @@ export function WbsBuilderGrid({
                   aria-label={`Resize ${c.label} column`}
                   onMouseDown={(e) => startResize(e, c.field)}
                   onDoubleClick={() => resetColWidth(c.field)}
-                  className="absolute -right-[3px] top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                  className="absolute -right-[3px] top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-blue-400/60 active:bg-blue-400"
                   title="Drag to resize · double-click to reset"
                 />
               )}
@@ -519,7 +529,7 @@ export function WbsBuilderGrid({
                   rowNumber={rowNumberById.get(props.node.data.id) ?? 0}
                   selected={selectedRowId === props.node.data.id}
                   readOnly={props.node.data.node.node_type === "project"}
-                  colWidths={colWidths}
+                  colWidths={effectiveColWidths}
                   rowWidth={rowWidth}
                   activeCell={activeCell}
                   editing={editing}
@@ -561,7 +571,7 @@ export function WbsBuilderGrid({
               addRow();
             }
           }}
-          className="group flex h-9 shrink-0 cursor-pointer items-stretch border-t border-border bg-background text-xs hover:bg-emerald-50/50"
+          className="group flex h-9 shrink-0 cursor-pointer items-stretch border-t border-slate-200 bg-slate-50/70 text-xs hover:bg-emerald-50/50"
           title="Add a new row"
         >
           <div
@@ -578,14 +588,14 @@ export function WbsBuilderGrid({
                 <div
                   key={c.field}
                   className="flex h-full items-center border-r border-border/60 px-1"
-                  style={{ width: colWidths[c.field] }}
+                  style={{ width: effectiveColWidths[c.field] }}
                 >
                   <select
                     value={blankNodeType}
                     onChange={(e) => setBlankNodeType(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
-                    className="h-6 w-full rounded border border-border bg-background px-1 text-xs outline-none focus:border-primary"
+                    className="h-6 w-full rounded border border-slate-200 bg-white px-1 text-xs outline-none focus:border-primary"
                     aria-label="Node type for the next new row"
                   >
                     {NODE_TYPE_OPTIONS.map((o) => (
@@ -606,7 +616,7 @@ export function WbsBuilderGrid({
                   "flex h-full items-center border-r border-border/60 px-1.5 text-muted-foreground/50",
                   c.mono && "font-mono",
                 )}
-                style={{ width: colWidths[c.field] }}
+                style={{ width: effectiveColWidths[c.field] }}
               >
                 {content}
               </div>

@@ -17,10 +17,10 @@ export const projectModule: ModuleManifest = {
   navItems: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
     { href: "/dashboard/projects", label: "Projects", icon: HardHat },
-    { href: "/dashboard/wbs", label: "WBS", icon: FolderTree, precontractLabel: "WBS (Preliminary)" },
-    { href: "/dashboard/my-tasks", label: "My Tasks", icon: UserCheck, executionOnly: true },
-    { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, executionOnly: true },
-    { href: "/dashboard/department", label: "Department", icon: Network, executionOnly: true },
+    { href: "/dashboard/wbs", label: "WBS", icon: FolderTree },
+    { href: "/dashboard/my-tasks", label: "My Tasks", icon: UserCheck },
+    { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks },
+    { href: "/dashboard/department", label: "Department", icon: Network },
     { href: "/dashboard/stakeholders", label: "Stakeholders", icon: Users },
   ],
   hub: {

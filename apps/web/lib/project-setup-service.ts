@@ -173,24 +173,15 @@ export async function upsertProjectNotificationRules(projectId: string, rules: P
 
 // ── Activation Log ────────────────────────────────────────────────────────────
 
-export async function getProjectActivationLog(projectId: string): Promise<ProjectActivationLog | null> {
-  const supabase = createClient();
-  const { data } = await supabase.from("project_activation_log").select("*").eq("project_id", projectId).maybeSingle();
-  if (data) {
-    return {
-      ...data,
-      checklist: typeof data.checklist === "string" ? JSON.parse(data.checklist) : data.checklist ?? {},
-    };
-  }
-  return null;
-}
-
+// Records the activation and sets the project live. The log keeps the first activation:
+// re-activating (e.g. after On Hold) leaves it as is, so only the INSERT policy is needed.
 export async function activateProject(projectId: string, userId: string, checklist: Record<string, boolean>): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase.from("project_activation_log").insert({
-    project_id: projectId,
-    activated_by: userId,
-    checklist: JSON.stringify(checklist),
-  });
+  const { error: logError } = await supabase.from("project_activation_log").upsert(
+    { project_id: projectId, activated_by: userId, checklist },
+    { onConflict: "project_id", ignoreDuplicates: true },
+  );
+  if (logError) throw new Error(logError.message);
+  const { error } = await supabase.from("projects").update({ project_status: "active" }).eq("id", projectId);
   if (error) throw new Error(error.message);
 }

@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Loader2, Pencil, Check, Circle, CircleDot, Minus } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, Loader2, PauseCircle, Pencil, PlayCircle, Check, Circle, CircleDot, Minus } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/components/project/projects/project-edit-sheet";
+import type { Project } from "@/lib/project/projects/project-types";
 import { useProject } from "@/components/dashboard/project-context";
-import { PrecontractWizard } from "@/components/project/projects/precontract-wizard";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
-import { isSubmittedOrLater, STAGE_LABELS, stageIndex, type Workstream, type WorkstreamCode } from "@/lib/qs/tender-lifecycle";
+import { isSubmittedOrLater, STAGE_LABELS, stageIndex, type Workstream } from "@/lib/qs/tender-lifecycle";
 import type { PrecontractCtx, PrecontractDetails, StaffOption, TenderRecord } from "@/components/project/projects/precontract/shared";
 import { GoNoGoSection, RegistrationSection, TenderManagementSection } from "@/components/project/projects/precontract/setup-sections";
 import {
@@ -30,7 +30,14 @@ import {
   OutcomeSection,
   SubmissionSection,
 } from "@/components/project/projects/precontract/control-sections";
-import { getProjectPrecontractDetailByProjectId, getTenderRegisterById, listProfiles, listTenderWorkstreamsByTenderId } from "@/lib/project/projects/projects-queries";
+import { TENDER_SECTION_GROUPS, type TenderSectionDef, type TenderSectionId } from "@/lib/project/projects/project-tabs";
+import {
+  getProjectPrecontractDetailByProjectId,
+  getTenderRegisterById,
+  listProfiles,
+  listTenderWorkstreamsByTenderId,
+  updateProjectByIdReturning,
+} from "@/lib/project/projects/projects-queries";
 
 interface PrecontractDetailProps {
   project: Project;
@@ -38,55 +45,16 @@ interface PrecontractDetailProps {
   onUpdate: (project: Project) => void;
   /** Rendered inside another view (post-contract "Tender Record" tab): no page header. */
   embedded?: boolean;
+  /** Section from the URL. With onSectionChange the section is controlled by the page; otherwise kept here. */
+  section?: string | null;
+  onSectionChange?: (section: string) => void;
+  /** Open with the Registration editor showing (?edit=1, e.g. from an old /edit link). */
+  startEditing?: boolean;
 }
 
-// Sections follow the master pre-contract flow (docs/04-Business-Modules/04-02-Project-Setup/
-// 04-02-01-Pre Contract Project/PRE-CONTRACT Project Prompt.md), numbered as its flow diagram.
-type SectionId =
-  | "registration" | "management" | "go-no-go"
-  | "documents" | "technical" | "qs" | "planning" | "procurement" | "commercial" | "risk" | "hse-qaqc"
-  | "clarifications" | "compilation" | "approval" | "submission" | "outcome";
-
-interface SectionDef {
-  id: SectionId;
-  no: string;
-  label: string;
-  workstreams?: WorkstreamCode[];
-}
-
-const GROUPS: { title: string; sections: SectionDef[] }[] = [
-  {
-    title: "Setup",
-    sections: [
-      { id: "registration", no: "01", label: "Registration" },
-      { id: "management", no: "02", label: "Tender Management" },
-      { id: "go-no-go", no: "03", label: "Go / No-Go" },
-    ],
-  },
-  {
-    title: "Workstreams",
-    sections: [
-      { id: "documents", no: "04", label: "Tender Documents", workstreams: ["documents"] },
-      { id: "technical", no: "05", label: "Technical Review", workstreams: ["technical_arc", "technical_str", "technical_mep", "technical_bim"] },
-      { id: "qs", no: "06", label: "QS Tendering", workstreams: ["qs_tendering"] },
-      { id: "planning", no: "07", label: "Tender Planning", workstreams: ["planning"] },
-      { id: "procurement", no: "08", label: "Procurement", workstreams: ["procurement"] },
-      { id: "commercial", no: "09", label: "Commercial", workstreams: ["commercial"] },
-      { id: "risk", no: "10", label: "Risk & Opportunity", workstreams: ["risk"] },
-      { id: "hse-qaqc", no: "11", label: "HSE / QAQC", workstreams: ["hse_qaqc"] },
-    ],
-  },
-  {
-    title: "Control",
-    sections: [
-      { id: "clarifications", no: "12", label: "Clarifications & Addenda", workstreams: ["clarifications"] },
-      { id: "compilation", no: "13", label: "Tender Compilation", workstreams: ["compilation"] },
-      { id: "approval", no: "14", label: "Bid Approval" },
-      { id: "submission", no: "15", label: "Submission" },
-      { id: "outcome", no: "16", label: "Tender Outcome" },
-    ],
-  },
-];
+const GROUPS = TENDER_SECTION_GROUPS;
+type SectionId = TenderSectionId;
+type SectionDef = TenderSectionDef;
 const ALL_SECTIONS = GROUPS.flatMap((g) => g.sections);
 
 type NavState = "done" | "active" | "todo" | "na";
@@ -128,7 +96,7 @@ function StateIcon({ state }: { state: NavState }) {
   return <Circle className="h-3.5 w-3.5 text-muted-foreground/60" />;
 }
 
-export function PrecontractDetail({ project: initialProject, onBack, onUpdate, embedded = false }: PrecontractDetailProps) {
+export function PrecontractDetail({ project: initialProject, onBack, onUpdate, embedded = false, section, onSectionChange, startEditing = false }: PrecontractDetailProps) {
   const router = useRouter();
   const { setSelectedProjectId, refreshProjects } = useProject();
   const { can, roleCodes } = useTenderPermissions();
@@ -139,8 +107,17 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [active, setActive] = useState<SectionId | null>(null);
+  const [editingRegistration, setEditingRegistration] = useState(startEditing);
+  const [localActive, setLocalActive] = useState<SectionId | null>(null);
+  const urlSection = ALL_SECTIONS.find((s) => s.id === section)?.id ?? null;
+  const active = onSectionChange ? urlSection : localActive;
+  const setActive = (id: SectionId) => (onSectionChange ? onSectionChange(id) : setLocalActive(id));
+  // Edit = the Registration section in edit mode.
+  const startEdit = useCallback(() => {
+    if (onSectionChange) onSectionChange("registration");
+    else setLocalActive("registration");
+    setEditingRegistration(true);
+  }, [onSectionChange]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -189,13 +166,15 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
       setSelectedProjectId(project.id);
       router.push(href);
     },
-    onEdit: () => setEditing(true),
+    onEdit: startEdit,
+    editingRegistration,
+    setEditingRegistration,
     onProjectUpdate: (p: Project) => {
       setProject(p);
       refreshProjects();
       onUpdate(p);
     },
-  }, [project, details, tender, workstreams, staff, userId, roleCodes, can, load, setSelectedProjectId, router, refreshProjects, onUpdate]);
+  }, [project, details, tender, workstreams, staff, userId, roleCodes, can, load, setSelectedProjectId, router, refreshProjects, onUpdate, startEdit, editingRegistration]);
 
   if (loading) {
     return (
@@ -205,20 +184,6 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
     );
   }
 
-  if (editing) {
-    return (
-      <PrecontractWizard
-        project={project}
-        onClose={() => setEditing(false)}
-        onSave={(updated) => {
-          setEditing(false);
-          setProject(updated);
-          onUpdate(updated);
-          void load();
-        }}
-      />
-    );
-  }
 
   if (!ctx) {
     return (
@@ -233,7 +198,23 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
 
   const current = active ?? defaultSection(ctx.details);
   const stage = ctx.details.tender_stage;
-  const currentDef = ALL_SECTIONS.find((s) => s.id === current)!;
+  const currentIndex = ALL_SECTIONS.findIndex((s) => s.id === current);
+  const currentDef = ALL_SECTIONS[currentIndex] ?? ALL_SECTIONS[0];
+  const prevSection = currentIndex > 0 ? ALL_SECTIONS[currentIndex - 1] : null;
+  const nextSection = currentIndex >= 0 && currentIndex < ALL_SECTIONS.length - 1 ? ALL_SECTIONS[currentIndex + 1] : null;
+  const activeGroupIndex = Math.max(0, GROUPS.findIndex((g) => g.sections.some((s) => s.id === currentDef.id)));
+  const activeGroup = GROUPS[activeGroupIndex] ?? GROUPS[0];
+
+  function selectGroup(groupIndex: number) {
+    const group = GROUPS[groupIndex];
+    if (!group || !ctx) return;
+    if (group.sections.some((s) => s.id === currentDef.id)) return;
+    const preferred =
+      group.sections.find((s) => sectionState(s, ctx.details, workstreams) === "active") ??
+      group.sections.find((s) => sectionState(s, ctx.details, workstreams) === "todo") ??
+      group.sections[0];
+    if (preferred) setActive(preferred.id);
+  }
 
   function renderSection() {
     const c = ctx!;
@@ -254,6 +235,30 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
       case "approval": return <BidApprovalSection ctx={c} />;
       case "submission": return <SubmissionSection ctx={c} />;
       case "outcome": return <OutcomeSection ctx={c} />;
+    }
+  }
+
+  async function changeProjectStatus(nextStatus: string) {
+    const { data, error } = await updateProjectByIdReturning(
+      { project_status: nextStatus, updated_at: new Date().toISOString() },
+      project.id,
+    );
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (data) {
+      const updated = data as Project;
+      setProject(updated);
+      refreshProjects();
+      onUpdate(updated);
+      toast.success(
+        nextStatus === "on_hold"
+          ? "Opportunity placed on hold"
+          : nextStatus === "archived"
+            ? "Opportunity archived"
+            : "Opportunity resumed to active pipeline",
+      );
     }
   }
 
@@ -278,70 +283,203 @@ export function PrecontractDetail({ project: initialProject, onBack, onUpdate, e
             )}>
               {STAGE_LABELS[stage]}
             </span>
+            {project.project_status === "on_hold" && (
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                On Hold
+              </span>
+            )}
+            {project.project_status === "archived" && (
+              <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                Archived
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             {project.project_code}
             {tender && tender.tender_no !== project.project_code.toUpperCase() && ` · Tender ref ${tender.tender_no}`}
           </p>
         </div>
-        {can("tender_register", "edit") && !isSubmittedOrLater(stage) && (
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {can("tender_register", "edit") && (
+            <>
+              {project.project_status === "on_hold" || project.project_status === "archived" ? (
+                <Button variant="outline" size="sm" onClick={() => void changeProjectStatus("active")}>
+                  <PlayCircle className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> Resume
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => void changeProjectStatus("on_hold")}>
+                  <PauseCircle className="h-3.5 w-3.5 mr-1.5 text-amber-600" /> Put On Hold
+                </Button>
+              )}
+              {project.project_status !== "archived" && (
+                <Button variant="outline" size="sm" onClick={() => void changeProjectStatus("archived")}>
+                  <Archive className="h-3.5 w-3.5 mr-1.5" /> Archive
+                </Button>
+              )}
+            </>
+          )}
+          {can("tender_register", "edit") && !isSubmittedOrLater(stage) && (
+            <Button variant="outline" size="sm" onClick={startEdit}>
+              <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+            </Button>
+          )}
+        </div>
       </div>}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* Section navigation: select on small screens, grouped stepper from md up */}
-        <div className="border-b px-4 py-3 md:hidden">
-          <select
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={current}
-            onChange={(e) => setActive(e.target.value as SectionId)}
-          >
-            {GROUPS.map((g) => (
-              <optgroup key={g.title} label={g.title}>
-                {g.sections.map((s) => <option key={s.id} value={s.id}>{s.no} {s.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <nav className="hidden w-60 shrink-0 overflow-y-auto border-r px-3 py-4 md:block">
-          {GROUPS.map((g) => (
-            <div key={g.title} className="mb-4">
-              <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{g.title}</p>
-              <ul className="space-y-0.5">
-                {g.sections.map((s) => {
-                  const state = sectionState(s, ctx.details, workstreams);
-                  return (
-                    <li key={s.id}>
-                      <button
-                        type="button"
-                        onClick={() => setActive(s.id)}
+      {/* Visual Pipeline Header: 3 Phase Panels + Active Phase Connected Step Cards */}
+      <div className="border-b bg-muted/20 px-4 py-3.5 sm:px-6">
+        {/* Row 1: 3-Phase Pipeline Panels (Setup → Workstreams → Control) */}
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+          {GROUPS.map((g, gIdx) => {
+            const isSelectedGroup = gIdx === activeGroupIndex;
+            const states = g.sections.map((s) => sectionState(s, ctx.details, workstreams));
+            const applicableCount = states.filter((st) => st !== "na").length || g.sections.length;
+            const doneCount = states.filter((st) => st === "done").length;
+            const hasActive = states.some((st) => st === "active");
+            const isPhaseComplete = applicableCount > 0 && doneCount === applicableCount;
+            const pct = applicableCount > 0 ? Math.round((doneCount / applicableCount) * 100) : 0;
+            const firstNo = g.sections[0]?.no ?? "";
+            const lastNo = g.sections[g.sections.length - 1]?.no ?? "";
+
+            return (
+              <div key={g.title} className="relative flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => selectGroup(gIdx)}
+                  className={cn(
+                    "group flex w-full flex-col justify-between rounded-xl border p-3 text-left transition-all",
+                    isSelectedGroup
+                      ? "border-primary bg-card shadow-xs ring-2 ring-primary/15"
+                      : "border-border/80 bg-card/60 hover:border-primary/40 hover:bg-card",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                          current === s.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                          "inline-flex h-5 items-center rounded-md px-1.5 text-[10px] font-bold uppercase tracking-wider",
+                          isSelectedGroup
+                            ? "bg-primary text-primary-foreground"
+                            : isPhaseComplete
+                              ? "bg-emerald-500/15 text-emerald-700"
+                              : "bg-muted text-muted-foreground",
                         )}
                       >
-                        <span className="w-5 shrink-0 text-[11px] tabular-nums text-muted-foreground">{s.no}</span>
-                        <span className="flex-1 truncate">{s.label}</span>
-                        <StateIcon state={state} />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
+                        Phase 0{gIdx + 1}
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">{g.title}</span>
+                    </div>
+                    <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                      Steps {firstNo}–{lastNo}
+                    </span>
+                  </div>
 
-        <div className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          <div className="mb-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Step {currentDef.no}</p>
+                  <div className="mt-2.5 flex items-center gap-2.5">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          isPhaseComplete
+                            ? "bg-emerald-500"
+                            : isSelectedGroup || hasActive
+                              ? "bg-primary"
+                              : "bg-slate-400",
+                        )}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground">
+                      {doneCount}/{applicableCount} done
+                    </span>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Row 2: Connected Step Cards Pipeline for Active Phase */}
+        <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1">
+          {activeGroup.sections.map((s, idx) => {
+            const state = sectionState(s, ctx.details, workstreams);
+            const isCurrent = current === s.id;
+            return (
+              <div key={s.id} className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActive(s.id)}
+                  className={cn(
+                    "group flex min-w-[148px] flex-col gap-1 rounded-lg border px-3 py-2 text-left transition-all",
+                    isCurrent
+                      ? "border-primary bg-card text-foreground shadow-xs ring-2 ring-primary/15"
+                      : state === "done"
+                        ? "border-emerald-200/90 bg-emerald-50/50 text-foreground hover:border-emerald-300 hover:bg-emerald-50"
+                        : state === "active"
+                          ? "border-blue-200/90 bg-blue-50/50 text-foreground hover:border-blue-300 hover:bg-blue-50"
+                          : "border-border/80 bg-card/70 text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                        isCurrent
+                          ? "bg-primary text-primary-foreground"
+                          : state === "done"
+                            ? "bg-emerald-500/15 text-emerald-700"
+                            : state === "active"
+                              ? "bg-blue-500/15 text-blue-700"
+                              : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      Step {s.no}
+                    </span>
+                    <StateIcon state={state} />
+                  </div>
+                  <span className="truncate text-xs font-semibold leading-snug">{s.label}</span>
+                </button>
+                {idx < activeGroup.sections.length - 1 && (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Full-Width Active Step Content */}
+      <div className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Phase 0{activeGroupIndex + 1} · {activeGroup.title} · Step {currentDef.no} of {ALL_SECTIONS.length}
+            </p>
             <h3 className="text-base font-semibold">{currentDef.label}</h3>
           </div>
-          {renderSection()}
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              disabled={!prevSection}
+              onClick={() => prevSection && setActive(prevSection.id)}
+            >
+              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+              {prevSection ? `${prevSection.no} ${prevSection.label}` : "Prev"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              disabled={!nextSection}
+              onClick={() => nextSection && setActive(nextSection.id)}
+            >
+              {nextSection ? `${nextSection.no} ${nextSection.label}` : "Next"}
+              <ChevronRight className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
+        {renderSection()}
       </div>
     </div>
   );

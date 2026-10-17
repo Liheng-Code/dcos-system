@@ -11,7 +11,6 @@ export const designModule: ModuleManifest = {
   roleGoverned: true,
   routePrefixes: ["/dashboard/design"],
   // Design & Build / Turnkey tenders carry the design, so the bid team needs the Design module.
-  visible: ({ isPrecontract, isDesignTender }) => !isPrecontract || isDesignTender,
   navGroups: DESIGN_GROUPS,
   groupIcons: {
     correspondence: Send,

@@ -8,7 +8,6 @@ export const constructionModule: ModuleManifest = {
   rbacModules: ["construction", "qa_qc", "hse"],
   roleGoverned: true,
   routePrefixes: ["/dashboard/site", "/dashboard/qaqc", "/dashboard/hse"],
-  visible: ({ isPrecontract }) => !isPrecontract,
   navGroups: CONSTRUCTION_GROUPS,
   groupIcons: {
     site_quality: HardHat,

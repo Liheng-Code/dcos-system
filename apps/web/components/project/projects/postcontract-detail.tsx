@@ -2,35 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { getContractRegisterByProjectIdWithStatusActiveDraft, getProjectPrecontractDetailByProjectId, listQsRiskItemsByProjectId } from "@/lib/project/projects/projects-queries";
-import { ChevronLeft, Loader2, Pencil, ExternalLink } from "lucide-react";
+import { ChevronLeft, Loader2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/components/project/projects/project-edit-sheet";
-import { PostcontractDashboard } from "@/components/dashboard/postcontract-dashboard";
-import { ProjectSetupWizard } from "@/components/project/projects/project-setup-wizard";
+import type { Project } from "@/lib/project/projects/project-types";
+import { ProjectOverview } from "@/components/project/projects/overview/project-overview";
+import { ClaimsTab, PaymentsTab, VariationsTab } from "@/components/project/projects/overview/commercial";
+import { POSTCONTRACT_TABS, type PostcontractTabId } from "@/lib/project/projects/project-tabs";
+import { ProjectSettings } from "@/components/project/projects/settings/project-settings";
 import { getContractSnapshot, type ContractSnapshot } from "@/lib/qs/public";
 import { PrecontractDetail } from "@/components/project/projects/precontract-detail";
+import { ProjectStakeholdersTab } from "@/components/project/projects/project-stakeholders-tab";
+import { useProject } from "@/components/dashboard/project-context";
 
 interface PostcontractDetailProps {
   project: Project;
   onBack: () => void;
   onUpdate: (project: Project) => void;
+  /** Tab from the URL. With onTabChange the tab is controlled by the page; otherwise kept here. */
+  tab?: string | null;
+  onTabChange?: (tab: string) => void;
+  /** Settings section to scroll to (?section=). */
+  settingsSection?: string | null;
 }
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "contract", label: "Contract" },
-  { id: "boq", label: "BOQ" },
-  { id: "variations", label: "Variations" },
-  { id: "claims", label: "Claims" },
-  { id: "payments", label: "Payments" },
-  { id: "snapshot", label: "Snapshot" },
-  // Only for projects awarded in place: the pre-contract view, read-only (every section is frozen once awarded).
-  { id: "tender", label: "Tender Record" },
-] as const;
+const TABS = POSTCONTRACT_TABS;
 
-type TabId = (typeof TABS)[number]["id"];
+type TabId = PostcontractTabId;
 
 interface ContractRecord {
   id: string;
@@ -60,9 +59,14 @@ interface RiskItem {
   source: string;
 }
 
-export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDetailProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [editing, setEditing] = useState(false);
+export function PostcontractDetail({ project, onBack, onUpdate, tab, onTabChange, settingsSection = null }: PostcontractDetailProps) {
+  const { setSelectedProjectId } = useProject();
+  const [localTab, setLocalTab] = useState<TabId>("overview");
+  const activeTab: TabId = onTabChange ? (TABS.find((t) => t.id === tab)?.id ?? "overview") : localTab;
+  const setActiveTab = (id: TabId) => (onTabChange ? onTabChange(id) : setLocalTab(id));
+
+  // Module pages read the project from ProjectContext, so select this one before leaving.
+  const selectProject = () => setSelectedProjectId(project.id);
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [risks, setRisks] = useState<RiskItem[]>([]);
   const [snapshot, setSnapshot] = useState<ContractSnapshot | null>(null);
@@ -93,13 +97,117 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
     return `${project.currency ?? "USD"} ${val.toLocaleString()}`;
   }
 
+  function renderSnapshot(snapshot: ContractSnapshot) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold mb-3">Tender Bid Summary Snapshot</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            This snapshot was captured during award conversion. It represents the tender&apos;s final pricing as a locked reference.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Direct Cost</p>
+              <p className="text-sm font-medium">{formatCurrency(snapshot.direct_cost)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Preliminaries</p>
+              <p className="text-sm font-medium">{formatCurrency(snapshot.preliminaries)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Subcontract Cost</p>
+              <p className="text-sm font-medium">{formatCurrency(snapshot.subcontract_cost)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Overhead</p>
+              <p className="text-sm font-medium">{snapshot.overhead_pct}% ({formatCurrency(snapshot.overhead_amount)})</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Profit</p>
+              <p className="text-sm font-medium">{snapshot.profit_pct}% ({formatCurrency(snapshot.profit_amount)})</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Contingency</p>
+              <p className="text-sm font-medium">{formatCurrency(snapshot.contingency)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Risk Allowance</p>
+              <p className="text-sm font-medium">{formatCurrency(snapshot.risk_allowance)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">VAT</p>
+              <p className="text-sm font-medium">{snapshot.vat_pct}% ({formatCurrency(snapshot.vat_amount)})</p>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-border">
+            <div className="flex justify-between">
+              <span className="text-sm font-semibold text-muted-foreground">Total Bid Price</span>
+              <span className="text-lg font-bold">{formatCurrency(snapshot.total_bid_price)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold mb-3">Carry-Over Counts</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">BOQ Items</p>
+              <p className="text-lg font-bold">{snapshot.boq_item_count}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Price List</p>
+              <p className="text-lg font-bold">{snapshot.price_list_count}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Preliminaries</p>
+              <p className="text-lg font-bold">{snapshot.prelims_count}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Risks</p>
+              <p className="text-lg font-bold">{snapshot.risk_count}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border p-5">
+          <h3 className="text-sm font-semibold mb-3">Conversion Info</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Converted At</p>
+              <p className="text-sm font-medium">{new Date(snapshot.converted_at).toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Source Tender</p>
+              <p className="text-sm font-medium font-mono">{snapshot.tender_id.slice(0, 8)}…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderTabContent() {
     switch (activeTab) {
       case "overview":
-        return <PostcontractDashboard projectId={project.id} />;
+        return <ProjectOverview project={project} onUpdated={onUpdate} />;
+
+      case "settings":
+        return <ProjectSettings project={project} onProjectUpdated={onUpdate} section={settingsSection} />;
+
+      case "team":
+        return (
+          <div className="max-w-3xl">
+            <ProjectStakeholdersTab projectId={project.id} />
+          </div>
+        );
 
       case "tender":
-        return <PrecontractDetail project={project} onBack={() => setActiveTab("overview")} onUpdate={onUpdate} embedded />;
+        return (
+          <div className="space-y-4">
+            {snapshot && renderSnapshot(snapshot)}
+            {hasTenderRecord && <PrecontractDetail project={project} onBack={() => setActiveTab("overview")} onUpdate={onUpdate} embedded />}
+          </div>
+        );
 
       case "contract":
         if (!contract) {
@@ -117,7 +225,7 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
             <div className="rounded-xl border border-border p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold">Contract Details</h3>
-                <Link href={`/dashboard/contracts/register/${contract.id}`}>
+                <Link href={`/dashboard/contracts/register/${contract.id}`} onClick={selectProject}>
                   <Button variant="outline" size="sm">
                     <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> View Full Record
                   </Button>
@@ -171,7 +279,7 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
             <div className="rounded-xl border border-border p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold">QS BOQ</h3>
-                <Link href="/dashboard/qs/boq">
+                <Link href="/dashboard/qs/boq" onClick={selectProject}>
                   <Button variant="outline" size="sm">
                     <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open BOQ Module
                   </Button>
@@ -227,153 +335,13 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
         );
 
       case "variations":
-        return (
-          <div className="rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">Variations</h3>
-              <Link href="/dashboard/qs/variations">
-                <Button variant="outline" size="sm">
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open Variations Module
-                </Button>
-              </Link>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Manage variation orders for this contract. View, create, and track variation approvals.
-            </p>
-          </div>
-        );
+        return <VariationsTab project={project} />;
 
       case "claims":
-        return (
-          <div className="rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">Progress Claims</h3>
-              <Link href="/dashboard/qs/claims">
-                <Button variant="outline" size="sm">
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open Claims Module
-                </Button>
-              </Link>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Manage interim payment certificates (IPCs), measure progress, and track claim certifications.
-            </p>
-          </div>
-        );
+        return <ClaimsTab project={project} />;
 
       case "payments":
-        return (
-          <div className="rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">Payments</h3>
-              <Link href="/dashboard/qs/claims?sub=payments">
-                <Button variant="outline" size="sm">
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open Payments Module
-                </Button>
-              </Link>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Payment vouchers are created automatically when an IPC is marked as Paid.
-            </p>
-          </div>
-        );
-
-      case "snapshot":
-        if (!snapshot) {
-          return (
-            <div className="rounded-xl border border-dashed border-border p-8 text-center">
-              <p className="text-sm text-muted-foreground">No tender snapshot available.</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                This project was created without tender data carry-over.
-              </p>
-            </div>
-          );
-        }
-        return (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold mb-3">Tender Bid Summary Snapshot</h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                This snapshot was captured during award conversion. It represents the tender&apos;s final pricing as a locked reference.
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Direct Cost</p>
-                  <p className="text-sm font-medium">{formatCurrency(snapshot.direct_cost)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Preliminaries</p>
-                  <p className="text-sm font-medium">{formatCurrency(snapshot.preliminaries)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Subcontract Cost</p>
-                  <p className="text-sm font-medium">{formatCurrency(snapshot.subcontract_cost)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Overhead</p>
-                  <p className="text-sm font-medium">{snapshot.overhead_pct}% ({formatCurrency(snapshot.overhead_amount)})</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Profit</p>
-                  <p className="text-sm font-medium">{snapshot.profit_pct}% ({formatCurrency(snapshot.profit_amount)})</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Contingency</p>
-                  <p className="text-sm font-medium">{formatCurrency(snapshot.contingency)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Risk Allowance</p>
-                  <p className="text-sm font-medium">{formatCurrency(snapshot.risk_allowance)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">VAT</p>
-                  <p className="text-sm font-medium">{snapshot.vat_pct}% ({formatCurrency(snapshot.vat_amount)})</p>
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-border">
-                <div className="flex justify-between">
-                  <span className="text-sm font-semibold text-muted-foreground">Total Bid Price</span>
-                  <span className="text-lg font-bold">{formatCurrency(snapshot.total_bid_price)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold mb-3">Carry-Over Counts</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">BOQ Items</p>
-                  <p className="text-lg font-bold">{snapshot.boq_item_count}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Price List</p>
-                  <p className="text-lg font-bold">{snapshot.price_list_count}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Preliminaries</p>
-                  <p className="text-lg font-bold">{snapshot.prelims_count}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Risks</p>
-                  <p className="text-lg font-bold">{snapshot.risk_count}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold mb-3">Conversion Info</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Converted At</p>
-                  <p className="text-sm font-medium">{new Date(snapshot.converted_at).toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Source Tender</p>
-                  <p className="text-sm font-medium font-mono">{snapshot.tender_id.slice(0, 8)}…</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
+        return <PaymentsTab project={project} />;
 
       default:
         return null;
@@ -385,19 +353,6 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
-    );
-  }
-
-  if (editing) {
-    return (
-      <ProjectSetupWizard
-        project={project}
-        onClose={() => setEditing(false)}
-        onSave={(updated) => {
-          setEditing(false);
-          onUpdate(updated);
-        }}
-      />
     );
   }
 
@@ -425,15 +380,12 @@ export function PostcontractDetail({ project, onBack, onUpdate }: PostcontractDe
           </div>
           <p className="text-xs text-muted-foreground">{project.project_code}{contract ? ` · ${contract.contract_no}` : ""}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit Setup
-        </Button>
       </div>
 
       {/* Tabs */}
       <div className="overflow-x-auto border-b px-6">
         <div className="flex gap-1 min-w-max">
-          {TABS.filter((tab) => tab.id !== "tender" || hasTenderRecord).map((tab) => (
+          {TABS.filter((tab) => tab.id !== "tender" || hasTenderRecord || !!snapshot).map((tab) => (
             <button
               key={tab.id}
               type="button"
