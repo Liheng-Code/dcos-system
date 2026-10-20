@@ -14,6 +14,7 @@ import {
   saveTemplate,
   totalWeight,
   type ActivityStepTemplate,
+  type DurationBasis,
   type StepDraft,
 } from "@/lib/planning/activity-steps-service";
 
@@ -103,6 +104,8 @@ export function PlanActivityStepTemplates() {
         discipline: r.discipline,
         resource_crew: r.resource_crew,
         est_duration_days: r.est_duration_days,
+        duration_basis: r.duration_basis,
+        duration_share_pct: r.duration_share_pct,
         inspection_hold_point: r.inspection_hold_point,
         notes: r.notes,
       })));
@@ -127,6 +130,10 @@ export function PlanActivityStepTemplates() {
 
   const weightTotal = totalWeight(items);
   const weightOk = Math.round(weightTotal) === 100;
+  const scaledItems = items.filter((it) => it.duration_basis !== "fixed");
+  const shareTotal = Math.round(scaledItems.reduce((sum, it) => sum + (Number(it.duration_share_pct) || 0), 0) * 10) / 10;
+  const shareOk = scaledItems.length === 0 || Math.round(shareTotal) === 100;
+  const fixedDaysTotal = items.filter((it) => it.duration_basis === "fixed").reduce((sum, it) => sum + (Number(it.est_duration_days) || 0), 0);
 
   async function handleSave() {
     if (!form.group_name.trim() || !form.template_name.trim()) {
@@ -307,6 +314,9 @@ export function PlanActivityStepTemplates() {
             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", weightOk ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
               Total weight: {weightTotal}{weightOk ? "" : " (should be 100)"}
             </span>
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", shareOk ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+              Time: {Math.round(fixedDaysTotal * 10) / 10} d fixed + {shareTotal}% shared{shareOk ? "" : " (shares should total 100)"}
+            </span>
           </div>
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} />
@@ -327,7 +337,7 @@ export function PlanActivityStepTemplates() {
                   <th className="w-16 px-2 py-1.5 text-left">Weight</th>
                   <th className="w-32 px-2 py-1.5 text-left">Discipline</th>
                   <th className="w-36 px-2 py-1.5 text-left">Resource / Crew</th>
-                  <th className="w-20 px-2 py-1.5 text-left">Est. days</th>
+                  <th className="w-44 px-2 py-1.5 text-left" title="Fixed: same days on every activity. Scaled: share of the activity's time left after fixed steps, so it grows with quantity.">Duration</th>
                   <th className="w-16 px-2 py-1.5 text-center">Hold pt.</th>
                   <th className="min-w-[140px] px-2 py-1.5 text-left">Notes</th>
                   <th className="w-8 px-2 py-1.5"></th>
@@ -370,14 +380,39 @@ export function PlanActivityStepTemplates() {
                       />
                     </td>
                     <td className="px-2 py-1">
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={it.est_duration_days ?? ""}
-                        onChange={(e) => setItems((prev) => prev.map((p, pi) => (pi === i ? { ...p, est_duration_days: e.target.value === "" ? null : Number(e.target.value) } : p)))}
-                        className="w-16 rounded border border-transparent bg-transparent px-1 py-0.5 text-right outline-none focus:border-border"
-                      />
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={it.duration_basis ?? "scaled"}
+                          onChange={(e) => {
+                            const basis = e.target.value as DurationBasis;
+                            setItems((prev) => prev.map((p, pi) => (pi === i ? { ...p, duration_basis: basis } : p)));
+                          }}
+                          className="rounded border border-border bg-background px-1 py-0.5 text-[11px] outline-none focus:border-primary"
+                        >
+                          <option value="scaled">Scaled</option>
+                          <option value="fixed">Fixed</option>
+                        </select>
+                        {it.duration_basis === "fixed" ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            value={it.est_duration_days ?? ""}
+                            onChange={(e) => setItems((prev) => prev.map((p, pi) => (pi === i ? { ...p, est_duration_days: e.target.value === "" ? null : Number(e.target.value) } : p)))}
+                            className="w-14 rounded border border-transparent bg-transparent px-1 py-0.5 text-right outline-none focus:border-border"
+                          />
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={it.duration_share_pct ?? ""}
+                            onChange={(e) => setItems((prev) => prev.map((p, pi) => (pi === i ? { ...p, duration_share_pct: e.target.value === "" ? null : Number(e.target.value) } : p)))}
+                            className="w-14 rounded border border-transparent bg-transparent px-1 py-0.5 text-right outline-none focus:border-border"
+                          />
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{it.duration_basis === "fixed" ? "d" : "%"}</span>
+                      </div>
                     </td>
                     <td className="px-2 py-1 text-center">
                       <input
@@ -409,7 +444,7 @@ export function PlanActivityStepTemplates() {
             </table>
             <button
               type="button"
-              onClick={() => setItems((prev) => reorder([...prev, { step_no: 0, step_name: "", weight: 0, discipline: null, resource_crew: null, est_duration_days: null, inspection_hold_point: false, notes: null }]))}
+              onClick={() => setItems((prev) => reorder([...prev, { step_no: 0, step_name: "", weight: 0, discipline: null, resource_crew: null, est_duration_days: null, duration_basis: "scaled", duration_share_pct: null, inspection_hold_point: false, notes: null }]))}
               className="flex w-full items-center gap-1.5 border-t border-border px-2 py-2 text-xs text-muted-foreground hover:bg-muted/40"
             >
               <Plus className="h-3.5 w-3.5" /> Add step
@@ -417,6 +452,11 @@ export function PlanActivityStepTemplates() {
           </div>
           <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
             <ShieldAlert className="h-3 w-3" /> &quot;Hold pt.&quot; marks a QA/QC inspection hold point — work should not proceed past this step without sign-off.
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Duration: <span className="font-semibold">Fixed</span> steps take the same days on every activity (setting out, inspection, curing).{" "}
+            <span className="font-semibold">Scaled</span> steps share the activity&apos;s remaining time by %, so they grow with its quantity.
+            Example: an activity of 10 d with 1.5 d fixed gives a 25% step 2.1 d; at 20 d it gets 4.6 d.
           </p>
           </>
         )}

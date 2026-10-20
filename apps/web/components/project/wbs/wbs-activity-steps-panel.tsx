@@ -2,14 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, Layers, ListChecks, Loader2, Plus, RefreshCcw, Search, ShieldAlert, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, Gauge, Layers, ListChecks, Loader2, Plus, RefreshCcw, Search, ShieldAlert, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { needsRespread, spreadSteps } from "@/lib/planning/activity-step-spread";
 import {
+  applyStepSpread,
   assignTemplateToTask,
   clearTaskSteps,
+  loadStepSpreadContext,
+  type StepSpreadContext,
   deleteTaskStep,
   listActivityStepTemplates,
   listTaskSteps,
@@ -23,18 +27,22 @@ import {
 
 /** Searchable dropdown for picking a template — a plain <select> becomes unusable once the
  * library grows past a screenful, so this filters by template name or group as you type. */
-function TemplatePicker({
+export function TemplatePicker({
   groups,
   totalCount,
   value,
   onChange,
   placeholder = "Select a template…",
+  triggerClassName,
+  disabled,
 }: {
   groups: [string, ActivityStepTemplate[]][];
   totalCount: number;
   value: string;
   onChange: (id: string) => void;
   placeholder?: string;
+  triggerClassName?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -63,7 +71,11 @@ function TemplatePicker({
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setQuery(""); }}>
       <PopoverTrigger
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-2.5 text-left text-xs outline-none focus:border-primary"
+        disabled={disabled}
+        className={cn(
+          "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-2.5 text-left text-xs outline-none focus:border-primary disabled:opacity-60",
+          triggerClassName,
+        )}
       >
         <span className={cn("truncate", !selected && "text-muted-foreground")}>
           {selected ? selected.template_name : placeholder}
@@ -177,16 +189,30 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
   const [assignOpen, setAssignOpen] = useState(false);
   const [pickerTemplateId, setPickerTemplateId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ctx, setCtx] = useState<StepSpreadContext | null>(null);
 
-  async function reload() {
+  async function reload(): Promise<WbsTaskStep[]> {
     setLoading(true);
     try {
       const rows = await listTaskSteps(supabase, taskId);
       setSteps(rows);
+      return rows;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load activity steps");
+      return [];
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadContext(): Promise<StepSpreadContext | null> {
+    try {
+      const c = await loadStepSpreadContext(supabase, taskId);
+      setCtx(c);
+      return c;
+    } catch {
+      setCtx(null);
+      return null;
     }
   }
 
@@ -196,6 +222,46 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     listActivityStepTemplates(supabase).then(setTemplates).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  // The activity's dates can change in the surrounding drawer: re-read what the steps spread over.
+  useEffect(() => {
+    loadStepSpreadContext(supabase, taskId).then(setCtx).catch(() => setCtx(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, taskStart, taskEnd]);
+
+  /** Shares the activity's duration out over the not-started steps and saves their days and dates. */
+  async function respread(list: WbsTaskStep[], c: StepSpreadContext | null = ctx, announce = true) {
+    if (!c || list.length === 0) return;
+    const r = spreadSteps(list, c.duration.days, c.start, c.cal);
+    setSteps((prev) => prev.map((p) => {
+      const u = r.updates.find((x) => x.id === p.id);
+      return u ? { ...p, ...u } : p;
+    }));
+    try {
+      await applyStepSpread(supabase, r.updates);
+      for (const w of r.warnings) toast.warning(w);
+      if (announce) toast.success(`Spread ${c.duration.days} ${c.unit} over ${r.updates.length} step${r.updates.length === 1 ? "" : "s"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to spread step durations");
+      await reload();
+    }
+  }
+
+  /** Changing a step's basis, share or fixed days moves time between steps, so the whole list is re-spread. */
+  async function saveTimeChange(step: WbsTaskStep, patch: Partial<WbsTaskStep>) {
+    const next = { ...step, ...patch };
+    const list = steps.map((s) => (s.id === step.id ? next : s));
+    setSteps(list);
+    try {
+      await upsertTaskStep(supabase, taskId, next);
+      await respread(list, ctx, false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save step");
+      await reload();
+    }
+  }
+
+  const stale = ctx != null && steps.length > 0 && needsRespread(steps, ctx.duration.days);
 
   useEffect(() => {
     onStepsChange?.(steps.length > 0, steps.length > 0 ? weightedProgress(steps) : null);
@@ -225,7 +291,8 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
       toast.success("Template assigned");
       setAssignOpen(false);
       setPickerTemplateId("");
-      await reload();
+      const [rows, c] = await Promise.all([reload(), loadContext()]);
+      await respread(rows, c, false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to assign template");
     } finally {
@@ -317,22 +384,6 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     await persistDateCascade(steps, updates);
   }
 
-  /** Editing a step's estimated duration re-derives its own Finish (and re-chains what follows) if it already has a Start. */
-  async function handleDurationChange(step: WbsTaskStep) {
-    const idx = steps.findIndex((s) => s.id === step.id);
-    if (idx === -1) return;
-    if (!step.start_date) {
-      try {
-        await upsertTaskStep(supabase, taskId, step);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Failed to save step");
-        await reload();
-      }
-      return;
-    }
-    await persistDateCascade(steps, computeForwardDates(steps, idx, step.start_date));
-  }
-
   async function addManualStep() {
     setBusy(true);
     try {
@@ -410,6 +461,45 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
         </div>
       )}
 
+      {steps.length > 0 && ctx && (
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1 text-[10px] text-muted-foreground">
+            <Gauge className="h-3 w-3 shrink-0" />
+            <span>
+              Activity <span className="font-semibold text-foreground">{ctx.duration.days} {ctx.unit}</span>
+              {ctx.duration.source === "quantity" ? (
+                <>
+                  {" "}from quantity {ctx.duration.quantity ?? "?"} {ctx.duration.unit ?? ""}
+                  {ctx.duration.normCode ? ` (norm ${ctx.duration.normCode})` : ""}
+                </>
+              ) : (
+                <> from the schedule. Add a quantity and norm in Task Work to drive it from quantity.</>
+              )}
+            </span>
+            {ctx.duration.source === "quantity" && ctx.duration.scheduledDays !== ctx.duration.days && (
+              <span className="text-amber-600">
+                The schedule still has {ctx.duration.scheduledDays} {ctx.unit}; apply the duration in Task Work to move the activity.
+              </span>
+            )}
+          </div>
+          {stale && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
+              <span>The activity&apos;s duration changed since the steps were spread.</span>
+              {canEdit && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void respread(steps)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-white px-1.5 py-0.5 font-semibold hover:bg-amber-100 disabled:opacity-50"
+                >
+                  <RefreshCcw className="h-3 w-3" /> Re-spread
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {steps.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-5 text-center">
           <ListChecks className="mx-auto mb-2 h-6 w-6 text-primary" />
@@ -451,7 +541,7 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
                 <th className="px-1.5 py-1 text-left">Step</th>
                 <th className="w-14 px-1.5 py-1 text-left">Weight</th>
                 <th className="w-14 px-1.5 py-1 text-left">%</th>
-                <th className="w-14 px-1.5 py-1 text-left">Dur (d)</th>
+                <th className="w-20 px-1.5 py-1 text-left" title="F = fixed days. S = share (%) of the activity's time after fixed steps; the days below it follow the activity's duration.">Time</th>
                 <th className="w-24 px-1.5 py-1 text-left">Start</th>
                 <th className="w-24 px-1.5 py-1 text-left">Finish</th>
                 <th className="w-6"></th>
@@ -511,17 +601,57 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
                       />
                     </td>
                     <td className="px-1.5 py-1">
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        disabled={!canEdit}
-                        value={s.est_duration_days ?? ""}
-                        onChange={(e) => setSteps((prev) => prev.map((p) => (p.id === s.id ? { ...p, est_duration_days: e.target.value === "" ? null : Number(e.target.value) } : p)))}
-                        onBlur={() => { const cur = steps.find((x) => x.id === s.id); if (cur) void handleDurationChange(cur); }}
-                        title="Estimated duration — editing this recalculates Start/Finish below if a Start date is already set"
-                        className="w-12 rounded border border-transparent bg-transparent px-1 py-0.5 text-right outline-none focus:border-border disabled:opacity-60"
-                      />
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          disabled={!canEdit}
+                          onClick={() => {
+                            const toFixed = s.duration_basis !== "fixed";
+                            void saveTimeChange(s, toFixed
+                              ? { duration_basis: "fixed", duration_share_pct: null }
+                              : { duration_basis: "scaled", duration_share_pct: s.duration_share_pct ?? 0 });
+                          }}
+                          title={s.duration_basis === "fixed"
+                            ? "Fixed: same days on every activity. Click to make it scale with quantity."
+                            : "Scaled: share of the activity's time after fixed steps. Click to make it fixed."}
+                          className={cn(
+                            "w-4 shrink-0 rounded text-[9px] font-bold disabled:opacity-60",
+                            s.duration_basis === "fixed" ? "bg-slate-200 text-slate-700" : "bg-primary/15 text-primary",
+                          )}
+                        >
+                          {s.duration_basis === "fixed" ? "F" : "S"}
+                        </button>
+                        {s.duration_basis === "fixed" ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            disabled={!canEdit}
+                            value={s.est_duration_days ?? ""}
+                            onChange={(e) => setSteps((prev) => prev.map((p) => (p.id === s.id ? { ...p, est_duration_days: e.target.value === "" ? null : Number(e.target.value) } : p)))}
+                            onBlur={() => { const cur = steps.find((x) => x.id === s.id); if (cur) void saveTimeChange(cur, {}); }}
+                            title="Fixed days — the other steps are re-spread when you change this"
+                            className="w-10 rounded border border-transparent bg-transparent px-1 py-0.5 text-right outline-none focus:border-border disabled:opacity-60"
+                          />
+                        ) : (
+                          <div className="flex flex-col leading-tight">
+                            <span className="flex items-center">
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={!canEdit}
+                                value={s.duration_share_pct ?? ""}
+                                onChange={(e) => setSteps((prev) => prev.map((p) => (p.id === s.id ? { ...p, duration_share_pct: e.target.value === "" ? null : Number(e.target.value) } : p)))}
+                                onBlur={() => { const cur = steps.find((x) => x.id === s.id); if (cur) void saveTimeChange(cur, {}); }}
+                                title="Share of the activity's time after fixed steps"
+                                className="w-9 rounded border border-transparent bg-transparent px-0.5 py-0.5 text-right outline-none focus:border-border disabled:opacity-60"
+                              />
+                              <span className="text-[9px] text-muted-foreground">%</span>
+                            </span>
+                            <span className="px-0.5 text-[9px] text-muted-foreground">{s.est_duration_days ?? "–"} d</span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className={cn("px-1.5 py-1", outOfRange && "bg-amber-50")}>
                       <input
@@ -585,7 +715,7 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
           </div>
           {canEdit && (
             <p className="border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
-              Tip: set Step 1&apos;s Start date and Finish/Start for every step below auto-fills, back-to-back, from each step&apos;s Dur (d).
+              Step days follow the activity&apos;s duration: F steps keep their days, S steps share the rest by %. Editing a Start or Finish date re-chains the steps after it.
             </p>
           )}
         </div>
