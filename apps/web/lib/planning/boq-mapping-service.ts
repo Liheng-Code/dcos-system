@@ -8,8 +8,8 @@ import type { BoqCandidate, TaskForMatch } from "./boq-matching";
 // ── BOQ candidates ───────────────────────────────────────────────────────────
 
 /** The project's own qs_boq_items plus, when the project has a linked tender, its tender_boq_items. */
-export async function listBoqCandidates(projectId: string): Promise<BoqCandidate[]> {
-  const supabase = createClient();
+export async function listBoqCandidates(projectId: string, db?: ReturnType<typeof createClient>): Promise<BoqCandidate[]> {
+  const supabase = db ?? createClient();
   const [qsRows, budgetRes, tenderRes] = await Promise.all([
     fetchAllPages<Record<string, unknown>>((from, to) =>
       supabase
