@@ -44,7 +44,14 @@ export interface ActMaster {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  /** planning attributes (doc 21): not versioned content, editable by library managers on any status */
+  duration_basis?: DurationBasis;
+  default_work_group?: string | null;
+  default_step_template_id?: string | null;
 }
+
+/** How an activity's duration is set: from QS quantity x productivity, a standard fixed figure, or the planner. */
+export type DurationBasis = "quantity" | "fixed" | "programme";
 
 export interface ActMethod {
   id: string;

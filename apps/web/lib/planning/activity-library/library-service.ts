@@ -360,3 +360,24 @@ export async function listMethodsForMasters(db: Db, masterIds: string[]): Promis
   if (!masterIds.length) return [];
   return unwrap<ActMethod[]>(await db.from("plan_act_methods").select("*").in("master_id", masterIds).order("sort_order"));
 }
+
+// ── Planning attributes of a master (doc 21) ───────────────────────────────
+// Not part of the versioned content (plan_act_master_guard does not freeze them), so they can be set on an
+// active master. RLS: can_manage_master_libraries().
+
+export interface WorkGroupOption { code: string; name: string }
+
+export async function listWorkGroups(db: Db): Promise<WorkGroupOption[]> {
+  const { data, error } = await db.from("plan_work_groups").select("code, name").eq("is_active", true).order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WorkGroupOption[];
+}
+
+export async function updateMasterPlanning(
+  db: Db,
+  id: string,
+  patch: Pick<ActMaster, "duration_basis" | "default_work_group" | "default_step_template_id">,
+): Promise<void> {
+  const { error } = await db.from("plan_act_masters").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+}

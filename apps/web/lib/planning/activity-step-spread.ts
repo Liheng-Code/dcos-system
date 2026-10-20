@@ -191,3 +191,21 @@ export function needsRespread(steps: SpreadStep[], activityDays: number): boolea
   const { days } = computeStepDays(steps, activityDays);
   return steps.some((s) => !isLocked(s) && Math.abs(num(s.est_duration_days) - round1(days.get(s.id) ?? 0)) > 0.05);
 }
+
+/**
+ * Scales step weights to total 100 (2 dp), keeping their proportions; the rounding remainder goes to the
+ * heaviest step. All zero (e.g. only new steps) → shared equally. Used when a planner drops or adds steps.
+ */
+export function rebalanceWeights(weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const clean = weights.map((w) => Math.max(0, Number(w) || 0));
+  const total = clean.reduce((a, b) => a + b, 0);
+  const raw = total > 0 ? clean.map((w) => (w / total) * 100) : clean.map(() => 100 / clean.length);
+  const out = raw.map((w) => Math.round(w * 100) / 100);
+  const diff = Math.round((100 - out.reduce((a, b) => a + b, 0)) * 100) / 100;
+  if (diff !== 0) {
+    const i = out.indexOf(Math.max(...out));
+    out[i] = Math.round((out[i] + diff) * 100) / 100;
+  }
+  return out;
+}

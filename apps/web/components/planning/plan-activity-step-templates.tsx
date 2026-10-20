@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Copy, ListChecks, ShieldAlert, Search, X, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,11 +48,24 @@ export function PlanActivityStepTemplates() {
   const [groupFilter, setGroupFilter] = useState<string>("__all__");
   const [showInactive, setShowInactive] = useState(true);
 
-  async function reload() {
+  // ?template=<id> (e.g. from an Activity Master's Planning card) opens that template on first load;
+  // ?new=<name> (from an activity's Activity Steps picker) starts a new template with that name
+  const params = useSearchParams();
+  const requestedId = params.get("template");
+  const newName = params.get("new");
+
+  async function reload(openRequested = false) {
     setLoading(true);
     try {
       const list = await listActivityStepTemplates(supabase);
       setTemplates(list);
+      const requested = openRequested && requestedId ? list.find((t) => t.id === requestedId) : null;
+      if (requested) void selectTemplate(requested);
+      else if (openRequested && newName !== null) {
+        setSelectedId(null);
+        setForm({ ...emptyTemplate([...list.map((t) => t.group_name)].sort()[0] ?? "Architectural Finishes"), template_name: newName });
+        setItems([]);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load templates");
     } finally {
@@ -60,7 +74,7 @@ export function PlanActivityStepTemplates() {
   }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- reload() flips its own loading flag
-  useEffect(() => { void reload(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void reload(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = useMemo(() => {
     const set = new Set(templates.map((t) => t.group_name));

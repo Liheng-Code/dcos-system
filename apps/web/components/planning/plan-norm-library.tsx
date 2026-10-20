@@ -18,6 +18,10 @@ const STATUS_STYLE: Record<string, string> = {
   retired: "border-zinc-500/30 bg-zinc-500/15 text-zinc-400",
 };
 
+/** Filter value for norms with no discipline / trade set. */
+const NONE = "__none__";
+const DISCIPLINE_LABEL: Record<string, string> = { ARC: "Architectural", STR: "Structural", MEP: "MEP", CIV: "Civil", EXT: "External" };
+
 function crewSummary(n: Norm): string {
   const labour = n.crew.filter((c) => c.kind === "labor");
   if (labour.length === 0) return "—";
@@ -35,6 +39,8 @@ export function PlanNormLibrary() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [scope, setScope] = useState("all");
+  const [discipline, setDiscipline] = useState("all");
+  const [trade, setTrade] = useState("all");
   const [editing, setEditing] = useState<Norm | null | undefined>(undefined); // undefined = closed, null = new
   const [importing, setImporting] = useState(false);
   const [calibrating, setCalibrating] = useState<Norm | null>(null);
@@ -66,14 +72,23 @@ export function PlanNormLibrary() {
 
   const existingCodes = useMemo(() => new Set(norms.map((n) => n.code.toLowerCase())), [norms]);
 
+  // Discipline is the parent of trade (STR → Concrete, Formwork…): the trade list follows the chosen discipline.
+  const disciplines = useMemo(() => [...new Set(norms.map((n) => n.discipline ?? NONE))].sort(), [norms]);
+  const trades = useMemo(
+    () => [...new Set(norms.filter((n) => discipline === "all" || (n.discipline ?? NONE) === discipline).map((n) => n.trade ?? NONE))].sort(),
+    [norms, discipline],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return norms.filter((n) =>
       (status === "all" || n.status === status) &&
       (scope === "all" || (scope === "company" ? n.project_id === null : n.project_id !== null)) &&
+      (discipline === "all" || (n.discipline ?? NONE) === discipline) &&
+      (trade === "all" || (n.trade ?? NONE) === trade) &&
       (!q || `${n.code} ${n.name} ${n.trade ?? ""} ${n.discipline ?? ""}`.toLowerCase().includes(q)),
     );
-  }, [norms, search, status, scope]);
+  }, [norms, search, status, scope, discipline, trade]);
 
   async function remove(n: Norm) {
     if (!window.confirm(`Delete norm ${n.code}? Tasks using it will lose their norm.`)) return;
@@ -107,7 +122,18 @@ export function PlanNormLibrary() {
         <select className="rounded-md border border-border bg-background px-2.5 py-2 text-sm" value={scope} onChange={(e) => setScope(e.target.value)}>
           <option value="all">Company + project</option><option value="company">Company library</option><option value="project">This project</option>
         </select>
-        <span className="text-xs text-muted-foreground">{counts.approved} approved · {counts.draft} draft</span>
+        <select className="rounded-md border border-border bg-background px-2.5 py-2 text-sm" value={discipline} onChange={(e) => { setDiscipline(e.target.value); setTrade("all"); }} aria-label="Discipline">
+          <option value="all">All disciplines</option>
+          {disciplines.map((d) => <option key={d} value={d}>{d === NONE ? "(No discipline)" : DISCIPLINE_LABEL[d] && DISCIPLINE_LABEL[d] !== d ? `${d} – ${DISCIPLINE_LABEL[d]}` : d}</option>)}
+        </select>
+        <select className="rounded-md border border-border bg-background px-2.5 py-2 text-sm" value={trade} onChange={(e) => setTrade(e.target.value)} aria-label="Trade">
+          <option value="all">All trades</option>
+          {trades.map((t) => <option key={t} value={t}>{t === NONE ? "(No trade)" : t}</option>)}
+        </select>
+        <span className="text-xs text-muted-foreground">
+          {filtered.length !== norms.length && <>{filtered.length} of {norms.length} shown · </>}
+          {counts.approved} approved · {counts.draft} draft
+        </span>
         <div className="ml-auto flex gap-2">
           {canCreate && (
             <button type="button" onClick={() => setImporting(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">

@@ -99,9 +99,13 @@ export function PlanActivityGenerate() {
     if (!preview) return;
     setBusy(true);
     try {
-      const id = await commitGeneration(supabase, preview);
-      toast.success("Draft activities generated");
-      router.push(`/dashboard/planning/activity-library/runs/${id}`);
+      const { runId, steps, stepsError } = await commitGeneration(supabase, preview);
+      toast.success(
+        "Draft activities generated" +
+        (steps && steps.applied > 0 ? `; ${steps.applied} got their step template (${steps.steps} steps)` : ""),
+      );
+      if (stepsError) toast.warning(`Activities were generated, but their step templates could not be added: ${stepsError}. Use Step Templates › Apply to Activities.`);
+      router.push(`/dashboard/planning/activity-library/runs/${runId}`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Generation failed"); setBusy(false); }
   }
 

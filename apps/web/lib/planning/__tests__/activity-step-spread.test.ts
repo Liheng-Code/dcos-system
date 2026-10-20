@@ -4,6 +4,7 @@ import {
   ALL_DAYS_CALENDAR,
   computeStepDays,
   needsRespread,
+  rebalanceWeights,
   resolveActivityDuration,
   spreadSteps,
   type SpreadStep,
@@ -121,5 +122,18 @@ describe("resolveActivityDuration", () => {
     expect(resolveActivityDuration(10, "wd", null)).toMatchObject({ days: 10, source: "schedule" });
     expect(resolveActivityDuration(10, "wd", { ...work, duration_wd_derived: null })).toMatchObject({ source: "schedule" });
     expect(resolveActivityDuration(10, "cd", work)).toMatchObject({ days: 10, source: "schedule" });
+  });
+});
+
+describe("rebalanceWeights", () => {
+  it("keeps proportions and totals 100", () => {
+    expect(rebalanceWeights([20, 20, 10])).toEqual([40, 40, 20]);
+    const w = rebalanceWeights([1, 1, 1]);
+    expect(w.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+    expect(w).toEqual([33.34, 33.33, 33.33]);
+  });
+  it("shares equally when nothing has weight", () => {
+    expect(rebalanceWeights([0, 0])).toEqual([50, 50]);
+    expect(rebalanceWeights([])).toEqual([]);
   });
 });

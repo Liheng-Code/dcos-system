@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateApplicability, type ApplicabilityResult, type ProjectAttributes } from "./applicability";
 import { calculateDuration } from "./productivity-engine";
+import { attachDefaultStepTemplates, type AttachStepsResult } from "../step-template-bulk-service";
 import { resolveQuantity, type QuantityProvider, type ResolvedQuantity } from "./quantity-resolver";
 import { GENERATION_ENGINE_VERSION, planGeneration, type MasterContext, type PlannerInput, type PlannerResult, type TargetNode } from "./generation-planner";
 import { listMethodsForMasters, listProductivityStandards, listQuantityRules, loadTemplateDetail } from "./library-service";
@@ -174,7 +175,29 @@ export async function previewGeneration(db: Db, req: GenerationRequest): Promise
 }
 
 /** Atomic commit through plan_act_commit_generation. Returns the new run id. */
-export async function commitGeneration(db: Db, p: GenerationPreview): Promise<string> {
+export interface CommitResult {
+  runId: string;
+  /** default Activity Step Templates attached to the new activities; null when attaching failed */
+  steps: AttachStepsResult | null;
+  stepsError: string | null;
+}
+
+/**
+ * Commits a previewed run (one transaction), then gives each new activity its master's default Activity Step
+ * Template spread over the calculated duration. Steps are a second step on purpose: if they fail, the generated
+ * schedule stays and the planner is told (steps can be added later with Step Templates > Apply to Activities).
+ */
+export async function commitGeneration(db: Db, p: GenerationPreview): Promise<CommitResult> {
+  const runId = await commitRun(db, p);
+  try {
+    const steps = await attachDefaultStepTemplates(db, p.request.projectId, p.result.tasks.map((t) => t.id));
+    return { runId, steps, stepsError: null };
+  } catch (e) {
+    return { runId, steps: null, stepsError: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function commitRun(db: Db, p: GenerationPreview): Promise<string> {
   const { result, request, input } = p;
   const { data, error } = await db.rpc("plan_act_commit_generation", {
     p_payload: {

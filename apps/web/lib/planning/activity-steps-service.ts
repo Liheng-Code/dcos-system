@@ -191,15 +191,27 @@ export async function listTaskSteps(supabase: SupabaseClient, taskId: string): P
 
 /** Copies a template's steps onto a task, replacing any steps already there. */
 export async function assignTemplateToTask(supabase: SupabaseClient, taskId: string, templateId: string): Promise<void> {
-  const items = await listTemplateItems(supabase, templateId);
+  await assignStepsToTask(supabase, taskId, templateId, await listTemplateItems(supabase, templateId));
+}
+
+/** A step to put on an activity: a template item the planner kept, or one they added. */
+export type StepPick = Omit<ActivityStepTemplateItem, "id" | "template_id" | "step_no">;
+
+/** Replaces the activity's steps with the planner's picks, numbered 1..n in the order given. */
+export async function assignStepsToTask(
+  supabase: SupabaseClient,
+  taskId: string,
+  templateId: string | null,
+  items: StepPick[],
+): Promise<void> {
   const { error: delError } = await supabase.from("wbs_task_steps").delete().eq("task_id", taskId);
   if (delError) throw delError;
   if (items.length === 0) return;
   const { error } = await supabase.from("wbs_task_steps").insert(
-    items.map((it) => ({
+    items.map((it, i) => ({
       task_id: taskId,
       source_template_id: templateId,
-      step_no: it.step_no,
+      step_no: i + 1,
       step_name: it.step_name,
       weight: it.weight,
       progress: 0,
@@ -323,3 +335,10 @@ export async function applyStepSpread(supabase: SupabaseClient, updates: SpreadU
     if (error) throw error;
   }
 }
+
+/** True when the signed-in user may edit the step template library (the same check RLS applies). */
+export async function canManageStepTemplates(supabase: SupabaseClient): Promise<boolean> {
+  const { data, error } = await supabase.rpc("can_manage_master_libraries");
+  return !error && data === true;
+}
+

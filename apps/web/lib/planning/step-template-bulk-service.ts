@@ -252,3 +252,61 @@ export async function applyStepTemplatesBulk(
   }
   return { applied, steps: rows.length, skipped };
 }
+
+// ── Default steps for generated activities ───────────────────────────────────
+
+export interface AttachStepsResult {
+  applied: number;
+  steps: number;
+  /** activities whose master has no (active) default step template */
+  withoutTemplate: number;
+  skipped: number;
+}
+
+/**
+ * Gives each of `taskIds` the default Activity Step Template of its Activity Master (plan_act_masters.
+ * default_step_template_id), spread over the activity's duration. Used right after Generate commits a run.
+ * Activities that already have steps or progress are left alone, as in Apply to Activities.
+ */
+export async function attachDefaultStepTemplates(
+  supabase: SupabaseClient,
+  projectId: string,
+  taskIds: string[],
+): Promise<AttachStepsResult> {
+  const empty = { applied: 0, steps: 0, withoutTemplate: 0, skipped: 0 };
+  if (taskIds.length === 0) return empty;
+
+  const tasks: { id: string; activity_master_id: string | null }[] = [];
+  for (let i = 0; i < taskIds.length; i += CHUNK) {
+    const { data, error } = await supabase.from("wbs_tasks").select("id, activity_master_id").in("id", taskIds.slice(i, i + CHUNK));
+    if (error) throw new Error(error.message);
+    tasks.push(...((data ?? []) as { id: string; activity_master_id: string | null }[]));
+  }
+  const masterIds = [...new Set(tasks.map((t) => t.activity_master_id).filter((x): x is string => !!x))];
+  if (masterIds.length === 0) return { ...empty, withoutTemplate: tasks.length };
+
+  const { data: masters, error: mErr } = await supabase
+    .from("plan_act_masters")
+    .select("id, default_step_template_id, activity_step_template_master:default_step_template_id(is_active)")
+    .in("id", masterIds);
+  if (mErr) throw new Error(mErr.message);
+  const templateByMaster = new Map<string, string>();
+  for (const m of (masters ?? []) as unknown as {
+    id: string; default_step_template_id: string | null;
+    activity_step_template_master: { is_active: boolean } | { is_active: boolean }[] | null;
+  }[]) {
+    const t = Array.isArray(m.activity_step_template_master) ? m.activity_step_template_master[0] : m.activity_step_template_master;
+    if (m.default_step_template_id && t?.is_active) templateByMaster.set(m.id, m.default_step_template_id);
+  }
+
+  const assignments = tasks
+    .filter((t) => t.activity_master_id && templateByMaster.has(t.activity_master_id))
+    .map((t) => ({ taskId: t.id, templateId: templateByMaster.get(t.activity_master_id!)! }));
+  const withoutTemplate = tasks.length - assignments.length;
+  if (assignments.length === 0) return { ...empty, withoutTemplate };
+
+  const wanted = new Set(assignments.map((a) => a.taskId));
+  const activities = (await listActivitiesForSteps(supabase, projectId)).filter((a) => wanted.has(a.id));
+  const r = await applyStepTemplatesBulk(supabase, projectId, activities, assignments, { replace: false });
+  return { applied: r.applied, steps: r.steps, withoutTemplate, skipped: r.skipped.length };
+}

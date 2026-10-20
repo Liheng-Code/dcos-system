@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, Gauge, Layers, ListChecks, Loader2, Plus, RefreshCcw, Search, ShieldAlert, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, Gauge, Layers, ListChecks, Loader2, Plus, RefreshCcw, Search, ShieldAlert, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { needsRespread, spreadSteps } from "@/lib/planning/activity-step-spread";
+import { isLocked, needsRespread, spreadSteps } from "@/lib/planning/activity-step-spread";
 import {
   applyStepSpread,
-  assignTemplateToTask,
+  assignStepsToTask,
+  canManageStepTemplates,
+  type StepPick,
   clearTaskSteps,
   loadStepSpreadContext,
   type StepSpreadContext,
@@ -24,6 +26,7 @@ import {
   type ActivityStepTemplate,
   type WbsTaskStep,
 } from "@/lib/planning/activity-steps-service";
+import { StepTemplateSelector } from "./wbs-step-template-selector";
 
 /** Searchable dropdown for picking a template — a plain <select> becomes unusable once the
  * library grows past a screenful, so this filters by template name or group as you type. */
@@ -35,6 +38,7 @@ export function TemplatePicker({
   placeholder = "Select a template…",
   triggerClassName,
   disabled,
+  showCreate,
 }: {
   groups: [string, ActivityStepTemplate[]][];
   totalCount: number;
@@ -43,10 +47,11 @@ export function TemplatePicker({
   placeholder?: string;
   triggerClassName?: string;
   disabled?: boolean;
+  /** Offer "Create step template": opens Activity Library › Step Templates in a new tab with a new template started. */
+  showCreate?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-
   const selected = useMemo(() => {
     for (const [, list] of groups) {
       const found = list.find((t) => t.id === value);
@@ -69,7 +74,7 @@ export function TemplatePicker({
   const matchCount = filteredGroups.reduce((n, [, list]) => n + list.length, 0);
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setQuery(""); }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setQuery("") }}>
       <PopoverTrigger
         disabled={disabled}
         className={cn(
@@ -123,6 +128,19 @@ export function TemplatePicker({
           <div className="border-t border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
             {matchCount} of {totalCount} match
           </div>
+        )}
+        {showCreate && (
+          <a
+            href={`/dashboard/planning/activity-step-templates?new=${encodeURIComponent(query.trim())}`}
+            target="_blank"
+            rel="noopener"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-1.5 border-t border-border px-2.5 py-2 text-left text-xs font-semibold text-primary hover:bg-primary/5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="flex-1">{query.trim() && matchCount === 0 ? <>Create &quot;{query.trim()}&quot; in Step Templates</> : "Create step template"}</span>
+            <ExternalLink className="h-3 w-3" />
+          </a>
         )}
       </PopoverContent>
     </Popover>
@@ -190,6 +208,7 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
   const [pickerTemplateId, setPickerTemplateId] = useState("");
   const [busy, setBusy] = useState(false);
   const [ctx, setCtx] = useState<StepSpreadContext | null>(null);
+  const [canManage, setCanManage] = useState(false);
 
   async function reload(): Promise<WbsTaskStep[]> {
     setLoading(true);
@@ -220,8 +239,16 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload() flips its own loading flag
     void reload();
     listActivityStepTemplates(supabase).then(setTemplates).catch(() => {});
+    canManageStepTemplates(supabase).then(setCanManage).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  // A template created in Step Templates (opened in another tab) shows up when the planner comes back.
+  useEffect(() => {
+    const refresh = () => { listActivityStepTemplates(supabase).then(setTemplates).catch(() => {}); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [supabase]);
 
   // The activity's dates can change in the surrounding drawer: re-read what the steps spread over.
   useEffect(() => {
@@ -261,7 +288,10 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     }
   }
 
-  const stale = ctx != null && steps.length > 0 && needsRespread(steps, ctx.duration.days);
+  const durationChanged = ctx != null && steps.length > 0 && needsRespread(steps, ctx.duration.days);
+  // e.g. steps attached by Generate before the schedule gave the activity its dates
+  const missingDates = ctx?.start != null && steps.some((s) => !isLocked(s) && !s.start_date);
+  const stale = durationChanged || missingDates;
 
   useEffect(() => {
     onStepsChange?.(steps.length > 0, steps.length > 0 ? weightedProgress(steps) : null);
@@ -282,13 +312,13 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
   const weightTotal = totalWeight(steps);
   const computedProgress = weightedProgress(steps);
 
-  async function handleAssign() {
+  async function handleAssign(picks: StepPick[]) {
     if (!pickerTemplateId) return;
-    if (steps.length > 0 && !confirm("This replaces the current step list with the selected template. Continue?")) return;
+    if (steps.length > 0 && !confirm("This replaces the current step list with the selected steps. Continue?")) return;
     setBusy(true);
     try {
-      await assignTemplateToTask(supabase, taskId, pickerTemplateId);
-      toast.success("Template assigned");
+      await assignStepsToTask(supabase, taskId, pickerTemplateId, picks);
+      toast.success(`${picks.length} step${picks.length === 1 ? "" : "s"} assigned`);
       setAssignOpen(false);
       setPickerTemplateId("");
       const [rows, c] = await Promise.all([reload(), loadContext()]);
@@ -441,23 +471,17 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
       </div>
 
       {assignOpen && steps.length > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border-2 border-primary/30 bg-primary/5 p-2">
-          <div className="flex-1">
-            <TemplatePicker
-              groups={groups}
-              totalCount={templates.length}
-              value={pickerTemplateId}
-              onChange={setPickerTemplateId}
-            />
-          </div>
-          <button
-            type="button"
-            disabled={!pickerTemplateId || busy}
-            onClick={() => void handleAssign()}
-            className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            Assign
-          </button>
+        <div className="space-y-2 rounded-lg border-2 border-primary/30 bg-primary/5 p-2">
+          <TemplatePicker
+            groups={groups}
+            totalCount={templates.length}
+            value={pickerTemplateId}
+            onChange={setPickerTemplateId}
+            showCreate={canManage}
+          />
+          {pickerTemplateId && (
+            <StepTemplateSelector key={pickerTemplateId} templateId={pickerTemplateId} busy={busy} assignLabel="Replace with" onAssign={(p) => void handleAssign(p)} />
+          )}
         </div>
       )}
 
@@ -484,7 +508,11 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
           </div>
           {stale && (
             <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
-              <span>The activity&apos;s duration changed since the steps were spread.</span>
+              <span>
+                {durationChanged
+                  ? "The activity's duration changed since the steps were spread."
+                  : "The activity now has dates; the steps don't yet."}
+              </span>
               {canEdit && (
                 <button
                   type="button"
@@ -508,25 +536,22 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
             Assign a template to break this activity into weighted steps — % Complete then rolls up automatically.
           </p>
           {canEdit && (
-            <div className="mx-auto flex max-w-xs flex-col items-stretch gap-2">
+            <div className="mx-auto flex max-w-md flex-col items-stretch gap-2">
               <TemplatePicker
                 groups={groups}
                 totalCount={templates.length}
                 value={pickerTemplateId}
                 onChange={setPickerTemplateId}
+                showCreate={canManage}
               />
-              <button
-                type="button"
-                disabled={!pickerTemplateId || busy}
-                onClick={() => void handleAssign()}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                Assign Template
-              </button>
+              {pickerTemplateId ? (
+                <StepTemplateSelector key={pickerTemplateId} templateId={pickerTemplateId} busy={busy} onAssign={(p) => void handleAssign(p)} />
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Pick a template to see its steps; untick what this activity doesn&apos;t need or add your own.</p>
+              )}
               {groups.length === 0 && (
                 <p className="text-[10px] text-muted-foreground">
-                  No templates yet — create one under Planning ▸ Activity Step Templates.
+                  {canManage ? "No templates yet: open the list and use Create step template (opens Step Templates)." : "No templates yet. Ask a library manager to add one under Activity Library › Step Templates."}
                 </p>
               )}
             </div>
