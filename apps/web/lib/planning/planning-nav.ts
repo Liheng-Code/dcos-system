@@ -95,6 +95,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "Activities", href: "/dashboard/planning/activity-library" },
       { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
       { label: "Generate", href: "/dashboard/planning/activity-library/generate" },
+      { label: "QS Bridge", href: "/dashboard/planning/activity-library/qs-bridge" },
       { label: "Quantity Links", href: "/dashboard/planning/activity-library/quantity-links" },
       { label: "BIM Quantities", href: "/dashboard/planning/activity-library/bim" },
       { label: "Recovery", href: "/dashboard/planning/activity-library/recovery" },

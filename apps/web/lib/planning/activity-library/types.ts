@@ -171,6 +171,8 @@ export interface ActTemplateItem {
   method_id: string | null;
   norm_id: string | null;
   duration_days_override: number | null;
+  /** parallel crews the generated duration is planned with (default 1) */
+  crews?: number | null;
   is_milestone: boolean;
   note: string | null;
 }

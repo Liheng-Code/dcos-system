@@ -125,6 +125,10 @@ export interface QuantityLinkView {
   quantity_now: number | null;
   /** quantity_now x factor */
   contribution: number | null;
+  /** unit of the contribution (metric unit when the factor converts, else the BOQ unit) */
+  contribution_unit: string | null;
+  /** manual = confirmed by a planner; bridge_rule = written by QS Bridge > Apply */
+  source: "manual" | "bridge_rule";
   /** the BOQ line has changed since the planner confirmed the link */
   drifted: boolean;
   /** the BOQ line no longer exists or cannot be read */
@@ -156,6 +160,8 @@ export async function listQuantityLinks(db: Db, projectId: string): Promise<Quan
       boq_description: (r.boq_description as string | null) ?? null, boq_unit: l.boq_unit, factor: l.factor,
       quantity_at_link: l.boq_quantity_at_link, quantity_now: cur ? cur.quantity : null,
       contribution: cur ? Math.round(cur.quantity * l.factor * 1000) / 1000 : null,
+      contribution_unit: (r.metric_unit as string | null) ?? l.boq_unit,
+      source: (r.source as "manual" | "bridge_rule" | null) ?? "manual",
       drifted: !!cur && l.boq_quantity_at_link != null && Math.abs(cur.quantity - l.boq_quantity_at_link) > 1e-9,
       missing: !cur, note: (r.note as string | null) ?? null, confirmed_at: r.confirmed_at as string,
     };

@@ -12,6 +12,8 @@ export interface BoqLinkRow {
   boq_unit: string | null;
   boq_quantity_at_link: number | null;
   factor: number;
+  /** unit of quantity x factor when the factor converts units (bridge links, e.g. kg x 0.001 = t); null = BOQ unit */
+  metric_unit?: string | null;
 }
 
 export interface BoqLiveItem {
@@ -44,7 +46,7 @@ export function aggregateBoqLinks(links: BoqLinkRow[], live: Map<string, BoqLive
   for (const l of links) {
     const cur = live.get(key(l));
     const qty = cur?.quantity ?? l.boq_quantity_at_link ?? 0;
-    const u = cur?.unit ?? l.boq_unit;
+    const u = l.metric_unit ?? cur?.unit ?? l.boq_unit;
     if (unit == null) unit = u;
     else if (u != null && !sameUnit(unit, u)) unitConflict = true;
     value += qty * l.factor;

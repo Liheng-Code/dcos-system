@@ -256,6 +256,8 @@ export interface TemplateItemDraft {
   scope: "floor" | "element" | "zone";
   method_id: string | null;
   duration_days_override: number | null;
+  /** parallel crews (default 1) */
+  crews?: number | null;
   note: string | null;
 }
 
@@ -292,7 +294,7 @@ export async function saveTemplateRecipe(db: Db, templateId: string, items: Temp
   const { data, error } = await db.from("plan_act_template_items").insert(
     items.map((it, i) => ({
       template_id: templateId, seq: i + 1, master_id: it.master_id, scope: it.scope, method_id: it.method_id,
-      duration_days_override: it.duration_days_override, note: it.note,
+      duration_days_override: it.duration_days_override, crews: it.crews && it.crews > 0 ? it.crews : 1, note: it.note,
     })),
   ).select("id, seq");
   if (error) throw new Error(error.message);
@@ -325,7 +327,7 @@ export async function createTemplateVersion(db: Db, id: string): Promise<ActTemp
   const nt = data as ActTemplate;
   const items: TemplateItemDraft[] = d.items.map((it) => ({
     key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id,
-    duration_days_override: it.duration_days_override, note: it.note,
+    duration_days_override: it.duration_days_override, crews: it.crews && it.crews > 0 ? it.crews : 1, note: it.note,
   }));
   const deps: TemplateDepDraft[] = d.dependencies.map((x) => ({
     from_key: x.predecessor_item_id, to_key: x.successor_item_id, relation: x.relation, lag_days: x.lag_days, is_optional: x.is_optional,

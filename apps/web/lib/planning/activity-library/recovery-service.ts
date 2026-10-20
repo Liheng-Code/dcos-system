@@ -78,10 +78,14 @@ async function methodAlternatives(db: Db, rows: Record<string, unknown>[]): Prom
 
   const ids = generated.map((r) => r.id as string);
   const qty = new Map<string, number>();
+  const crews = new Map<string, number>();
   for (let i = 0; i < ids.length; i += 150) {
-    const { data, error } = await db.from("plan_task_work").select("task_id, quantity").in("task_id", ids.slice(i, i + 150));
+    const { data, error } = await db.from("plan_task_work").select("task_id, quantity, crews").in("task_id", ids.slice(i, i + 150));
     if (error) throw new Error(error.message);
-    for (const w of (data ?? []) as { task_id: string; quantity: number | null }[]) if (w.quantity != null && Number(w.quantity) > 0) qty.set(w.task_id, Number(w.quantity));
+    for (const w of (data ?? []) as { task_id: string; quantity: number | null; crews: number | null }[]) {
+      if (w.quantity != null && Number(w.quantity) > 0) qty.set(w.task_id, Number(w.quantity));
+      if (Number(w.crews) > 0) crews.set(w.task_id, Number(w.crews));
+    }
   }
 
   const standardsByMaster = new Map<string, Awaited<ReturnType<typeof listProductivityStandards>>>();
@@ -101,7 +105,8 @@ async function methodAlternatives(db: Db, rows: Record<string, unknown>[]): Prom
       const crew = s.resources.filter((x) => x.kind === "labor" && x.allocation_rule === "per_crew").reduce((a, x) => a + x.workers_per_crew, 0);
       const base = baseOutputPerDay({ output_per_day: s.output_per_day, labour_constant_hr_per_unit: s.labour_constant_hr_per_unit, crew_workers: crew, hours_per_day: s.hours_per_day_basis, efficiency_pct: s.efficiency_pct });
       if (base == null) continue;
-      const d = calculateDuration(q, adjustedProductivity(base, s.factors).adjusted);
+      // same crews as the task has now, so the alternative is compared like for like
+      const d = calculateDuration(q, adjustedProductivity(base, s.factors).adjusted * (crews.get(r.id as string) ?? 1));
       if (d) alts.push({ methodName: methodName.get(s.method_id) ?? s.name, durationWd: d.days, draft: s.status !== "approved" });
     }
     if (alts.length) out.set(r.id as string, alts);

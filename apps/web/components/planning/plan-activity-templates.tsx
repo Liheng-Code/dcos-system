@@ -40,7 +40,7 @@ export function PlanActivityTemplates() {
     setSelected(id);
     const d = await lib.loadTemplateDetail(supabase, id);
     setDetail(d);
-    setItems(d.items.map((it) => ({ key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id, duration_days_override: it.duration_days_override, note: it.note })));
+    setItems(d.items.map((it) => ({ key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id, duration_days_override: it.duration_days_override, crews: it.crews ?? 1, note: it.note })));
     setDeps(d.dependencies.map((x) => ({ from_key: x.predecessor_item_id, to_key: x.successor_item_id, relation: x.relation, lag_days: x.lag_days, is_optional: x.is_optional })));
     setDirty(false);
     if (d.template.status === "draft") {
@@ -90,7 +90,7 @@ export function PlanActivityTemplates() {
   function addItem() {
     if (!pick) return;
     const dm = methods.find((m) => m.master_id === pick && m.is_default);
-    setItems([...items, { key: newKey(), master_id: pick, scope: "floor", method_id: dm?.id ?? null, duration_days_override: null, note: null }]);
+    setItems([...items, { key: newKey(), master_id: pick, scope: "floor", method_id: dm?.id ?? null, duration_days_override: null, crews: 1, note: null }]);
     setPick(""); touch();
   }
   function autoChain() {
@@ -194,13 +194,24 @@ export function PlanActivityTemplates() {
                             <Input className="h-8 w-20 text-xs" type="number" step="0.5" min="0" placeholder="calc." title="Standard duration in working days; empty = calculated from quantity / productivity"
                               value={it.duration_days_override ?? ""}
                               onChange={(e) => { setItems(items.map((x) => x.key === it.key ? { ...x, duration_days_override: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) } : x)); touch(); }} />
+                            <Input className="h-8 w-16 text-xs" type="number" step="1" min="1" max="50"
+                              title="Crews (parallel gangs) the calculated duration is planned with. Duration = quantity / (output per crew-day x crews). Ignored when a fixed duration is set."
+                              disabled={it.duration_days_override != null}
+                              value={it.crews ?? 1}
+                              onChange={(e) => { const c = Number(e.target.value); setItems(items.map((x) => x.key === it.key ? { ...x, crews: Number.isFinite(c) && c > 0 ? Math.min(50, c) : 1 } : x)); touch(); }} />
+                            <span className="text-[10px] text-muted-foreground">crews</span>
                             <Button size="icon" variant="ghost" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up"><ArrowUp className="h-4 w-4" /></Button>
                             <Button size="icon" variant="ghost" onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label="Move down"><ArrowDown className="h-4 w-4" /></Button>
                             <Button size="icon" variant="ghost" onClick={() => removeItem(it.key)} aria-label="Remove"><Trash2 className="h-4 w-4" /></Button>
                           </div>
                         ) : (
                           <div className="text-right text-xs text-muted-foreground">
-                            <div>{m?.default_unit}{it.duration_days_override != null ? ` · ${it.duration_days_override} d` : " · calculated"}</div>
+                            <div>
+                              {m?.default_unit}
+                              {it.duration_days_override != null
+                                ? ` · ${it.duration_days_override} d`
+                                : ` · calculated${(it.crews ?? 1) > 1 ? ` · ${it.crews} crews` : ""}`}
+                            </div>
                             {detail.items.find((x) => x.id === it.key)?.method_name && <div>{detail.items.find((x) => x.id === it.key)?.method_name}</div>}
                           </div>
                         )}

@@ -31,7 +31,7 @@ export function boqLinkProvider(db: Db, projectId: string): QuantityProvider {
     if (!cache.has(k)) {
       cache.set(k, (async () => {
         const { data, error } = await db.from("plan_act_quantity_links")
-          .select("id, boq_source, boq_item_id, boq_item_ref, boq_unit, boq_quantity_at_link, factor")
+          .select("id, boq_source, boq_item_id, boq_item_ref, boq_unit, boq_quantity_at_link, factor, metric_unit")
           .eq("project_id", projectId).eq("wbs_node_id", nodeId).eq("metric_code", metric);
         if (error) throw new Error(error.message);
         return ((data ?? []) as BoqLinkRow[]).map((l) => ({ ...l, factor: Number(l.factor), boq_quantity_at_link: l.boq_quantity_at_link == null ? null : Number(l.boq_quantity_at_link) }));

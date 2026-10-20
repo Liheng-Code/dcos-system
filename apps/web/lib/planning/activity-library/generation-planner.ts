@@ -76,6 +76,8 @@ export interface GeneratedItem {
   adjusted_rate: number | null;
   raw_days: number | null;
   duration_days: number | null;
+  /** parallel crews the duration was calculated with (template item default) */
+  crews: number;
 }
 
 export interface PlannerResult {
@@ -88,6 +90,12 @@ export interface PlannerResult {
     masters: Record<string, { code: string; version: number }>;
     norms: Record<string, { code: string; version: number; status: string }>;
   };
+}
+
+/** Crews a template item plans with: its own figure when valid, else one crew. */
+export function itemCrews(ti: Pick<ActTemplateItem, "crews">): number {
+  const c = Number(ti.crews);
+  return Number.isFinite(c) && c > 0 ? c : 1;
 }
 
 function pickStandard(ctx: MasterContext, methodId: string | null, normId: string | null): ActProductivityStandard | null {
@@ -149,10 +157,12 @@ export function planGeneration(input: PlannerInput): PlannerResult {
 
       let duration: number | null = null;
       let rawDays: number | null = null;
+      const crews = itemCrews(ti);
       if (ti.duration_days_override != null) {
         duration = ti.duration_days_override;
       } else if (qty?.quantity != null && adjusted != null) {
-        const d = calculateDuration(qty.quantity, adjusted);
+        // parallel crews share the quantity: the activity's output per day is the crew output x crews
+        const d = calculateDuration(qty.quantity, adjusted * crews);
         if (d) { duration = d.days; rawDays = d.raw_days; }
       }
 
@@ -182,7 +192,7 @@ export function planGeneration(input: PlannerInput): PlannerResult {
         task_id: task.id, node_id: node.id, template_item_id: ti.id, master_id: ti.master_id, method_id: methodId,
         norm_id: standard?.id ?? null, confidence: assessment.confidence, reasons: assessment.reasons,
         quantity: qty?.quantity ?? null, unit: qty?.unit ?? ctx.master.default_unit, quantity_source: qty?.provider ?? null, quantity_ref: qty?.source_ref ?? null,
-        base_rate: base, adjusted_rate: adjusted, raw_days: rawDays, duration_days: duration,
+        base_rate: base, adjusted_rate: adjusted, raw_days: rawDays, duration_days: duration, crews,
       });
     }
 
