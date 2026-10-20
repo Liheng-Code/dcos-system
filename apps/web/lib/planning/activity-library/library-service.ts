@@ -256,6 +256,8 @@ export interface TemplateItemDraft {
   scope: "floor" | "element" | "zone";
   method_id: string | null;
   duration_days_override: number | null;
+  /** parallel crews (default 1) */
+  crews?: number | null;
   note: string | null;
 }
 
@@ -292,7 +294,7 @@ export async function saveTemplateRecipe(db: Db, templateId: string, items: Temp
   const { data, error } = await db.from("plan_act_template_items").insert(
     items.map((it, i) => ({
       template_id: templateId, seq: i + 1, master_id: it.master_id, scope: it.scope, method_id: it.method_id,
-      duration_days_override: it.duration_days_override, note: it.note,
+      duration_days_override: it.duration_days_override, crews: it.crews && it.crews > 0 ? it.crews : 1, note: it.note,
     })),
   ).select("id, seq");
   if (error) throw new Error(error.message);
@@ -325,7 +327,7 @@ export async function createTemplateVersion(db: Db, id: string): Promise<ActTemp
   const nt = data as ActTemplate;
   const items: TemplateItemDraft[] = d.items.map((it) => ({
     key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id,
-    duration_days_override: it.duration_days_override, note: it.note,
+    duration_days_override: it.duration_days_override, crews: it.crews && it.crews > 0 ? it.crews : 1, note: it.note,
   }));
   const deps: TemplateDepDraft[] = d.dependencies.map((x) => ({
     from_key: x.predecessor_item_id, to_key: x.successor_item_id, relation: x.relation, lag_days: x.lag_days, is_optional: x.is_optional,
@@ -357,4 +359,25 @@ export async function listPickableMasters(db: Db): Promise<Pick<ActMaster, "id" 
 export async function listMethodsForMasters(db: Db, masterIds: string[]): Promise<ActMethod[]> {
   if (!masterIds.length) return [];
   return unwrap<ActMethod[]>(await db.from("plan_act_methods").select("*").in("master_id", masterIds).order("sort_order"));
+}
+
+// ── Planning attributes of a master (doc 21) ───────────────────────────────
+// Not part of the versioned content (plan_act_master_guard does not freeze them), so they can be set on an
+// active master. RLS: can_manage_master_libraries().
+
+export interface WorkGroupOption { code: string; name: string }
+
+export async function listWorkGroups(db: Db): Promise<WorkGroupOption[]> {
+  const { data, error } = await db.from("plan_work_groups").select("code, name").eq("is_active", true).order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WorkGroupOption[];
+}
+
+export async function updateMasterPlanning(
+  db: Db,
+  id: string,
+  patch: Pick<ActMaster, "duration_basis" | "default_work_group" | "default_step_template_id">,
+): Promise<void> {
+  const { error } = await db.from("plan_act_masters").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
 }

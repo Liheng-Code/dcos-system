@@ -129,6 +129,8 @@ export const PUBLIC_API = {
     "lib/planning/baseline-service.ts",
     // Weighted activity steps of a WBS task, edited from the WBS task panel.
     "lib/planning/activity-steps-service.ts",
+    // Spreads an activity's (quantity-driven) duration over its steps.
+    "lib/planning/activity-step-spread.ts",
     // WBS Code Definition (code mask): the WBS builder shows the same codes as the schedule.
     "lib/planning/wbs-code-mask.ts",
     // CPM engine helpers (link arrays, loop check, durations) for WBS task editing.

@@ -12,8 +12,11 @@ import * as lib from "@/lib/planning/activity-library/library-service";
 import { adjustedProductivity, baseOutputPerDay, calculateDuration } from "@/lib/planning/activity-library/productivity-engine";
 import type {
   ActLogicRule, ActMaster, ActMethod, ActProductivityStandard, ActQuantityRule, ActRequirement,
-  ActTemplate, ApplicabilityRule, FactorType, LibraryStatus,
+  ActTemplate, ApplicabilityRule, DurationBasis, FactorType, LibraryStatus,
 } from "@/lib/planning/activity-library/types";
+import Link from "next/link";
+import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
+import { listActivityStepTemplates, type ActivityStepTemplate } from "@/lib/planning/activity-steps-service";
 import { PlanActMasterForm } from "./plan-act-master-form";
 import { PlanActSiteHistory } from "./plan-act-site-history";
 import { ApplicabilityEditor, LogicEditor, NewStandardForm, QuantityRulesEditor, RequirementsEditor } from "./plan-act-master-editors";
@@ -173,7 +176,94 @@ function Overview({ d }: { d: Loaded }) {
         ["Approved", m.approved_at ? new Date(m.approved_at).toLocaleDateString() : null],
         ["Project types", m.applicable_project_types.join(", ")],
       ]} /></Card>
+      <PlanningAttributes master={m} />
     </div>
+  );
+}
+
+const BASIS_LABEL: Record<DurationBasis, string> = {
+  quantity: "From quantity × productivity",
+  fixed: "Fixed standard duration",
+  programme: "Set by the planner",
+};
+
+/** Work group, duration basis and default step template: planning settings, not versioned content (doc 21). */
+function PlanningAttributes({ master }: { master: ActMaster }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [groups, setGroups] = useState<lib.WorkGroupOption[]>([]);
+  const [stepTemplates, setStepTemplates] = useState<ActivityStepTemplate[]>([]);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState({
+    duration_basis: master.duration_basis ?? "quantity",
+    default_work_group: master.default_work_group ?? null,
+    default_step_template_id: master.default_step_template_id ?? null,
+  });
+  const [draft, setDraft] = useState(saved);
+
+  useEffect(() => {
+    Promise.all([lib.listWorkGroups(supabase), listActivityStepTemplates(supabase), canManageLibraries(supabase)])
+      .then(([g, t, can]) => { setGroups(g); setStepTemplates(t.filter((x) => x.is_active)); setCanEdit(can); })
+      .catch(() => {});
+  }, [supabase]);
+
+  const stepTemplate = stepTemplates.find((t) => t.id === saved.default_step_template_id) ?? null;
+  const group = groups.find((g) => g.code === saved.default_work_group) ?? null;
+  const selectCls = "w-full rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:border-primary";
+
+  async function save() {
+    try {
+      await lib.updateMasterPlanning(supabase, master.id, draft);
+      setSaved(draft);
+      setEditing(false);
+      toast.success("Planning settings saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    }
+  }
+
+  return (
+    <Card title="Planning">
+      {editing ? (
+        <div className="space-y-2 text-sm">
+          <label className="block space-y-1">
+            <span className="text-xs text-muted-foreground">Work group</span>
+            <select className={selectCls} value={draft.default_work_group ?? ""} onChange={(e) => setDraft({ ...draft, default_work_group: e.target.value || null })}>
+              <option value="">—</option>
+              {groups.map((g) => <option key={g.code} value={g.code}>{g.code} · {g.name}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-muted-foreground">Duration</span>
+            <select className={selectCls} value={draft.duration_basis} onChange={(e) => setDraft({ ...draft, duration_basis: e.target.value as DurationBasis })}>
+              {(Object.keys(BASIS_LABEL) as DurationBasis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-muted-foreground">Default step template</span>
+            <select className={selectCls} value={draft.default_step_template_id ?? ""} onChange={(e) => setDraft({ ...draft, default_step_template_id: e.target.value || null })}>
+              <option value="">None</option>
+              {stepTemplates.map((t) => <option key={t.id} value={t.id}>{t.group_name} › {t.template_name}</option>)}
+            </select>
+          </label>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" onClick={() => void save()}>Save</Button>
+            <Button size="sm" variant="outline" onClick={() => { setDraft(saved); setEditing(false); }}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <Dl rows={[
+            ["Work group", group ? `${group.code} · ${group.name}` : saved.default_work_group],
+            ["Duration", BASIS_LABEL[saved.duration_basis]],
+            ["Step template", stepTemplate
+              ? <Link href={`/dashboard/planning/activity-step-templates?template=${stepTemplate.id}`} className="text-primary hover:underline">{stepTemplate.template_name}</Link>
+              : saved.default_step_template_id ? "(inactive template)" : null],
+          ]} />
+          {canEdit && <Button size="sm" variant="outline" className="mt-3" onClick={() => { setDraft(saved); setEditing(true); }}>Edit</Button>}
+        </>
+      )}
+    </Card>
   );
 }
 

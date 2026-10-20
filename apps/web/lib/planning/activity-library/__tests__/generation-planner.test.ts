@@ -141,3 +141,24 @@ describe("standard selection across versions", () => {
     expect(mixed.norm_id).toBe("n-v1");
   });
 });
+
+describe("planGeneration with crews", () => {
+  it("divides the calculated duration by the template item's crews and records them", () => {
+    const input = base();
+    input.items = [input.items[0], { ...input.items[1], crews: 2 }];
+    const r = planGeneration(input);
+    // 180 m3 / (59.85 x 2) = 1.504 -> 2 days (one crew: 4 days)
+    expect(r.tasks.find((t) => t.task_code === "CONC@L05")!.duration_days).toBe(2);
+    const item = r.items.find((i) => i.node_id === "L05" && i.master_id === "conc")!;
+    expect(item.crews).toBe(2);
+    expect(item.adjusted_rate).toBeCloseTo(59.85); // the rate stays per crew
+  });
+
+  it("treats a missing or invalid crew count as one crew and leaves fixed durations alone", () => {
+    const input = base();
+    input.items = [{ ...input.items[0], crews: 3 }, { ...input.items[1], crews: 0 }];
+    const r = planGeneration(input);
+    expect(r.tasks.find((t) => t.task_code === "CONC@L05")!.duration_days).toBe(4);
+    expect(r.tasks.find((t) => t.task_code === "INSP@L05")!.duration_days).toBe(0.5);
+  });
+});

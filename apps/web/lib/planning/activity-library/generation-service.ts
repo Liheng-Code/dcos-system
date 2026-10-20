@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateApplicability, type ApplicabilityResult, type ProjectAttributes } from "./applicability";
 import { calculateDuration } from "./productivity-engine";
+import { attachDefaultStepTemplates, type AttachStepsResult } from "../step-template-bulk-service";
 import { resolveQuantity, type QuantityProvider, type ResolvedQuantity } from "./quantity-resolver";
 import { GENERATION_ENGINE_VERSION, planGeneration, type MasterContext, type PlannerInput, type PlannerResult, type TargetNode } from "./generation-planner";
 import { listMethodsForMasters, listProductivityStandards, listQuantityRules, loadTemplateDetail } from "./library-service";
@@ -174,7 +175,29 @@ export async function previewGeneration(db: Db, req: GenerationRequest): Promise
 }
 
 /** Atomic commit through plan_act_commit_generation. Returns the new run id. */
-export async function commitGeneration(db: Db, p: GenerationPreview): Promise<string> {
+export interface CommitResult {
+  runId: string;
+  /** default Activity Step Templates attached to the new activities; null when attaching failed */
+  steps: AttachStepsResult | null;
+  stepsError: string | null;
+}
+
+/**
+ * Commits a previewed run (one transaction), then gives each new activity its master's default Activity Step
+ * Template spread over the calculated duration. Steps are a second step on purpose: if they fail, the generated
+ * schedule stays and the planner is told (steps can be added later with Step Templates > Apply to Activities).
+ */
+export async function commitGeneration(db: Db, p: GenerationPreview): Promise<CommitResult> {
+  const runId = await commitRun(db, p);
+  try {
+    const steps = await attachDefaultStepTemplates(db, p.request.projectId, p.result.tasks.map((t) => t.id));
+    return { runId, steps, stepsError: null };
+  } catch (e) {
+    return { runId, steps: null, stepsError: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function commitRun(db: Db, p: GenerationPreview): Promise<string> {
   const { result, request, input } = p;
   const { data, error } = await db.rpc("plan_act_commit_generation", {
     p_payload: {
@@ -213,6 +236,8 @@ export interface ReviewItem {
   id: string; task_id: string | null; node_id: string | null; master_id: string | null;
   confidence: Confidence; reasons: ExceptionReason[]; quantity: number | null; unit: string | null; quantity_source: string | null; quantity_ref: string | null;
   adjusted_rate: number | null; duration_days: number | null; review_status: "pending" | "accepted" | "rejected";
+  /** parallel crews the duration is calculated with */
+  crews: number;
   master_code: string; master_name: string; node_name: string; method_name: string | null;
 }
 
@@ -239,6 +264,7 @@ export async function loadRun(db: Db, runId: string): Promise<{ run: RunRow; ite
     confidence: i.confidence as Confidence, reasons: (i.reasons ?? []) as ExceptionReason[],
     quantity: i.quantity == null ? null : Number(i.quantity), unit: i.unit as string | null, quantity_source: i.quantity_source as string | null, quantity_ref: (i.quantity_ref as string | null) ?? null,
     adjusted_rate: i.adjusted_rate == null ? null : Number(i.adjusted_rate),
+    crews: Number(i.crews) > 0 ? Number(i.crews) : 1,
     duration_days: i.duration_days == null ? null : Number(i.duration_days), review_status: i.review_status as ReviewItem["review_status"],
     master_code: mm.get(i.master_id as string)?.code ?? "?", master_name: mm.get(i.master_id as string)?.name ?? "?",
     node_name: nn.get(i.node_id as string)?.wbs_name ?? "?", method_name: mt.get(i.method_id as string) ?? null,
@@ -291,7 +317,7 @@ export async function overrideItem(
     audit.push({ field: "quantity", old: quantity == null ? null : String(quantity), next: String(newValue) });
     quantity = newValue;
     if (item.adjusted_rate != null) {
-      const d = calculateDuration(newValue, item.adjusted_rate);
+      const d = calculateDuration(newValue, item.adjusted_rate * (item.crews || 1));
       if (d) { raw = d.raw_days; if (d.days !== duration) audit.push({ field: "duration_days", old: duration == null ? null : String(duration), next: String(d.days) }); duration = d.days; }
     }
   } else {
@@ -380,7 +406,7 @@ export async function applyItemQuantity(
   let duration = item.duration_days;
   let raw: number | null = null;
   if (item.adjusted_rate != null) {
-    const d = calculateDuration(q.quantity, item.adjusted_rate);
+    const d = calculateDuration(q.quantity, item.adjusted_rate * (item.crews || 1));
     if (d) {
       raw = d.raw_days;
       if (d.days !== duration) audit.push({ field: "duration_days", old: duration == null ? null : String(duration), next: String(d.days) });

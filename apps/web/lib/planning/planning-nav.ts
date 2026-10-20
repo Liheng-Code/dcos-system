@@ -41,7 +41,6 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
-      { label: "Activity Step Templates", href: "/dashboard/planning/activity-step-templates" },
     ],
   },
   {
@@ -94,7 +93,11 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Activities", href: "/dashboard/planning/activity-library" },
       { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
+      // Step breakdown of one activity (progress weights, time shares). The URL predates the move into
+      // the Activity Library and is kept so existing links work; the group comes from this item.
+      { label: "Step Templates", href: "/dashboard/planning/activity-step-templates" },
       { label: "Generate", href: "/dashboard/planning/activity-library/generate" },
+      { label: "QS Bridge", href: "/dashboard/planning/activity-library/qs-bridge" },
       { label: "Quantity Links", href: "/dashboard/planning/activity-library/quantity-links" },
       { label: "BIM Quantities", href: "/dashboard/planning/activity-library/bim" },
       { label: "Recovery", href: "/dashboard/planning/activity-library/recovery" },

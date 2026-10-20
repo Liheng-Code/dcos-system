@@ -51,12 +51,17 @@ export function PlanActivityQuantityLinks() {
                 <td className="px-3 py-1.5 font-mono text-xs">{r.metric_code}</td>
                 <td className="px-3 py-1.5">
                   <span className="font-mono text-xs text-primary">{r.boq_item_ref ?? "—"}</span> {r.boq_description}
-                  <div className="text-[10px] uppercase text-muted-foreground">{r.boq_source === "qs_boq" ? "Project BOQ" : "Tender BOQ"}</div>
+                  <div className="text-[10px] uppercase text-muted-foreground">
+                    {r.boq_source === "qs_boq" ? "Project BOQ" : "Tender BOQ"}
+                    {r.source === "bridge_rule" && <span className="ml-1.5 rounded bg-sky-100 px-1 font-semibold text-sky-700">Bridge</span>}
+                  </div>
                 </td>
-                <td className="px-3 py-1.5">{Math.round(r.factor * 10000) / 100}%</td>
+                <td className="px-3 py-1.5">
+                  {r.source === "bridge_rule" ? <>×{Math.round(r.factor * 1e6) / 1e6}</> : <>{Math.round(r.factor * 10000) / 100}%</>}
+                </td>
                 <td className="px-3 py-1.5">{r.quantity_at_link ?? "—"} {r.boq_unit}</td>
                 <td className="px-3 py-1.5">{r.missing ? <span className="text-red-500">line not found</span> : <>{r.quantity_now} {r.boq_unit}{r.drifted && <span className="ml-1 text-xs font-semibold text-amber-500">changed</span>}</>}</td>
-                <td className="px-3 py-1.5 font-semibold">{r.contribution ?? "—"} {r.boq_unit}</td>
+                <td className="px-3 py-1.5 font-semibold">{r.contribution ?? "—"} {r.contribution_unit}</td>
                 <td className="px-3 py-1.5 text-right">
                   <Button size="icon" variant="ghost" aria-label="Remove link" onClick={async () => {
                     try { await deleteQuantityLink(db, r.id); toast.success("Link removed (activities already generated keep their quantity)"); await load(); }

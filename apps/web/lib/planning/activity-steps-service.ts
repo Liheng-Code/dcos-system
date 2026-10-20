@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { engineDuration } from "./schedule-engine";
+import { loadProjectCalendar } from "./project-schedule";
+import { ALL_DAYS_CALENDAR, resolveActivityDuration, type ActivityDuration, type DurationBasis, type SpreadUpdate } from "./activity-step-spread";
+import type { WorkCalendar } from "./work-calendar";
+
+export type { DurationBasis } from "./activity-step-spread";
 
 export interface ActivityStepTemplate {
   id: string;
@@ -17,6 +23,8 @@ export interface ActivityStepTemplateItem {
   discipline: string | null;
   resource_crew: string | null;
   est_duration_days: number | null;
+  duration_basis: DurationBasis;
+  duration_share_pct: number | null;
   inspection_hold_point: boolean;
   notes: string | null;
 }
@@ -34,6 +42,8 @@ export interface WbsTaskStep {
   discipline: string | null;
   resource_crew: string | null;
   est_duration_days: number | null;
+  duration_basis: DurationBasis;
+  duration_share_pct: number | null;
   inspection_hold_point: boolean;
   notes: string | null;
 }
@@ -46,6 +56,8 @@ export interface StepDraft {
   discipline?: string | null;
   resource_crew?: string | null;
   est_duration_days?: number | null;
+  duration_basis?: DurationBasis;
+  duration_share_pct?: number | null;
   inspection_hold_point?: boolean;
   notes: string | null;
 }
@@ -92,7 +104,7 @@ export async function listActivityStepTemplates(supabase: SupabaseClient): Promi
 export async function listTemplateItems(supabase: SupabaseClient, templateId: string): Promise<ActivityStepTemplateItem[]> {
   const { data, error } = await supabase
     .from("activity_step_template_item")
-    .select("id, template_id, step_no, step_name, weight, discipline, resource_crew, est_duration_days, inspection_hold_point, notes")
+    .select("id, template_id, step_no, step_name, weight, discipline, resource_crew, est_duration_days, duration_basis, duration_share_pct, inspection_hold_point, notes")
     .eq("template_id", templateId)
     .order("step_no", { ascending: true });
   if (error) throw error;
@@ -145,7 +157,10 @@ export async function saveTemplate(
         weight: it.weight,
         discipline: it.discipline ?? null,
         resource_crew: it.resource_crew ?? null,
-        est_duration_days: it.est_duration_days ?? null,
+        // Fixed steps carry days, scaled steps a share: never both.
+        est_duration_days: it.duration_basis === "fixed" ? it.est_duration_days ?? null : null,
+        duration_basis: it.duration_basis ?? "scaled",
+        duration_share_pct: it.duration_basis === "fixed" ? null : it.duration_share_pct ?? null,
         inspection_hold_point: it.inspection_hold_point ?? false,
         notes: it.notes,
       })),
@@ -167,7 +182,7 @@ export async function deleteTemplate(supabase: SupabaseClient, templateId: strin
 export async function listTaskSteps(supabase: SupabaseClient, taskId: string): Promise<WbsTaskStep[]> {
   const { data, error } = await supabase
     .from("wbs_task_steps")
-    .select("id, task_id, source_template_id, step_no, step_name, weight, progress, start_date, end_date, discipline, resource_crew, est_duration_days, inspection_hold_point, notes")
+    .select("id, task_id, source_template_id, step_no, step_name, weight, progress, start_date, end_date, discipline, resource_crew, est_duration_days, duration_basis, duration_share_pct, inspection_hold_point, notes")
     .eq("task_id", taskId)
     .order("step_no", { ascending: true });
   if (error) throw error;
@@ -176,21 +191,35 @@ export async function listTaskSteps(supabase: SupabaseClient, taskId: string): P
 
 /** Copies a template's steps onto a task, replacing any steps already there. */
 export async function assignTemplateToTask(supabase: SupabaseClient, taskId: string, templateId: string): Promise<void> {
-  const items = await listTemplateItems(supabase, templateId);
+  await assignStepsToTask(supabase, taskId, templateId, await listTemplateItems(supabase, templateId));
+}
+
+/** A step to put on an activity: a template item the planner kept, or one they added. */
+export type StepPick = Omit<ActivityStepTemplateItem, "id" | "template_id" | "step_no">;
+
+/** Replaces the activity's steps with the planner's picks, numbered 1..n in the order given. */
+export async function assignStepsToTask(
+  supabase: SupabaseClient,
+  taskId: string,
+  templateId: string | null,
+  items: StepPick[],
+): Promise<void> {
   const { error: delError } = await supabase.from("wbs_task_steps").delete().eq("task_id", taskId);
   if (delError) throw delError;
   if (items.length === 0) return;
   const { error } = await supabase.from("wbs_task_steps").insert(
-    items.map((it) => ({
+    items.map((it, i) => ({
       task_id: taskId,
       source_template_id: templateId,
-      step_no: it.step_no,
+      step_no: i + 1,
       step_name: it.step_name,
       weight: it.weight,
       progress: 0,
       discipline: it.discipline,
       resource_crew: it.resource_crew,
       est_duration_days: it.est_duration_days,
+      duration_basis: it.duration_basis,
+      duration_share_pct: it.duration_share_pct,
       inspection_hold_point: it.inspection_hold_point,
       notes: it.notes,
     })),
@@ -219,6 +248,8 @@ export async function upsertTaskStep(
     discipline: step.discipline ?? null,
     resource_crew: step.resource_crew ?? null,
     est_duration_days: step.est_duration_days ?? null,
+    duration_basis: step.duration_basis ?? "scaled",
+    duration_share_pct: step.duration_share_pct ?? null,
     inspection_hold_point: step.inspection_hold_point ?? false,
     notes: step.notes ?? null,
   };
@@ -235,3 +266,79 @@ export async function deleteTaskStep(supabase: SupabaseClient, stepId: string): 
   const { error } = await supabase.from("wbs_task_steps").delete().eq("id", stepId);
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// Spreading the activity's duration over its steps
+// ---------------------------------------------------------------------------
+
+export interface StepSpreadContext {
+  duration: ActivityDuration;
+  /** The calendar to lay steps out on: the project's, or every day for "cd" activities. */
+  cal: WorkCalendar;
+  start: string | null;
+  unit: "wd" | "cd";
+}
+
+/**
+ * What the steps spread over: the activity's quantity-driven duration from Task Work
+ * when it has one, else its scheduled duration, on the project's working calendar.
+ */
+export async function loadStepSpreadContext(supabase: SupabaseClient, taskId: string): Promise<StepSpreadContext> {
+  const { data: task, error } = await supabase
+    .from("wbs_tasks")
+    .select("project_id, start_date, end_date, duration_days, duration_unit, is_milestone")
+    .eq("id", taskId)
+    .single();
+  if (error) throw error;
+
+  const unit = task.duration_unit === "cd" ? "cd" : "wd";
+  const [projectCal, workRes] = await Promise.all([
+    loadProjectCalendar(task.project_id as string),
+    // Needs Task Work view permission; without it the steps simply follow the schedule.
+    supabase
+      .from("plan_task_work")
+      .select("quantity, quantity_unit, duration_wd_derived, plan_productivity_norms(code)")
+      .eq("task_id", taskId)
+      .maybeSingle(),
+  ]);
+  const cal = unit === "cd" ? ALL_DAYS_CALENDAR : projectCal;
+  const scheduled = engineDuration(projectCal, {
+    start: task.start_date,
+    finish: task.end_date,
+    isMilestone: task.is_milestone,
+    durationDays: task.duration_days,
+    unit,
+  }).durationWd;
+
+  const w = workRes.data as {
+    quantity: number | null;
+    quantity_unit: string | null;
+    duration_wd_derived: number | null;
+    plan_productivity_norms: { code: string } | { code: string }[] | null;
+  } | null;
+  const norm = Array.isArray(w?.plan_productivity_norms) ? w?.plan_productivity_norms[0] : w?.plan_productivity_norms;
+  const duration = resolveActivityDuration(
+    scheduled,
+    unit,
+    w ? { quantity: w.quantity, quantity_unit: w.quantity_unit, duration_wd_derived: w.duration_wd_derived, norm_code: norm?.code ?? null } : null,
+  );
+  return { duration, cal, start: task.start_date ?? null, unit };
+}
+
+/** Saves a spread's days and dates. */
+export async function applyStepSpread(supabase: SupabaseClient, updates: SpreadUpdate[]): Promise<void> {
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("wbs_task_steps")
+      .update({ est_duration_days: u.est_duration_days, start_date: u.start_date, end_date: u.end_date })
+      .eq("id", u.id);
+    if (error) throw error;
+  }
+}
+
+/** True when the signed-in user may edit the step template library (the same check RLS applies). */
+export async function canManageStepTemplates(supabase: SupabaseClient): Promise<boolean> {
+  const { data, error } = await supabase.rpc("can_manage_master_libraries");
+  return !error && data === true;
+}
+
