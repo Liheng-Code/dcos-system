@@ -93,6 +93,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Activities", href: "/dashboard/planning/activity-library" },
       { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
+      // Generation kits: the templates per part of a building pattern (Generate builds a building in one run)
+      { label: "Kits", href: "/dashboard/planning/activity-library/kits" },
       // Step breakdown of one activity (progress weights, time shares). The URL predates the move into
       // the Activity Library and is kept so existing links work; the group comes from this item.
       { label: "Step Templates", href: "/dashboard/planning/activity-step-templates" },

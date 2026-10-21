@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LevelTemplate } from "@/lib/level-library";
 import { listLevelTemplates } from "@/lib/level-library-queries";
+import { groupTemplates } from "@/lib/template-fit";
 import { masterWbsRowsToSrc, parseMasterWbsRows, readMasterWbsWorkbook } from "@/lib/project/wbs/master-wbs-sheet";
 import {
   addTemplateNode,
@@ -34,7 +35,12 @@ import {
   type TplNode,
   type WbsTemplateDoc,
 } from "@/lib/project/wbs/wbs-template";
-import { deleteWbsTemplate, listWbsTemplates, saveWbsTemplate, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import {
+  deleteWbsTemplate, listActivityMasterOptions, listKitOptions, listWbsTemplates, saveWbsTemplate, setWbsTemplateKit,
+  type KitOption, type MasterOption, type WbsTemplate,
+} from "@/lib/project/wbs/wbs-template-queries";
+import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
+import { TemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { FloorBlockPicker } from "@/components/project/wbs/templates/floor-block-picker";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary";
@@ -45,20 +51,23 @@ interface Draft {
   template_name: string;
   template_desc: string;
   template_category: string;
+  building_types: string[];
   is_active: boolean;
   source: WbsTemplate["source"];
   default_level_template_id: string;
+  kit_code: string;
   doc: WbsTemplateDoc;
 }
 
 const blankDraft = (): Draft => ({
-  id: null, template_name: "", template_desc: "", template_category: "", is_active: true, source: "manual",
-  default_level_template_id: "", doc: emptyWbsTemplateDoc(),
+  id: null, template_name: "", template_desc: "", template_category: "", building_types: [], is_active: true, source: "manual",
+  default_level_template_id: "", kit_code: "", doc: emptyWbsTemplateDoc(),
 });
 
 const toDraft = (t: WbsTemplate): Draft => ({
   id: t.id, template_name: t.template_name, template_desc: t.template_desc ?? "", template_category: t.template_category ?? "",
-  is_active: t.is_active, source: t.source, default_level_template_id: t.default_level_template_id ?? "", doc: t.doc,
+  building_types: t.building_types,
+  is_active: t.is_active, source: t.source, default_level_template_id: t.default_level_template_id ?? "", kit_code: t.kit_code ?? "", doc: t.doc,
 });
 
 /**
@@ -68,6 +77,8 @@ const toDraft = (t: WbsTemplate): Draft => ({
 export function WbsTemplateEditor() {
   const [templates, setTemplates] = useState<WbsTemplate[]>([]);
   const [levelTemplates, setLevelTemplates] = useState<LevelTemplate[]>([]);
+  // generation kits (Activity Library) a template can suggest to Generate
+  const [kits, setKits] = useState<KitOption[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -84,10 +95,11 @@ export function WbsTemplateEditor() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listWbsTemplates(), listLevelTemplates({ activeOnly: true })])
-      .then(([list, lts]) => {
+    Promise.all([listWbsTemplates(), listLevelTemplates({ activeOnly: true }), listKitOptions().catch(() => [] as KitOption[])])
+      .then(([list, lts, ks]) => {
         if (cancelled) return;
         setLevelTemplates(lts);
+        setKits(ks);
         applyLoaded(list);
       })
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Unable to load WBS templates"))
@@ -121,9 +133,10 @@ export function WbsTemplateEditor() {
     try {
       const id = await saveWbsTemplate({
         id: d.id, template_name: d.template_name, template_desc: d.template_desc || null,
-        template_category: d.template_category || null, is_active: d.is_active, source: d.source,
+        template_category: d.template_category || null, building_types: d.building_types, is_active: d.is_active, source: d.source,
         default_level_template_id: d.default_level_template_id || null, doc: d.doc,
       });
+      if ((d.kit_code || null) !== (templates.find((t) => t.id === id)?.kit_code ?? null)) await setWbsTemplateKit(id, d.kit_code || null);
       toast.success(d.id ? "Template saved (projects that used it are not changed)" : "Template created");
       setImporting(null);
       await reload(id);
@@ -180,7 +193,10 @@ export function WbsTemplateEditor() {
             No WBS templates yet. Import a Master WBS Excel sheet, or open a project&apos;s WBS and use <strong>Save as template</strong>.
           </p>
         )}
-        {templates.map((t) => {
+        {groupTemplates(templates).map((g) => (
+          <div key={g.label} className="space-y-2">
+            <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.label}</p>
+        {g.items.map((t) => {
           const s = templateStats(t.doc);
           return (
             <button
@@ -198,6 +214,8 @@ export function WbsTemplateEditor() {
             </button>
           );
         })}
+          </div>
+        ))}
       </aside>
 
       {importing ? (
@@ -253,13 +271,22 @@ export function WbsTemplateEditor() {
               Default level template
               <select value={draft.default_level_template_id} onChange={(e) => patch({ default_level_template_id: e.target.value })} className={field}>
                 <option value="">— None —</option>
-                {levelTemplates.map((t) => <option key={t.id} value={t.id}>{t.template_name}</option>)}
+                <TemplateOptions templates={levelTemplates} project={{ sector: draft.template_category, buildingType: draft.building_types[0] }} />
               </select>
             </label>
             <label className="space-y-1 text-xs font-medium">
-              Category
-              <input value={draft.template_category} onChange={(e) => patch({ template_category: e.target.value })} placeholder="e.g. Mixed-use" className={field} />
+              Generation kit
+              <select value={draft.kit_code} onChange={(e) => patch({ kit_code: e.target.value })} className={field}
+                title="Activity Library › Generate suggests this kit for projects built from the template">
+                <option value="">— None —</option>
+                {kits.map((k) => <option key={k.code} value={k.code}>{k.code} · {k.name}</option>)}
+              </select>
             </label>
+            <TemplateSectorFields
+              sector={draft.template_category}
+              buildingTypes={draft.building_types}
+              onChange={(v) => patch({ template_category: v.sector, building_types: v.buildingTypes })}
+            />
             <label className="space-y-1 text-xs font-medium">
               Description
               <input value={draft.template_desc} onChange={(e) => patch({ template_desc: e.target.value })} className={field} />
@@ -286,6 +313,9 @@ export function WbsTemplateEditor() {
 function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (doc: WbsTemplateDoc) => void }) {
   const [partId, setPartId] = useState<TemplatePartId>("sections");
   const [selected, setSelected] = useState<string>("");
+  // Activity masters an activity can be created from (norms, quantity durations, default steps).
+  const [masters, setMasters] = useState<MasterOption[]>([]);
+  useEffect(() => { listActivityMasterOptions().then(setMasters).catch(() => setMasters([])); }, []);
   const activePart: TemplatePartId = partId === "sections" || doc.floor_blocks[partId] ? partId : "sections";
   const part = getPart(doc, activePart) ?? emptyPart();
   const isBlock = activePart !== "sections";
@@ -427,19 +457,23 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
                 </div>
               )}
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium">Activities ({tasks.length})</span>
+                <span className="text-xs font-medium">
+                  Activities ({tasks.length})
+                  <span className="ml-2 font-normal text-muted-foreground">{tasks.filter((t) => t.master_code).length} linked to an activity master</span>
+                </span>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onChange(addTemplateTask(doc, activePart, nodeKey, "New activity"))}>
                   <Plus className="mr-1 h-3 w-3" /> Activity
                 </Button>
               </div>
               <div className="max-h-[380px] overflow-auto">
-                <table className="w-full min-w-[520px] text-sm">
+                <table className="w-full min-w-[720px] text-sm">
                   <thead className="text-xs text-muted-foreground">
                     <tr>
                       <th className="px-1 py-1 text-left">Activity</th>
                       <th className="w-28 px-1 py-1 text-left">Discipline</th>
                       <th className="w-20 px-1 py-1 text-left">Days</th>
                       <th className="w-24 px-1 py-1 text-left">Links</th>
+                      <th className="w-52 px-1 py-1 text-left" title="Activities created from this template get this master: norm, quantity-based duration and standard steps">Activity master</th>
                       <th className="w-8" />
                     </tr>
                   </thead>
@@ -454,6 +488,18 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
                           {t.predecessors.length > 0 && (
                             <button type="button" className="ml-1 text-destructive hover:underline" onClick={() => onChange(updateTemplateTask(doc, activePart, t.key, { predecessors: [] }))}>clear</button>
                           )}
+                        </td>
+                        <td className="px-1 py-1">
+                          <select
+                            value={t.master_code ?? ""}
+                            onChange={(e) => onChange(updateTemplateTask(doc, activePart, t.key, { master_code: e.target.value || null }))}
+                            className={cell}
+                            aria-label="Activity master"
+                          >
+                            <option value="">—</option>
+                            {t.master_code && !masters.some((m) => m.code === t.master_code) && <option value={t.master_code}>{t.master_code} (not active)</option>}
+                            {masters.map((m) => <option key={m.code} value={m.code}>{m.code} · {m.name}</option>)}
+                          </select>
                         </td>
                         <td className="px-1 py-1">
                           <button type="button" onClick={() => onChange(removeTemplateTask(doc, activePart, t.key))} className="rounded p-1 text-destructive hover:bg-destructive/10" aria-label="Delete activity">

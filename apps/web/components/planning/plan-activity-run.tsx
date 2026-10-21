@@ -75,7 +75,9 @@ export function PlanActivityRun({ runId, projectId }: { runId: string; projectId
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="font-mono text-sm font-semibold text-primary">Generation Run #{run.run_no}</div>
-            <div className="text-xs text-muted-foreground">Template v{run.template_version} · engine {run.engine_version} · {new Date(run.created_at).toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">
+              {run.kit_id ? `Kit ${run.library_snapshot?.kit?.code ?? ""} v${run.kit_version ?? ""}` : `Template v${run.template_version}`} · engine {run.engine_version} · {new Date(run.created_at).toLocaleString()}
+            </div>
           </div>
           <div className="flex gap-6 text-center">
             {[["High", run.high_count, "text-emerald-600"], ["Review", run.review_count, "text-amber-600"], ["Low", run.low_count, "text-red-600"], ["Pending", pending, ""]].map(([l, v, c]) => (
@@ -105,7 +107,7 @@ export function PlanActivityRun({ runId, projectId }: { runId: string; projectId
               {shown.map((i) => (
                 <tr key={i.id} className={cn("border-t border-border", i.confidence === "low" && "bg-red-500/10", i.confidence === "review" && "bg-amber-500/10")}>
                   <td className="px-3 py-1.5">{i.node_name}</td>
-                  <td className="px-3 py-1.5"><CodeChip code={i.master_code} /><div className="text-xs text-muted-foreground">{i.master_name}</div></td>
+                  <td className="px-3 py-1.5"><CodeChip code={i.master_code} /><div className="text-xs text-muted-foreground">{i.master_name}{run.kit_id && i.template_code ? <span className="ml-1 text-[10px] opacity-70">· {i.template_code}</span> : null}</div></td>
                   <td className="px-3 py-1.5">{i.quantity != null ? `${i.quantity} ${i.unit ?? ""}` : "—"}{i.quantity_source && <span className="ml-1 text-[10px] uppercase text-muted-foreground">{i.quantity_source}</span>}{i.quantity_source === "boq" && i.node_id && driftNodes.has(i.node_id) && (
                       <button className="mt-0.5 rounded bg-amber-500/15 px-1.5 text-[10px] font-semibold text-amber-500" title="The BOQ line changed after it was linked. Click to update this quantity."
                         onClick={async () => {

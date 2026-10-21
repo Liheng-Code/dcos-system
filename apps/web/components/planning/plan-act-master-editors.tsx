@@ -12,6 +12,9 @@ import type {
   QuantityProviderKey, Relation, RequirementKind, ResourceKind,
 } from "@/lib/planning/activity-library/types";
 import { EmptyNote } from "./plan-act-shared";
+import { PROJECT_SECTORS, buildingTypeLabel, sectorLabel } from "@/lib/project-categories";
+import { choiceLabel, choiceValueLabel, type PlanningChoice } from "@/lib/planning/activity-library/planning-choices";
+import { usePlanningChoices } from "./plan-planning-choices";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -204,7 +207,18 @@ export function RequirementsEditor({ master, reqs, kinds, onChanged }: { master:
 
 // ── Applicability (master or template) ────────────────────────────────────
 
-export const APPLICABILITY_ATTRIBUTES = ["project_type", "structure_type", "formwork_type", "building_component"];
+/** sector / building_type come from the project (Project Categories); the rest are the planning choices asked on Generate (plan_act_attributes). */
+export const APPLICABILITY_ATTRIBUTES = ["sector", "building_type"];
+
+/** Values picked from the Project Categories instead of typed. */
+const TAXONOMY_VALUES: Record<string, { value: string; label: string; group?: string }[]> = {
+  sector: PROJECT_SECTORS.map((s) => ({ value: s.value, label: s.label })),
+  building_type: PROJECT_SECTORS.flatMap((s) => s.buildingTypes.map((b) => ({ value: b.value, label: b.label, group: s.label }))),
+};
+
+/** Readable rule value: sector / building-type names, planning-choice option labels, else the slug in words. */
+export const valueLabel = (attribute: string, v: string, catalogue: PlanningChoice[] = []) =>
+  attribute === "sector" ? sectorLabel(v) : attribute === "building_type" ? buildingTypeLabel(v) : choiceValueLabel(catalogue, attribute, v);
 
 export function ApplicabilityEditor({
   targetType, targetId, editable, onChanged,
@@ -214,6 +228,12 @@ export function ApplicabilityEditor({
   const [attr, setAttr] = useState(APPLICABILITY_ATTRIBUTES[0]);
   const [op, setOp] = useState<"eq" | "neq" | "in" | "not_in">("in");
   const [values, setValues] = useState("");
+  const catalogue = usePlanningChoices();
+  const attributes = [...APPLICABILITY_ATTRIBUTES, ...catalogue.map((c) => c.key)];
+  const choice = catalogue.find((c) => c.key === attr);
+  const taxonomy = TAXONOMY_VALUES[attr] ?? choice?.options;
+  const picked = csv(values);
+  const togglePick = (v: string) => setValues((picked.includes(v) ? picked.filter((x) => x !== v) : [...picked, v]).join(", "));
 
   const load = useMemo(() => async () => {
     try { setRows(await ed.listApplicabilityRows(db, targetType, targetId)); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
@@ -228,7 +248,7 @@ export function ApplicabilityEditor({
         <div className="flex flex-wrap gap-2">
           {rows.map((a) => (
             <span key={a.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs">
-              {a.attribute} {a.operator} {a.values.join(" | ")}
+              {choiceLabel(catalogue, a.attribute)} {a.operator === "in" || a.operator === "eq" ? "is" : "is not"} {a.values.map((v) => valueLabel(a.attribute, v, catalogue)).join(" or ")}
               {editable && <button aria-label="Remove rule" onClick={() => run(() => ed.deleteApplicability(db, a.id), changed)}><Trash2 className="h-3 w-3 text-muted-foreground" /></button>}
             </span>
           ))}
@@ -236,13 +256,24 @@ export function ApplicabilityEditor({
       )}
       {editable && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-3">
-          <select className={sel} value={attr} onChange={(e) => setAttr(e.target.value)}>
-            {APPLICABILITY_ATTRIBUTES.map((a) => <option key={a} value={a}>{a}</option>)}
+          <select className={sel} value={attr} onChange={(e) => { setAttr(e.target.value); setValues(""); }}>
+            {attributes.map((a) => <option key={a} value={a}>{choiceLabel(catalogue, a)}</option>)}
           </select>
           <select className={sel} value={op} onChange={(e) => setOp(e.target.value as typeof op)}>
             <option value="in">is one of</option><option value="eq">equals</option><option value="not_in">is not one of</option><option value="neq">not equal</option>
           </select>
-          <Input className="min-w-56 flex-1" placeholder="values, comma separated (e.g. aluminum, conventional)" value={values} onChange={(e) => setValues(e.target.value)} />
+          {taxonomy ? (
+            <div className="flex w-full flex-wrap gap-1.5">
+              {taxonomy.map((o) => (
+                <button key={o.value} type="button" aria-pressed={picked.includes(o.value)} onClick={() => togglePick(o.value)} title={"group" in o ? o.group : undefined}
+                  className={"rounded-full border px-2.5 py-1 text-xs " + (picked.includes(o.value) ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted")}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <Input className="min-w-56 flex-1" placeholder="values, comma separated (e.g. aluminum, conventional)" value={values} onChange={(e) => setValues(e.target.value)} />
+          )}
           <Button size="sm" disabled={csv(values).length === 0} onClick={() => run(() => ed.addApplicability(db, targetType, targetId, { attribute: attr, operator: op, values: csv(values) }), () => { setValues(""); changed(); }, "Rule added")}>Add</Button>
         </div>
       )}
