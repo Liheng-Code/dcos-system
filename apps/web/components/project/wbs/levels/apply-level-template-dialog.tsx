@@ -12,6 +12,9 @@ import {
   listLevelTemplates,
   saveLevelTemplate,
 } from "@/lib/level-library-queries";
+import { getProjectTemplateContext } from "@/lib/project/wbs/wbs-template-queries";
+import { recommendedTemplate, type ProjectKind } from "@/lib/template-fit";
+import { TemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { LevelItemsEditor } from "./level-items-editor";
 
 export interface BuildingRef { id: string; wbs_code: string; wbs_name: string }
@@ -20,6 +23,8 @@ interface ApplyLevelTemplateDialogProps {
   /** Buildings the levels can go under; a picker is shown when there is more than one. */
   buildings: BuildingRef[];
   initialBuildingId?: string | null;
+  /** The project, so templates matching its sector / building type are recommended. */
+  projectId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onApplied: () => void;
@@ -30,7 +35,7 @@ interface ApplyLevelTemplateDialogProps {
  * draft the user can change freely; only the draft is written to the project (wbs_nodes), so the
  * template itself is never modified.
  */
-export function ApplyLevelTemplateDialog({ buildings, initialBuildingId, open, onOpenChange, onApplied }: ApplyLevelTemplateDialogProps) {
+export function ApplyLevelTemplateDialog({ buildings, initialBuildingId, projectId, open, onOpenChange, onApplied }: ApplyLevelTemplateDialogProps) {
   const [buildingId, setBuildingId] = useState<string>(initialBuildingId ?? buildings[0]?.id ?? "");
   const building = buildings.find((b) => b.id === buildingId) ?? buildings[0];
   const [templates, setTemplates] = useState<LevelTemplate[]>([]);
@@ -40,19 +45,29 @@ export function ApplyLevelTemplateDialog({ buildings, initialBuildingId, open, o
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState<string | null>(null);
+  const [projectKind, setProjectKind] = useState<ProjectKind>({});
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    listLevelTemplates({ activeOnly: true })
-      .then((tpls) => {
+    const noContext = { sector: null, buildingType: null };
+    Promise.all([listLevelTemplates({ activeOnly: true }), projectId ? getProjectTemplateContext(projectId) : Promise.resolve(noContext)])
+      .then(([tpls, ctx]) => {
         if (cancelled) return;
         setTemplates(tpls);
+        const kind = { sector: ctx.sector, buildingType: ctx.buildingType };
+        setProjectKind(kind);
+        // Start from the recommended level set; the user can switch or clear it.
+        const pick = recommendedTemplate(tpls, kind);
+        if (pick) {
+          setTemplateId(pick.id);
+          setDraft(pick.items.map((i) => ({ ...i })));
+        }
       })
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Unable to load level templates"))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, projectId]);
 
   // Codes already under the chosen building (skipped on apply).
   const currentBuildingId = building?.id;
@@ -103,7 +118,12 @@ export function ApplyLevelTemplateDialog({ buildings, initialBuildingId, open, o
     if (!newTemplateName?.trim()) { toast.error("Enter a name for the new template"); return; }
     if (errors.length || draft.length === 0) { toast.error(errors[0] ?? "Add at least one level."); return; }
     try {
-      await saveLevelTemplate({ template_name: newTemplateName.trim(), items: draft });
+      await saveLevelTemplate({
+        template_name: newTemplateName.trim(),
+        template_category: projectKind.sector ?? null,
+        building_types: projectKind.buildingType ? [projectKind.buildingType] : [],
+        items: draft,
+      });
       toast.success(`Template "${newTemplateName.trim()}" created`);
       setNewTemplateName(null);
       setTemplates(await listLevelTemplates({ activeOnly: true }));
@@ -149,9 +169,7 @@ export function ApplyLevelTemplateDialog({ buildings, initialBuildingId, open, o
                   className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
                 >
                   <option value="">— Start from an empty list —</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.template_name} ({t.items.length} levels, v{t.version})</option>
-                  ))}
+                  <TemplateOptions templates={templates} project={projectKind} label={(t) => `${t.template_name} (${t.items.length} levels, v${t.version})`} />
                 </select>
               </label>
               {existingCodes.length > 0 && (

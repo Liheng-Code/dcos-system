@@ -13050,6 +13050,8 @@ export type Database = {
           config: Json
           created_at: string
           description: string | null
+          building_types: string[]
+          template_category: string | null
           id: string
           is_active: boolean
           template_name: string
@@ -13059,6 +13061,8 @@ export type Database = {
           config?: Json
           created_at?: string
           description?: string | null
+          building_types?: string[]
+          template_category?: string | null
           id?: string
           is_active?: boolean
           template_name: string
@@ -13068,6 +13072,8 @@ export type Database = {
           config?: Json
           created_at?: string
           description?: string | null
+          building_types?: string[]
+          template_category?: string | null
           id?: string
           is_active?: boolean
           template_name?: string
@@ -30493,6 +30499,7 @@ export type Database = {
           id: string
           is_active: boolean
           node_type_chain: Json
+          building_types: string[]
           template_category: string | null
           template_desc: string | null
           template_name: string
@@ -30505,6 +30512,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           node_type_chain?: Json
+          building_types?: string[]
           template_category?: string | null
           template_desc?: string | null
           template_name: string
@@ -30517,6 +30525,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           node_type_chain?: Json
+          building_types?: string[]
           template_category?: string | null
           template_desc?: string | null
           template_name?: string

@@ -249,3 +249,27 @@ describe("template selection", () => {
     expect(e.payload.tasks.some((t) => t.task_code.startsWith("03.B.L2."))).toBe(false);
   });
 });
+
+describe("activity master links", () => {
+  it("keeps the master from the project and passes it to the import payload", () => {
+    const withMasters = tasks.map((t) => (t.task_name === "Columns" ? { ...t, master_code: "STR-RC-COL-001" } : t));
+    const { doc } = projectWbsToTemplate({ nodes, tasks: withMasters }, { containerId: "ba", blocks: { ground: "gf", typical: "f1" } });
+    const typical = doc.floor_blocks.typical!.tasks.find((t) => t.task_name === "Columns");
+    expect(typical?.master_code).toBe("STR-RC-COL-001");
+    expect(doc.floor_blocks.typical!.tasks.find((t) => t.task_name === "Setting out")?.master_code).toBeNull();
+
+    const ex = expandWbsTemplate(doc, [{ code: "B1", name: "House", levels: [lvl("G00", "ground"), lvl("L01", "typical"), lvl("L02", "typical")] }]);
+    const columns = ex.payload.tasks.filter((t) => t.task_name === "Columns");
+    expect(columns).toHaveLength(3);
+    expect(columns.every((t) => t.master_code === "STR-RC-COL-001")).toBe(true);
+  });
+
+  it("reads older templates without master_code", () => {
+    const doc = parseWbsTemplateDoc({
+      schema: 1, building_anchor_key: null, floor_blocks: {},
+      sections: { nodes: [{ key: "01", parent_key: "", node_type: "phase", wbs_code: "01", wbs_name: "DESIGN" }],
+        tasks: [{ key: "01.01", node_key: "01", task_name: "Brief" }] },
+    });
+    expect(doc.sections.tasks[0].master_code).toBeNull();
+  });
+});

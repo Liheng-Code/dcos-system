@@ -18,6 +18,8 @@ import {
   type DurationBasis,
   type StepDraft,
 } from "@/lib/planning/activity-steps-service";
+import { PROJECT_SECTORS, sectorLabel } from "@/lib/project-categories";
+import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
 
 interface EditableTemplate {
   id?: string;
@@ -25,11 +27,18 @@ interface EditableTemplate {
   template_name: string;
   description: string;
   is_active: boolean;
+  /** Sector slug; "" = common to every building type. */
+  template_category: string;
+  building_types: string[];
 }
 
 function emptyTemplate(defaultGroup: string): EditableTemplate {
-  return { group_name: defaultGroup, template_name: "", description: "", is_active: true };
+  return { group_name: defaultGroup, template_name: "", description: "", is_active: true, template_category: "", building_types: [] };
 }
+
+/** Sector filter values besides the sector slugs. */
+const ALL_SECTORS = "__all__";
+const COMMON = "__common__";
 
 function reorder(items: StepDraft[]): StepDraft[] {
   return items.map((it, i) => ({ ...it, step_no: i + 1 }));
@@ -46,6 +55,7 @@ export function PlanActivityStepTemplates() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<string>("__all__");
+  const [sectorFilter, setSectorFilter] = useState<string>(ALL_SECTORS);
   const [showInactive, setShowInactive] = useState(true);
 
   // ?template=<id> (e.g. from an Activity Master's Planning card) opens that template on first load;
@@ -85,6 +95,8 @@ export function PlanActivityStepTemplates() {
     const q = search.trim().toLowerCase();
     return templates.filter((t) => {
       if (groupFilter !== "__all__" && t.group_name !== groupFilter) return false;
+      if (sectorFilter === COMMON && t.template_category) return false;
+      if (sectorFilter !== ALL_SECTORS && sectorFilter !== COMMON && t.template_category !== sectorFilter) return false;
       if (!showInactive && !t.is_active) return false;
       if (!q) return true;
       return (
@@ -93,7 +105,13 @@ export function PlanActivityStepTemplates() {
         (t.description ?? "").toLowerCase().includes(q)
       );
     });
-  }, [templates, search, groupFilter, showInactive]);
+  }, [templates, search, groupFilter, sectorFilter, showInactive]);
+
+  const sectorOptions = useMemo(() => {
+    const used = new Set(templates.map((t) => t.template_category).filter((c): c is string => !!c));
+    const ordered = PROJECT_SECTORS.map((s) => s.value).filter((v) => used.has(v));
+    return [...ordered, ...[...used].filter((v) => !ordered.includes(v)).sort()];
+  }, [templates]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ActivityStepTemplate[]>();
@@ -107,7 +125,10 @@ export function PlanActivityStepTemplates() {
 
   async function selectTemplate(t: ActivityStepTemplate) {
     setSelectedId(t.id);
-    setForm({ id: t.id, group_name: t.group_name, template_name: t.template_name, description: t.description ?? "", is_active: t.is_active });
+    setForm({
+      id: t.id, group_name: t.group_name, template_name: t.template_name, description: t.description ?? "", is_active: t.is_active,
+      template_category: t.template_category ?? "", building_types: t.building_types,
+    });
     setLoadingItems(true);
     try {
       const rows = await listTemplateItems(supabase, t.id);
@@ -162,7 +183,11 @@ export function PlanActivityStepTemplates() {
     try {
       const id = await saveTemplate(
         supabase,
-        { id: form.id, group_name: form.group_name.trim(), template_name: form.template_name.trim(), description: form.description.trim() || null, is_active: form.is_active },
+        {
+          id: form.id, group_name: form.group_name.trim(), template_name: form.template_name.trim(),
+          description: form.description.trim() || null, is_active: form.is_active,
+          template_category: form.template_category || null, building_types: form.building_types,
+        },
         items,
       );
       toast.success("Template saved");
@@ -233,12 +258,24 @@ export function PlanActivityStepTemplates() {
                 ))}
               </select>
             </div>
+            <select
+              value={sectorFilter}
+              onChange={(e) => setSectorFilter(e.target.value)}
+              aria-label="Sector"
+              className="w-28 shrink-0 appearance-none rounded-lg border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-primary"
+            >
+              <option value={ALL_SECTORS}>All sectors</option>
+              <option value={COMMON}>Common ({templates.filter((t) => !t.template_category).length})</option>
+              {sectorOptions.map((s) => (
+                <option key={s} value={s}>{sectorLabel(s)} ({templates.filter((t) => t.template_category === s).length})</option>
+              ))}
+            </select>
             <label className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
               <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
               Show inactive
             </label>
           </div>
-          {(search || groupFilter !== "__all__") && (
+          {(search || groupFilter !== "__all__" || sectorFilter !== ALL_SECTORS) && (
             <p className="text-[10px] text-muted-foreground">
               {filteredTemplates.length} of {templates.length} template{templates.length === 1 ? "" : "s"} match
             </p>
@@ -268,7 +305,17 @@ export function PlanActivityStepTemplates() {
                       !t.is_active && selectedId !== t.id && "opacity-50",
                     )}
                   >
-                    <span className="w-full font-medium leading-snug">{t.template_name}</span>
+                    <span className="flex w-full items-start justify-between gap-2">
+                      <span className="font-medium leading-snug">{t.template_name}</span>
+                      {t.template_category && (
+                        <span className={cn(
+                          "shrink-0 rounded-full px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide",
+                          selectedId === t.id ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground",
+                        )}>
+                          {sectorLabel(t.template_category)}
+                        </span>
+                      )}
+                    </span>
                     {t.description && (
                       <span className={cn(
                         "w-full truncate text-[10px] leading-snug",
@@ -319,6 +366,17 @@ export function PlanActivityStepTemplates() {
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary"
           />
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <TemplateSectorFields
+            sector={form.template_category}
+            buildingTypes={form.building_types}
+            onChange={(v) => setForm((f) => ({ ...f, template_category: v.sector, building_types: v.buildingTypes }))}
+          />
+          {!form.template_category && (
+            <p className="self-end pb-2 text-xs text-muted-foreground">No sector = common steps, offered for every building type.</p>
+          )}
         </div>
 
         <div className="mb-2 flex items-center justify-between">

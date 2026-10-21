@@ -14,6 +14,7 @@ import {
   type ProjectNotificationRule,
 } from "@/lib/project-setup-service";
 import { listWbsTemplates, setProjectWbsTemplateId, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import { WbsTemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import type { Project } from "@/lib/project/projects/project-types";
 import { DEFAULT_BUDGET, DEFAULT_CALENDAR, DEFAULT_NUMBERING, DEFAULT_WBS_METHOD } from "@/lib/project/projects/setup-defaults";
 import { Field, inputClass } from "@/components/project/projects/fields/project-fields";
@@ -123,7 +124,7 @@ export function WbsSection({ project, mode }: SetupSectionProps) {
             >
               <select id="wbs_tpl" value={v.templateId} onChange={(e) => s.patch({ templateId: e.target.value })} className={inputClass}>
                 <option value="">— Choose later —</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.template_name}</option>)}
+                <WbsTemplateOptions templates={templates} project={{ sector: project.category, buildingType: project.building_type }} />
               </select>
             </Field>
           )}

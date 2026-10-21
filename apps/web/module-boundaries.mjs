@@ -131,6 +131,10 @@ export const PUBLIC_API = {
     "lib/planning/activity-steps-service.ts",
     // Spreads an activity's (quantity-driven) duration over its steps.
     "lib/planning/activity-step-spread.ts",
+    // Step-template suggestions and picker groups (recommended for the project's building type).
+    "lib/planning/step-template-matching.ts",
+    // Default step templates for activities linked to a master (Apply WBS template, Generate).
+    "lib/planning/step-template-bulk-service.ts",
     // WBS Code Definition (code mask): the WBS builder shows the same codes as the schedule.
     "lib/planning/wbs-code-mask.ts",
     // CPM engine helpers (link arrays, loop check, durations) for WBS task editing.

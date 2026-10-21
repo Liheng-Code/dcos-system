@@ -11,6 +11,7 @@ import {
   DEFAULT_VIEW,
   type WbsActivitySummary,
   type WbsBuilderNode,
+  upgradeSavedView,
 } from "../wbs-builder-types";
 
 const node = (id: string, parent: string | null, code: string, sort = 0): WbsBuilderNode => ({
@@ -108,5 +109,18 @@ describe("WBS code display (same as Planning)", () => {
     expect(codes.get("node:c")).toBe("HTBT-A");
     expect(codes.get("node:t")).toBe("X-99");
     expect(codes.get("node:gf")).toBe("HTBT-A-001.001");
+  });
+});
+
+describe("saved views", () => {
+  it("adds Progress % next to Activities for views saved before the split", () => {
+    const v = upgradeSavedView({ columns: ["node_type", "activities", "gone" as never], depth: 3 });
+    expect(v.columns).toEqual(["node_type", "activities", "activity_progress"]);
+    expect(v.depth).toBe(3);
+    expect(v.version).toBe(2);
+  });
+  it("respects a current view that hides Progress %", () => {
+    expect(upgradeSavedView({ columns: ["activities"], version: 2 }).columns).toEqual(["activities"]);
+    expect(upgradeSavedView({ columns: ["cost_code"] }).columns).toEqual(["cost_code"]);
   });
 });

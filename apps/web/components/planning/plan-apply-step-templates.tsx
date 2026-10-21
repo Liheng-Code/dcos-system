@@ -10,8 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
 import { TemplatePicker } from "@/components/project/wbs/wbs-activity-steps-panel";
-import { listActivityStepTemplates, type ActivityStepTemplate } from "@/lib/planning/activity-steps-service";
-import { buildMatcher, isConfidentMatch, type MatchKind } from "@/lib/planning/step-template-matching";
+import { listActivityStepTemplates, loadProjectKind, type ActivityStepTemplate } from "@/lib/planning/activity-steps-service";
+import { buildMatcher, groupStepTemplates, isConfidentMatch, type MatchKind } from "@/lib/planning/step-template-matching";
+import type { ProjectKind } from "@/lib/template-fit";
 import {
   activityStatus,
   applyStepTemplatesBulk,
@@ -186,6 +187,8 @@ export function PlanApplyStepTemplates() {
   const [activities, setActivities] = useState<StepActivityRow[]>([]);
   const [templates, setTemplates] = useState<ActivityStepTemplate[]>([]);
   const [remembered, setRemembered] = useState<Map<string, string>>(new Map());
+  // The project's sector / building type: templates written for it win ties in the matcher.
+  const [projectKind, setProjectKind] = useState<ProjectKind>({});
   const [loading, setLoading] = useState(true);
   const [choice, setChoice] = useState<Map<string, string | null>>(new Map());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -200,16 +203,18 @@ export function PlanApplyStepTemplates() {
   async function load(projectId: string) {
     setLoading(true);
     try {
-      const [acts, tpls, mem] = await Promise.all([
+      const [acts, tpls, mem, kind] = await Promise.all([
         listActivitiesForSteps(supabase, projectId),
         listActivityStepTemplates(supabase),
         listRememberedMatches(supabase),
+        loadProjectKind(supabase, projectId),
       ]);
       setActivities(acts);
       setTemplates(tpls);
       setRemembered(mem);
+      setProjectKind(kind);
       // Start from the suggestions; pre-tick only confident matches on activities without steps.
-      const suggest = buildMatcher(tpls, mem);
+      const suggest = buildMatcher(tpls, mem, kind);
       const nextChoice = new Map<string, string | null>();
       const nextSelected = new Set<string>();
       for (const a of acts) {
@@ -235,20 +240,15 @@ export function PlanApplyStepTemplates() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId]);
 
-  const suggest = useMemo(() => buildMatcher(templates, remembered), [templates, remembered]);
+  const suggest = useMemo(() => buildMatcher(templates, remembered, projectKind), [templates, remembered, projectKind]);
   const suggestions = useMemo(() => new Map(activities.map((a) => [a.id, suggest(a.task_name)])), [activities, suggest]);
   const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, ActivityStepTemplate[]>();
-    for (const t of templates) {
-      if (!t.is_active) continue;
-      const list = map.get(t.group_name) ?? [];
-      list.push(t);
-      map.set(t.group_name, list);
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [templates]);
+  // "Recommended for this project" first, then the trade groups.
+  const groups = useMemo(
+    () => groupStepTemplates(templates, projectKind).map((g): [string, ActivityStepTemplate[]] => [g.label, g.items]),
+    [templates, projectKind],
+  );
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = { suggested: 0, ambiguous: 0, none: 0, has_steps: 0, selected: selected.size, all: activities.length };
