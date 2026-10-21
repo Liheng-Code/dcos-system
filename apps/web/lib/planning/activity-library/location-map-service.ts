@@ -6,19 +6,30 @@ import type { SavedLocation, SplitRule, WbsLevel } from "./location-map";
 
 type Db = SupabaseClient;
 
-/** The project's level nodes with the code of the building node above them. */
+/**
+ * The project's level nodes with the code of the building above them, and its chainage sections with the
+ * code of their route (the node above) and their chainage range.
+ */
 export async function listWbsLevels(db: Db, projectId: string): Promise<WbsLevel[]> {
   const { data, error } = await db
     .from("wbs_nodes")
-    .select("id, wbs_code, wbs_name, node_type, parent_id")
-    .eq("project_id", projectId)
-    .in("node_type", ["building", "level"]);
+    .select("id, wbs_code, wbs_name, node_type, parent_id, chainage_from_m, chainage_to_m")
+    .eq("project_id", projectId);
   if (error) throw new Error(error.message);
-  const rows = (data ?? []) as { id: string; wbs_code: string; wbs_name: string; node_type: string; parent_id: string | null }[];
-  const buildingCode = new Map(rows.filter((r) => r.node_type === "building").map((r) => [r.id, r.wbs_code]));
+  const rows = (data ?? []) as {
+    id: string; wbs_code: string; wbs_name: string; node_type: string; parent_id: string | null;
+    chainage_from_m: number | null; chainage_to_m: number | null;
+  }[];
+  const codeById = new Map(rows.map((r) => [r.id, r.wbs_code]));
+  const typeById = new Map(rows.map((r) => [r.id, r.node_type]));
   return rows
-    .filter((r) => r.node_type === "level")
-    .map((r) => ({ id: r.id, wbs_code: r.wbs_code, wbs_name: r.wbs_name, building_code: r.parent_id ? buildingCode.get(r.parent_id) ?? null : null }));
+    .filter((r) => r.node_type === "level" || r.node_type === "segment")
+    .map((r) => ({
+      id: r.id, wbs_code: r.wbs_code, wbs_name: r.wbs_name,
+      building_code: r.parent_id && (r.node_type === "segment" || typeById.get(r.parent_id) === "building") ? codeById.get(r.parent_id) ?? null : null,
+      chainage_from: r.chainage_from_m != null ? Number(r.chainage_from_m) : null,
+      chainage_to: r.chainage_to_m != null ? Number(r.chainage_to_m) : null,
+    }));
 }
 
 /** Current GFA per level node (wbs_node_quantities, metric GFA), for the "gfa" split of project-wide lines. */

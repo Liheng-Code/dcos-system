@@ -507,6 +507,7 @@ export function WbsTreePage() {
         <ApplyLevelTemplateDialog
           buildings={nodes.filter((n) => n.node_type === "building")}
           initialBuildingId={applyLevelsFor.id}
+          projectId={selectedProjectId}
           open
           onOpenChange={(open) => { if (!open) setApplyLevelsFor(null); }}
           onApplied={() => refreshTree()}

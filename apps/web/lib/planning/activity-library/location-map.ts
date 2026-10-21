@@ -5,6 +5,8 @@
 // BOQ labels carry a running number ("04.1F"), WBS codes their own ("03.1F"), so only the part after the number counts.
 // A suggestion is never used by itself: the planner confirms it (plan_location_map), as the bridge never writes silently.
 
+import { formatRange, lengthShares, overlapShares, parseChainageRange } from "@/lib/chainage";
+
 export type LevelCode = string; // "B01", "G00", "M01", "L03", "R00", "PH01"
 
 export interface CanonicalLevel {
@@ -60,7 +62,11 @@ export interface WbsLevel {
   id: string;
   wbs_code: string;
   wbs_name: string;
+  /** code of the building (levels) or route (chainage sections) above */
   building_code: string | null;
+  /** chainage sections only: metres from the route start (lib/chainage.ts) */
+  chainage_from?: number | null;
+  chainage_to?: number | null;
 }
 
 export interface BoqLocation {
@@ -77,7 +83,12 @@ export interface SavedLocation {
   split_rule: SplitRule;
 }
 
-export type SplitRule = "none" | "equal" | "gfa";
+/**
+ * none: not per level; equal / gfa: share a project-wide line over the building's levels;
+ * length: share a whole-route line over its chainage sections by length;
+ * chainage: share a line labelled with a chainage range over the sections it overlaps.
+ */
+export type SplitRule = "none" | "equal" | "gfa" | "length" | "chainage";
 
 export type LocationStatus =
   | "confirmed"     // saved, maps to a level
@@ -130,6 +141,13 @@ export function suggestLocationMap(locations: BoqLocation[], levels: WbsLevel[],
       return { ...base, status: "confirmed", wbs_node_id: s.wbs_node_id, split_rule: s.split_rule };
     }
     if (isProjectWideLabel(loc.qs_level_label)) return { ...base, status: "project_wide", wbs_node_id: null, split_rule: "none" };
+    // "CH 0+000 - 1+500": shared over the chainage sections it overlaps (still confirmed by the planner)
+    const range = parseChainageRange(loc.qs_level_label);
+    if (range) {
+      const sections = pool.filter((l) => l.chainage_from != null && l.chainage_to != null);
+      const hit = overlapShares(range, sections.map((l) => ({ id: l.id, from: l.chainage_from!, to: l.chainage_to! })));
+      return { ...base, canonical: formatRange(range), status: hit.length > 0 ? "suggested" : "unmatched", wbs_node_id: null, split_rule: hit.length > 0 ? "chainage" : "none" };
+    }
     const hits = canonical ? pool.filter((l) => levelCanon.get(l.id) === canonical) : [];
     if (hits.length === 1) return { ...base, status: "suggested", wbs_node_id: hits[0].id, split_rule: "none" };
     return { ...base, status: hits.length > 1 ? "ambiguous" : "unmatched", wbs_node_id: null, split_rule: "none" };
@@ -161,6 +179,15 @@ export function allocateLine(
   let pool = levels.filter((l) => sameBuilding(l.building_code, line.building_code));
   if (pool.length === 0 && new Set(levels.map((l) => (l.building_code ?? "").toUpperCase())).size === 1) pool = levels;
   if (pool.length === 0) return [];
+
+  if (s.split_rule === "chainage" || s.split_rule === "length") {
+    const sections = pool
+      .filter((l) => l.chainage_from != null && l.chainage_to != null)
+      .map((l) => ({ id: l.id, from: l.chainage_from!, to: l.chainage_to! }));
+    if (s.split_rule === "length") return lengthShares(sections).map((x) => ({ wbs_node_id: x.id, share: x.share }));
+    const range = parseChainageRange(line.level);
+    return range ? overlapShares(range, sections).map((x) => ({ wbs_node_id: x.id, share: x.share })) : [];
+  }
 
   if (s.split_rule === "gfa") {
     const total = pool.reduce((sum, l) => sum + (gfaByNode.get(l.id) ?? 0), 0);
