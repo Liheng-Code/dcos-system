@@ -3,6 +3,7 @@
 // Lifecycle rules live in database triggers; this module only issues the requests.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { inChunks } from "./in-chunks";
 import type {
   ActCategory, ActDomain, ActFamily, ActLogicRule, ActMaster, ActMethod, ActQuantityRule,
   ActRequirement, ActTemplate, ActTemplateDependency, ActTemplateItem, ActProductivityStandard,
@@ -75,7 +76,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   const { data: created, error } = await db.from("plan_act_masters").insert({
     code: src.code, name: src.name, description: src.description, domain_id: src.domain_id, category_id: src.category_id,
     family_id: src.family_id, discipline: src.discipline, work_type: src.work_type, default_unit: src.default_unit,
-    owner: src.owner, source: src.source, applicable_project_types: src.applicable_project_types,
+    owner: src.owner, source: src.source, sectors: src.sectors, building_types: src.building_types,
     status: "draft", version: next, supersedes_id: src.id,
   }).select("*").single();
   if (error) throw new Error(error.message);
@@ -270,7 +271,10 @@ export interface TemplateDepDraft {
 }
 
 export async function createTemplate(
-  db: Db, input: { code: string; name: string; description: string | null; owner: string | null; applies_to_level_types: string[] },
+  db: Db, input: {
+    code: string; name: string; description: string | null; owner: string | null; applies_to_level_types: string[];
+    sectors?: string[]; building_types?: string[];
+  },
 ): Promise<ActTemplate> {
   const { data, error } = await db.from("plan_act_templates").insert({ ...input, status: "draft", version: 1 }).select("*").single();
   if (error) throw new Error(error.message);
@@ -278,7 +282,7 @@ export async function createTemplate(
 }
 
 export async function updateTemplateHeader(
-  db: Db, id: string, patch: Partial<Pick<ActTemplate, "name" | "description" | "owner" | "applies_to_level_types" | "inter_level_from_seq" | "inter_level_to_seq" | "inter_level_relation" | "inter_level_lag_days">>,
+  db: Db, id: string, patch: Partial<Pick<ActTemplate, "name" | "description" | "owner" | "applies_to_level_types" | "inter_level_from_seq" | "inter_level_to_seq" | "inter_level_relation" | "inter_level_lag_days" | "sectors" | "building_types">>,
 ): Promise<void> {
   const { error } = await db.from("plan_act_templates").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
@@ -322,6 +326,7 @@ export async function createTemplateVersion(db: Db, id: string): Promise<ActTemp
     applies_to_level_types: d.template.applies_to_level_types, status: "draft", version: next, supersedes_id: d.template.id,
     inter_level_from_seq: d.template.inter_level_from_seq, inter_level_to_seq: d.template.inter_level_to_seq,
     inter_level_relation: d.template.inter_level_relation, inter_level_lag_days: d.template.inter_level_lag_days,
+    sectors: d.template.sectors, building_types: d.template.building_types,
   }).select("*").single();
   if (error) throw new Error(error.message);
   const nt = data as ActTemplate;
@@ -357,8 +362,8 @@ export async function listPickableMasters(db: Db): Promise<Pick<ActMaster, "id" 
 }
 
 export async function listMethodsForMasters(db: Db, masterIds: string[]): Promise<ActMethod[]> {
-  if (!masterIds.length) return [];
-  return unwrap<ActMethod[]>(await db.from("plan_act_methods").select("*").in("master_id", masterIds).order("sort_order"));
+  const rows = await inChunks<ActMethod>([...new Set(masterIds)], (part) => db.from("plan_act_methods").select("*").in("master_id", part));
+  return rows.sort((a, b) => a.sort_order - b.sort_order);
 }
 
 // ── Planning attributes of a master (doc 21) ───────────────────────────────
@@ -376,7 +381,7 @@ export async function listWorkGroups(db: Db): Promise<WorkGroupOption[]> {
 export async function updateMasterPlanning(
   db: Db,
   id: string,
-  patch: Pick<ActMaster, "duration_basis" | "default_work_group" | "default_step_template_id">,
+  patch: Partial<Pick<ActMaster, "duration_basis" | "default_work_group" | "default_step_template_id" | "sectors" | "building_types">>,
 ): Promise<void> {
   const { error } = await db.from("plan_act_masters").update(patch).eq("id", id);
   if (error) throw new Error(error.message);

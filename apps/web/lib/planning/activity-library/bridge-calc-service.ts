@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { boqLinkProvider } from "./boq-provider";
+import { inChunks } from "./in-chunks";
 import type { MasterRate, ProposedLink } from "./bridge-calc";
 import { adjustedProductivity, baseOutputPerDay } from "./productivity-engine";
 
@@ -44,40 +45,34 @@ export async function loadMasterRates(db: Db): Promise<MasterRate[]> {
   const ids = [...byCode.values()].map((m) => m.id as string);
   if (ids.length === 0) return [];
 
-  const [rulesRes, methodsRes, normsRes] = await Promise.all([
-    db.from("plan_act_quantity_rules").select("master_id, metric_code, unit").in("master_id", ids),
-    db.from("plan_act_methods").select("id, master_id, is_default").in("master_id", ids),
-    db.from("plan_productivity_norms")
+  const [rules, methods, norms] = await Promise.all([
+    inChunks<{ master_id: string; metric_code: string; unit: string | null }>(ids, (part) => db.from("plan_act_quantity_rules").select("master_id, metric_code, unit").in("master_id", part)),
+    inChunks<{ id: string; master_id: string; is_default: boolean }>(ids, (part) => db.from("plan_act_methods").select("id, master_id, is_default").in("master_id", part)),
+    inChunks<NormRow>(ids, (part) => db.from("plan_productivity_norms")
       .select("id, code, status, version, method_id, activity_master_id, output_per_day, labour_constant_hr_per_unit, hours_per_day_basis, efficiency_pct")
       .is("project_id", null)
-      .in("activity_master_id", ids)
-      .neq("status", "retired"),
+      .in("activity_master_id", part)
+      .neq("status", "retired")),
   ]);
-  for (const r of [rulesRes, methodsRes, normsRes]) if (r.error) throw new Error(r.error.message);
-  const norms = (normsRes.data ?? []) as NormRow[];
 
   const normIds = norms.map((n) => n.id);
-  const [factorsRes, resRes] = normIds.length
-    ? await Promise.all([
-        db.from("plan_act_productivity_factors").select("norm_id, value").in("norm_id", normIds),
-        db.from("plan_productivity_norm_resources").select("norm_id, kind, workers_per_crew, allocation_rule").in("norm_id", normIds),
-      ])
-    : [{ data: [], error: null }, { data: [], error: null }];
-  if (factorsRes.error) throw new Error(factorsRes.error.message);
-  if (resRes.error) throw new Error(resRes.error.message);
+  const [factorRows, resRows] = await Promise.all([
+    inChunks<{ norm_id: string; value: number }>(normIds, (part) => db.from("plan_act_productivity_factors").select("norm_id, value").in("norm_id", part)),
+    inChunks<{ norm_id: string; kind: string; workers_per_crew: number; allocation_rule: string }>(normIds, (part) => db.from("plan_productivity_norm_resources").select("norm_id, kind, workers_per_crew, allocation_rule").in("norm_id", part)),
+  ]);
   const factors = new Map<string, { value: number }[]>();
-  for (const f of (factorsRes.data ?? []) as { norm_id: string; value: number }[]) factors.set(f.norm_id, [...(factors.get(f.norm_id) ?? []), { value: Number(f.value) }]);
+  for (const f of factorRows) factors.set(f.norm_id, [...(factors.get(f.norm_id) ?? []), { value: Number(f.value) }]);
   const crew = new Map<string, number>();
-  for (const r of (resRes.data ?? []) as { norm_id: string; kind: string; workers_per_crew: number; allocation_rule: string }[]) {
+  for (const r of resRows) {
     if (r.kind === "labor" && r.allocation_rule === "per_crew") crew.set(r.norm_id, (crew.get(r.norm_id) ?? 0) + Number(r.workers_per_crew));
   }
 
   const defaultMethod = new Map<string, string>();
-  for (const m of (methodsRes.data ?? []) as { id: string; master_id: string; is_default: boolean }[]) if (m.is_default) defaultMethod.set(m.master_id, m.id);
+  for (const m of methods) if (m.is_default) defaultMethod.set(m.master_id, m.id);
   const rank = (s: NormRow) => (s.status === "approved" ? 0 : 1);
 
   const out: MasterRate[] = [];
-  for (const r of (rulesRes.data ?? []) as { master_id: string; metric_code: string; unit: string | null }[]) {
+  for (const r of rules) {
     const m = [...byCode.values()].find((x) => x.id === r.master_id);
     if (!m) continue;
     const methodId = defaultMethod.get(r.master_id) ?? null;
@@ -184,15 +179,15 @@ export async function refreshTaskWorkFromLinks(db: Db, projectId: string, rates:
     for (let id = nodeId, guard = 0; id && guard < 20; guard++) {
       const n = nodes.get(id);
       if (!n) return null;
-      if (n.node_type === "level") return n.id;
+      if (n.node_type === "level" || n.node_type === "segment") return n.id;
       id = n.parent_id;
     }
     return null;
   };
 
-  const { data: work, error: wErr } = await db.from("plan_task_work").select("task_id, quantity, quantity_source, norm_id").in("task_id", tasks.map((t) => t.id));
-  if (wErr) throw new Error(wErr.message);
-  const workByTask = new Map(((work ?? []) as { task_id: string; quantity: number | null; quantity_source: string; norm_id: string | null }[]).map((w) => [w.task_id, w]));
+  const work = await inChunks<{ task_id: string; quantity: number | null; quantity_source: string; norm_id: string | null }>(tasks.map((t) => t.id), (part) =>
+    db.from("plan_task_work").select("task_id, quantity, quantity_source, norm_id").in("task_id", part));
+  const workByTask = new Map(work.map((w) => [w.task_id, w]));
 
   const { data: normRows } = await db.from("plan_productivity_norms").select("id, code").is("project_id", null).in("code", rates.map((r) => r.norm_code).filter((c): c is string => !!c));
   const normIdByCode = new Map(((normRows ?? []) as { id: string; code: string }[]).map((n) => [n.code, n.id]));

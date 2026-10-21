@@ -4,6 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aggregateBoqLinks, type BoqLinkRow, type BoqLiveItem } from "./boq-quantity";
 import type { QuantityProvider } from "./quantity-resolver";
+import { inChunks } from "./in-chunks";
 
 type Db = SupabaseClient;
 
@@ -14,9 +15,8 @@ export async function liveItems(db: Db, links: BoqLinkRow[]): Promise<Map<string
   for (const [source, table] of [["qs_boq", "qs_boq_items"], ["tender_boq", "tender_boq_items"]] as const) {
     const ids = [...new Set(links.filter((l) => l.boq_source === source).map((l) => l.boq_item_id))];
     if (!ids.length) continue;
-    const { data, error } = await db.from(table).select("id, quantity, unit").in("id", ids);
-    if (error) throw new Error(error.message);
-    for (const r of (data ?? []) as { id: string; quantity: number; unit: string | null }[]) {
+    const data = await inChunks<{ id: string; quantity: number; unit: string | null }>(ids, (part) => db.from(table).select("id, quantity, unit").in("id", part));
+    for (const r of data) {
       out.set(key(source, r.id), { quantity: Number(r.quantity), unit: r.unit });
     }
   }
