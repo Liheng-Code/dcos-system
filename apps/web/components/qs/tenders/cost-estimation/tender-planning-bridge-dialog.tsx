@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { Loader2, GitMerge, CheckCircle2, ArrowRight, ExternalLink, Calendar, AlertTriangle, Layers, RefreshCw } from "lucide-react";
+import { Loader2, GitMerge, ArrowRight, ExternalLink, Calendar, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,29 +18,22 @@ import { createClient } from "@/lib/supabase/client";
 import {
   listBridgeRules,
   listProjectBoqLines,
-  type BridgeBoqLine,
-  type BridgeRule,
-} from "@/lib/planning/activity-library/qs-bridge-service";
-import {
   listSavedLocations,
   listWbsLevels,
   listLevelGfa,
-  type SavedLocation,
-  type WbsLevel,
-} from "@/lib/planning/activity-library/location-map-service";
-import {
   loadMasterRates,
   listManualPairs,
   countBridgeLinks,
   applyBridgeLinks,
   refreshTaskWorkFromLinks,
-  type MasterRate,
-} from "@/lib/planning/activity-library/bridge-calc-service";
-import {
   computeBridgeLinks,
+  type BridgeBoqLine,
+  type BridgeRule,
+  type SavedLocation,
+  type WbsLevel,
+  type MasterRate,
   type BridgeCalcResult,
-} from "@/lib/planning/activity-library/bridge-calc";
-import { calculateDuration } from "@/lib/planning/activity-library/productivity-engine";
+} from "@/lib/planning/public";
 
 interface Props {
   tenderId: string;
@@ -95,7 +88,8 @@ export function TenderPlanningBridgeDialog({ tenderId, open, onOpenChange, onSuc
         .single();
       if (tErr) throw new Error(tErr.message);
 
-      const proj = t?.projects as { id: string; name: string; project_code: string } | null;
+      // Many-to-one embed: PostgREST returns one object, the generated type says array.
+      const proj = t?.projects as unknown as { id: string; name: string; project_code: string } | null;
       setTenderProject({
         id: t.id,
         projectId: t.project_id,
@@ -138,6 +132,7 @@ export function TenderPlanningBridgeDialog({ tenderId, open, onOpenChange, onSuc
   }, [open, supabase, tenderId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

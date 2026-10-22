@@ -1673,7 +1673,7 @@ export async function bulkInsertBoqItems(
     };
   });
 
-  const { error } = await (supabase as any).from("tender_boq_items").insert(insertRows);
+  const { error } = await supabase.from("tender_boq_items").insert(insertRows);
   if (error) throw new Error(error.message);
   return insertRows.length;
 }
@@ -2368,7 +2368,7 @@ export interface QsWbsTemplateItem {
 }
 
 export async function getQsWbsTemplates(): Promise<QsWbsTemplate[]> {
-  const { data, error } = await (createClient() as any)
+  const { data, error } = await createClient()
     .from("qs_wbs_templates")
     .select("*")
     .eq("is_active", true)
@@ -2420,7 +2420,7 @@ export async function instantiateBoqFromTemplate(
   selectedLocations: { code: string; name: string; kind: string; patternType: string; config: Record<string, unknown> }[]
 ): Promise<number> {
   const supabase = createClient();
-  const { data: template, error: templateError } = await (supabase as any)
+  const { data: template, error: templateError } = await supabase
     .from("qs_wbs_templates")
     .select("id, template_code, title, version, lifecycle_status, published_snapshot, template_family, template_category, building_types, location_model, standard_framework")
     .eq("id", templateId)
@@ -2458,7 +2458,7 @@ export async function instantiateBoqFromTemplate(
     items: templateItems.map(({ id, template_id, ...item }) => ({ id, template_id, ...item })),
     selected_locations: locationSnapshot,
   };
-  const applications = (supabase as any).from("tender_qs_wbs_template_applications");
+  const applications = supabase.from("tender_qs_wbs_template_applications");
   const { data: application, error: applicationError } = await applications
     .insert({
       tender_id: tenderId,

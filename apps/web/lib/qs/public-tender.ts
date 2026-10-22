@@ -13,4 +13,18 @@ export {
   // Printing
   type TenderCoverSummary,
   type TenderSubmissionData,
+
+  // QS WBS template catalog, paired with Planning templates in Master Libraries
+  getQsWbsTemplateDetails,
+  getQsWbsTemplates,
+  type QsWbsTemplate,
+  type QsWbsTemplateItem,
 } from "./tender-cost-service";
+
+export {
+  // QS ↔ Planning template links, edited in Master Libraries
+  deactivateQsPlanningTemplateLink,
+  listQsPlanningTemplateLinks,
+  saveQsPlanningTemplateLink,
+  type QsPlanningTemplateLink,
+} from "./qs-wbs-template-planning-links";

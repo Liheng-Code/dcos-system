@@ -79,6 +79,7 @@ export default function CostLibraryPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   function handleParamsChange(newParams: SiteDataParams) {

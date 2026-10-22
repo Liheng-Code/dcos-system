@@ -309,7 +309,7 @@ export async function getLibraryItemsWithComponents(): Promise<PrelimLibraryItem
   const [items, components] = await Promise.all([getLibraryItems(), getLibraryComponents()]);
   let profileRows: Array<{ item_id: string; profile_code: string }> = [];
   try {
-    const db = createClient() as any;
+    const db = createClient();
     const { data, error } = await db.from("prelim_library_item_profiles").select("item_id, profile_code").eq("inclusion_state", "included");
     if (!error && data) profileRows = data;
   } catch {
@@ -353,7 +353,7 @@ export async function getProjectPrelimContext(tenderId: string): Promise<{
   sector: string | null; buildingType: string | null; profile: PrelimProfileCode;
 }> {
   try {
-    const db = createClient() as any;
+    const db = createClient();
     const { data: tender, error: tenderError } = await db.from("tender_register").select("project_id").eq("id", tenderId).maybeSingle();
     if (tenderError || !tender?.project_id) return { sector: null, buildingType: null, profile: "PROF-GEN" };
     const { data: project, error: projectError } = await db.from("projects").select("category, building_type").eq("id", tender.project_id).maybeSingle();
@@ -630,7 +630,7 @@ function mergeWithDefaults(raw: Record<string, number>): SiteDataParams {
 }
 
 export async function listCases(): Promise<PrelimCaseSummary[]> {
-  const db = createClient() as any;
+  const db = createClient();
   const { data, error } = await db
     .from("prelim_library_cases")
     .select("id, name, is_default, profile_code, sector_slug, building_type_slug")
@@ -685,7 +685,7 @@ export async function saveCase(
   params: SiteDataParams,
   context?: { profile_code?: PrelimProfileCode; sector_slug?: string | null; building_type_slug?: string | null; override_reason?: string | null },
 ): Promise<void> {
-  const db = createClient() as any;
+  const db = createClient();
   const { error } = await db
     .from("prelim_library_cases")
     .update({ params, ...context, updated_at: new Date().toISOString() })
@@ -698,7 +698,7 @@ export async function createCase(
   params: SiteDataParams,
   context?: { profile_code?: PrelimProfileCode; sector_slug?: string | null; building_type_slug?: string | null; override_reason?: string | null },
 ): Promise<PrelimCase> {
-  const db = createClient() as any;
+  const db = createClient();
   const { data, error } = await db
     .from("prelim_library_cases")
     .insert({ name, params, is_default: false, ...context })

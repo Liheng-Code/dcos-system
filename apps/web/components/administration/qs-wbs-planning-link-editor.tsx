@@ -5,13 +5,16 @@ import { Link2, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getQsWbsTemplateDetails, getQsWbsTemplates, type QsWbsTemplate, type QsWbsTemplateItem } from "@/lib/qs/tender-cost-service";
 import {
   deactivateQsPlanningTemplateLink,
+  getQsWbsTemplateDetails,
+  getQsWbsTemplates,
   listQsPlanningTemplateLinks,
   saveQsPlanningTemplateLink,
   type QsPlanningTemplateLink,
-} from "@/lib/qs/qs-wbs-template-planning-links";
+  type QsWbsTemplate,
+  type QsWbsTemplateItem,
+} from "@/lib/qs/public-tender";
 import { listWbsTemplates, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
 
 const input = "h-9 rounded-md border border-border bg-background px-3 text-sm";
@@ -66,9 +69,12 @@ export function QsWbsPlanningLinkEditor() {
     }
   }, [selectedQsId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadCatalogs(); }, [loadCatalogs]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadLinks(); }, [loadLinks]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!selectedQsId) { setQsItems([]); setSelectedQsItemId(""); return; }
     getQsWbsTemplateDetails(selectedQsId).then(({ items }) => {
       setQsItems(items);
@@ -77,6 +83,7 @@ export function QsWbsPlanningLinkEditor() {
   }, [selectedQsId]);
   useEffect(() => {
     if (!planningNodeOptions.some((node) => node.key === selectedPlanningNodeKey)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedPlanningNodeKey(planningNodeOptions[0]?.key ?? "");
     }
   }, [planningNodeOptions, selectedPlanningNodeKey]);

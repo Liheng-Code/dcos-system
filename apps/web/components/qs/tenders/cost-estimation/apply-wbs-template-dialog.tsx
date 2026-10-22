@@ -70,6 +70,7 @@ export function ApplyWbsTemplateDialog({ tenderId, open, onOpenChange, onSuccess
   // Load templates on open
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStep(1);
     setLoading(true);
     Promise.all([getQsWbsTemplates(), getTenderProjectKind(tenderId)])
@@ -100,6 +101,7 @@ export function ApplyWbsTemplateDialog({ tenderId, open, onOpenChange, onSuccess
   // Load details when selectedTemplateId changes
   useEffect(() => {
     if (!selectedTemplateId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getQsWbsTemplateDetails(selectedTemplateId)
       .then(({ items, locations }) => {
