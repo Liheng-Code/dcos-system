@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { HardHat, ChevronDown, type LucideIcon } from "lucide-react";
+import { HardHat, ArrowLeft, ChevronDown, type LucideIcon } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 import { useTaskAlerts } from "@/components/dashboard/task-alerts-provider";
@@ -220,17 +220,25 @@ export function Sidebar({ collapsed }: SidebarProps) {
       "flex h-full flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
       collapsed ? "w-16" : "w-64",
     )}>
-      {/* Logo → back to module hub */}
-      <Link
-        href="/modules"
-        title={collapsed ? "Back to module hub" : "Back to module hub"}
-        className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4 transition-colors hover:bg-sidebar-accent"
-      >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary shadow-sm ring-1 ring-primary/20">
-          <HardHat className="h-5 w-5 text-primary-foreground" />
-        </div>
-        {!collapsed && <span className="text-base font-semibold tracking-tight text-sidebar-foreground">DCOS</span>}
-      </Link>
+      {/* Logo → back to module hub; the hard hat turns into a back arrow on hover */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Link
+              href="/modules"
+              aria-label="Back to module hub"
+              className="group flex h-16 items-center gap-3 border-b border-sidebar-border px-4 transition-colors hover:bg-sidebar-accent"
+            />
+          }
+        >
+          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary shadow-sm ring-1 ring-primary/20">
+            <HardHat className="h-5 w-5 text-primary-foreground transition-all duration-200 group-hover:scale-75 group-hover:opacity-0 group-focus-visible:scale-75 group-focus-visible:opacity-0" />
+            <ArrowLeft className="absolute h-5 w-5 scale-75 text-primary-foreground opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100" />
+          </div>
+          {!collapsed && <span className="text-base font-semibold tracking-tight text-sidebar-foreground">DCOS</span>}
+        </TooltipTrigger>
+        <TooltipContent side="right">Back to module hub</TooltipContent>
+      </Tooltip>
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 overflow-y-auto p-3 flex-1">
