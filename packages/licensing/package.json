@@ -1,0 +1,14 @@
+{
+  "name": "@dcos/licensing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DCOS license contract shared by the tenant app (apps/web) and DCOS HQ (apps/hq): entitlement catalogue, token claims, lifecycle.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "iss": "dcos-hq",
+  "sub": "tnt_abc_construction",
+  "aud": "dep_local_dev",
+  "prof": "online",
+  "lic": {
+    "id": "DCOS-L-000001",
+    "rev": 1,
+    "type": "subscription",
+    "plan": "PRO",
+    "plan_name": "Professional",
+    "customer": "ABC Construction",
+    "from": "2026-10-01",
+    "until": "2027-09-30",
+    "grace_days": 14,
+    "readonly_days": 30,
+    "hq_state": "active",
+    "suspend_mode": null,
+    "notice": null
+  },
+  "ent": {
+    "modules": ["planning", "qs", "procurement", "inventory", "document_control", "construction", "reporting"],
+    "features": ["ai_planning", "ai_qs", "advanced_reports"],
+    "limits": { "users": 50, "viewers": 30, "projects": 20 }
+  },
+  "support": {
+    "tier": "premium",
+    "maintenance_until": "2027-09-30",
+    "support_until": "2027-09-30"
+  }
+}

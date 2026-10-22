@@ -27,6 +27,7 @@ import { NAV_ITEM_CATALOG, type NavCatalogEntry } from "@/lib/nav-item-catalog";
 import { moduleHasActiveFeature } from "@/lib/modules/features";
 import { getModule } from "@/lib/modules/registry";
 import { useModuleSettings } from "@/contexts/module-settings-context";
+import { useLicense } from "@/contexts/license-context";
 
 export function ModuleSettingsPage() {
   const [modules, setModules] = useState<ModuleSetting[]>([]);
@@ -37,6 +38,7 @@ export function ModuleSettingsPage() {
   // realtime postgres_changes subscription — toggling updates the sidebar + module
   // hub everywhere without a page refresh.
   const { isModuleActive, toggleModule, navItemSettings, loading: contextLoading } = useModuleSettings();
+  const license = useLicense();
 
   useEffect(() => {
     getModuleSettings(true).then((data) => {
@@ -97,6 +99,8 @@ export function ModuleSettingsPage() {
           const isToggling = toggling === mod.module_key;
           const isProtected = mod.module_key === "administration";
           const isActive = isModuleActive(mod.module_key);
+          // Outside the license: the toggle cannot bring it back (design 7.1).
+          const notLicensed = !license.isManifestLicensed(mod.module_key);
 
           return (
             <Card
@@ -137,7 +141,13 @@ export function ModuleSettingsPage() {
                         Always on
                       </span>
                     )}
-                    {!isProtected && (
+                    {notLicensed && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Lock className="h-3 w-3" />
+                        Not in your plan
+                      </span>
+                    )}
+                    {!isProtected && !notLicensed && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Info className="h-3 w-3" />
                         {!isActive
@@ -150,7 +160,7 @@ export function ModuleSettingsPage() {
                   </div>
                   <button
                     type="button"
-                    disabled={isProtected || isToggling}
+                    disabled={isProtected || notLicensed || isToggling}
                     onClick={() => handleToggle(mod.module_key, isActive)}
                     className={cn(
                       "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",

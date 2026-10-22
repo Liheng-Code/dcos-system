@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api-error";
 import { writeAuditLog, USR_EVENT_TYPES, ACCOUNT_LIFECYCLE_FEED_EVENT_TYPES } from "./audit-log";
 import type { InviteUserInput } from "./admin-users-schemas";
+import { checkSeat } from "@/lib/licensing/server";
 
 export type AccountStatus = "INVITED" | "ACTIVE" | "LOCKED" | "SUSPENDED" | "DISABLED";
 export const ACCOUNT_STATUSES: AccountStatus[] = ["INVITED", "ACTIVE", "LOCKED", "SUSPENDED", "DISABLED"];
@@ -193,6 +194,14 @@ export async function transitionAccountStatus(
       "USR_INVALID_TRANSITION",
       `Cannot ${input.action} an account currently in ${currentStatus} state.`,
     );
+  }
+
+  // License seat limit (design 7.4): reactivating a user takes a seat again.
+  if (transition.to === "ACTIVE") {
+    const { data: isViewer, error: viewerError } = await admin.rpc("license_is_viewer", { p_user_id: input.targetId });
+    if (viewerError) throw new ApiError(500, "USR_DB_ERROR", viewerError.message);
+    const denial = await checkSeat(Boolean(isViewer));
+    if (denial) throw new ApiError(403, denial.code, denial.message);
   }
 
   const updatePayload: Record<string, unknown> = { account_status: transition.to };

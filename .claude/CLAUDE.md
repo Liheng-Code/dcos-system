@@ -139,6 +139,15 @@ supabase db dump --local --data-only -f <file>.sql
   A full replay-from-empty test (`stop --no-backup && start`) is only done when the user asks for it, after the backup in "Wiping the local DB" above.
 - Former drift (prod-only tables/columns such as `snap_*`, `tender_dayworks`, `tender_provisional_sums`, `qs_boq_items.source_tender_*`, `wbs_nodes.is_basement`) is now captured by the idempotent migration `20260925000001_capture_prod_drift_tables.sql`. If new drift is found, capture it the same way (guarded, no-op where it exists).
 
+#### DCOS HQ (licensing control plane) — a second local stack
+`apps/hq` is a separate Next.js app (port 3200) with its **own** Supabase stack (`apps/hq/supabase/`, project `dcos-hq`, API `http://127.0.0.1:55321`, Postgres `127.0.0.1:55322`, container `supabase_db_dcos-hq`). It holds customers, plans and licenses, never tenant data. Design: `docs/01-DCOS-Foundation/DCOS-Licensing-Control-Plane-Design.md`.
+- Start/stop: `supabase start --workdir apps/hq` / `supabase stop --workdir apps/hq` (or root `pnpm hq:db:start`). The same no-wipe rules apply to it.
+- HQ migrations live in `apps/hq/supabase/migrations/`, never in `supabase/migrations/` (and `/dbpush` is for the tenant DB only). Apply locally with `docker exec -i supabase_db_dcos-hq psql -U postgres -d postgres -v ON_ERROR_STOP=1 -1 < <file>`.
+- Staff logins: `node apps/hq/scripts/create-hq-user.mjs --email … --name … --role owner`.
+- Demo data (local HQ only, fictional `DEMO-` tenants, signed with the dev key): `node apps/hq/scripts/seed-demo.mjs --key .licensing/dev-local.key.json`; hide with `--hide` (license events and the audit log are append-only, so demo rows are soft-deleted, not removed).
+- Shared license contract: `packages/licensing` (used by both apps). The tenant side is `apps/web/lib/licensing`, `apps/web/proxy.ts`, `DCOS_LICENSE_MODE` (default `off`) and `DCOS_DEPLOYMENT_ID`.
+- Signing keys are passphrase-encrypted files kept by the owner (`.licensing/` locally, gitignored). Never commit one, never ask for a passphrase; `.licensing/dev-local.key.json` is a development key that production builds reject.
+
 #### Out of scope: production
 - Claude does not touch the remote/production Supabase project in any way: no `supabase ... --linked`, no `db push` / `migration up --linked` / `db pull`, no `supabase login` or access tokens, and no Supabase MCP connector (`mcp__claude_ai_Supabase__*`). If a task seems to need production, stop and tell the user.
 - Promoting migrations to production is done only by the user via `/dbpush` (skill in `.claude/skills/dbpush/`).
@@ -197,10 +206,6 @@ dcos-system/
 - Do not add to the boundary baseline in `eslint-suppressions.json` to get an import through; add the file to `PUBLIC_API` (a deliberate contract) or move the shared code to core.
 - **Choosing modules per deployment (optional; normally leave unset):** day-to-day visibility is controlled in Administration > Module Settings, and every deploy ships all modules. Only to hard-limit one deployment, set `DCOS_ENABLED_MODULES=qs,planning` (comma-separated `module_settings` keys) on the Vercel project before deploying. `project` and `administration` are always on; unset or `all` ships everything (the local default). A module that is off leaves the sidebar and hub (`lib/modules/registry.ts`) and its pages redirect to `/dashboard` while its API routes 404 (`next.config.ts`, routes derived from `module-boundaries.mjs`). An unknown key fails the build. Logic: `module-deployment.mjs`. It hides modules, it does not remove their code from the bundle.
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
-
-**apps/web/hooks/** - Custom React hooks
-- `useAuth()` - Authentication and session management
-- Other feature-specific hooks
 
 ## Key Patterns & Conventions
 
