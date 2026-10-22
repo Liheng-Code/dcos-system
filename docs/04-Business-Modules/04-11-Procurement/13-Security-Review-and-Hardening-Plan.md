@@ -4,7 +4,7 @@
 |---|---|
 | Document | 04-11 / 13 |
 | Revision | R0 — 2026-10-22 |
-| Status | For decision (section 6), then build by a Procurement lane |
+| Status | Decisions D1–D6 taken 2026-10-22 (section 6: all as recommended). P0+P1 in build (lane `procurement-hardening`) |
 | Basis | Local DB (`pg_policies`, `pg_proc`, columns, row counts) and code as of commit `17c5e24`; as-built map `.claude/skills/dcos-architecture/references/procurement.md`; business rules in `01-Business-Requirement.md` and `07-Permission-Matrix.md` |
 
 ## 1. Verdict
@@ -129,9 +129,9 @@ Every migration is add-only, uses a timestamped name, is dry-run first, and is r
 
 **Rollback:** each phase is one migration plus its client change on one lane branch. Before merging, take `scripts/db-backup.ps1`. The guard trigger can be disabled in an emergency (`alter table … disable trigger …`) without dropping data.
 
-## 6. Decisions needed
+## 6. Decisions (taken 2026-10-22: all as recommended)
 
-| # | Decision | Recommendation |
+| # | Decision | Decided |
 |---|---|---|
 | D1 | Project scoping (P3): who fills `project_members` for the 12 projects without members, and should procurement be project-scoped at all? | Defer P3. Ship P0–P2 permission-only (still a large improvement), and decide membership as a core (Project module) task. |
 | D2 | Hard delete: allow deleting a **draft** by its creator, or never delete (BR-16)? | Never delete; cancel with a reason, as BR-16 says. |
