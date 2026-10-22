@@ -1,0 +1,24 @@
+[
+  {
+    "id": "inf001",
+    "name": "Asphalt Pavement",
+    "materialType": "Asphalt",
+    "grade": "Hot Mix",
+    "unit": "ton",
+    "currency": "USD",
+    "price": 70.0,
+    "effectiveDate": "2024-01-01",
+    "source": "Road Materials Co"
+  },
+  {
+    "id": "inf002",
+    "name": "Pre‑stressed Concrete Girder",
+    "materialType": "Concrete",
+    "grade": "Pre‑stressed",
+    "unit": "m",
+    "currency": "USD",
+    "price": 250.0,
+    "effectiveDate": "2024-01-01",
+    "source": "Bridge Builders Ltd"
+  }
+]

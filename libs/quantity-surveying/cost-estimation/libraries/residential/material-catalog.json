@@ -1,0 +1,24 @@
+[
+  {
+    "id": "001",
+    "name": "Concrete C30/37",
+    "materialType": "Concrete",
+    "grade": "C30/37",
+    "unit": "m³",
+    "currency": "USD",
+    "price": 110.0,
+    "effectiveDate": "2024-01-01",
+    "source": "Local Supplier"
+  },
+  {
+    "id": "002",
+    "name": "Reinforcing Steel 500 MPa",
+    "materialType": "Steel",
+    "grade": "500 MPa",
+    "unit": "kg",
+    "currency": "USD",
+    "price": 1.25,
+    "effectiveDate": "2024-01-01",
+    "source": "SteelCo"
+  }
+]

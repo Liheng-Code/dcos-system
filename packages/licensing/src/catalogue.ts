@@ -41,6 +41,8 @@ export const MODULE_ENTITLEMENTS: ModuleEntitlement[] = [
   { key: "reporting", label: "Reporting", manifestKey: "reporting" },
   // Cost Libraries API (prelim, residential, etc.)
   { key: "libraries", label: "Libraries", manifestKey: "libraries", pathPrefixes: ["/api/libraries"] },
+  // Master Data Management – added with mdm_governance_foundation migration
+  { key: "mdm", label: "Master Data Management", manifestKey: "mdm", pathPrefixes: ["/api/mdm", "/dashboard/mdm"] },
 ];
 
 export interface FeatureEntitlement {
@@ -55,7 +57,7 @@ export interface FeatureEntitlement {
 export const FEATURE_ENTITLEMENTS: FeatureEntitlement[] = [
   { key: "ai_planning", label: "AI Planning", apiPrefixes: [], available: true },
   { key: "ai_qs", label: "AI QS", apiPrefixes: ["/api/tenders/[id]/ai-boq-draft"], available: true },
-  { key: "advanced_reports", label: "Advanced Reports", apiPrefixes: [], available: true },
+  { key: "advanced_reports", label: "Advanced Reports", apiPrefixes: [], available: false },
   { key: "api_access", label: "API Access", apiPrefixes: [], available: false },
 ];
 

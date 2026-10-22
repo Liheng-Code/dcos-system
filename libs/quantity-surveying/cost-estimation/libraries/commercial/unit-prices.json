@@ -1,0 +1,25 @@
+[
+  {
+    "id": "up_c001",
+    "name": "Office Carpet Installation",
+    "unit": "m²",
+    "currency": "USD",
+    "price": 30.0,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "06 10 00",
+    "laborFactor": 1.2,
+    "source": "Commercial Rates"
+  },
+  {
+    "id": "up_c002",
+    "name": "Glass Partition Installation",
+    "unit": "m²",
+    "currency": "USD",
+    "price": 55.0,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "06 20 00",
+    "laborFactor": 1.3,
+    "source": "Commercial Rates"
+  }
+]
+

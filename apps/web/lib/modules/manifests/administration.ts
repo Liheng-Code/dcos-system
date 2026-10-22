@@ -4,6 +4,7 @@ import {
   Cog,
   FileClock,
   FileText,
+  Database,
   Settings,
   KeyRound,
   ShieldAlert,
@@ -31,6 +32,7 @@ export const administrationModule: ModuleManifest = {
     { href: "/dashboard/administration/license", label: "License", icon: KeyRound },
     { href: "/dashboard/administration/stakeholder-templates", label: "Stakeholder Templates", icon: FileText },
     { href: "/dashboard/administration/master-libraries", label: "Master Libraries", icon: BookTemplate },
+    { href: "/dashboard/administration/mdm", label: "Master Data Governance", icon: Database },
   ],
   hub: {
     title: "Administration",

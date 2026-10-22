@@ -1,0 +1,24 @@
+[
+  {
+    "id": "up001",
+    "name": "Excavation",
+    "unit": "m³",
+    "currency": "USD",
+    "price": 12.5,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "01 10 00",
+    "laborFactor": 1.2,
+    "source": "Standard Rates"
+  },
+  {
+    "id": "up002",
+    "name": "Foundation Concrete",
+    "unit": "m³",
+    "currency": "USD",
+    "price": 110.0,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "03 30 00",
+    "laborFactor": 1.0,
+    "source": "Standard Rates"
+  }
+]
