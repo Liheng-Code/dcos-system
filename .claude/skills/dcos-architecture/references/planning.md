@@ -52,7 +52,9 @@
 - **RLS, three patterns:**
   - Library tables: any authenticated user reads; writes need `can_manage_master_libraries()`.
   - Project tables: `is_project_member(project_id)` + `has_permission('planning', <resource>, <action>)`.
-  - Legacy `using (true)`: `plan_calendars`, `plan_calendar_exceptions`, `plan_resources`, `wbs_task_steps`.
+  - `plan_calendars`, `plan_calendar_exceptions` and `plan_resources` use the project pattern (`is_project_member` + `has_permission`), verified 2026-10-22.
+  - Still `using (true)`: `wbs_task_steps` (ALL), and the core table `wbs_tasks` (select, insert, update).
+  - Because project RLS depends on `is_project_member`, and `project_members` has only 3 rows (2 of 14 projects), non-admins see no project-scoped Planning data on most projects.
 
 ## 3. Code map
 - **Pure engines (`lib/planning/`):**
@@ -111,5 +113,5 @@ See `integration-map.md`, rows tagged **Planning**.
   - `lib/planning/__tests__`: schedule engine, work engine, levelling, TIA, delay governance, duration rules, step spread and matching, look-ahead filters, calendar, cost.
   - `lib/planning/activity-library/__tests__`: generation planner, kits, qs-bridge, bridge-calc, location map, recovery, scenarios, BIM/BOQ quantity.
   - `ai/__tests__`.
-- **Security:** legacy `using (true)` RLS on calendars, resources and task steps.
+- **Security:** `using (true)` RLS on `wbs_task_steps` and on core `wbs_tasks`; project RLS blocked by the empty `project_members`. Six `NOT VALID` CHECKs on `wbs_tasks` (dep arrays length, no-self, types, hours, progress method, reviewer independent). Release plan: `docs/04-Business-Modules/06-Planning-Scheduling/22-Release-Readiness-Plan.md`.
 - **Docs behind the code:** doc 19 says "nothing built" but the AI, recovery, BIM and scenario code exists; doc 21 says "for decision" but bridge phases 1–3 are built; docs 13 and 14 are unverified. Docs folder: `docs/04-Business-Modules/06-Planning-Scheduling/` (00–12 standard pack, 13–21 plans; doc 21 is the QS bridge).
