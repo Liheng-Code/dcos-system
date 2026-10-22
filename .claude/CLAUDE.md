@@ -207,6 +207,22 @@ dcos-system/
 - **Choosing modules per deployment (optional; normally leave unset):** day-to-day visibility is controlled in Administration > Module Settings, and every deploy ships all modules. Only to hard-limit one deployment, set `DCOS_ENABLED_MODULES=qs,planning` (comma-separated `module_settings` keys) on the Vercel project before deploying. `project` and `administration` are always on; unset or `all` ships everything (the local default). A module that is off leaves the sidebar and hub (`lib/modules/registry.ts`) and its pages redirect to `/dashboard` while its API routes 404 (`next.config.ts`, routes derived from `module-boundaries.mjs`). An unknown key fails the build. Logic: `module-deployment.mjs`. It hides modules, it does not remove their code from the bundle.
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
 
+### Parallel lanes (several sessions at once)
+Work is split into **lanes**: one Claude session per business module, each in its own git worktree. Inside a lane the lead session uses subagents. Agent Teams are only for a feature that spans 2–3 modules at once.
+
+- **Run at most 3 lanes at a time.** Create one with `scripts/new-lane.ps1 -Module <key> -Topic <slug>`. It makes branch `feat/<module>-<topic>` in worktree `D:\dcos-lanes\<module>-<topic>`, copies `apps/web/.env.local`, runs `pnpm install` and prints the dev port to use (`pnpm dev -p 3001`, `3002`, `3003`; the main checkout keeps 3000). Open that folder in its own VS Code window or `claude` session. Remove it with `git worktree remove <path>` after merge.
+- **A lane edits only its own module's paths** (`MODULE_PATHS[<key>]` in `apps/web/module-boundaries.mjs`, e.g. `components/qs`, `lib/qs`, `app/dashboard/tenders`, `app/api/tenders`) plus its migrations and docs. Cross-module imports go through `PUBLIC_API` only.
+- **Core files are main-lane only:** `components/ui`, `components/dashboard`, `components/project`, `components/report-kit`, `lib/modules/*` (incl. `release.ts`, `registry.ts`, `features.ts`), `module-boundaries.mjs`, `next.config.ts`, `proxy.ts`, `package.json`/`pnpm-lock.yaml`, `.claude/`. A lane that needs one of these stops and records it as a "core request" in its final report; the main lane makes the change and the lane rebases.
+- **One shared local DB.** Every lane talks to the same `127.0.0.1:54321` stack, so a migration applied in one lane is live for all. While other lanes run, migrations must be **additive only**: new tables, `add column if not exists`, new functions. No rename, drop or type change. Within a lane only `database-engineer` writes `supabase/migrations/`.
+- **Migration version = real timestamp** `YYYYMMDDHHMMSS_<module>_<what>.sql` (e.g. `20261022143015_qs_boq_alternates.sql`), never "last number + 1". That way two lanes can't pick the same version. Dry-run then apply exactly as in "Migrations" above. The no-wipe rules apply unchanged.
+- **Subagent pipeline inside a lane:** `system-architect` / `<dept>-manager` (design and domain check, read-only) → `database-engineer` (schema first) → `backend-engineer` ∥ `frontend-engineer` (in parallel once the schema is fixed) → `code-reviewer` (read-only) → `docs-writer`. The lead then runs `pnpm typecheck && pnpm lint && pnpm test` before committing.
+- **Merge one lane at a time** into the integration branch. The next lane rebases onto it and re-runs typecheck/lint/test before merging.
+- **Agent Team (cross-module feature):** the lead first writes the contract (tables, RPCs, which module owns which file, `PUBLIC_API` additions). Then one teammate per module, with `database-engineer` as the only migration owner.
+
+**apps/web/hooks/** - Custom React hooks
+- `useAuth()` - Authentication and session management
+- Other feature-specific hooks
+
 ## Key Patterns & Conventions
 
 ### Component Structure
