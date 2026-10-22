@@ -4,7 +4,7 @@
 |---|---|
 | Document | 04-11 / 13 |
 | Revision | R0 — 2026-10-22 |
-| Status | Decisions D1–D6 taken 2026-10-22 (section 6: all as recommended). **P0+P1 built** 2026-10-22 on `feat/procurement-hardening`: migrations `20261022130910`, `…130911`, `…134300`, `…140500`; SQL suite `tests/13-p1-hardening-tests.sql` (153 pass). **P2 built** 2026-10-22: migrations `20261022150000`, `…150100`, `…151500`, `…153000`; SQL suite `tests/13-p2-business-rules-tests.sql` (123 pass) + `tests/13-p2-numbering-parallel.sh`. Bands convert at the approval-date rate from the procurement-owned `procurement_fx_rates` (decision R2). Remaining gaps are listed in the migration headers (`…140500`, `…151500`) |
+| Status | Decisions D1–D6 taken 2026-10-22 (section 6: all as recommended). **P0–P2 merged 2026-10-22** (`a9a8b6b`); P3 (needs D1) and P4 open. **P0+P1 built** 2026-10-22: migrations `20261022130910`, `…130911`, `…134300`, `…140500`; SQL suite `tests/13-p1-hardening-tests.sql` (153 pass). **P2 built** 2026-10-22: migrations `20261022150000`, `…150100`, `…151500`, `…153000`; SQL suite `tests/13-p2-business-rules-tests.sql` (123 pass) + `tests/13-p2-numbering-parallel.sh`. Bands convert at the approval-date rate from the procurement-owned `procurement_fx_rates` (decision R2). Remaining gaps are listed in the migration headers (`…140500`, `…151500`) |
 | Basis | Local DB (`pg_policies`, `pg_proc`, columns, row counts) and code as of commit `17c5e24`; as-built map `.claude/skills/dcos-architecture/references/procurement.md`; business rules in `01-Business-Requirement.md` and `07-Permission-Matrix.md` |
 
 ## 1. Verdict
