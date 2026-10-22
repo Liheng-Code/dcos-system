@@ -167,6 +167,9 @@ export function procErrorMessage(err: { message?: string } | null | undefined): 
       return capitalise(detail.trim()) || "The submitted data is not valid.";
     case "TRANSITION_RPC_ONLY":
       return "Status can only be changed with the workflow actions, not by editing the record.";
+    case "BAND_EXCEEDED":
+    case "BIDS_SEALED":
+      return capitalise(detail.trim());
     case "LOCKED":
       return "This document can no longer be edited because it has been submitted.";
     default:

@@ -8,6 +8,7 @@
 // Keep the "// @table" markers: the codemod reads them when it is run again.
 
 import { createClient } from "@/lib/supabase/client";
+import type { ApprovalBand, UpliftReason } from "@/lib/procurement/approval-bands";
 import type {
   ComparisonPrLine,
   ComparisonQuotationInput,
@@ -238,7 +239,7 @@ export function getPoByQuotationId(quotationId: string | number | boolean) {
 
 // @table procurement_pos
 export function insertPo(row: object) {
-  return db().from("procurement_pos").insert([row]).select("id").single();
+  return db().from("procurement_pos").insert([row]).select("id, po_number").single();
 }
 
 // @table procurement_pos
@@ -342,7 +343,7 @@ export function getPrById(id: string | number | boolean, columns: string) {
 
 // @table procurement_prs
 export function insertPr(row: object) {
-  return db().from("procurement_prs").insert([row]).select("id").single();
+  return db().from("procurement_prs").insert([row]).select("id, pr_number").single();
 }
 
 // @table procurement_prs
@@ -470,7 +471,7 @@ export function getRfqById(id: string | number | boolean, columns: string) {
 
 // @table procurement_rfqs
 export function insertRfq(row: object) {
-  return db().from("procurement_rfqs").insert([row]).select("id").single();
+  return db().from("procurement_rfqs").insert([row]).select("id, rfq_number").single();
 }
 
 // @table procurement_rfqs
@@ -837,4 +838,127 @@ export function transitionRfq(id: string, to: string, reason?: string | null) {
 // Pass both scores every call (null clears one); each 0-100.
 export function scoreQuotation(id: string, technical: number | null, commercial: number | null) {
   return db().rpc("procurement_score_quotation", { p_id: id, p_technical: technical, p_commercial: commercial });
+}
+
+// ── Approval bands, band info, sealed bids ────────────────────────────────────
+// PR / PO / RFQ numbers are assigned by the database on insert and any client value is ignored; read
+// the number from the row the insert helpers return.
+
+export interface PoBandInfo {
+  base_amount: number | null;
+  base_currency: string;
+  required_band: number | null;
+  /** Highest band the caller holds; 0 means none. */
+  user_band: number;
+  uplift_reasons: UpliftReason[];
+  fx_error: string | null;
+}
+
+export interface ApprovalBandInput {
+  band: number;
+  label?: string;
+  min_amount: number;
+  max_amount: number | null;
+}
+
+// Needs po.view. For the PO detail screen; when no exchange rate exists, base_amount and
+// required_band are null and fx_error says why.
+export async function getPoBandInfo(
+  poId: string,
+): Promise<{ data: PoBandInfo | null; error: QueryError | null }> {
+  const { data, error } = await db().rpc("procurement_po_band_info", { p_po_id: poId });
+  if (error) return { data: null, error };
+  return { data: data as PoBandInfo, error: null };
+}
+
+// The five bands in order. Readable with po.view.
+export async function listApprovalBands(): Promise<{ data: ApprovalBand[] | null; error: QueryError | null }> {
+  const { data, error } = await db()
+    .from("procurement_approval_bands")
+    .select("band, label, min_amount, max_amount, permission_action")
+    .order("band");
+  if (error) return { data: null, error };
+  const rows = (data ?? []) as Array<Omit<ApprovalBand, "min_amount" | "max_amount"> & {
+    min_amount: number | string;
+    max_amount: number | string | null;
+  }>;
+  return {
+    data: rows.map((r) => ({
+      band: r.band,
+      label: r.label,
+      permission_action: r.permission_action,
+      min_amount: Number(r.min_amount),
+      max_amount: r.max_amount === null ? null : Number(r.max_amount),
+    })),
+    error: null,
+  };
+}
+
+// Replaces all five bands at once (needs po.configure; audited as critical). Validate with
+// validateBands() first; the database re-checks and answers PROC_VALIDATION.
+export function setApprovalBands(bands: ApprovalBandInput[]) {
+  return db().rpc("procurement_set_approval_bands", { p_bands: bands });
+}
+
+// When the RFQ's quotations become readable (end of the response_deadline day, Asia/Bangkok);
+// data is null for an RFQ without a deadline. Pure equivalent: bidsOpenAt() in sealed-bids.ts.
+export async function getRfqBidsOpenAt(
+  rfqId: string,
+): Promise<{ data: Date | null; error: QueryError | null }> {
+  const { data, error } = await db().rpc("proc_rfq_bids_open_at", { p_rfq_id: rfqId });
+  if (error) return { data: null, error };
+  return { data: data ? new Date(data as string) : null, error: null };
+}
+
+// ── FX settings and rates (base-currency conversion for approval bands) ───────
+// Writes need po.configure. Rates are insert-only: a correction is a new row with a later
+// effective_date; there is no update or delete from the client.
+
+export interface FxSettings {
+  base_currency: string;
+}
+
+export interface FxRate {
+  id: string;
+  currency: string;
+  rate_to_base: number;
+  effective_date: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface FxRateInput {
+  currency: string;
+  rate_to_base: number;
+  effective_date: string;
+}
+
+export async function getFxSettings(): Promise<{ data: FxSettings | null; error: QueryError | null }> {
+  const { data, error } = await db().from("procurement_fx_settings").select("base_currency").limit(1).maybeSingle();
+  if (error) return { data: null, error };
+  return { data: (data as FxSettings | null) ?? null, error: null };
+}
+
+// The settings table holds a single row.
+export function updateFxBaseCurrency(code: string) {
+  return db().from("procurement_fx_settings").update({ base_currency: code.trim().toUpperCase() }).not("base_currency", "is", null);
+}
+
+export async function listFxRates(): Promise<{ data: FxRate[] | null; error: QueryError | null }> {
+  const { data, error } = await db()
+    .from("procurement_fx_rates")
+    .select("id, currency, rate_to_base, effective_date, created_by, created_at")
+    .order("effective_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) return { data: null, error };
+  const rows = (data ?? []) as Array<Omit<FxRate, "rate_to_base"> & { rate_to_base: number | string }>;
+  return { data: rows.map((r) => ({ ...r, rate_to_base: Number(r.rate_to_base) })), error: null };
+}
+
+export function insertFxRate(row: FxRateInput) {
+  return db()
+    .from("procurement_fx_rates")
+    .insert([{ currency: row.currency.trim().toUpperCase(), rate_to_base: row.rate_to_base, effective_date: row.effective_date }])
+    .select("id")
+    .single();
 }

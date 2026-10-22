@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, listPrsByProjectId, updatePrById } from "@/lib/procurement/procurement-queries";
+import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, Plus, Trash2, ArrowLeft, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -32,7 +32,8 @@ export function PRForm({ prId }: { prId?: string }) {
   const { selectedProjectId, selectedProject } = useProject();
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [generatedPrNumber, setGeneratedPrNumber] = useState("");
+  // Assigned by the database on insert; only known when editing an existing PR.
+  const [prNumber, setPrNumber] = useState("");
   const [budgetGroups, setBudgetGroups] = useState<{ code_letter: string; name: string }[]>([]);
   const [form, setForm] = useState({
     preparation_date: new Date().toISOString().slice(0, 10),
@@ -49,7 +50,7 @@ export function PRForm({ prId }: { prId?: string }) {
 
   useEffect(() => {
     if (!selectedProjectId || !selectedProject) {
-      setGeneratedPrNumber("");
+      setPrNumber("");
       return;
     }
     listBudgetCodeGroups().then((bgRes) => {
@@ -64,7 +65,7 @@ export function PRForm({ prId }: { prId?: string }) {
       ]).then(([prRes, itemsRes]) => {
         if (prRes.data) {
           const record = prRes.data as { pr_number: string; preparation_date: string | null; required_date: string | null; ship_to: string | null; priority: string; budget_code: string | null; notes: string | null };
-          setGeneratedPrNumber(record.pr_number);
+          setPrNumber(record.pr_number);
           setForm({
             preparation_date: record.preparation_date ?? new Date().toISOString().slice(0, 10),
             required_date: record.required_date ?? "",
@@ -91,24 +92,10 @@ export function PRForm({ prId }: { prId?: string }) {
         setLoading(false);
       });
     } else {
-      listPrsByProjectId(selectedProjectId).then((prRes) => {
-        getProjectById(selectedProjectId, "company_code, location").then((projRes) => {
-          const companyCode = projRes.data?.company_code ?? "DCOS";
-          const prefix = `${selectedProject.project_code}-${companyCode}-PR-`;
-          const existing = (prRes.data ?? []) as { pr_number: string }[];
-          let maxSeq = 0;
-          for (const pr of existing) {
-            if (pr.pr_number.startsWith(prefix)) {
-              const num = parseInt(pr.pr_number.slice(prefix.length), 10);
-              if (!isNaN(num) && num > maxSeq) maxSeq = num;
-            }
-          }
-          const seq = maxSeq + 1;
-          setGeneratedPrNumber(`${prefix}${String(seq).padStart(3, "0")}`);
-          if (projRes.data?.location) {
-            setForm(prev => ({ ...prev, ship_to: prev.ship_to || projRes.data.location }));
-          }
-        });
+      getProjectById(selectedProjectId, "location").then((projRes) => {
+        if (projRes.data?.location) {
+          setForm(prev => ({ ...prev, ship_to: prev.ship_to || projRes.data.location }));
+        }
       });
     }
   }, [selectedProjectId, selectedProject, isEditing, prId]);
@@ -174,7 +161,6 @@ export function PRForm({ prId }: { prId?: string }) {
     setSaving(true);
 
     const supabaseForm = {
-      pr_number: generatedPrNumber,
       project_id: selectedProjectId,
       preparation_date: form.preparation_date || null,
       required_date: form.required_date || null,
@@ -186,6 +172,7 @@ export function PRForm({ prId }: { prId?: string }) {
     };
 
     let targetPrId = prId ?? "";
+    let createdNumber = "";
 
     if (isEditing && prId) {
       const { error: prError } = await updatePrById(supabaseForm, prId);
@@ -196,6 +183,7 @@ export function PRForm({ prId }: { prId?: string }) {
       const { data: prData, error: prError } = await insertPr(supabaseForm);
       if (prError) { toast.error(procErrorMessage(prError)); setSaving(false); return; }
       targetPrId = (prData as { id: string }).id;
+      createdNumber = (prData as { pr_number?: string }).pr_number ?? "";
     }
 
     const itemInserts = validItems.map((i, idx) => ({
@@ -221,7 +209,7 @@ export function PRForm({ prId }: { prId?: string }) {
       return;
     }
 
-    toast.success(isEditing ? "Purchase requisition updated" : "Purchase requisition created");
+    toast.success(isEditing ? "Purchase requisition updated" : `Purchase requisition ${createdNumber || ""} created`.replace("  ", " "));
     router.push(`/dashboard/procurement/pr/${targetPrId}`);
   }
 
@@ -265,7 +253,7 @@ export function PRForm({ prId }: { prId?: string }) {
               <Label>PR Code</Label>
               <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono">
                 <Hash className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{generatedPrNumber || "Generating..."}</span>
+                <span className="font-medium">{prNumber || "Assigned on save"}</span>
               </div>
             </div>
 

@@ -85,9 +85,9 @@ insert into procurement_delivery_notes (id, po_id, supplier_id, delivery_date) v
 insert into procurement_goods_receipts (delivery_note_id, po_item_id, quantity_received, quantity_accepted)
  values ('00000000-0000-0000-0000-0000000003b4','00000000-0000-0000-0000-0000000002b4',4,4);
 
-insert into procurement_rfqs (id, rfq_number, status, created_by, evaluation_method) values
- ('00000000-0000-0000-0000-0000000000c1','T-RFQ-1','draft','1470d8fc-c1fe-4057-8dd1-5a78b27c4465','weighted'),
- ('00000000-0000-0000-0000-0000000000c2','T-RFQ-2','under_evaluation','1470d8fc-c1fe-4057-8dd1-5a78b27c4465','lowest_price');
+insert into procurement_rfqs (id, rfq_number, status, created_by, evaluation_method, response_deadline) values
+ ('00000000-0000-0000-0000-0000000000c1','T-RFQ-1','draft','1470d8fc-c1fe-4057-8dd1-5a78b27c4465','weighted', current_date + 3),
+ ('00000000-0000-0000-0000-0000000000c2','T-RFQ-2','under_evaluation','1470d8fc-c1fe-4057-8dd1-5a78b27c4465','lowest_price', null);
 insert into procurement_quotations (id, rfq_id, supplier_id, total_amount, created_by) values
  ('00000000-0000-0000-0000-0000000000d2','00000000-0000-0000-0000-0000000000c2','fa91ba30-5c9c-4576-95f4-85fe320e05ca',100,'0b268e83-4c22-4f79-bf75-06154a7d496c');
 insert into procurement_quotation_items (quotation_id, line_no, item_description, unit, quantity, unit_price, total)
@@ -218,6 +218,12 @@ select pg_temp.t('r1 B records quotation', $q$insert into procurement_quotations
 select pg_temp.t('r2 issued -> quotations_received', $q$select procurement_transition_rfq('00000000-0000-0000-0000-0000000000c1','quotations_received')$q$, null);
 select pg_temp.t('r3 repeat is invalid (CAS)', $q$select procurement_transition_rfq('00000000-0000-0000-0000-0000000000c1','quotations_received')$q$, 'PROC_INVALID_TRANSITION%');
 select pg_temp.t('r4 awarded only via award fn', $q$select procurement_transition_rfq('00000000-0000-0000-0000-0000000000c1','awarded')$q$, 'PROC_INVALID_TRANSITION%');
+-- P2 fixture: the bid deadline of RFQ1 has now passed (bids open), so that scoring is allowed
+select pg_temp.as_pg();
+select set_config('dcos.proc_transition','on',true);
+update procurement_rfqs set response_deadline = current_date - 1 where id='00000000-0000-0000-0000-0000000000c1';
+select set_config('dcos.proc_transition','off',true);
+select pg_temp.as_user('0b268e83-4c22-4f79-bf75-06154a7d496c');
 select pg_temp.t('j8 quotation creator cannot score', $q$select procurement_score_quotation('00000000-0000-0000-0000-0000000000d1', 80, 60)$q$, 'PROC_SOD_VIOLATION%');
 select pg_temp.as_user('1470d8fc-c1fe-4057-8dd1-5a78b27c4465');
 select pg_temp.t('j9 other user scores', $q$select procurement_score_quotation('00000000-0000-0000-0000-0000000000d1', 80, 60)$q$, null);
@@ -347,7 +353,7 @@ select pg_temp.t('rf7a bad boolean', $q$select procurement_confirm_budget('00000
 select pg_temp.t('rf7b bad numeric', $q$select procurement_confirm_budget('00000000-0000-0000-0000-0000000000a6','{"bc_title":"t"}'::jsonb,'[{"item_description":"i","estimated_amount":"abc"}]'::jsonb)$q$, 'PROC_VALIDATION%');
 select pg_temp.t('rf7c bad bc_type', $q$select procurement_confirm_budget('00000000-0000-0000-0000-0000000000a6','{"bc_type":"ZZZ"}'::jsonb,'[{"item_description":"i"}]'::jsonb)$q$, 'PROC_VALIDATION%');
 select pg_temp.t('rf7d bad uuid in items', $q$select procurement_confirm_budget('00000000-0000-0000-0000-0000000000a6','{"bc_title":"t"}'::jsonb,'[{"item_description":"i","pr_item_id":"nope"}]'::jsonb)$q$, 'PROC_VALIDATION%');
-select pg_temp.t('rf7e bad date', $q$select procurement_confirm_budget('00000000-0000-0000-0000-0000000000a6','{"bc_title":"t"}'::jsonb,'[{"item_description":"i"}]'::jsonb) where false$q$, null);
+select pg_temp.t('rf7e bad integer (line_no)', $q$select procurement_confirm_budget('00000000-0000-0000-0000-0000000000a6','{"bc_title":"t"}'::jsonb,'[{"item_description":"i","line_no":"x"}]'::jsonb)$q$, 'PROC_VALIDATION%');
 
 select pg_temp.as_pg();
 select name, case when ok then 'PASS' else 'FAIL' end as result, case when ok then '' else detail end as detail from res order by n;

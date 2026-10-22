@@ -355,26 +355,26 @@ describe("requiredReasonLength", () => {
     expect(requiredReasonLength({ comparison: c, quotationId: "a" })).toEqual({ min: 1, why: [] });
   });
 
-  it("requires 20 for an override", () => {
+  it("requires 50 for an override", () => {
     const r = requiredReasonLength({ comparison: build(three()), quotationId: "b" });
-    expect(r.min).toBe(20);
+    expect(r.min).toBe(50);
     expect(r.why).toEqual(["it differs from the system recommendation"]);
   });
 
-  it("requires 20 and cites currency and override for a non-base currency quotation", () => {
+  it("requires 50 and cites currency and override for a non-base currency quotation", () => {
     const c = build([...three(), quote("d", [1, 1], { currency: "EUR" })]);
     const r = requiredReasonLength({ comparison: c, quotationId: "d" });
-    expect(r.min).toBe(20);
+    expect(r.min).toBe(50);
     expect(r.why).toEqual([
       "it differs from the system recommendation",
       "the quotation is not in the base currency",
     ]);
   });
 
-  it("requires 20 and cites coverage for a partial quotation", () => {
+  it("requires 50 (override) and cites coverage for a partial quotation", () => {
     const c = build([...three(), quote("p", [1])]);
     const r = requiredReasonLength({ comparison: c, quotationId: "p" });
-    expect(r.min).toBe(20);
+    expect(r.min).toBe(50);
     expect(r.why).toContain("the quotation does not cover every line");
   });
 
@@ -394,18 +394,18 @@ describe("requiredReasonLength", () => {
     });
   });
 
-  it("requires 20 for any choice when nothing is recommended", () => {
+  it("requires 50 for any choice when nothing is recommended", () => {
     const c = build([quote("a", [10]), quote("b", [10]), quote("c", [10])]);
     expect(c.recommendedQuotationId).toBeNull();
     const r = requiredReasonLength({ comparison: c, quotationId: "a" });
-    expect(r.min).toBe(20);
+    expect(r.min).toBe(50);
     expect(r.why).toContain("it differs from the system recommendation");
   });
 
   it("takes the strictest minimum when rules stack", () => {
     const c = build([quote("a", [10, 10]), quote("b", [11])]);
     const r = requiredReasonLength({ comparison: c, quotationId: "b" });
-    expect(r.min).toBe(20);
+    expect(r.min).toBe(50);
     expect(r.why).toEqual([
       "it differs from the system recommendation",
       "the quotation does not cover every line",
@@ -475,6 +475,6 @@ describe("demo seed: RFQ-DEMO-CMP-001", () => {
   it("needs no exception and no reason when awarding A", () => {
     expect(c.quoteCountException).toBeNull();
     expect(requiredReasonLength({ comparison: c, quotationId: "A" })).toEqual({ min: 1, why: [] });
-    expect(requiredReasonLength({ comparison: c, quotationId: "C" }).min).toBe(20);
+    expect(requiredReasonLength({ comparison: c, quotationId: "C" }).min).toBe(50);
   });
 });

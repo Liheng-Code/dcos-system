@@ -272,6 +272,15 @@ describe("procErrorMessage", () => {
     expect(msg("PROC_LOCKED: header is locked")).toMatch(/can no longer be edited/i);
   });
 
+  it("shows the server text for band and sealed-bid errors without the prefix", () => {
+    expect(msg("PROC_BAND_EXCEEDED: this PO needs approval band 3 (amount 12000.00 USD); you hold band 2")).toBe(
+      "This PO needs approval band 3 (amount 12000.00 USD); you hold band 2",
+    );
+    expect(msg("PROC_BIDS_SEALED: bids are sealed until 2026-10-23 00:00 (Asia/Bangkok)")).toBe(
+      "Bids are sealed until 2026-10-23 00:00 (Asia/Bangkok)",
+    );
+  });
+
   it("handles a code with no mapping by showing its detail", () => {
     expect(msg("PROC_SOMETHING_NEW: odd failure")).toBe("Odd failure");
   });

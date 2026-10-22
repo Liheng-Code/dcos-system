@@ -52,7 +52,6 @@ export function GoodsReceiptForm() {
   const [items, setItems] = useState<LineItem[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
     listPosAwaitingDelivery()
       .then(({ data }) => {
         if (data) setPos(data as unknown as IssuedPO[]);

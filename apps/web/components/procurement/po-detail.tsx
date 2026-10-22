@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { printPO } from "@/lib/print-service";
 import { amountInWords } from "@/lib/number-to-words";
-import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, transitionPo } from "@/lib/procurement/procurement-queries";
+import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, getPoBandInfo, listSuppliers, transitionPo, type PoBandInfo } from "@/lib/procurement/procurement-queries";
 import { availableTransitions, procErrorMessage, type ProcTransition } from "@/lib/procurement/procurement-transitions";
 import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
 import { ReasonDialog } from "@/components/procurement/reason-dialog";
@@ -100,6 +100,12 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-500/10 text-red-600 border-red-200",
 };
 
+const UPLIFT_LABEL: Record<string, string> = {
+  award_override: "award overrode the recommendation",
+  single_source: "single source",
+  over_budget: "over budget",
+};
+
 interface PODetailProps {
   id: string;
 }
@@ -108,6 +114,8 @@ export function PODetail({ id }: PODetailProps) {
   const router = useRouter();
   const { can, userId } = useProcurementPermissions(["po"]);
   const [pending, setPending] = useState<ProcTransition | null>(null);
+  const [bandInfo, setBandInfo] = useState<PoBandInfo | null>(null);
+  const [bandError, setBandError] = useState<string | null>(null);
   const [po, setPo] = useState<PORecord | null>(null);
   const [items, setItems] = useState<POItem[]>([]);
   const [suppliers, setSuppliers] = useState<Record<string, string>>({});
@@ -120,7 +128,10 @@ export function PODetail({ id }: PODetailProps) {
   const [savingRevision, setSavingRevision] = useState(false);
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
+    getPoBandInfo(id).then(({ data, error }) => {
+      setBandInfo(data);
+      setBandError(error ? procErrorMessage(error) : null);
+    });
     Promise.all([
       getPoById(id),
       listPoItemsByPoId(id, "*"),
@@ -194,6 +205,13 @@ export function PODetail({ id }: PODetailProps) {
   if (!po) return <div className="py-20 text-center text-muted-foreground">PO not found.</div>;
 
   const transitions = availableTransitions("po", po.status, { can, userId, createdBy: po.created_by, submittedBy: po.submitted_by });
+  const bandBlocked =
+    po.status === "submitted" &&
+    bandInfo?.required_band != null &&
+    bandInfo.user_band < bandInfo.required_band;
+  // With no exchange rate the band cannot be computed and the server refuses to approve.
+  const fxBlocked = po.status === "submitted" && !!bandInfo?.fx_error;
+  const visibleTransitions = transitions.filter(t => !(t.to === "approved" && (bandBlocked || fxBlocked)));
   const approveHidden =
     po.status === "submitted" &&
     can("po", "approve") &&
@@ -221,7 +239,7 @@ export function PODetail({ id }: PODetailProps) {
           >
             <Printer className="h-4 w-4" /> Print
           </Button>
-          {transitions.map(t => {
+          {visibleTransitions.map(t => {
             const isCancel = t.to === "cancelled";
             const Icon = isCancel ? Ban : transitionIcon(t);
             return (
@@ -233,6 +251,34 @@ export function PODetail({ id }: PODetailProps) {
         </div>
       </div>
 
+      {(bandInfo || bandError) && !["cancelled", "closed"].includes(po.status) && (
+        <div className="rounded-md border px-3 py-2 text-sm space-y-1">
+          {bandInfo?.required_band != null ? (
+            <p className="font-medium">
+              Approval band {bandInfo.required_band} required
+              {bandInfo.base_amount != null && <> ({bandInfo.base_amount.toLocaleString()} {bandInfo.base_currency})</>}
+            </p>
+          ) : (
+            <p className="font-medium">Approval band could not be determined.</p>
+          )}
+          {bandInfo && bandInfo.uplift_reasons.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Raised one band because of: {bandInfo.uplift_reasons.map(r => UPLIFT_LABEL[r] ?? r).join(", ")}.
+            </p>
+          )}
+          {bandInfo?.fx_error && (
+            <p className="text-xs text-amber-700">
+              {bandInfo.fx_error}{fxBlocked ? " Approval is unavailable until an exchange rate is added (Approval Bands > Exchange rates)." : ""}
+            </p>
+          )}
+          {bandError && <p className="text-xs text-amber-700">{bandError}</p>}
+          {bandBlocked && bandInfo?.required_band != null && (
+            <p className="text-xs text-muted-foreground">
+              This PO needs band {bandInfo.required_band} approval; you hold band {bandInfo.user_band}.
+            </p>
+          )}
+        </div>
+      )}
       {approveHidden && (
         <p className="text-sm text-muted-foreground">
           You created or submitted this PO, so another approver must approve it.

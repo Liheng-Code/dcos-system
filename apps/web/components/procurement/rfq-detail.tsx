@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { getPoByQuotationId, getRfqById, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, scoreQuotation, transitionRfq, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-queries";
+import { bangkokToday, bidsOpenAt, isBidsOpen } from "@/lib/procurement/sealed-bids";
 import { availableTransitions, procErrorMessage, type ProcTransition } from "@/lib/procurement/procurement-transitions";
 import { ReasonDialog } from "@/components/procurement/reason-dialog";
 import { RfqComparison } from "@/components/procurement/rfq-comparison";
@@ -273,6 +274,15 @@ export function RFQDetail({ id }: { id: string }) {
   if (!rfq) return <div className="py-20 text-center text-muted-foreground">RFQ not found.</div>;
 
   const transitions = availableTransitions("rfq", rfq.status, { can, userId });
+  // Sealed bids: amounts stay hidden until the end of the deadline day (Bangkok). The database enforces it;
+  // this only drives the messaging and hides controls that would be rejected.
+  const sealedUntil = !isBidsOpen(rfq.response_deadline, rfq.status) ? bidsOpenAt(rfq.response_deadline) : null;
+  const todayText = bangkokToday();
+  const issueBlocked = !rfq.response_deadline
+    ? "Set a response deadline before issuing this RFQ."
+    : rfq.response_deadline < todayText
+      ? "The response deadline is in the past. Set a deadline of today or later before issuing."
+      : null;
   const canAddQuote = ["issued", "quotations_received", "under_evaluation"].includes(rfq.status) && rfq.status !== "awarded";
   const canAward = ["quotations_received", "under_evaluation"].includes(rfq.status) && can("rfq", "approve");
   const awardedQuote = quotations.find(q => q.is_awarded);
@@ -300,7 +310,8 @@ export function RFQDetail({ id }: { id: string }) {
                 variant={outline ? "outline" : "default"}
                 className={outline ? "text-red-600" : "bg-blue-600 hover:bg-blue-700"}
                 onClick={() => handleActionClick(t)}
-                disabled={actionLoading === t.to}
+                disabled={actionLoading === t.to || (t.to === "issued" && issueBlocked != null)}
+                title={t.to === "issued" && issueBlocked ? issueBlocked : undefined}
               >
                 {actionLoading === t.to ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Icon className="h-4 w-4 mr-1" />}
                 {t.label}
@@ -310,6 +321,9 @@ export function RFQDetail({ id }: { id: string }) {
         </div>
       </div>
 
+      {rfq.status === "draft" && issueBlocked && transitions.some(t => t.to === "issued") && (
+        <p className="text-sm text-amber-700">{issueBlocked}</p>
+      )}
       {rfq.status_reason && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {rfq.status === "cancelled" ? "Cancelled" : rfq.status === "rejected_all" ? "All quotations rejected" : "Note"}: {rfq.status_reason}
@@ -484,7 +498,7 @@ export function RFQDetail({ id }: { id: string }) {
         </Card>
       )}
 
-      <RfqComparison rfqId={id} canAward={canAward} refreshKey={refreshKey} onAwarded={fetchDetail} />
+      <RfqComparison rfqId={id} canAward={canAward} refreshKey={refreshKey} onAwarded={fetchDetail} sealedUntil={sealedUntil} />
 
       {awardedQuote && rfq.awarded_supplier_id && (
         <div className="flex justify-end">
@@ -498,7 +512,7 @@ export function RFQDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {quotations.length > 0 && ["weighted", "technical_commercial"].includes(rfq.evaluation_method) && (
+      {!sealedUntil && quotations.length > 0 && ["weighted", "technical_commercial"].includes(rfq.evaluation_method) && (
         <Card>
           <CardContent className="pt-5">
               <div className="space-y-3">

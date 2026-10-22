@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Loader2, ArrowLeft, Pencil, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -92,7 +91,6 @@ export function PRDetail({ id }: PRDetailProps) {
   const [pending, setPending] = useState<ProcTransition | null>(null);
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
     Promise.all([
       getPrById(id, "*"),
       listPrItemsByPrId(id, "*, qs_boq_items(item_no, item_code, description)"),

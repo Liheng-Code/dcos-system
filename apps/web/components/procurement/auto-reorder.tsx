@@ -50,7 +50,6 @@ export function AutoReorder() {
 
   function fetchLowStock() {
     setLoading(true);
-    const supabase = createClient();
     listReorderableInvItems()
       .then(({ data }) => {
         if (data) {
@@ -132,7 +131,8 @@ export function AutoReorder() {
       });
 
     if (itemError) { toast.error(procErrorMessage(itemError)); } else {
-      toast.success(`Draft PR created for ${item.item_code}`);
+      const createdNumber = (prData as { pr_number?: string }).pr_number;
+      toast.success(`Draft PR${createdNumber ? ` ${createdNumber}` : ""} created for ${item.item_code}`);
     }
     setCreating(false);
   }

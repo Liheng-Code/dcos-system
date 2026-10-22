@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Award, CheckCircle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Award, CheckCircle, Loader2, Lock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,8 @@ import {
   type ComparisonPrLine,
 } from "@/lib/procurement/rfq-comparison";
 import { getRfqComparisonData, awardRfq } from "@/lib/procurement/procurement-queries";
+import { formatBangkok } from "@/lib/procurement/sealed-bids";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 type LoadResult = Awaited<ReturnType<typeof getRfqComparisonData>>;
 type ComparisonData = NonNullable<LoadResult["data"]>;
@@ -30,6 +32,23 @@ interface RfqComparisonProps {
   // Bump to force a reload (parent changed quotations, scores or RFQ status).
   refreshKey?: number;
   onAwarded?: () => void;
+  // When set, bids are sealed until this instant: amounts are hidden and award is disabled.
+  sealedUntil?: Date | null;
+}
+
+function SealedBanner({ until }: { until: Date }) {
+  return (
+    <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300 dark:border-amber-500/30">
+      <Lock className="h-4 w-4 mt-0.5 shrink-0" />
+      <div>
+        <p className="font-medium">Bids sealed until {formatBangkok(until)} (Bangkok)</p>
+        <p className="text-xs">
+          Quotation amounts are hidden from everyone until the response deadline has passed. You can see only the
+          quotations you recorded yourself. Scoring and award open once the bids are open.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 const EXCEPTION_LABEL: Record<string, string> = {
@@ -72,7 +91,7 @@ const RED_BADGE = "bg-red-500/10 text-red-600 border-red-200 dark:text-red-400 d
 const GREEN_BADGE = "bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:text-emerald-400 dark:border-emerald-500/30";
 const BLUE_BADGE = "bg-blue-500/10 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-500/30";
 
-export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: RfqComparisonProps) {
+export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded, sealedUntil = null }: RfqComparisonProps) {
   const [data, setData] = useState<ComparisonData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +106,7 @@ export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: Rf
   const apply = useCallback(({ data: res, error: err }: LoadResult): ComparisonData | null => {
     setLoading(false);
     if (err || !res) {
-      setError(err?.message ?? "Failed to load comparison");
+      setError(err ? procErrorMessage(err) : "Failed to load comparison");
       setData(null);
       return null;
     }
@@ -154,10 +173,13 @@ export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: Rf
   if (suppliers.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-5">
-          <h3 className="font-semibold text-sm mb-2">Quotation Comparison</h3>
+        <CardContent className="pt-5 space-y-3">
+          <h3 className="font-semibold text-sm">Quotation Comparison</h3>
+          {sealedUntil && <SealedBanner until={sealedUntil} />}
           <p className="text-sm text-muted-foreground py-6 text-center">
-            No quotations received yet. Record a quotation from an invited supplier to start the comparison.
+            {sealedUntil
+              ? "No quotations are visible to you while bids are sealed."
+              : "No quotations received yet. Record a quotation from an invited supplier to start the comparison."}
           </p>
         </CardContent>
       </Card>
@@ -213,7 +235,7 @@ export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: Rf
     const { data: res, error: err } = await awardRfq(rfqId, selected.quotationId, reason.trim());
     setSubmitting(false);
     if (err || !res) {
-      toast.error(err?.message ?? "Award failed");
+      toast.error(err ? procErrorMessage(err) : "Award failed");
       return;
     }
     toast.success(`Supplier awarded. Draft PO ${res.po_number} created.`);
@@ -239,7 +261,7 @@ export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: Rf
               )}
             </p>
           </div>
-          {canAward && !isAwarded && (
+          {canAward && !sealedUntil && !isAwarded && (
             <div className="flex flex-col items-end gap-1">
               <Button
                 size="sm"
@@ -257,6 +279,8 @@ export function RfqComparison({ rfqId, canAward, refreshKey = 0, onAwarded }: Rf
             </div>
           )}
         </div>
+
+        {sealedUntil && <SealedBanner until={sealedUntil} />}
 
         {isAwarded && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-500/5 p-4 space-y-2 dark:border-emerald-500/30">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { insertRfq, insertRfqSuppliers, listActiveSuppliers, listApprovedPrs, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 import { AlertTriangle, ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { bangkokToday } from "@/lib/procurement/sealed-bids";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -86,13 +87,14 @@ export function RFQForm() {
     e.preventDefault();
     if (!form.pr_id) { toast.error("Select a source PR"); return; }
     if (selectedSuppliers.length === 0) { toast.error("Select at least one supplier"); return; }
+    if (!form.response_deadline) { toast.error("Response deadline is required"); return; }
+    if (form.response_deadline < bangkokToday()) { toast.error("Response deadline cannot be in the past"); return; }
 
     setSaving(true);
 
     const { data: rfqResult, error: rfqError } = await insertRfq({
-        rfq_number: `RFQ-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
         pr_id: form.pr_id,
-        response_deadline: form.response_deadline || null,
+        response_deadline: form.response_deadline,
         evaluation_method: form.evaluation_method,
         status: "draft",
         notes: form.notes || null,
@@ -110,7 +112,8 @@ export function RFQForm() {
     const { error: supErr } = await insertRfqSuppliers(supplierInserts);
     if (supErr) { toast.error(procErrorMessage(supErr)); setSaving(false); return; }
 
-    toast.success("RFQ created");
+    const createdNumber = (rfqResult as { rfq_number?: string }).rfq_number;
+    toast.success(createdNumber ? `RFQ ${createdNumber} created` : "RFQ created");
     router.push(`/dashboard/procurement/rfq/${rfqId}`);
   }
 
@@ -141,8 +144,8 @@ export function RFQForm() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Response Deadline</Label>
-              <Input type="date" value={form.response_deadline} onChange={e => setForm(prev => ({ ...prev, response_deadline: e.target.value }))} />
+              <Label>Response Deadline *</Label>
+              <Input type="date" required min={bangkokToday()} value={form.response_deadline} onChange={e => setForm(prev => ({ ...prev, response_deadline: e.target.value }))} />
             </div>
 
             <div className="space-y-1.5">

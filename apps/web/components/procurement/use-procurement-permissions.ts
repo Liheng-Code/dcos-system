@@ -13,7 +13,7 @@ export type ProcAction =
   | "notifications"
   | "audit_log";
 
-export type ProcPermField = "view" | "can_create" | "edit" | "delete" | "submit" | "approve" | "reject";
+export type ProcPermField = "view" | "can_create" | "edit" | "delete" | "submit" | "approve" | "reject" | "configure";
 
 export function useProcurementPermissions(actions: ProcAction[]) {
   const [perms, setPerms] = useState<UserPermissions | null>(null);

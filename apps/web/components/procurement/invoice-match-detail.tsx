@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, ArrowLeft, CheckCircle, XCircle,
   FileSpreadsheet, Calculator, Package,
@@ -68,7 +67,6 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
   const [actionLoading, setActionLoading] = useState("");
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
     Promise.all([
       getInvoiceMatchById(id),
       listSuppliers(),
