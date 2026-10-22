@@ -6,6 +6,7 @@ import { Loader2, Bell, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Notification {
   id: string;
@@ -37,7 +38,7 @@ export function ProcurementNotifications() {
     const ids = notifications.filter(n => !n.is_read).map(n => n.id);
     if (ids.length === 0) return;
     const { error } = await updateNotificationsByIds({ is_read: true }, ids);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(procErrorMessage(error)); return; }
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     toast.success("All marked as read");
   }

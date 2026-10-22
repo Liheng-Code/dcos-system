@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { BoqItemForPr } from "@/lib/qs/public";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface SectionInfo {
   id: string;
@@ -67,8 +68,8 @@ export function BoqItemPickerDialog({ projectId, onPick }: Props) {
       listOpenBoqRequisitionStatusByProjectId(projectId),
       listQsBoqSectionsByProjectId(projectId, "id, section_code, title, seq"),
     ]).then(([itemsRes, secsRes]) => {
-      if (itemsRes.error) { toast.error(itemsRes.error.message); return; }
-      if (secsRes.error) { toast.error(secsRes.error.message); return; }
+      if (itemsRes.error) { toast.error(procErrorMessage(itemsRes.error)); return; }
+      if (secsRes.error) { toast.error(procErrorMessage(secsRes.error)); return; }
       const loadedItems = (itemsRes.data ?? []) as BoqItemForPr[];
       const loadedSections = (secsRes.data ?? []) as SectionInfo[];
       setItems(loadedItems);

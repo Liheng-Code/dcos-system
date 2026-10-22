@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface PRSummary {
   id: string;
@@ -97,7 +98,7 @@ export function RFQForm() {
         notes: form.notes || null,
       });
 
-    if (rfqError) { toast.error(rfqError.message); setSaving(false); return; }
+    if (rfqError) { toast.error(procErrorMessage(rfqError)); setSaving(false); return; }
 
     const rfqId = (rfqResult as { id: string }).id;
 
@@ -107,7 +108,7 @@ export function RFQForm() {
     }));
 
     const { error: supErr } = await insertRfqSuppliers(supplierInserts);
-    if (supErr) { toast.error(supErr.message); setSaving(false); return; }
+    if (supErr) { toast.error(procErrorMessage(supErr)); setSaving(false); return; }
 
     toast.success("RFQ created");
     router.push(`/dashboard/procurement/rfq/${rfqId}`);

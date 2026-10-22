@@ -18,11 +18,13 @@ export type ProcPermField = "view" | "can_create" | "edit" | "delete" | "submit"
 export function useProcurementPermissions(actions: ProcAction[]) {
   const [perms, setPerms] = useState<UserPermissions | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setLoading(false); return; }
+      setUserId(user.id);
       getUserPermissions(supabase, user.id, "procurement").then((up) => {
         setPerms(up);
         setLoading(false);
@@ -35,5 +37,5 @@ export function useProcurementPermissions(actions: ProcAction[]) {
     return hasPermission(perms.permissions, "procurement", action, field);
   }
 
-  return { perms, loading, can };
+  return { perms, loading, can, userId };
 }

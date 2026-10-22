@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useProject } from "@/components/dashboard/project-context";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface POItem {
   key: string;
@@ -144,7 +145,7 @@ export function POForm() {
     setLoadingBoq(true);
     listBoqRequisitionStatusByBoqItemIds(boqIds.split(","))
       .then(({ data, error }) => {
-        if (error) { toast.error(error.message); setLoadingBoq(false); return; }
+        if (error) { toast.error(procErrorMessage(error)); setLoadingBoq(false); return; }
         if (data && data.length > 0) {
           setItems(data.map((row: Record<string, unknown>) => ({
             ...newLineItem(),
@@ -167,7 +168,7 @@ export function POForm() {
       getPrById(prId, "wbs_node_id, ship_to"),
     ]);
 
-    if (itemsRes.error) { toast.error(itemsRes.error.message); return; }
+    if (itemsRes.error) { toast.error(procErrorMessage(itemsRes.error)); return; }
     if (!itemsRes.data || itemsRes.data.length === 0) {
       toast.error("Selected PR has no items");
       return;
@@ -293,7 +294,7 @@ export function POForm() {
     };
 
     const { data: poResult, error: poError } = await insertPo(poData);
-    if (poError) { toast.error(poError.message); setSaving(false); return; }
+    if (poError) { toast.error(procErrorMessage(poError)); setSaving(false); return; }
 
     const poId = (poResult as { id: string }).id;
 
@@ -319,7 +320,7 @@ export function POForm() {
     }));
 
     const { error: itemsError } = await insertPoItems(itemInserts);
-    if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
+    if (itemsError) { toast.error(procErrorMessage(itemsError)); setSaving(false); return; }
 
     toast.success("Purchase order created");
     router.push(`/dashboard/procurement/po/${poId}`);

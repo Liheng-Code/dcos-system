@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { BoqItemForPr } from "@/lib/qs/public";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Props {
   projectId: string;
@@ -96,7 +97,7 @@ export function RaisePrFromBoqDialog({
     if (!open || boqItemIds.length === 0) return;
     setLoading(true);
     listBoqRequisitionStatusByBoqItemIds(boqItemIds).then((boqRes) => {
-      if (boqRes.error) { toast.error(boqRes.error.message); return; }
+      if (boqRes.error) { toast.error(procErrorMessage(boqRes.error)); return; }
       const rows = (boqRes.data ?? []) as BoqItemForPr[];
       setSourceItems(rows);
       setLineItems(
@@ -172,7 +173,7 @@ export function RaisePrFromBoqDialog({
         });
 
     if (prError) {
-      toast.error(prError.message);
+      toast.error(procErrorMessage(prError));
       setSaving(false);
       return;
     }
@@ -196,7 +197,7 @@ export function RaisePrFromBoqDialog({
     const { error: itemsError } = await insertPrItems(itemInserts);
 
     if (itemsError) {
-      toast.error(itemsError.message);
+      toast.error(procErrorMessage(itemsError));
       setSaving(false);
       return;
     }

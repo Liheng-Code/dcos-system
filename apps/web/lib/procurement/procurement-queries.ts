@@ -57,11 +57,6 @@ export function listAuditLog() {
 // ── procurement_budget_confirmation_items ─────────────────────────────────────
 
 // @table procurement_budget_confirmation_items
-export function insertBudgetConfirmationItems(rows: object | object[]) {
-  return db().from("procurement_budget_confirmation_items").insert(rows);
-}
-
-// @table procurement_budget_confirmation_items
 export function listBudgetConfirmationItemsByBcId(bcId: string | number | boolean) {
   return db().from("procurement_budget_confirmation_items").select("*").eq("bc_id", bcId).order("line_no");
 }
@@ -80,11 +75,6 @@ export function getBudgetConfirmationById(id: string | number | boolean) {
 // @table procurement_budget_confirmations
 export function getBudgetConfirmationByPrId(prId: string | number | boolean) {
   return db().from("procurement_budget_confirmations").select("*").eq("pr_id", prId).single();
-}
-
-// @table procurement_budget_confirmations
-export function insertBudgetConfirmation(row: object) {
-  return db().from("procurement_budget_confirmations").insert([row]).select("id").single();
 }
 
 // @table procurement_budget_confirmations
@@ -346,11 +336,6 @@ export function countPrsAwaitingApproval() {
 }
 
 // @table procurement_prs
-export function deletePrById(id: string | number | boolean) {
-  return db().from("procurement_prs").delete().eq("id", id);
-}
-
-// @table procurement_prs
 export function getPrById(id: string | number | boolean, columns: string) {
   return db().from("procurement_prs").select(columns as "*").eq("id", id).single();
 }
@@ -517,9 +502,10 @@ export function countSuppliers() {
   return db().from("procurement_suppliers").select("id", { count: "exact", head: true });
 }
 
+// Suppliers are never deleted; deactivating keeps history and drops them from the active lists.
 // @table procurement_suppliers
-export function deleteSupplierById(id: string | number | boolean) {
-  return db().from("procurement_suppliers").delete().eq("id", id);
+export function deactivateSupplierById(id: string | number | boolean) {
+  return db().from("procurement_suppliers").update({ status: "inactive" }).eq("id", id).select("id");
 }
 
 // @table procurement_suppliers
@@ -663,6 +649,9 @@ export interface RfqComparisonRfq {
   recommended_quotation_id: string | null;
   awarded_by_name: string | null;
   created_by: string | null;
+  status_reason: string | null;
+  status_changed_by: string | null;
+  status_changed_at: string | null;
 }
 
 export interface RfqComparisonData {
@@ -698,7 +687,7 @@ export async function getRfqComparisonData(
   const rfqRes = await db()
     .from("procurement_rfqs")
     .select(
-      "id, rfq_number, status, evaluation_method, pr_id, awarded_supplier_id, award_reason, awarded_at, awarded_by, award_overrides_recommendation, award_exception, recommended_quotation_id, created_by",
+      "id, rfq_number, status, evaluation_method, pr_id, awarded_supplier_id, award_reason, awarded_at, awarded_by, award_overrides_recommendation, award_exception, recommended_quotation_id, created_by, status_reason, status_changed_by, status_changed_at",
     )
     .eq("id", rfqId)
     .maybeSingle();
@@ -771,4 +760,81 @@ export async function awardRfq(
   });
   if (error) return { data: null, error };
   return { data: data as AwardRfqResult, error: null };
+}
+
+// ── Workflow transitions (database functions) ─────────────────────────────────
+// Status, approval, award, score and delivery columns cannot be written directly: a plain update
+// fails with PROC_TRANSITION_RPC_ONLY. Every status change goes through these functions, which
+// check the edge, the permission, the reason and segregation of duties. Errors arrive as
+// `error.message` prefixed `PROC_<CODE>:`; show them with procErrorMessage().
+
+export interface TransitionResult {
+  id: string;
+  from: string;
+  to: string;
+}
+
+export interface InvoiceMatchTransitionResult extends TransitionResult {
+  po_closed: boolean;
+}
+
+export interface ScoreQuotationResult {
+  id: string;
+  technical_score: number | null;
+  commercial_score: number | null;
+  combined_score: number | null;
+  status: string;
+}
+
+export interface BudgetConfirmationHeaderInput {
+  bc_number?: string | null;
+  signatory_position?: string | null;
+  [column: string]: string | number | boolean | null | undefined;
+}
+
+export interface BudgetConfirmationItemInput {
+  pr_item_id: string | null;
+  line_no: number;
+  budget_code: string | null;
+  item_description: string;
+  contract_target_budget: number | null;
+  estimated_amount: number | null;
+  remaining_work_amount: number | null;
+}
+
+export function transitionPr(id: string, to: string, reason?: string | null) {
+  return db().rpc("procurement_transition_pr", { p_id: id, p_to: to, p_reason: reason ?? null });
+}
+
+// Creates the budget confirmation and approves the PR (which must be under_budget_review) atomically.
+// Resolves to the new budget confirmation id.
+export function confirmBudget(
+  prId: string,
+  header: BudgetConfirmationHeaderInput,
+  items: BudgetConfirmationItemInput[],
+) {
+  return db().rpc("procurement_confirm_budget", { p_pr_id: prId, p_header: header, p_items: items });
+}
+
+export function transitionPo(id: string, to: string, reason?: string | null) {
+  return db().rpc("procurement_transition_po", { p_id: id, p_to: to, p_reason: reason ?? null });
+}
+
+// Recomputes received quantities from goods receipts and sets issued / partially_delivered / delivered.
+// Resolves to the PO status after the sync.
+export function syncPoDelivery(poId: string) {
+  return db().rpc("procurement_sync_po_delivery", { p_po_id: poId });
+}
+
+export function transitionInvoiceMatch(id: string, to: string, reason?: string | null) {
+  return db().rpc("procurement_transition_invoice_match", { p_id: id, p_to: to, p_reason: reason ?? null });
+}
+
+export function transitionRfq(id: string, to: string, reason?: string | null) {
+  return db().rpc("procurement_transition_rfq", { p_id: id, p_to: to, p_reason: reason ?? null });
+}
+
+// Pass both scores every call (null clears one); each 0-100.
+export function scoreQuotation(id: string, technical: number | null, commercial: number | null) {
+  return db().rpc("procurement_score_quotation", { p_id: id, p_technical: technical, p_commercial: commercial });
 }

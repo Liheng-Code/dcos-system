@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { insertDeliveryNote, insertGoodsReceipt, listPoItemsByPoId, listPosAwaitingDeliveryBySupplierId, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-queries";
+import { insertDeliveryNote, insertGoodsReceipt, listPoItemsByPoId, listPosAwaitingDeliveryBySupplierId, syncPoDelivery } from "@/lib/procurement/procurement-queries";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 import { Loader2, Truck, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -86,7 +87,7 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
       status: "delivered",
     });
 
-    if (dnError) { toast.error(dnError.message); setSubmitting(false); return; }
+    if (dnError) { toast.error(procErrorMessage(dnError)); setSubmitting(false); return; }
 
     for (const item of items) {
       const qty = parseFloat(deliverQty[item.id]) || 0;
@@ -100,12 +101,13 @@ export function SupplierDeliveryForm({ supplierId }: { supplierId: string }) {
         quantity_rejected: 0,
         inspection_result: "passed",
       });
-      if (grError) { toast.error(grError.message); setSubmitting(false); return; }
+      if (grError) { toast.error(procErrorMessage(grError)); setSubmitting(false); return; }
+    }
 
-      const newDelivered = item.quantity_delivered + qty;
-      const newStatus = newDelivered >= item.quantity_ordered ? "delivered" : "partially_delivered";
-      await updatePoItemById({ quantity_delivered: newDelivered, quantity_accepted: newDelivered }, item.po_item_id);
-      await updatePoById({ status: newStatus }, selectedPO);
+    // PO delivered quantities and status are recomputed server-side from the goods receipts.
+    const { error: syncError } = await syncPoDelivery(selectedPO);
+    if (syncError) {
+      toast.error(`Delivery recorded, but the PO status could not be updated: ${procErrorMessage(syncError)}`);
     }
 
     toast.success("Delivery notice submitted");

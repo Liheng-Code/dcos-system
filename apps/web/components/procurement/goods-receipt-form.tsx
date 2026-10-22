@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { insertDeliveryNote, insertGoodsReceipts, listPosAwaitingDelivery, updatePoById, updatePoItemById } from "@/lib/procurement/procurement-queries";
+import { insertDeliveryNote, insertGoodsReceipts, listPosAwaitingDelivery, syncPoDelivery } from "@/lib/procurement/procurement-queries";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface IssuedPO {
   id: string;
@@ -119,7 +120,7 @@ export function GoodsReceiptForm() {
         remarks: remarks || null,
       });
 
-    if (dnError) { toast.error(dnError.message); setSaving(false); return; }
+    if (dnError) { toast.error(procErrorMessage(dnError)); setSaving(false); return; }
 
     const dnId = (dnData as { id: string }).id;
 
@@ -136,28 +137,17 @@ export function GoodsReceiptForm() {
     }));
 
     const { error: grError } = await insertGoodsReceipts(grInserts);
-    if (grError) { toast.error(grError.message); setSaving(false); return; }
+    if (grError) { toast.error(procErrorMessage(grError)); setSaving(false); return; }
 
     // Note: this form only records the delivery/inspection result for invoice
     // three-way-match. Actual warehouse stock-in is now owned exclusively by the
     // Inventory module's own GRN flow (inv_grns/inv_grn_lines -> inv_stock) — the
     // legacy procurement_inventory upsert that used to happen here has been removed.
-    for (const item of validItems) {
-      const poItem = po.procurement_po_items.find(i => i.id === item.po_item_id);
-      if (poItem) {
-        const newDelivered = (poItem.quantity_delivered || 0) + item.quantity_accepted;
-        await updatePoItemById({ quantity_delivered: newDelivered }, item.po_item_id);
-      }
+    // PO delivered quantities and status are recomputed server-side from the goods receipts.
+    const { error: syncError } = await syncPoDelivery(selectedPO);
+    if (syncError) {
+      toast.error(`Receipt saved, but the PO delivery status could not be updated: ${procErrorMessage(syncError)}`);
     }
-
-    const totalOrdered = po.procurement_po_items.reduce((s, i) => s + i.quantity_ordered, 0);
-    const totalDelivered = po.procurement_po_items.reduce((s, i) => {
-      const match = validItems.find(v => v.po_item_id === i.id);
-      return s + (i.quantity_delivered || 0) + (match ? match.quantity_accepted : 0);
-    }, 0);
-
-    const newPOStatus = totalDelivered >= totalOrdered ? "delivered" : "partially_delivered";
-    await updatePoById({ status: newPOStatus }, selectedPO);
 
     toast.success("Goods receipt recorded");
     router.push("/dashboard/procurement/goods-receipt");

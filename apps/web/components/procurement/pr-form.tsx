@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BoqItemPickerDialog } from "@/components/procurement/boq-item-picker-dialog";
 import { useProject } from "@/components/dashboard/project-context";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface PRItem {
   key: string;
@@ -188,11 +189,12 @@ export function PRForm({ prId }: { prId?: string }) {
 
     if (isEditing && prId) {
       const { error: prError } = await updatePrById(supabaseForm, prId);
-      if (prError) { toast.error(prError.message); setSaving(false); return; }
-      await deletePrItemsByPrId(prId);
+      if (prError) { toast.error(procErrorMessage(prError)); setSaving(false); return; }
+      const { error: delError } = await deletePrItemsByPrId(prId);
+      if (delError) { toast.error(`Could not replace the line items: ${procErrorMessage(delError)}`); setSaving(false); return; }
     } else {
       const { data: prData, error: prError } = await insertPr(supabaseForm);
-      if (prError) { toast.error(prError.message); setSaving(false); return; }
+      if (prError) { toast.error(procErrorMessage(prError)); setSaving(false); return; }
       targetPrId = (prData as { id: string }).id;
     }
 
@@ -211,7 +213,13 @@ export function PRForm({ prId }: { prId?: string }) {
     }));
 
     const { error: itemsError } = await insertPrItems(itemInserts);
-    if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
+    if (itemsError) {
+      toast.error(isEditing
+        ? `The PR header was saved but its line items could not be re-saved: ${procErrorMessage(itemsError)}. Re-open the PR and re-enter the items before submitting.`
+        : procErrorMessage(itemsError));
+      setSaving(false);
+      return;
+    }
 
     toast.success(isEditing ? "Purchase requisition updated" : "Purchase requisition created");
     router.push(`/dashboard/procurement/pr/${targetPrId}`);

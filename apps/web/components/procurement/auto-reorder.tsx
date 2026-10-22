@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { insertPr, insertPrItem, listReorderableInvItems } from "@/lib/procurement/procurement-queries";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 // FR-017 reorder-alert bridge: Inventory (inv_items / inv_stock) -> Procurement (draft PR).
 // This used to read the legacy procurement_inventory stub table directly; that table is
@@ -114,7 +115,7 @@ export function AutoReorder() {
         total_estimated_cost: reorderQty * (item.unit_cost || 0),
       });
 
-    if (prError) { toast.error(prError.message); setCreating(false); return; }
+    if (prError) { toast.error(procErrorMessage(prError)); setCreating(false); return; }
 
     const prId = (prData as { id: string }).id;
 
@@ -130,7 +131,7 @@ export function AutoReorder() {
         notes: `Auto-reorder triggered (on hand: ${item.quantity_on_hand}, min: ${item.minimum_stock})`,
       });
 
-    if (itemError) { toast.error(itemError.message); } else {
+    if (itemError) { toast.error(procErrorMessage(itemError)); } else {
       toast.success(`Draft PR created for ${item.item_code}`);
     }
     setCreating(false);

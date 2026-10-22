@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Upload, X, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Props {
   bucket?: string;
@@ -47,7 +48,7 @@ export function FileUpload({
       .from(bucket)
       .upload(fileName, file);
 
-    if (uploadError) { toast.error(uploadError.message); setUploading(false); return; }
+    if (uploadError) { toast.error(procErrorMessage(uploadError)); setUploading(false); return; }
 
     const { data: { publicUrl } } = supabase.storage
       .from(bucket)

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ArrowLeft, Send, CheckCircle, XCircle, Printer, Plus, type LucideIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Printer, Plus, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/dialog";
 import { printPO } from "@/lib/print-service";
 import { amountInWords } from "@/lib/number-to-words";
-import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, updatePoById } from "@/lib/procurement/procurement-queries";
+import { getPoById, getPrById, getProjectById, insertPoRevision, listPoItemsByPoId, listPoRevisionsByPoId, listSuppliers, transitionPo } from "@/lib/procurement/procurement-queries";
+import { availableTransitions, procErrorMessage, type ProcTransition } from "@/lib/procurement/procurement-transitions";
+import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
+import { ReasonDialog } from "@/components/procurement/reason-dialog";
+import { transitionClass, transitionIcon, transitionKey } from "@/components/procurement/transition-style";
 
 interface PORecord {
   id: string;
@@ -44,6 +48,9 @@ interface PORecord {
   approved_by: string | null;
   approved_at: string | null;
   issued_by: string | null;
+  created_by: string | null;
+  submitted_by: string | null;
+  status_reason: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -93,33 +100,14 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-500/10 text-red-600 border-red-200",
 };
 
-const STATUS_ACTIONS: Record<string, { label: string; nextStatus: string; icon: LucideIcon; color: string }[]> = {
-  draft: [
-    { label: "Submit for Approval", nextStatus: "submitted", icon: Send, color: "bg-blue-600 hover:bg-blue-700" },
-  ],
-  submitted: [
-    { label: "Approve", nextStatus: "approved", icon: CheckCircle, color: "bg-emerald-600 hover:bg-emerald-700" },
-    { label: "Reject", nextStatus: "cancelled", icon: XCircle, color: "bg-red-600 hover:bg-red-700" },
-  ],
-  approved: [
-    { label: "Issue to Supplier", nextStatus: "issued", icon: Send, color: "bg-indigo-600 hover:bg-indigo-700" },
-  ],
-  issued: [],
-  partially_delivered: [],
-  delivered: [
-    { label: "Close PO", nextStatus: "closed", icon: CheckCircle, color: "bg-emerald-600 hover:bg-emerald-700" },
-  ],
-  closed: [],
-  on_hold: [],
-  cancelled: [],
-};
-
 interface PODetailProps {
   id: string;
 }
 
 export function PODetail({ id }: PODetailProps) {
   const router = useRouter();
+  const { can, userId } = useProcurementPermissions(["po"]);
+  const [pending, setPending] = useState<ProcTransition | null>(null);
   const [po, setPo] = useState<PORecord | null>(null);
   const [items, setItems] = useState<POItem[]>([]);
   const [suppliers, setSuppliers] = useState<Record<string, string>>({});
@@ -166,27 +154,17 @@ export function PODetail({ id }: PODetailProps) {
 
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
 
-  async function handleAction(nextStatus: string) {
-    const supabase = createClient();
-    const update: Record<string, string | null> = { status: nextStatus };
-
-    if (nextStatus === "approved") {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        (update as Record<string, string>).approved_by = user.id;
-        (update as Record<string, string>).approved_at = new Date().toISOString();
-      }
-    }
-    if (nextStatus === "issued") {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) (update as Record<string, string>).issued_by = user.id;
-      (update as Record<string, string>).issued_date = new Date().toISOString().split("T")[0];
-    }
-
-    const { error } = await updatePoById(update, id);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`PO ${nextStatus.replace(/_/g, " ")}`);
+  async function runTransition(t: ProcTransition, reason?: string): Promise<boolean> {
+    const { error } = await transitionPo(id, t.to, reason);
+    if (error) { toast.error(procErrorMessage(error)); return false; }
+    toast.success(`PO ${t.to.replace(/_/g, " ")}`);
     fetchDetail();
+    return true;
+  }
+
+  function handleActionClick(t: ProcTransition) {
+    if (t.reasonRequired) { setPending(t); return; }
+    void runTransition(t);
   }
 
   async function handleAddRevision() {
@@ -204,7 +182,7 @@ export function PODetail({ id }: PODetailProps) {
       created_by: user?.id ?? null,
     });
 
-    if (error) { toast.error(error.message); setSavingRevision(false); return; }
+    if (error) { toast.error(procErrorMessage(error)); setSavingRevision(false); return; }
     toast.success("Revision logged");
     setRevisionForm({ description: "", rev_date: new Date().toISOString().slice(0, 10) });
     setShowRevisionDialog(false);
@@ -215,8 +193,14 @@ export function PODetail({ id }: PODetailProps) {
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (!po) return <div className="py-20 text-center text-muted-foreground">PO not found.</div>;
 
-  const possibleActions = STATUS_ACTIONS[po.status] ?? [];
-  const supplierName = suppliers[po.supplier_id] ?? "Unknown";
+  const transitions = availableTransitions("po", po.status, { can, userId, createdBy: po.created_by, submittedBy: po.submitted_by });
+  const approveHidden =
+    po.status === "submitted" &&
+    can("po", "approve") &&
+    userId != null &&
+    (userId === po.created_by || userId === po.submitted_by) &&
+    !transitions.some(t => t.to === "approved");
+  const supplierName = suppliers[po.supplier_id] ?? "—";
 
   return (
     <div className="space-y-6">
@@ -237,13 +221,42 @@ export function PODetail({ id }: PODetailProps) {
           >
             <Printer className="h-4 w-4" /> Print
           </Button>
-          {possibleActions.map(action => (
-            <Button key={action.nextStatus} className={action.color} size="sm" onClick={() => handleAction(action.nextStatus)}>
-              <action.icon className="h-4 w-4 mr-1" /> {action.label}
-            </Button>
-          ))}
+          {transitions.map(t => {
+            const isCancel = t.to === "cancelled";
+            const Icon = isCancel ? Ban : transitionIcon(t);
+            return (
+              <Button key={transitionKey(t)} className={transitionClass(t)} size="sm" onClick={() => handleActionClick(t)}>
+                <Icon className="h-4 w-4 mr-1" /> {t.label}
+              </Button>
+            );
+          })}
         </div>
       </div>
+
+      {approveHidden && (
+        <p className="text-sm text-muted-foreground">
+          You created or submitted this PO, so another approver must approve it.
+        </p>
+      )}
+      {po.status_reason && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {po.status === "cancelled" ? "Cancelled" : po.status === "draft" ? "Returned" : "Note"}: {po.status_reason}
+        </div>
+      )}
+
+      <ReasonDialog
+        open={pending != null}
+        onOpenChange={(o) => { if (!o) setPending(null); }}
+        title={pending?.label ?? ""}
+        minLength={pending?.minReasonLength}
+        confirmLabel={pending?.label ?? "Confirm"}
+        destructive={pending?.variant === "reject"}
+        onConfirm={async (reason) => {
+          if (!pending) return;
+          const ok = await runTransition(pending, reason);
+          if (ok) setPending(null);
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <Card>

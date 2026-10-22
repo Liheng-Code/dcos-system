@@ -4,7 +4,7 @@
 |---|---|
 | Document | 04-11 / 13 |
 | Revision | R0 — 2026-10-22 |
-| Status | Decisions D1–D6 taken 2026-10-22 (section 6: all as recommended). P0+P1 in build (lane `procurement-hardening`) |
+| Status | Decisions D1–D6 taken 2026-10-22 (section 6: all as recommended). **P0+P1 built** 2026-10-22 on `feat/procurement-hardening`: migrations `20261022130910`, `…130911`, `…134300`, `…140500`; SQL suite `tests/13-p1-hardening-tests.sql` (153 pass). Known P2 gaps are listed in the header of `20261022140500_procurement_p1_review_fixes.sql` |
 | Basis | Local DB (`pg_policies`, `pg_proc`, columns, row counts) and code as of commit `17c5e24`; as-built map `.claude/skills/dcos-architecture/references/procurement.md`; business rules in `01-Business-Requirement.md` and `07-Permission-Matrix.md` |
 
 ## 1. Verdict
