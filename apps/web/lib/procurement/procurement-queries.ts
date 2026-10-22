@@ -8,6 +8,11 @@
 // Keep the "// @table" markers: the codemod reads them when it is run again.
 
 import { createClient } from "@/lib/supabase/client";
+import type {
+  ComparisonPrLine,
+  ComparisonQuotationInput,
+  ComparisonQuotationItem,
+} from "@/lib/procurement/rfq-comparison";
 
 const db = () => createClient();
 
@@ -639,4 +644,131 @@ export function listOpenBoqRequisitionStatusByProjectId(projectId: string | numb
     .eq("project_id", projectId)
     .gt("remaining_quantity", 0)
     .order("seq");
+}
+
+// ── RFQ comparison and award ──────────────────────────────────────────────────
+
+export interface RfqComparisonRfq {
+  id: string;
+  rfq_number: string;
+  status: string;
+  evaluation_method: string | null;
+  pr_id: string | null;
+  awarded_supplier_id: string | null;
+  award_reason: string | null;
+  awarded_at: string | null;
+  awarded_by: string | null;
+  award_overrides_recommendation: boolean;
+  award_exception: string | null;
+  recommended_quotation_id: string | null;
+  awarded_by_name: string | null;
+  created_by: string | null;
+}
+
+export interface RfqComparisonData {
+  rfq: RfqComparisonRfq;
+  prLines: ComparisonPrLine[];
+  quotations: ComparisonQuotationInput[];
+}
+
+export interface AwardRfqResult {
+  po_id: string;
+  po_number: string;
+  override: boolean;
+  exception: string | null;
+  uncovered_lines: number;
+  recommended_quotation_id: string | null;
+}
+
+type QueryError = { message: string };
+
+type QuotationRow = Omit<ComparisonQuotationInput, "supplier_name" | "items"> & {
+  procurement_suppliers: { supplier_name: string } | null;
+  procurement_quotation_items: ComparisonQuotationItem[] | null;
+};
+
+const toNum = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v));
+const toNumOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+// Everything the comparison grid needs for one RFQ: the RFQ, its PR lines, and all
+// its quotations (the comparison itself drops rejected ones) with lines and supplier names.
+export async function getRfqComparisonData(
+  rfqId: string,
+): Promise<{ data: RfqComparisonData | null; error: QueryError | null }> {
+  const rfqRes = await db()
+    .from("procurement_rfqs")
+    .select(
+      "id, rfq_number, status, evaluation_method, pr_id, awarded_supplier_id, award_reason, awarded_at, awarded_by, award_overrides_recommendation, award_exception, recommended_quotation_id, created_by",
+    )
+    .eq("id", rfqId)
+    .maybeSingle();
+  if (rfqRes.error) return { data: null, error: rfqRes.error };
+  if (!rfqRes.data) return { data: null, error: { message: "RFQ not found" } };
+  const rfqRow = rfqRes.data as Omit<RfqComparisonRfq, "awarded_by_name">;
+
+  const [prRes, quoteRes, profileRes] = await Promise.all([
+    rfqRow.pr_id
+      ? db()
+          .from("procurement_pr_items")
+          .select("id, line_no, item_code, item_description, unit, quantity")
+          .eq("pr_id", rfqRow.pr_id)
+          .order("line_no")
+      : Promise.resolve({ data: [] as ComparisonPrLine[], error: null }),
+    db()
+      .from("procurement_quotations")
+      .select(
+        "id, supplier_id, currency, total_amount, valid_until, delivery_lead_time, received_at, combined_score, status, is_awarded, procurement_suppliers(supplier_name), procurement_quotation_items(id, pr_item_id, line_no, item_code, item_description, unit, quantity, unit_price, total, delivery_date, lead_time_days, notes)",
+      )
+      .eq("rfq_id", rfqId),
+    rfqRow.awarded_by
+      ? db().from("profiles").select("full_name").eq("id", rfqRow.awarded_by).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (prRes.error) return { data: null, error: prRes.error };
+  if (quoteRes.error) return { data: null, error: quoteRes.error };
+
+  const prLines = ((prRes.data ?? []) as ComparisonPrLine[]).map((l) => ({ ...l, quantity: toNum(l.quantity) }));
+  const quotations: ComparisonQuotationInput[] = ((quoteRes.data ?? []) as unknown as QuotationRow[]).map((q) => ({
+    id: q.id,
+    supplier_id: q.supplier_id,
+    supplier_name: q.procurement_suppliers?.supplier_name ?? "Unknown supplier",
+    currency: q.currency,
+    total_amount: toNumOrNull(q.total_amount),
+    valid_until: q.valid_until,
+    delivery_lead_time: toNumOrNull(q.delivery_lead_time),
+    received_at: q.received_at,
+    combined_score: toNumOrNull(q.combined_score),
+    status: q.status,
+    is_awarded: !!q.is_awarded,
+    items: (q.procurement_quotation_items ?? []).map((i) => ({
+      ...i,
+      quantity: toNum(i.quantity),
+      unit_price: toNum(i.unit_price),
+      total: toNum(i.total),
+      lead_time_days: toNumOrNull(i.lead_time_days),
+    })),
+  }));
+
+  const profile = profileRes.data as { full_name: string | null } | null;
+  return {
+    data: { rfq: { ...rfqRow, awarded_by_name: profile?.full_name ?? null }, prLines, quotations },
+    error: null,
+  };
+}
+
+// Atomic award: the database re-checks permission, state, creator-cannot-award, the
+// recommendation and the reason rules, then creates the draft PO. Rule failures
+// arrive as `error.message`.
+export async function awardRfq(
+  rfqId: string,
+  quotationId: string,
+  reason: string,
+): Promise<{ data: AwardRfqResult | null; error: QueryError | null }> {
+  const { data, error } = await db().rpc("procurement_award_rfq", {
+    p_rfq_id: rfqId,
+    p_quotation_id: quotationId,
+    p_reason: reason,
+  });
+  if (error) return { data: null, error };
+  return { data: data as AwardRfqResult, error: null };
 }
