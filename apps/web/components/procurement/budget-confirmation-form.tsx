@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getPrById, getProfileById, getProjectById, insertBudgetConfirmation, insertBudgetConfirmationItems, listBudgetCodeGroups, listBudgetCodesByIds, listBudgetConfirmationsByProjectId, listPrItemsByPrId, listQsBoqItemsByIds, updatePrById } from "@/lib/procurement/procurement-queries";
+import { confirmBudget, getPrById, getProfileById, getProjectById, listBudgetCodeGroups, listBudgetCodesByIds, listPrItemsByPrId, listQsBoqItemsByIds } from "@/lib/procurement/procurement-queries";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface PRRecordForBC {
   id: string;
@@ -225,31 +226,14 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
     }
 
     setSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { toast.error("Not authenticated"); setSaving(false); return; }
 
-    let bcNumber = `BC-${Date.now()}`;
-    if (projectInfo && pr.project_id) {
-      const companyCode = projectInfo.company_code ?? "DCOS";
-      const prefix = `${projectInfo.project_code}-${companyCode}-BC-`;
-      const { data: existing } = await listBudgetConfirmationsByProjectId(pr.project_id);
-      let maxSeq = 0;
-      for (const row of (existing ?? []) as { bc_number: string }[]) {
-        if (row.bc_number.startsWith(prefix)) {
-          const num = parseInt(row.bc_number.slice(prefix.length), 10);
-          if (!isNaN(num) && num > maxSeq) maxSeq = num;
-        }
-      }
-      bcNumber = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    const { data: bcData, error: bcError } = await insertBudgetConfirmation({
-        bc_number: bcNumber,
-        pr_id: prId,
-        project_id: pr.project_id,
+    // The server generates bc_number (blank), stamps verified/approved by + dates, creates the
+    // header and items, and approves the PR in one transaction.
+    const header = {
+      bc_number: "",
+      pr_id: prId,
+      project_id: pr.project_id,
+      signatory_position: form.signatory_position || null,
         to_name: form.to_name || null,
         to_role: form.to_role || null,
         cc: form.cc || null,
@@ -275,19 +259,9 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
         prepared_by: pr.requested_by,
         prepared_by_position: "Requester",
         prepared_at: pr.preparation_date,
-        verified_by: user.id,
-        verified_by_position: form.signatory_position || null,
-        verified_at: today,
-        approved_by: user.id,
-        approved_by_position: form.signatory_position || null,
-        approved_at: today,
-      });
+    };
 
-    if (bcError) { toast.error(bcError.message); setSaving(false); return; }
-    const bcId = (bcData as { id: string }).id;
-
-    const itemInserts = items.map((item, idx) => ({
-      bc_id: bcId,
+    const itemPayload = items.map((item, idx) => ({
       pr_item_id: item.pr_item_id,
       line_no: idx + 1,
       budget_code: item.budget_code || null,
@@ -297,22 +271,10 @@ export function BudgetConfirmationForm({ prId }: { prId: string }) {
       remaining_work_amount: remainingWork(item),
     }));
 
-    const { error: itemsError } = await insertBudgetConfirmationItems(itemInserts);
-    if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
+    const { error } = await confirmBudget(prId, header, itemPayload);
+    if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
 
-    const { error: prError } = await updatePrById({
-      approval_status: "approved",
-      approved_by: user.id,
-      approved_at: new Date().toISOString(),
-      budget_checked: true,
-      budget_checked_by: user.id,
-      budget_check_notes: form.bc_title || null,
-      budget_confirmation_id: bcId,
-    }, prId);
-
-    if (prError) { toast.error(prError.message); setSaving(false); return; }
-
-    toast.success(`Budget Confirmation ${bcNumber} created — PR approved`);
+    toast.success("Budget Confirmation created — PR approved");
     router.push(`/dashboard/procurement/pr/${prId}`);
   }
 

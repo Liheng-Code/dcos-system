@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Supplier {
   id: string;
@@ -66,11 +67,11 @@ export function SupplierForm({ supplier, onClose, onSave }: SupplierFormProps) {
 
     if (supplier) {
       const { error } = await updateSupplierById(form, supplier.id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Supplier updated");
     } else {
       const { error } = await insertSupplier(form);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Supplier created");
     }
     setSaving(false);

@@ -1,7 +1,8 @@
 // Pure RFQ quotation comparison and award-reason rules.
 //
 // No database or React imports. This mirrors the SQL function
-// public.procurement_award_rfq (migration 20261022101310_procurement_rfq_comparison.sql);
+// public.procurement_award_rfq (migrations 20261022101310_procurement_rfq_comparison.sql and
+// 20261022150000_procurement_p2_sealed_bids_numbering.sql: override reason minimum is 50);
 // keep the two in step: same coverage rule, same tie-breaks, same "why" strings.
 // A null evaluation_method is treated as lowest_price, as in the RPC.
 
@@ -355,7 +356,7 @@ export function requiredReasonLength(args: {
   };
 
   if (comparison.recommendedQuotationId === null || comparison.recommendedQuotationId !== quotationId) {
-    need(20, REASON_WHY.override);
+    need(50, REASON_WHY.override);
   }
   if (chosen && !chosen.comparable) need(20, REASON_WHY.currency);
   if (chosen && !chosen.fullCoverage) need(20, REASON_WHY.coverage);

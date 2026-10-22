@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function BoqSectionForm({ section: rawSection, projectId, onSaved, onCancel }: { section: any; projectId: string; onSaved: (section: any) => void; onCancel: () => void }) {
@@ -24,12 +25,12 @@ export function BoqSectionForm({ section: rawSection, projectId, onSaved, onCanc
 
     if (section) {
       const { data, error } = await updateQsBoqSectionById({ section_code: code.trim(), title: name.trim(), seq }, section.id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Section updated");
       onSaved(data);
     } else {
       const { data, error } = await insertQsBoqSection({ project_id: projectId, section_code: code.trim(), title: name.trim(), seq });
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Section created");
       onSaved(data);
     }

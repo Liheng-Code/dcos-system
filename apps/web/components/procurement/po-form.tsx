@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getPrById, getProjectById, insertPo, insertPoItems, listActiveSuppliers, listApprovedPrsByProjectId, listBoqRequisitionStatusByBoqItemIds, listPosByProjectId, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
+import { getPrById, insertPo, insertPoItems, listActiveSuppliers, listApprovedPrsByProjectId, listBoqRequisitionStatusByBoqItemIds, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 import { AlertTriangle, ArrowLeft, Loader2, Save, Trash2, Plus, Building2, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useProject } from "@/components/dashboard/project-context";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface POItem {
   key: string;
@@ -80,7 +81,6 @@ export function POForm() {
   const [prs, setPrs] = useState<PRSummary[]>([]);
   const [selectedPrId, setSelectedPrId] = useState("");
   const [loadingBoq, setLoadingBoq] = useState(false);
-  const [generatedPoNumber, setGeneratedPoNumber] = useState("");
   const [form, setForm] = useState({
     supplier_id: "",
     wbs_node_id: "",
@@ -116,27 +116,6 @@ export function POForm() {
 
   useEffect(() => { loadReferenceData(); }, [loadReferenceData]);
 
-  useEffect(() => {
-    if (!selectedProjectId || !selectedProject) {
-      setGeneratedPoNumber("");
-      return;
-    }
-    listPosByProjectId(selectedProjectId).then((poRes) => {
-      getProjectById(selectedProjectId, "company_code").then((projRes) => {
-        const companyCode = projRes.data?.company_code ?? "DCOS";
-        const prefix = `${selectedProject.project_code}-${companyCode}-PO-`;
-        const existing = (poRes.data ?? []) as { po_number: string }[];
-        let maxSeq = 0;
-        for (const po of existing) {
-          if (po.po_number.startsWith(prefix)) {
-            const num = parseInt(po.po_number.slice(prefix.length), 10);
-            if (!isNaN(num) && num > maxSeq) maxSeq = num;
-          }
-        }
-        setGeneratedPoNumber(`${prefix}${String(maxSeq + 1).padStart(3, "0")}`);
-      });
-    });
-  }, [selectedProjectId, selectedProject]);
 
   useEffect(() => {
     const boqIds = searchParams?.get("boq_item_ids");
@@ -144,7 +123,7 @@ export function POForm() {
     setLoadingBoq(true);
     listBoqRequisitionStatusByBoqItemIds(boqIds.split(","))
       .then(({ data, error }) => {
-        if (error) { toast.error(error.message); setLoadingBoq(false); return; }
+        if (error) { toast.error(procErrorMessage(error)); setLoadingBoq(false); return; }
         if (data && data.length > 0) {
           setItems(data.map((row: Record<string, unknown>) => ({
             ...newLineItem(),
@@ -167,7 +146,7 @@ export function POForm() {
       getPrById(prId, "wbs_node_id, ship_to"),
     ]);
 
-    if (itemsRes.error) { toast.error(itemsRes.error.message); return; }
+    if (itemsRes.error) { toast.error(procErrorMessage(itemsRes.error)); return; }
     if (!itemsRes.data || itemsRes.data.length === 0) {
       toast.error("Selected PR has no items");
       return;
@@ -269,7 +248,6 @@ export function POForm() {
     setSaving(true);
 
     const poData = {
-      po_number: generatedPoNumber,
       project_id: selectedProjectId,
       wbs_node_id: form.wbs_node_id || null,
       supplier_id: form.supplier_id,
@@ -293,7 +271,7 @@ export function POForm() {
     };
 
     const { data: poResult, error: poError } = await insertPo(poData);
-    if (poError) { toast.error(poError.message); setSaving(false); return; }
+    if (poError) { toast.error(procErrorMessage(poError)); setSaving(false); return; }
 
     const poId = (poResult as { id: string }).id;
 
@@ -319,9 +297,10 @@ export function POForm() {
     }));
 
     const { error: itemsError } = await insertPoItems(itemInserts);
-    if (itemsError) { toast.error(itemsError.message); setSaving(false); return; }
+    if (itemsError) { toast.error(procErrorMessage(itemsError)); setSaving(false); return; }
 
-    toast.success("Purchase order created");
+    const createdNumber = (poResult as { po_number?: string }).po_number;
+    toast.success(createdNumber ? `Purchase order ${createdNumber} created` : "Purchase order created");
     router.push(`/dashboard/procurement/po/${poId}`);
   }
 
@@ -365,7 +344,7 @@ export function POForm() {
               <Label>PPO No.</Label>
               <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono">
                 <Hash className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{generatedPoNumber || "Generating..."}</span>
+                <span className="font-medium">Assigned on save</span>
               </div>
             </div>
 

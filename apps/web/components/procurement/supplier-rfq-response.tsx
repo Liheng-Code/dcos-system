@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface RFQSummary {
   id: string;
@@ -104,7 +105,7 @@ export function SupplierRFQResponse({ supplierId }: { supplierId: string }) {
       procurement_quotation_items: itemsPayload,
     });
 
-    if (error) { toast.error(error.message); setSubmitting(false); return; }
+    if (error) { toast.error(procErrorMessage(error)); setSubmitting(false); return; }
 
     await insertQuotationItems(itemsPayload.map(i => ({ ...i, quotation_id: quote.id })));
 
