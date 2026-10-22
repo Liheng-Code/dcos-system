@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import {
-  Loader2, ArrowLeft, Send, XCircle, CheckCircle, Award,
+  Loader2, ArrowLeft, Send, XCircle,
   Plus, Save, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { getPoByQuotationId, getPrById, getRfqById, insertPo, insertPoItems, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, updateOtherQuotationsOfRfq, updateQuotationById, updateRfqById, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-queries";
+import { getPoByQuotationId, getRfqById, insertQuotation, insertQuotationItems, listPrItemsByPrId, listQuotationsByRfqId, listRfqSuppliersByRfqId, updateQuotationById, updateRfqById, updateRfqSuppliersByRfqIdAndSupplierId } from "@/lib/procurement/procurement-queries";
+import { RfqComparison } from "@/components/procurement/rfq-comparison";
+import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
 
 interface RFQRecord {
   id: string;
@@ -98,7 +99,9 @@ export function RFQDetail({ id }: { id: string }) {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [prItems, setPrItems] = useState<PRItemSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [actionLoading, setActionLoading] = useState("");
+  const { can } = useProcurementPermissions(["rfq"]);
 
   const [showAddQuotation, setShowAddQuotation] = useState(false);
   const [newQuote, setNewQuote] = useState({
@@ -110,7 +113,7 @@ export function RFQDetail({ id }: { id: string }) {
     delivery_lead_time: "",
     received_at: new Date().toISOString().slice(0, 10),
   });
-  const [quoteItems, setQuoteItems] = useState<(PRItemSummary & { unit_price: number; total: number })[]>([]);
+  const [quoteItems, setQuoteItems] = useState<(PRItemSummary & { unit_price: number; total: number; lead_time_days: string; notes: string })[]>([]);
 
   const fetchDetail = useCallback(() => {
     Promise.all([
@@ -133,6 +136,7 @@ export function RFQDetail({ id }: { id: string }) {
         }
       }
 
+      setRefreshKey((k) => k + 1);
       setLoading(false);
     });
   }, [id]);
@@ -173,8 +177,12 @@ export function RFQDetail({ id }: { id: string }) {
       delivery_lead_time: "",
       received_at: new Date().toISOString().slice(0, 10),
     });
-    setQuoteItems(prItems.map(pi => ({ ...pi, unit_price: 0, total: 0 })));
+    setQuoteItems(prItems.map(pi => ({ ...pi, unit_price: 0, total: 0, lead_time_days: "", notes: "" })));
     setShowAddQuotation(true);
+  }
+
+  function updateQuoteItemText(prItemId: string, field: "lead_time_days" | "notes", value: string) {
+    setQuoteItems(prev => prev.map(qi => qi.id === prItemId ? { ...qi, [field]: value } : qi));
   }
 
   function updateQuoteItem(prItemId: string, field: string, value: number) {
@@ -228,6 +236,8 @@ export function RFQDetail({ id }: { id: string }) {
         quantity: qi.quantity,
         unit_price: qi.unit_price,
         total: qi.unit_price * qi.quantity,
+        lead_time_days: qi.lead_time_days !== "" && Number(qi.lead_time_days) >= 0 ? Math.round(Number(qi.lead_time_days)) : null,
+        notes: qi.notes.trim() || null,
       }));
 
     await insertQuotationItems(itemInserts);
@@ -276,81 +286,14 @@ export function RFQDetail({ id }: { id: string }) {
     fetchDetail();
   }
 
-  async function handleAward(quotationId: string) {
-    const reason = prompt("Basis of award / reason:");
-    if (reason === null) return;
-    setActionLoading("award");
-
-    const quotation = quotations.find(q => q.id === quotationId);
-    if (!quotation) { setActionLoading(""); return; }
-
-    const { error: rfqError } = await updateRfqById({
-      status: "awarded",
-      awarded_supplier_id: quotation.supplier_id,
-      award_reason: reason,
-      awarded_at: new Date().toISOString(),
-    }, id);
-    if (rfqError) { toast.error(rfqError.message); setActionLoading(""); return; }
-
-    await updateQuotationById({ is_awarded: true, status: "awarded" }, quotationId);
-    await updateOtherQuotationsOfRfq({ is_awarded: false, status: "rejected" }, quotationId, id);
-
-    let projectId: string | null = null;
-    let wbsNodeId: string | null = null;
-    if (rfq?.pr_id) {
-      const { data: prData } = await getPrById(rfq.pr_id, "project_id, wbs_node_id");
-      if (prData) { projectId = (prData as { project_id: string | null; wbs_node_id: string | null }).project_id; wbsNodeId = (prData as { project_id: string | null; wbs_node_id: string | null }).wbs_node_id; }
-    }
-
-    const { data: poResult, error: poError } = await insertPo({
-        po_number: `PO-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
-        supplier_id: quotation.supplier_id,
-        project_id: projectId,
-        wbs_node_id: wbsNodeId,
-        pr_id: rfq?.pr_id ?? null,
-        rfq_id: id,
-        quotation_id: quotationId,
-        currency: quotation.currency,
-        total_amount: quotation.total_amount,
-        grand_total: quotation.total_amount,
-        payment_terms: quotation.payment_terms || null,
-        status: "draft",
-      });
-
-    if (poError) { toast.error("RFQ awarded but PO creation failed: " + poError.message); setActionLoading(""); fetchDetail(); return; }
-
-    const poId = (poResult as { id: string }).id;
-
-    const poItemInserts = quotation.procurement_quotation_items.map((qi, idx) => ({
-      po_id: poId,
-      pr_item_id: qi.pr_item_id ?? null,
-      line_no: idx + 1,
-      item_code: qi.item_code ?? null,
-      item_description: qi.item_description,
-      unit: qi.unit,
-      quantity_ordered: qi.quantity,
-      unit_price: qi.unit_price,
-      total_price: qi.total,
-    }));
-
-    const { error: itemsError } = await insertPoItems(poItemInserts);
-    if (itemsError) { toast.error("PO created but items failed: " + itemsError.message); }
-
-    toast.success("Supplier awarded! PO created.");
-    fetchDetail();
-    setActionLoading("");
-  }
-
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (!rfq) return <div className="py-20 text-center text-muted-foreground">RFQ not found.</div>;
 
   const canIssue = rfq.status === "draft";
   const canCancel = !["awarded", "cancelled"].includes(rfq.status);
   const canAddQuote = ["issued", "quotations_received", "under_evaluation"].includes(rfq.status) && rfq.status !== "awarded";
-  const canAward = ["quotations_received", "under_evaluation"].includes(rfq.status) && quotations.some(q => q.combined_score != null || q.status === "evaluated");
+  const canAward = ["quotations_received", "under_evaluation"].includes(rfq.status) && can("rfq", "approve");
   const awardedQuote = quotations.find(q => q.is_awarded);
-
-  const bestPrice = Math.min(...quotations.filter(q => q.total_amount > 0).map(q => q.total_amount));
 
   return (
     <div className="space-y-6">
@@ -494,6 +437,8 @@ export function RFQDetail({ id }: { id: string }) {
                   <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Item</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Qty</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Unit Price</th>
+                  <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Lead time (days)</th>
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Notes</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Total</th>
                 </tr>
               </thead>
@@ -505,13 +450,19 @@ export function RFQDetail({ id }: { id: string }) {
                     <td className="px-3 py-2 text-sm text-right">
                       <Input className="h-8 w-28 ml-auto text-xs text-right" type="number" min="0" step="0.01" value={qi.unit_price || ""} onChange={e => updateQuoteItem(qi.id, "unit_price", parseFloat(e.target.value) || 0)} />
                     </td>
+                    <td className="px-3 py-2 text-sm text-right">
+                      <Input className="h-8 w-20 ml-auto text-xs text-right" type="number" min="0" step="1" value={qi.lead_time_days} onChange={e => updateQuoteItemText(qi.id, "lead_time_days", e.target.value)} />
+                    </td>
+                    <td className="px-3 py-2 text-sm">
+                      <Input className="h-8 min-w-32 text-xs" value={qi.notes} onChange={e => updateQuoteItemText(qi.id, "notes", e.target.value)} placeholder="Notes" />
+                    </td>
                     <td className="px-3 py-2 text-sm text-right font-medium">${(qi.unit_price * qi.quantity).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t font-semibold">
-                  <td colSpan={3} className="px-3 py-2 text-sm text-right">Total</td>
+                  <td colSpan={5} className="px-3 py-2 text-sm text-right">Total</td>
                   <td className="px-3 py-2 text-sm text-right">${quoteItems.reduce((s, qi) => s + qi.unit_price * qi.quantity, 0).toLocaleString()}</td>
                 </tr>
               </tfoot>
@@ -526,74 +477,24 @@ export function RFQDetail({ id }: { id: string }) {
         </Card>
       )}
 
-      {quotations.length > 0 && (
+      <RfqComparison rfqId={id} canAward={canAward} refreshKey={refreshKey} onAwarded={fetchDetail} />
+
+      {awardedQuote && rfq.awarded_supplier_id && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => {
+            getPoByQuotationId(awardedQuote.id).then(({ data }) => {
+              if (data) router.push(`/dashboard/procurement/po/${(data as { id: string }).id}`);
+            });
+          }}>
+            <ExternalLink className="h-4 w-4 mr-1" /> View PO
+          </Button>
+        </div>
+      )}
+
+      {quotations.length > 0 && ["weighted", "technical_commercial"].includes(rfq.evaluation_method) && (
         <Card>
           <CardContent className="pt-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-sm">Quotation Comparison</h3>
-              {canAward && (
-                <span className="text-xs text-muted-foreground">Enter scores and click Award to select winner</span>
-              )}
-            </div>
-
-            {prItems.length > 0 && (
-              <div className="overflow-x-auto mb-4">
-                <table className="w-full min-w-[600px]">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground min-w-[160px]">Item</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Qty</th>
-                      {quotations.map(q => (
-                        <th key={q.id} className={`text-right px-3 py-2 text-xs font-semibold ${q.is_awarded ? "text-emerald-600" : "text-muted-foreground"}`}>
-                          <div className="flex items-center justify-end gap-1">
-                            {q.procurement_suppliers?.supplier_name ?? "Supplier"}
-                            {q.is_awarded && <Award className="h-3 w-3 text-emerald-600" />}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {prItems.map(pi => {
-                      const qiGroups = quotations.map(q => q.procurement_quotation_items.find((qi: QuotationItem) => qi.pr_item_id === pi.id));
-                      return (
-                        <tr key={pi.id} className="border-b last:border-0">
-                          <td className="px-3 py-2 text-sm">{pi.item_description}</td>
-                          <td className="px-3 py-2 text-sm text-right">{pi.quantity} {pi.unit}</td>
-                          {qiGroups.map((qi, idx) => {
-                            if (!qi) return <td key={quotations[idx].id} className="px-3 py-2 text-sm text-right text-muted-foreground">—</td>;
-                            const isLowest = quotations[idx].total_amount > 0 && qi.total === Math.min(...quotations.filter(q => q.total_amount > 0).map(q => q.total_amount));
-                            return (
-                              <td key={quotations[idx].id} className={`px-3 py-2 text-sm text-right ${isLowest ? "font-bold text-emerald-600" : ""}`}>
-                                ${qi.unit_price.toLocaleString()}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t font-semibold">
-                      <td className="px-3 py-2 text-sm">Total</td>
-                      <td className="px-3 py-2 text-sm" />
-                      {quotations.map(q => {
-                        const isBest = q.total_amount === bestPrice;
-                        return (
-                          <td key={q.id} className={`px-3 py-2 text-sm text-right ${isBest ? "text-emerald-600" : ""}`}>
-                            ${q.total_amount.toLocaleString()}
-                            {isBest && <span className="ml-1 text-xs">★</span>}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-
-            {["weighted", "technical_commercial"].includes(rfq.evaluation_method) && (
-              <div className="space-y-3 mt-4 border-t pt-4">
+              <div className="space-y-3">
                 <h4 className="text-sm font-semibold">Scoring & Evaluation</h4>
                 <table className="w-full">
                   <thead>
@@ -604,7 +505,6 @@ export function RFQDetail({ id }: { id: string }) {
                       <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Commercial (0-100)</th>
                       <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Combined</th>
                       <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -633,90 +533,12 @@ export function RFQDetail({ id }: { id: string }) {
                               {q.status}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {!q.is_awarded && canAward && (
-                              <Button size="sm" variant="outline" className="text-emerald-600" onClick={() => handleAward(q.id)} disabled={actionLoading === "award"}>
-                                {actionLoading === "award" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Award className="h-4 w-4 mr-1" />}
-                                Award
-                              </Button>
-                            )}
-                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
-
-            {rfq.evaluation_method === "lowest_price" && (
-              <div className="space-y-3 mt-4 border-t pt-4">
-                <h4 className="text-sm font-semibold">Lowest Price Evaluation</h4>
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Supplier</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Total ($)</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quotations
-                      .sort((a, b) => a.total_amount - b.total_amount)
-                      .map(q => {
-                        const isLowest = q.total_amount === bestPrice;
-                        return (
-                          <tr key={q.id} className={`border-b last:border-0 ${isLowest ? "bg-emerald-500/5" : ""}`}>
-                            <td className="px-3 py-2 text-sm font-medium">{q.procurement_suppliers?.supplier_name ?? "—"}</td>
-                            <td className={`px-3 py-2 text-sm text-right ${isLowest ? "font-bold text-emerald-600" : ""}`}>
-                              {q.currency} {q.total_amount.toLocaleString()}
-                              {isLowest && <span className="ml-1">★ Lowest</span>}
-                            </td>
-                            <td className="px-3 py-2 text-sm text-right">
-                              <Badge variant="outline" className={
-                                q.status === "awarded" ? "bg-emerald-500/10 text-emerald-600 border-emerald-200" :
-                                q.status === "evaluated" ? "bg-purple-500/10 text-purple-600 border-purple-200" :
-                                "bg-gray-500/10 text-gray-500 border-gray-200"
-                              }>{q.status}</Badge>
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {!q.is_awarded && rfq.status !== "awarded" && (
-                                <Button size="sm" variant="outline" className="text-emerald-600" onClick={() => handleAward(q.id)} disabled={actionLoading === "award"}>
-                                  {actionLoading === "award" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Award className="h-4 w-4 mr-1" />}
-                                  Award
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {awardedQuote && rfq.awarded_supplier_id && (
-              <div className="mt-4 border-t pt-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
-                  <span className="font-semibold">Awarded to:</span>
-                  <span>{awardedQuote.procurement_suppliers?.supplier_name ?? "—"}</span>
-                  <span className="text-muted-foreground">— {rfq.award_reason}</span>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => {
-                  const q = quotations.find(q => q.is_awarded);
-                  if (q) {
-                    const s = createClient();
-                    getPoByQuotationId(q.id).then(({ data }) => {
-                      if (data) router.push(`/dashboard/procurement/po/${(data as { id: string }).id}`);
-                    });
-                  }
-                }}>
-                  <ExternalLink className="h-4 w-4 mr-1" /> View PO
-                </Button>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
