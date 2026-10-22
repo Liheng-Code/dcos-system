@@ -208,7 +208,7 @@ dcos-system/
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
 
 ### Parallel lanes (several sessions at once)
-Work is split into **lanes**: one Claude session per business module, each in its own git worktree. Inside a lane the lead session uses subagents. Agent Teams are only for a feature that spans 2–3 modules at once.
+Work is split into **lanes**: one Claude session per business module, each in its own git worktree. Inside a lane the lead session uses subagents. Agent Teams are only for a feature that spans 2–3 modules at once. The main window runs the procedure (start, status, merge, cleanup, team) with the `/lanes` skill (`.claude/skills/lanes/`). The rules below apply to every lane.
 
 - **Run at most 3 lanes at a time.** Create one with `scripts/new-lane.ps1 -Module <key> -Topic <slug>`. It makes branch `feat/<module>-<topic>` in worktree `D:\dcos-lanes\<module>-<topic>`, copies `apps/web/.env.local`, runs `pnpm install` and prints the dev port to use (`pnpm dev -p 3001`, `3002`, `3003`; the main checkout keeps 3100). In a lane window, don't let the "DCOS: web dev server" auto-start task run, because it starts on 3100 too. Open that folder in its own VS Code window or `claude` session. Remove it with `git worktree remove <path>` after merge.
 - **A lane edits only its own module's paths** (`MODULE_PATHS[<key>]` in `apps/web/module-boundaries.mjs`, e.g. `components/qs`, `lib/qs`, `app/dashboard/tenders`, `app/api/tenders`) plus its migrations and docs. Cross-module imports go through `PUBLIC_API` only.
