@@ -46,9 +46,10 @@ One lane per call. The user should have browser-tested the lane first; ask if un
 2. Check the merged result: tsc, eslint (0 errors), vitest. If something breaks, it's the merge: fix it in the main window if it's core, or send it back to the lane.
 3. **Migrations the lane added:** confirm the objects exist in the local DB. Then record each version, because lanes apply with psql, which doesn't record it:
    `insert into supabase_migrations.schema_migrations(version,name) values ('<version>','<name>') on conflict do nothing;`
-4. **Core requests** from the lane's report: make them here, as separate commits. For new shadcn components: the CLI fails here (it calls pnpm). Fetch `https://ui.shadcn.com/r/styles/base-nova/<name>.json` and write `files[0].content` to `components/ui/<name>.tsx`, with `from "cn"` replaced by `from "@/lib/utils"`.
-5. Report: the merge commit, the checks, the migrations now waiting for `/dbpush` (production is only ever via `/dbpush`, run by the user), core requests done, and follow-ups the lane listed.
-6. Other lanes don't need to rebase for a `--no-ff` merge. The checks in the next merge cover the combination.
+4. **Update the architecture map** (`dcos-architecture` skill, `references/<module>.md`). Add the lane's new tables, RPCs, public exports and invariants, plus any gaps it closed or opened. Add a row to `integration-map.md` for any new cross-module link. If the map is still Pending, add only the new facts under "Known so far". Commit it with the merge follow-ups.
+5. **Core requests** from the lane's report: make them here, as separate commits. For new shadcn components: the CLI fails here (it calls pnpm). Fetch `https://ui.shadcn.com/r/styles/base-nova/<name>.json` and write `files[0].content` to `components/ui/<name>.tsx`, with `from "cn"` replaced by `from "@/lib/utils"`.
+6. Report: the merge commit, the checks, the migrations now waiting for `/dbpush` (production is only ever via `/dbpush`, run by the user), core requests done, and follow-ups the lane listed.
+7. Other lanes don't need to rebase for a `--no-ff` merge. The checks in the next merge cover the combination.
 
 ## cleanup [<module>]
 Only for lanes that are merged (`git branch --merged` contains `feat/<lane>`) and whose window the user has closed.
@@ -61,7 +62,7 @@ Use only when one feature needs changes inside 2–3 modules at once (e.g. Plann
 1. Run it from the main window, on a branch `feat/team-<topic>`, while no lane is open for any of those modules.
 2. Write the contract first, and get the user's OK on it before anything is built. It covers the tables and RPCs, which module owns each file, the `PUBLIC_API` additions in `module-boundaries.mjs`, and the migration list.
 3. Create the team with `references/team-prompt.md`: one teammate per module, each limited to its own paths, plus `database-engineer` as the only migration owner. Require plan approval.
-4. Afterwards, check it the same way as a merge (steps 2–5).
+4. Afterwards, check it the same way as a merge (steps 2–6).
 
 ## Adding a module to the skill
 Add one row to `references/modules.md`: the key from `MODULE_PATHS`, the domain agent from `.claude/agents/`, and the gotchas. The module must already exist in `module-boundaries.mjs`. Project and Administration are core, so their work is done in the main window, not in a lane.

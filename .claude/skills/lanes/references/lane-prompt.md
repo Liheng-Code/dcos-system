@@ -13,6 +13,7 @@ The dev server for this lane is already running at http://localhost:<port>; don'
 Task: <the real task, with acceptance criteria: what the user must be able to do, rules, edge cases>
 
 Things to know for this module: <gotchas from references/modules.md>
+Before planning, load the `dcos-architecture` skill and read `references/<key>.md` (as-built map: tables, invariants, gaps) and the integration-map rows for this module.
 
 Before building, read the existing code for this (<likely files/folders>). Then reply to the user with a short plan: what exists, what you'll change, any schema change and which files. Wait for their OK before any change larger than that plan.
 
