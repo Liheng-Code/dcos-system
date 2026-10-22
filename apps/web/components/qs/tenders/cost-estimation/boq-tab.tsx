@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment, useRef, useMemo } from "react";
-import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles, Blocks, Database } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles, Blocks, Database, Layers, GitMerge } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +29,9 @@ import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { BoqElementLibraryPickerDialog, type BoqElementLibrarySelection } from "./boq-element-library-picker-dialog";
 import { PriceListPickerDialog } from "./price-list-picker-dialog";
 import { AiBoqDraftDialog } from "./ai-boq-draft-dialog";
+import { ApplyWbsTemplateDialog } from "./apply-wbs-template-dialog";
+import { BoqQuantityMatrix } from "./boq-quantity-matrix";
+import { TenderPlanningBridgeDialog } from "./tender-planning-bridge-dialog";
 import { AssignLibraryToBoqDialog } from "./assign-library-to-boq-dialog";
 import { AssignCostDatabaseDialog } from "./assign-cost-database-dialog";
 import { SaveToCostDatabaseDialog } from "./save-to-cost-database-dialog";
@@ -56,13 +59,15 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAiDraft, setShowAiDraft] = useState(false);
+  const [showWbsTemplate, setShowWbsTemplate] = useState(false);
+  const [showPlanningBridge, setShowPlanningBridge] = useState(false);
   const [showCostLibrary, setShowCostLibrary] = useState(false);
   const [showCostDatabase, setShowCostDatabase] = useState(false);
   const [showSaveDatabase, setShowSaveDatabase] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [viewLevel, setViewLevel] = useState<"main" | "detail" | "flat">("detail");
+  const [viewLevel, setViewLevel] = useState<"main" | "detail" | "flat" | "matrix">("detail");
 
   const allFlatColumns = useMemo(() => [
     { id: "description", label: "Description", align: "left" as const },
@@ -647,6 +652,10 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
               onClick={() => setViewLevel("flat")}
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewLevel === "flat" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/50"}`}
             >Flat</button>
+            <button
+              onClick={() => setViewLevel("matrix")}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewLevel === "matrix" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/50"}`}
+            >Matrix (LBS)</button>
           </div>
           {viewLevel === "flat" && (
             <div className="relative" ref={columnPickerRef}>
@@ -708,6 +717,16 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
           <Button size="sm" variant="outline" onClick={() => setShowElementPicker(true)} disabled={saving}>
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Library className="mr-1 h-4 w-4" />} Add from Element Library
           </Button>
+          )}
+          {canAdd && (
+          <>
+          <Button size="sm" variant="outline" onClick={() => setShowPlanningBridge(true)} disabled={saving} className="border-indigo-200 hover:bg-indigo-50/50 dark:border-indigo-900">
+            <GitMerge className="mr-1 h-4 w-4 text-indigo-600" /> Sync to Schedule
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowWbsTemplate(true)} disabled={saving} className="border-blue-200 hover:bg-blue-50/50 dark:border-blue-900">
+            <Layers className="mr-1 h-4 w-4 text-blue-600" /> Apply WBS Template
+          </Button>
+          </>
           )}
           {canAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowAiDraft(true)} disabled={saving}>
@@ -991,6 +1010,12 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
             </tbody>
           </table>
         </div>
+      ) : viewLevel === "matrix" ? (
+        <BoqQuantityMatrix
+          items={flatItems}
+          isLocked={isLocked}
+          onSaved={() => void load()}
+        />
       ) : (
         <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-sm">
@@ -1164,6 +1189,24 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
           budgetCodes={budgetCodes}
           onClose={() => setShowAiDraft(false)}
           onAccepted={() => void load()}
+        />
+      )}
+
+      {showPlanningBridge && (
+        <TenderPlanningBridgeDialog
+          tenderId={tenderId}
+          open={showPlanningBridge}
+          onOpenChange={setShowPlanningBridge}
+          onSuccess={() => void load()}
+        />
+      )}
+
+      {showWbsTemplate && (
+        <ApplyWbsTemplateDialog
+          tenderId={tenderId}
+          open={showWbsTemplate}
+          onOpenChange={setShowWbsTemplate}
+          onSuccess={() => void load()}
         />
       )}
 

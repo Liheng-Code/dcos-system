@@ -188,6 +188,9 @@ export default function ItemEditor({ item, allItems, params, isAdmin, onClose, o
                         onBlur={() => isAdmin && handleSaveComp(comp, i)}
                         className="w-full bg-transparent text-sm border-none outline-none read-only:cursor-default"
                       />
+                      <p className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+                        {comp.rate_status ?? "unverified"} · {comp.rate_source ?? "legacy rate"}{comp.rate_effective_date ? ` · ${comp.rate_effective_date}` : ""} · {comp.rate_currency ?? "USD"}
+                      </p>
                     </td>
                     <td className="px-3 py-1.5">
                       <input

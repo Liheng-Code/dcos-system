@@ -1,15 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, ChevronDown, ChevronRight, Check, Minus, X } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Check, Minus, X, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { insertTenderPreliminariesItems, listTenderPreliminariesItemsByTenderId } from "@/lib/qs/qs-queries";
 import {
   listCases,
   getCalculatedItemsForCase,
+  PRELIM_PROFILES,
+  getProjectPrelimContext,
+  getCase,
+  type PrelimProfileCode,
+  type PrelimCase,
 } from "@/lib/qs/prelim-library-service";
 import { toast } from "sonner";
 import type { PrelimCaseSummary, CalculatedPrelimItem, CalculatedPrelimTree } from "@/lib/qs/prelim-library-service";
+import { buildingTypeLabel } from "@/lib/project-categories";
 
 interface LoadLibraryDialogProps {
   tenderId: string;
@@ -62,31 +68,38 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
   const [caseList, setCaseList] = useState<PrelimCaseSummary[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [selectedCaseName, setSelectedCaseName] = useState("");
+  const [selectedCase, setSelectedCase] = useState<PrelimCase | null>(null);
   const [tree, setTree] = useState<CalculatedPrelimTree | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(new Set());
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [projectProfile, setProjectProfile] = useState<PrelimProfileCode | null>(null);
+  const [projectCategoryLabel, setProjectCategoryLabel] = useState("");
 
   useEffect(() => {
-    listCases()
-      .then((list) => {
+    Promise.all([listCases(), getProjectPrelimContext(tenderId)])
+      .then(([list, context]) => {
         setCaseList(list);
+        setProjectProfile(context.sector ? context.profile : null);
+        setProjectCategoryLabel(context.buildingType ?? "");
         if (list.length > 0 && !selectedCaseId) {
-          setSelectedCaseId(list[0].id);
-          setSelectedCaseName(list[0].name);
+          const recommended = list.find((c) => c.profile_code === context.profile) ?? list[0];
+          setSelectedCaseId(recommended.id);
+          setSelectedCaseName(recommended.name);
         }
       })
       .catch(() => toast.error("Failed to load templates"));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tenderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSelectCase() {
     if (!selectedCaseId) return;
     setLoading(true);
     setSelectedCodes(new Set());
     try {
-      const calculatedTree = await getCalculatedItemsForCase(selectedCaseId);
+      const [calculatedTree, loadedCase] = await Promise.all([getCalculatedItemsForCase(selectedCaseId), getCase(selectedCaseId)]);
       setTree(calculatedTree);
+      setSelectedCase(loadedCase);
       const topCodes = new Set(calculatedTree.sections.map((s) => s.code));
       setExpandedCodes(topCodes);
       setStep("select_items");
@@ -122,6 +135,10 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
         rate: number;
         sort_order: number;
         notes: string | null;
+        source_library_case_id: string;
+        source_profile_code: PrelimProfileCode;
+        calculation_snapshot: Record<string, unknown>;
+        loaded_from_library_at: string;
       }> = [];
 
       function collect(item: CalculatedPrelimItem) {
@@ -135,6 +152,22 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
           rate: item.rate,
           sort_order: item.sort_order,
           notes: null,
+          source_library_case_id: selectedCaseId,
+          source_profile_code: selectedCase?.profile_code ?? "PROF-BLD-HR",
+          calculation_snapshot: {
+            case_name: selectedCase?.name ?? selectedCaseName,
+            sector_slug: selectedCase?.sector_slug ?? null,
+            building_type_slug: selectedCase?.building_type_slug ?? null,
+            profile_override_reason: selectedCase?.override_reason ?? null,
+            profile_code: selectedCase?.profile_code ?? "PROF-BLD-HR",
+            params: selectedCase?.params ?? {},
+            quantity: item.quantity,
+            rate: item.rate,
+            amount: item.amount,
+            item_code: item.code,
+            captured_at: new Date().toISOString(),
+          },
+          loaded_from_library_at: new Date().toISOString(),
         });
         for (const child of item.children) collect(child);
       }
@@ -245,6 +278,11 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
           {step === "select_case" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">Choose a saved Site Data template to load preliminaries from.</p>
+              {projectProfile && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
+                  This tender&apos;s project category{projectCategoryLabel ? ` (${buildingTypeLabel(projectCategoryLabel)})` : ""} suggests {PRELIM_PROFILES.find((p) => p.code === projectProfile)?.name}. Matching templates are recommended; confirm any profile override before loading.
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">Template</label>
                 <select
@@ -258,10 +296,16 @@ export default function LoadLibraryDialog({ tenderId, onClose, onLoaded }: LoadL
                 >
                   <option value="">Select a template…</option>
                   {caseList.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}{c.is_default ? " (default)" : ""}</option>
+                    <option key={c.id} value={c.id}>{c.name} · {PRELIM_PROFILES.find((p) => p.code === c.profile_code)?.name ?? "Legacy profile"}{c.is_default ? " (default)" : ""}</option>
                   ))}
                 </select>
               </div>
+              {projectProfile && caseList.find((c) => c.id === selectedCaseId)?.profile_code !== projectProfile && (
+                <div className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>The selected template uses a different profile. Its item set may not match this project category.</span>
+                </div>
+              )}
             </div>
           )}
 

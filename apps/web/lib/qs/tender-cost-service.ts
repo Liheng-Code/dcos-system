@@ -5,6 +5,7 @@ import type {
   DwlSourceType,
   DwlWorkItemExplosionLine,
 } from "@/components/qs/dwl-types";
+import { resolveQsWbsLocationKind } from "@/lib/qs/qs-wbs-location-kinds";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,7 @@ export interface TenderBoqItem {
   // once at pick time and wholesale-replaced (never patched) at Refresh time.
   // null for manual/price_list rows.
   rate_build_up: BoqRateBuildUp | null;
+  qs_template_application_id?: string | null;
   notes: string | null;
   budget_codes?: { code: string; description: string; code_letter: string } | null;
 }
@@ -1516,6 +1518,7 @@ export async function createBoqItem(payload: {
   dwl_work_item_id?: string | null;
   dwl_assembly_id?: string | null;
   rate_build_up?: BoqRateBuildUp | null;
+  qs_template_application_id?: string | null;
   sort_order?: number;
 }): Promise<TenderBoqItem> {
   const supabase = createClient();
@@ -1568,6 +1571,7 @@ export async function createBoqItem(payload: {
       dwl_work_item_id,
       dwl_assembly_id,
       rate_build_up: payload.rate_build_up ?? null,
+      qs_template_application_id: payload.qs_template_application_id ?? null,
       rate_source,
       ...rate,
       sort_order: payload.sort_order ?? 0,
@@ -1658,6 +1662,7 @@ export async function bulkInsertBoqItems(
       package_name: r.package_name ?? null,
       actual_quantity: r.actual_quantity ?? null,
       notes: r.notes ?? null,
+      qs_template_application_id: r.qs_template_application_id ?? null,
       price_list_item_id: matched?.id ?? null,
       rate_source: (matched ? "price_list" : "manual") as RateSource,
       labor_net_cost: laborNet,
@@ -1668,7 +1673,7 @@ export async function bulkInsertBoqItems(
     };
   });
 
-  const { error } = await supabase.from("tender_boq_items").insert(insertRows);
+  const { error } = await (supabase as any).from("tender_boq_items").insert(insertRows);
   if (error) throw new Error(error.message);
   return insertRows.length;
 }
@@ -2301,4 +2306,225 @@ export async function getTenderCoverSummary(tenderId: string, bidSummaryId?: str
     preliminariesTotal,
     bidSummary,
   };
+}
+
+
+// ── WBS Template Catalog & Instantiation ────────────────────────────────────
+
+export interface QsWbsTemplate {
+  id: string;
+  template_code: string;
+  title: string;
+  building_type: string;
+  standard_framework: string;
+  description: string | null;
+  version: number;
+  is_active: boolean;
+  lifecycle_status?: "draft" | "published" | "superseded" | "archived";
+  sort_order: number;
+  template_category: string | null;
+  building_types: string[];
+  template_family: string | null;
+  location_model: "building" | "campus" | "facility" | "linear" | "general";
+}
+
+export interface QsWbsTemplateLocation {
+  id: string;
+  template_id: string;
+  location_type: string;
+  level_code: string;
+  level_name: string;
+  floor_multiplier: number;
+  sort_order: number;
+  location_kind: string | null;
+  location_config: Record<string, unknown>;
+}
+
+export interface QsWbsTemplateItem {
+  id: string;
+  template_id: string;
+  parent_id: string | null;
+  item_code: string;
+  item_level: number;
+  discipline: string;
+  section: string;
+  sub_section: string | null;
+  sub_element: string | null;
+  typical_unit: string;
+  budget_code_id: string | null;
+  element_library_id: string | null;
+  uniformat_code: string | null;
+  masterformat_code: string | null;
+  nrm_code: string | null;
+  planning_activity_master_id: string | null;
+  default_work_group: string | null;
+  duration_driver_role: "driver" | "excluded" | "fixed";
+  unit_conversion_factor: number;
+  default_procurement_package_code: string | null;
+  procurement_package_name: string | null;
+  resource_type: "material" | "subcontractor" | "labor" | "equipment";
+  sort_order: number;
+  is_active: boolean;
+}
+
+export async function getQsWbsTemplates(): Promise<QsWbsTemplate[]> {
+  const { data, error } = await (createClient() as any)
+    .from("qs_wbs_templates")
+    .select("*")
+    .eq("is_active", true)
+    .eq("lifecycle_status", "published")
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as QsWbsTemplate[]).map((template) => ({
+    ...template,
+    building_types: template.building_types ?? [],
+    template_category: template.template_category ?? null,
+    template_family: template.template_family ?? null,
+    location_model: template.location_model ?? "building",
+  }));
+}
+
+/** Project taxonomy used to recommend QS scaffolds in the tender BOQ picker. */
+export async function getTenderProjectKind(tenderId: string): Promise<{ sector: string | null; buildingType: string | null }> {
+  const supabase = createClient();
+  const { data: tender, error: tenderError } = await supabase
+    .from("tender_register").select("project_id").eq("id", tenderId).maybeSingle();
+  if (tenderError) throw new Error(tenderError.message);
+  if (!tender?.project_id) return { sector: null, buildingType: null };
+  const { data: project, error: projectError } = await supabase
+    .from("projects").select("category, building_type").eq("id", tender.project_id).maybeSingle();
+  if (projectError) throw new Error(projectError.message);
+  return {
+    sector: (project?.category as string | null | undefined) ?? null,
+    buildingType: (project?.building_type as string | null | undefined) ?? null,
+  };
+}
+
+export async function getQsWbsTemplateDetails(templateId: string) {
+  const supabase = createClient();
+  const [{ data: items, error: e1 }, { data: locations, error: e2 }] = await Promise.all([
+    supabase.from("qs_wbs_template_items").select("*").eq("template_id", templateId).eq("is_active", true).order("sort_order"),
+    supabase.from("qs_wbs_template_locations").select("*").eq("template_id", templateId).order("sort_order"),
+  ]);
+  if (e1) throw new Error(e1.message);
+  if (e2) throw new Error(e2.message);
+  return { items: (items ?? []) as QsWbsTemplateItem[], locations: (locations ?? []) as QsWbsTemplateLocation[] };
+}
+
+export async function instantiateBoqFromTemplate(
+  tenderId: string,
+  templateId: string,
+  buildingCode: string,
+  buildingName: string,
+  templateItems: QsWbsTemplateItem[],
+  selectedLocations: { code: string; name: string; kind: string; patternType: string; config: Record<string, unknown> }[]
+): Promise<number> {
+  const supabase = createClient();
+  const { data: template, error: templateError } = await (supabase as any)
+    .from("qs_wbs_templates")
+    .select("id, template_code, title, version, lifecycle_status, published_snapshot, template_family, template_category, building_types, location_model, standard_framework")
+    .eq("id", templateId)
+    .single();
+  if (templateError) throw new Error(templateError.message);
+  if (template.lifecycle_status !== "published") {
+    throw new Error("Only a published QS WBS template version can be applied.");
+  }
+
+  const { data: tender, error: tenderError } = await supabase
+    .from("tender_register")
+    .select("project_id")
+    .eq("id", tenderId)
+    .single();
+  if (tenderError) throw new Error(tenderError.message);
+  const { data: auth } = await supabase.auth.getUser();
+  selectedLocations = selectedLocations.map((location) => ({
+    ...location,
+    kind: resolveQsWbsLocationKind({
+      locationModel: template.location_model,
+      locationType: location.patternType,
+      locationCode: location.code,
+      locationKind: location.kind,
+    }),
+  }));
+  const locationSnapshot = selectedLocations.map((location) => ({
+    location_code: location.code,
+    location_name: location.name,
+    location_kind: location.kind,
+    pattern_type: location.patternType,
+    pattern_config: location.config,
+  }));
+  const snapshot = {
+    template: { ...template },
+    items: templateItems.map(({ id, template_id, ...item }) => ({ id, template_id, ...item })),
+    selected_locations: locationSnapshot,
+  };
+  const applications = (supabase as any).from("tender_qs_wbs_template_applications");
+  const { data: application, error: applicationError } = await applications
+    .insert({
+      tender_id: tenderId,
+      project_id: tender.project_id,
+      qs_template_id: templateId,
+      qs_template_version: template.version,
+      building_code: buildingCode,
+      building_name: buildingName,
+      selected_locations: locationSnapshot,
+      template_snapshot: snapshot,
+      created_by: auth.user?.id ?? null,
+      status: "applying",
+    })
+    .select("id")
+    .single();
+  if (applicationError) throw new Error(applicationError.message);
+
+  const rowsToInsert = [];
+
+  for (const lvl of selectedLocations) {
+    for (const item of templateItems) {
+      rowsToInsert.push({
+        section: item.section,
+        item_code: `${item.item_code}-${lvl.code}`,
+        description: `${item.sub_section ?? item.section} - ${item.sub_element ?? item.item_code} (${lvl.name})`,
+        unit: item.typical_unit,
+        quantity: 0,
+        discipline: item.discipline,
+        budget_code_id: item.budget_code_id,
+        building_code: buildingCode,
+        level: lvl.code,
+        sub_section: item.sub_section,
+        sub_element: item.sub_element,
+        package_name: item.procurement_package_name ?? item.default_procurement_package_code,
+        notes: `Instantiated from template item ${item.item_code}; ${lvl.kind} location pattern (${lvl.patternType})`,
+        qs_template_application_id: application.id,
+      });
+    }
+  }
+
+  try {
+    const count = rowsToInsert.length === 0 ? 0 : await bulkInsertBoqItems(tenderId, rowsToInsert);
+    const { error } = await applications.update({ status: "applied", generated_line_count: count, completed_at: new Date().toISOString() }).eq("id", application.id);
+    if (error) throw new Error(error.message);
+    return count;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await applications.update({ status: "failed", error_message: message, completed_at: new Date().toISOString() }).eq("id", application.id);
+    throw error;
+  }
+}
+
+
+export async function bulkUpdateBoqQuantities(
+  updates: Array<{ id: string; quantity: number }>
+): Promise<number> {
+  const supabase = createClient();
+  let updatedCount = 0;
+  await Promise.all(
+    updates.map(async (u) => {
+      const { error } = await supabase
+        .from("tender_boq_items")
+        .update({ quantity: u.quantity })
+        .eq("id", u.id);
+      if (!error) updatedCount++;
+    })
+  );
+  return updatedCount;
 }
