@@ -19,7 +19,9 @@ param(
   [switch]$SkipInstall
 )
 
-$ErrorActionPreference = "Stop"
+# Not "Stop": Windows PowerShell 5.1 turns git's progress output on stderr into a
+# terminating error. Native failures are checked with $LASTEXITCODE instead.
+$ErrorActionPreference = "Continue"
 $repo = (git rev-parse --show-toplevel).Trim()
 if (-not $Base) { $Base = (git -C $repo rev-parse --abbrev-ref HEAD).Trim() }
 
@@ -56,7 +58,16 @@ if (Test-Path $settingsSrc) { Copy-Item $settingsSrc (Join-Path $path ".claude\s
 
 if (-not $SkipInstall) {
   Push-Location $path
-  try { pnpm install --frozen-lockfile } finally { Pop-Location }
+  try {
+    if (Get-Command pnpm -ErrorAction SilentlyContinue) { pnpm install --frozen-lockfile }
+    else {
+      # pnpm not on PATH: run the version that built the main checkout's node_modules.
+      $pm = (Select-String -Path (Join-Path $repo "node_modules\.modules.yaml") -Pattern '"packageManager": "(pnpm@[^"]+)"').Matches.Groups[1].Value
+      if (-not $pm) { $pm = "pnpm" }
+      npx -y $pm install --frozen-lockfile
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Warning "pnpm install failed; run it by hand in $path" }
+  } finally { Pop-Location }
 }
 
 Write-Host ""
