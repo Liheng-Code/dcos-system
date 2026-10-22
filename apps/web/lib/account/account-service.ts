@@ -218,7 +218,8 @@ export function listProjectOptions() {
 }
 
 export function listSupplierOptions() {
-  return db().from("procurement_suppliers").select("id, company_name").order("company_name");
+  // The column is supplier_name; aliased so callers keep reading company_name.
+  return db().from("procurement_suppliers").select("id, company_name:supplier_name").order("supplier_name");
 }
 
 export function listClientOptions() {
