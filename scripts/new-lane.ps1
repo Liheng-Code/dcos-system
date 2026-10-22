@@ -35,7 +35,7 @@ if (Test-Path $path) { throw "Lane folder already exists: $path" }
 $dirty = git -C $repo status --porcelain
 if ($dirty) { Write-Warning "Main checkout has uncommitted changes; the lane starts from the last commit on '$Base'." }
 
-# Pick the first free dev port 3001-3003 (3000 is the main checkout).
+# Pick the first free dev port 3001-3003 (the main checkout runs on 3100).
 $used = @(git -C $repo worktree list --porcelain | Select-String '^worktree ' | ForEach-Object {
     $wt = $_.ToString().Substring(9)
     $f = Join-Path $wt ".lane-port"

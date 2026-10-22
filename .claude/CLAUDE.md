@@ -32,7 +32,7 @@ pnpm install
 # Start dev server (from root or apps/web). Root `pnpm dev` proxies to apps/web.
 # VS Code auto-starts it on folder open via .vscode/tasks.json ("DCOS: web dev server").
 pnpm dev
-# Runs Next.js on http://localhost:3000
+# Runs Next.js on http://localhost:3100 (the `dev` script in apps/web/package.json sets -p 3100)
 
 # Run single dev server at custom host
 cd apps/web && pnpm dev -H 0.0.0.0
@@ -210,7 +210,7 @@ dcos-system/
 ### Parallel lanes (several sessions at once)
 Work is split into **lanes**: one Claude session per business module, each in its own git worktree. Inside a lane the lead session uses subagents. Agent Teams are only for a feature that spans 2–3 modules at once.
 
-- **Run at most 3 lanes at a time.** Create one with `scripts/new-lane.ps1 -Module <key> -Topic <slug>`. It makes branch `feat/<module>-<topic>` in worktree `D:\dcos-lanes\<module>-<topic>`, copies `apps/web/.env.local`, runs `pnpm install` and prints the dev port to use (`pnpm dev -p 3001`, `3002`, `3003`; the main checkout keeps 3000). Open that folder in its own VS Code window or `claude` session. Remove it with `git worktree remove <path>` after merge.
+- **Run at most 3 lanes at a time.** Create one with `scripts/new-lane.ps1 -Module <key> -Topic <slug>`. It makes branch `feat/<module>-<topic>` in worktree `D:\dcos-lanes\<module>-<topic>`, copies `apps/web/.env.local`, runs `pnpm install` and prints the dev port to use (`pnpm dev -p 3001`, `3002`, `3003`; the main checkout keeps 3100). In a lane window, don't let the "DCOS: web dev server" auto-start task run, because it starts on 3100 too. Open that folder in its own VS Code window or `claude` session. Remove it with `git worktree remove <path>` after merge.
 - **A lane edits only its own module's paths** (`MODULE_PATHS[<key>]` in `apps/web/module-boundaries.mjs`, e.g. `components/qs`, `lib/qs`, `app/dashboard/tenders`, `app/api/tenders`) plus its migrations and docs. Cross-module imports go through `PUBLIC_API` only.
 - **Core files are main-lane only:** `components/ui`, `components/dashboard`, `components/project`, `components/report-kit`, `lib/modules/*` (incl. `release.ts`, `registry.ts`, `features.ts`), `module-boundaries.mjs`, `next.config.ts`, `proxy.ts`, `package.json`/`pnpm-lock.yaml`, `.claude/`. A lane that needs one of these stops and records it as a "core request" in its final report; the main lane makes the change and the lane rebases.
 - **One shared local DB.** Every lane talks to the same `127.0.0.1:54321` stack, so a migration applied in one lane is live for all. While other lanes run, migrations must be **additive only**: new tables, `add column if not exists`, new functions. No rename, drop or type change. Within a lane only `database-engineer` writes `supabase/migrations/`.
