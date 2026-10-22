@@ -6,6 +6,9 @@ import type {
   DwlWorkItemExplosionLine,
 } from "@/components/qs/dwl-types";
 import { resolveQsWbsLocationKind } from "@/lib/qs/qs-wbs-location-kinds";
+import type { TenderBoqItemAlternate } from "@/lib/qs/boq-alternates";
+
+export type { TenderBoqItemAlternate };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -2527,4 +2530,108 @@ export async function bulkUpdateBoqQuantities(
     })
   );
   return updatedCount;
+}
+
+// ── BOQ item alternates (memo only) ─────────────────────────────────────────
+
+const ALT_NUMERIC_FIELDS = [
+  "labor_net_cost",
+  "labor_margin_pct",
+  "material_net_cost",
+  "material_margin_pct",
+  "unit_rate",
+] as const;
+
+function mapBoqAlternate(row: Record<string, unknown>): TenderBoqItemAlternate {
+  const out: Record<string, unknown> = { ...row };
+  for (const f of ALT_NUMERIC_FIELDS) out[f] = Number(row[f] ?? 0);
+  out.alt_no = Number(row.alt_no);
+  return out as unknown as TenderBoqItemAlternate;
+}
+
+export async function getBoqAlternates(tenderId: string): Promise<TenderBoqItemAlternate[]> {
+  const { data, error } = await createClient()
+    .from("tender_boq_item_alternates")
+    .select("*")
+    .eq("tender_id", tenderId)
+    .order("boq_item_id")
+    .order("alt_no");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => mapBoqAlternate(r as Record<string, unknown>));
+}
+
+export async function createBoqAlternate(payload: {
+  tender_id: string;
+  boq_item_id: string;
+  description: string;
+  notes?: string | null;
+  labor_net_cost: number;
+  labor_margin_pct: number;
+  material_net_cost: number;
+  material_margin_pct: number;
+}): Promise<TenderBoqItemAlternate> {
+  const supabase = createClient();
+  // alt_no = max for the item + 1; retry once if a concurrent insert took it (23505).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data: last, error: maxErr } = await supabase
+      .from("tender_boq_item_alternates")
+      .select("alt_no")
+      .eq("boq_item_id", payload.boq_item_id)
+      .order("alt_no", { ascending: false })
+      .limit(1);
+    if (maxErr) throw new Error(maxErr.message);
+    const altNo = (last && last.length > 0 ? Number(last[0].alt_no) : 0) + 1;
+
+    const { data, error } = await supabase
+      .from("tender_boq_item_alternates")
+      .insert({ ...payload, alt_no: altNo, rate_source: "manual", is_manual_rate: false })
+      .select()
+      .single();
+    if (!error) return mapBoqAlternate(data as Record<string, unknown>);
+    if (error.code === "23505" && attempt === 0) continue;
+    throw new Error(error.message);
+  }
+  throw new Error("Could not allocate an alternate number");
+}
+
+export async function updateBoqAlternate(
+  id: string,
+  payload: Partial<{
+    description: string;
+    notes: string | null;
+    labor_net_cost: number;
+    labor_margin_pct: number;
+    material_net_cost: number;
+    material_margin_pct: number;
+  }>
+): Promise<TenderBoqItemAlternate> {
+  // Mirrors updateBoqItem BR1: only a net-cost edit makes the line manual-sourced.
+  // Any build-up edit (net or margin) lets the DB recompute unit_rate — a swapped-in
+  // alternate arrives with is_manual_rate=true to keep its rate verbatim until edited.
+  const changesNet = payload.labor_net_cost !== undefined || payload.material_net_cost !== undefined;
+  const changesBuildUp =
+    changesNet || payload.labor_margin_pct !== undefined || payload.material_margin_pct !== undefined;
+  const update: Record<string, unknown> = { ...payload };
+  if (changesNet) update.rate_source = "manual";
+  if (changesBuildUp) update.is_manual_rate = false;
+  const { data, error } = await createClient()
+    .from("tender_boq_item_alternates")
+    .update(update)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return mapBoqAlternate(data as Record<string, unknown>);
+}
+
+export async function deleteBoqAlternate(id: string): Promise<void> {
+  const { error } = await createClient().from("tender_boq_item_alternates").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Atomically swaps the alternate with the base line; returns the base item id. */
+export async function promoteBoqAlternate(alternateId: string): Promise<string> {
+  const { data, error } = await createClient().rpc("tender_boq_promote_alternate", { p_alternate_id: alternateId });
+  if (error) throw new Error(error.message);
+  return data as string;
 }

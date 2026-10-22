@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment, useRef, useMemo } from "react";
-import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles, Blocks, Database, Layers, GitMerge } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, ChevronDown, ChevronRight, Library, RefreshCw, Tag, Columns3, Sparkles, Blocks, Database, Layers, GitMerge, GitBranchPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +24,18 @@ import {
   type BoqLibraryCurrentRates, type BoqLibraryRefreshPreview, type WbsProjectNode,
   type QsElementLibraryItem, type QsDescriptionLibraryItem, type TenderPriceListItem,
 } from "@/lib/qs/tender-cost-service";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  getBoqAlternates, deleteBoqAlternate, promoteBoqAlternate, getBidSummaries,
+} from "@/lib/qs/tender-cost-service";
+import {
+  alternateAmount, groupAlternatesByItem, summarizeAlternates, type TenderBoqItemAlternate,
+} from "@/lib/qs/boq-alternates";
+import { BoqAlternateDialog } from "./boq-alternate-dialog";
+import { AlternateSubRows, AlternateToggle, formatDelta, deltaClass } from "./boq-alternate-rows";
 import { TenderCostImportDialog } from "./tender-cost-import-dialog";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { BoqElementLibraryPickerDialog, type BoqElementLibrarySelection } from "./boq-element-library-picker-dialog";
@@ -68,6 +80,12 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [viewLevel, setViewLevel] = useState<"main" | "detail" | "flat" | "matrix">("detail");
+  const [alternates, setAlternates] = useState<TenderBoqItemAlternate[]>([]);
+  const [expandedAlt, setExpandedAlt] = useState<Set<string>>(new Set());
+  const [altDialog, setAltDialog] = useState<{ item: TenderBoqItem; alternate: TenderBoqItemAlternate | null } | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<{ item: TenderBoqItem; alt: TenderBoqItemAlternate } | null>(null);
+  const [deleteAltTarget, setDeleteAltTarget] = useState<TenderBoqItemAlternate | null>(null);
+  const [altBusy, setAltBusy] = useState(false);
 
   const allFlatColumns = useMemo(() => [
     { id: "description", label: "Description", align: "left" as const },
@@ -280,6 +298,7 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
   const canAdd = can("tender_boq", "can_create") && !isLocked;
   // Saving only reads the BOQ, so it stays available on locked (submitted / awarded) tenders.
   const { can: canQs } = useQsPermissions();
+  const canEditAlt = can("tender_boq", "edit") && !isLocked;
   const canSaveDatabase = canQs("qs_cost_database", "can_create");
 
   const load = useCallback(async () => {
@@ -287,6 +306,14 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
     try {
       const [g, codes, wbsNodes] = await Promise.all([getBoqItemsGrouped(tenderId), getBudgetCodes(), getWbsProjectNodes(tenderId)]);
       setGrouped(g);
+      try {
+        setAlternates(await getBoqAlternates(tenderId));
+      } catch (altErr) {
+        // Non-fatal: alternates are memo-only; the base BOQ is unaffected. Clear them so
+        // stale pre-swap rows never show deltas against a new base.
+        console.warn("Failed to load BOQ alternates", altErr);
+        setAlternates([]);
+      }
       setBudgetCodes(codes);
       setWbsLevels(wbsNodes.levels);
       setWbsBuildings(wbsNodes.buildings);
@@ -560,6 +587,69 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
     }
   }
 
+  const altsByItem = useMemo(() => groupAlternatesByItem(alternates), [alternates]);
+
+  function toggleAltExpanded(itemId: string) {
+    setExpandedAlt((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  }
+
+  function findItem(id: string): TenderBoqItem | undefined {
+    return flatItems.find((i) => i.id === id);
+  }
+
+  function openAltEdit(alt: TenderBoqItemAlternate) {
+    const item = findItem(alt.boq_item_id);
+    if (item) setAltDialog({ item, alternate: alt });
+  }
+
+  function openAltPromote(alt: TenderBoqItemAlternate) {
+    const item = findItem(alt.boq_item_id);
+    if (item) setPromoteTarget({ item, alt });
+  }
+
+  async function handleConfirmDeleteAlt() {
+    if (!deleteAltTarget) return;
+    setAltBusy(true);
+    try {
+      await deleteBoqAlternate(deleteAltTarget.id);
+      toast.success(`Alt ${deleteAltTarget.alt_no} deleted`);
+      setDeleteAltTarget(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete alternate");
+    } finally {
+      setAltBusy(false);
+    }
+  }
+
+  async function handleConfirmPromote() {
+    if (!promoteTarget) return;
+    setAltBusy(true);
+    try {
+      await promoteBoqAlternate(promoteTarget.alt.id);
+      toast.success(`Alt ${promoteTarget.alt.alt_no} is now the base rate`);
+      setPromoteTarget(null);
+      await load();
+      try {
+        const summaries = await getBidSummaries(tenderId);
+        if (summaries.length > 0) {
+          const latest = Math.max(...summaries.map((s) => s.revision_no));
+          toast.warning(`Direct Works changed — bid summary Rev ${latest} is now out of date. Recalculate it or create a new revision on the Bid Summary tab.`);
+        }
+      } catch (bidErr) {
+        console.warn("Failed to check bid summaries after promote", bidErr);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to make alternate the base rate");
+    } finally {
+      setAltBusy(false);
+    }
+  }
+
   function toggle(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -633,11 +723,24 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
   if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
   const display = filteredGrouped ?? grouped!;
+  const visibleItems = hasActiveFilters ? filteredFlatItems : flatItems;
+  const altSummary = summarizeAlternates(visibleItems, alternates);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{(filteredGrouped ?? grouped)?.groups.reduce((n, g) => n + g.budgetCodes.reduce((m, b) => m + b.sections.reduce((k, s) => k + s.subSections.reduce((j, ss) => j + ss.items.length, 0), 0), 0), 0) ?? 0} item(s) · Direct Works ${fmt((filteredGrouped ?? grouped)?.grandTotal ?? 0)}</p>
+        {altSummary.length > 0 && (
+          <p className="basis-full text-xs text-muted-foreground">
+            Alternates (memo, not in tender total):{" "}
+            {altSummary.map((r, i) => (
+              <span key={r.altNo}>
+                {i > 0 && "; "}
+                Alt {r.altNo} — {r.lines} line{r.lines !== 1 ? "s" : ""}, value ${fmt(r.value)}, Δ <span className={deltaClass(r.delta)}>{formatDelta(r.delta)}</span>
+              </span>
+            ))}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 items-center justify-end">
           <div className="flex rounded-md border border-border overflow-hidden mr-2">
             <button
@@ -944,13 +1047,20 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                 const materialMargin = item.material_margin_pct ?? 0;
                 const materialRate = materialNet * (1 + materialMargin / 100);
                 const totalRate = laborRate + materialRate;
+                const itemAlts = altsByItem.get(item.id) ?? [];
+                const altExpanded = expandedAlt.has(item.id);
+                const flatColumnIds = orderedColumns.filter((c) => visibleColumns.has(c.id)).map((c) => c.id);
                 return (
-                  <tr key={item.id} className="hover:bg-muted/30">
+                  <Fragment key={item.id}>
+                  <tr className="hover:bg-muted/30">
                     {orderedColumns.filter((c) => visibleColumns.has(c.id)).map((col) => {
                       if (col.id === "description") {
                         return (
                           <td key="description" className="px-3 py-1.5 text-xs max-w-[250px]">
-                            <div className="truncate">{item.description}</div>
+                            <div className="flex items-center gap-1">
+                              <AlternateToggle count={itemAlts.length} expanded={altExpanded} onToggle={() => toggleAltExpanded(item.id)} />
+                              <span className="truncate">{item.description}</span>
+                            </div>
                             {(staleness.rateChangedSincePriced || staleness.libraryPriceExpired || isPriceListSourced) && (
                               <div className="mt-0.5 flex flex-wrap gap-1">
                                 {staleness.rateChangedSincePriced && <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-[9px]">Rate changed</Badge>}
@@ -992,6 +1102,15 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                     })}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center justify-end gap-2">
+                        {/* Keep alternates reachable when the Description column is hidden. */}
+                        {!visibleColumns.has("description") && (
+                          <AlternateToggle count={itemAlts.length} expanded={altExpanded} onToggle={() => toggleAltExpanded(item.id)} />
+                        )}
+                        {canEditAlt && (
+                          <button onClick={() => setAltDialog({ item, alternate: null })} className="text-muted-foreground hover:text-violet-700" title="Add alternate">
+                            <GitBranchPlus className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         {isLibrarySourced && can("tender_boq", "edit") && (
                           <button onClick={() => handleRefreshClick(item)} className="text-muted-foreground hover:text-blue-600" disabled={refreshTarget?.id === item.id && loadingRefreshPreview} title="Refresh from Library">
                             {refreshTarget?.id === item.id && loadingRefreshPreview ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -1005,6 +1124,19 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                       </div>
                     </td>
                   </tr>
+                  {altExpanded && (
+                    <AlternateSubRows
+                      item={item}
+                      alternates={itemAlts}
+                      mode="flat"
+                      flatColumnIds={flatColumnIds}
+                      canEdit={canEditAlt}
+                      onEdit={openAltEdit}
+                      onDelete={setDeleteAltTarget}
+                      onPromote={openAltPromote}
+                    />
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -1068,10 +1200,16 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                                 const materialMargin = item.material_margin_pct ?? 0;
                                 const materialRate = materialNet * (1 + materialMargin / 100);
                                 const totalRate = laborRate + materialRate;
+                                const itemAlts = altsByItem.get(item.id) ?? [];
+                                const altExpanded = expandedAlt.has(item.id);
                                 return (
-                                <tr key={item.id}>
+                                <Fragment key={item.id}>
+                                <tr>
                                   <td className="px-3 py-1.5 pl-10 text-xs">
-                                    <div>{item.description}</div>
+                                    <div className="flex items-center gap-1">
+                                      <AlternateToggle count={itemAlts.length} expanded={altExpanded} onToggle={() => toggleAltExpanded(item.id)} />
+                                      <span>{item.description}</span>
+                                    </div>
                                     <div className="text-[10px] text-muted-foreground">{sec.section}{ss.subSection !== "—" ? ` · ${ss.subSection}` : ""} · {item.level}</div>
                                     {(staleness.rateChangedSincePriced || staleness.libraryPriceExpired || isPriceListSourced) && (
                                       <div className="mt-1 flex flex-wrap gap-1">
@@ -1105,6 +1243,11 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                                   <td className="px-3 py-1.5 text-right text-xs font-medium">${fmt(item.total_amount)}</td>
                                   <td className="px-2 py-1.5">
                                     <div className="flex items-center justify-end gap-2">
+                                      {canEditAlt && (
+                                        <button onClick={() => setAltDialog({ item, alternate: null })} className="text-muted-foreground hover:text-violet-700" title="Add alternate">
+                                          <GitBranchPlus className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
                                       {isLibrarySourced && can("tender_boq", "edit") && (
                                         <button
                                           onClick={() => handleRefreshClick(item)}
@@ -1127,6 +1270,18 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                                     </div>
                                   </td>
                                 </tr>
+                                {altExpanded && (
+                                  <AlternateSubRows
+                                    item={item}
+                                    alternates={itemAlts}
+                                    mode="detail"
+                                    canEdit={canEditAlt}
+                                    onEdit={openAltEdit}
+                                    onDelete={setDeleteAltTarget}
+                                    onPromote={openAltPromote}
+                                  />
+                                )}
+                                </Fragment>
                                 );
                               })}
                             </Fragment>
@@ -1141,6 +1296,73 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
           </table>
         </div>
       )}
+
+      <BoqAlternateDialog
+        open={!!altDialog}
+        onOpenChange={(o) => { if (!o) setAltDialog(null); }}
+        tenderId={tenderId}
+        item={altDialog?.item ?? null}
+        alternate={altDialog?.alternate ?? null}
+        defaultLaborMarginPct={tenderMargins.labor}
+        defaultMaterialMarginPct={tenderMargins.material}
+        onSaved={() => {
+          if (altDialog) setExpandedAlt((prev) => new Set(prev).add(altDialog.item.id));
+          void load();
+        }}
+      />
+
+      <AlertDialog open={!!deleteAltTarget} onOpenChange={(o) => { if (!o && !altBusy) setDeleteAltTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Alt {deleteAltTarget?.alt_no}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteAltTarget?.description} will be removed. This does not affect the tender total.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={altBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={altBusy} onClick={(e) => { e.preventDefault(); void handleConfirmDeleteAlt(); }}>
+              {altBusy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {(() => {
+        const t = promoteTarget;
+        const newAmount = t ? alternateAmount(t.item.quantity, t.alt.unit_rate) : 0;
+        const change = t ? newAmount - (t.item.total_amount ?? 0) : 0;
+        return (
+          <AlertDialog open={!!t} onOpenChange={(o) => { if (!o && !altBusy) setPromoteTarget(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Make Alt {t?.alt.alt_no} the base rate?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t?.item.item_code} — {t?.item.description}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {t && (
+                <div className="space-y-2 text-sm">
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Rate</span><span className="font-mono">${fmt(t.item.unit_rate)} → ${fmt(t.alt.unit_rate)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Line amount</span><span className="font-mono">${fmt(t.item.total_amount ?? 0)} → ${fmt(newAmount)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Change</span><span className={`font-mono font-medium ${deltaClass(change)}`}>{formatDelta(change)}</span></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This changes the tender total (Direct Works) by {change < 0 ? "−" : "+"}${fmt(Math.abs(change))}. The current base will be kept as Alt {t.alt.alt_no}.
+                  </p>
+                </div>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={altBusy}>Cancel</AlertDialogCancel>
+                <AlertDialogAction disabled={altBusy} onClick={(e) => { e.preventDefault(); void handleConfirmPromote(); }}>
+                  {altBusy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Make base rate
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        );
+      })()}
 
       {showImport && (
         <TenderCostImportDialog tenderId={tenderId} initialMode="boq" onClose={() => setShowImport(false)} onImported={load} />
