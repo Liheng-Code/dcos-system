@@ -20,6 +20,7 @@ import {
   type Division, type MasterDetail, type MasterDetailsPatch,
 } from "@/lib/planning/activity-library/activity-database-service";
 import type { ActivityType } from "@/lib/planning/activity-library/activity-database-import";
+import type { CsiSection } from "@/lib/csi-divisions";
 import { canArchive } from "@/lib/planning/activity-library/catalogue-rules";
 import { loadLibraryTree, setMasterStatus, type LibraryTree } from "@/lib/planning/activity-library/library-service";
 import { ActStatusPill } from "../plan-act-shared";
@@ -35,6 +36,7 @@ interface Props {
   /** The list the user opened the activity from; prev / next move within it. */
   list: ActivityListItem[];
   divisions: Division[];
+  sections: CsiSection[];
   canManage: boolean;
   onNavigate: (id: string) => void;
   onClose: () => void;
@@ -49,7 +51,7 @@ function toValues(d: MasterDetail): DetailsValues {
   const m = d.master;
   return {
     name: m.name, description: m.description ?? "", default_unit: m.default_unit ?? "", activity_type: m.activity_type ?? "",
-    visible_code: m.visible_code ?? "", trade: m.trade ?? "", division_id: m.division_id ?? "",
+    visible_code: m.visible_code ?? "", trade: m.trade ?? "", csi_division_code: m.csi_division_code ?? "", csi_section_code: m.csi_section_code ?? "",
     min_pct: str(m.min_duration_pct), max_pct: str(m.max_duration_pct),
   };
 }
@@ -94,7 +96,7 @@ export function ActivityDetailDialog(props: Props) {
 }
 
 function DetailBody({
-  db, activityId, divisions, canManage, onChanged, onNavigate, onClose, tab, setTab, setDirty, position, onPrev, onNext, onJump, guardRun, list,
+  db, activityId, divisions, sections, canManage, onChanged, onNavigate, onClose, tab, setTab, setDirty, position, onPrev, onNext, onJump, guardRun, list,
 }: Props & {
   tab: string; setTab: (t: string) => void; setDirty: (d: boolean) => void; position: string | null;
   onPrev: (() => void) | null; onNext: (() => void) | null; onJump: (id: string) => void;
@@ -112,7 +114,7 @@ function DetailBody({
 
   const form = useForm<DetailsValues>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", division_id: "", min_pct: "", max_pct: "" },
+    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", csi_division_code: "", csi_section_code: "", min_pct: "", max_pct: "" },
   });
   const isDirty = form.formState.isDirty;
   useEffect(() => { setDirty(isDirty); }, [isDirty, setDirty]);
@@ -136,7 +138,8 @@ function DetailBody({
   async function save(v: DetailsValues) {
     if (!detail) return;
     const patch: MasterDetailsPatch = {
-      division_id: v.division_id || null,
+      csi_division_code: v.csi_division_code || null,
+      csi_section_code: v.csi_division_code ? v.csi_section_code || null : null,
       visible_code: v.visible_code.trim().toUpperCase() || null,
       trade: v.trade,
     };
@@ -157,6 +160,7 @@ function DetailBody({
     } catch (e) {
       const msg = errorMessage(e, "Could not save");
       if (/visible code/i.test(msg)) form.setError("visible_code", { message: msg });
+      else if (/section/i.test(msg)) form.setError("csi_section_code", { message: msg });
       else if (/duration/i.test(msg)) form.setError("max_pct", { message: msg });
       else if (/name/i.test(msg)) form.setError("name", { message: msg });
       toast.error(msg);
@@ -218,7 +222,10 @@ function DetailBody({
   const header = useMemo(() => {
     if (!detail) return null;
     const m = detail.master;
-    return { title: m.name, code: m.visible_code ?? m.code, status: m.status, version: m.version };
+    return {
+      title: m.name, code: m.visible_code ?? m.code, status: m.status, version: m.version,
+      csi: detail.section ? `${detail.section.code} — ${detail.section.name}` : detail.division ? `${detail.division.code} — ${detail.division.name}` : null,
+    };
   }, [detail]);
 
   return (
@@ -231,6 +238,7 @@ function DetailBody({
               <>
                 <span className="font-mono">{header.code}</span><span>·</span>
                 <ActStatusPill status={header.status} /><span>·</span><span>v{header.version}</span>
+                {header.csi && <><span>·</span><span title="CSI MasterFormat">{header.csi}</span></>}
               </>
             ) : "Loading..."}
             {position && <span className="text-muted-foreground">({position})</span>}
@@ -263,7 +271,7 @@ function DetailBody({
             <TabsContent value="details" className="pt-2">
               <form id="activity-details-form" onSubmit={form.handleSubmit(save)} noValidate>
                 <ActivityDetailsTab
-                  form={form} divisions={divisions} status={detail.master.status} versionedEditable={editable} canEdit={canManage} imageUrl={imageUrl}
+                  form={form} divisions={divisions} sections={sections} status={detail.master.status} versionedEditable={editable} canEdit={canManage} imageUrl={imageUrl}
                   onUploadImage={async (file) => {
                     try {
                       await uploadMasterImage(db, detail.master.id, file);

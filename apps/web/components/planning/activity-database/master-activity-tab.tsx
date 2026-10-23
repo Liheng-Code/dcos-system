@@ -43,28 +43,53 @@ function PaneEmpty({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------- divisions
 
 export function DivisionPane({
-  divisions, loading, error, onRetry, selectedId, onSelect,
+  divisions, loading, error, onRetry, selectedCode, onSelect,
 }: {
   divisions: DivisionWithCounts[]; loading: boolean; error: string | null; onRetry: () => void;
-  selectedId: string | null; onSelect: (id: string | null) => void;
+  selectedCode: string | null; onSelect: (code: string | null) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const total = divisions.reduce((a, d) => a + d.activityCount, 0);
-  const row = (key: string, label: string, count: number, selected: boolean, onClick: () => void) => (
+  // Divisions with no activities and no BOQ items stay behind the toggle; the selected one always stays visible.
+  const isEmpty = (d: DivisionWithCounts) => d.activityCount === 0 && d.workItemCount === 0;
+  const hiddenCount = divisions.filter((d) => isEmpty(d) && d.code !== selectedCode).length;
+  const visible = showAll ? divisions : divisions.filter((d) => !isEmpty(d) || d.code === selectedCode);
+
+  const groups: { name: string; items: DivisionWithCounts[] }[] = [];
+  for (const d of visible) {
+    const g = groups.find((x) => x.name === d.group_name);
+    if (g) g.items.push(d);
+    else groups.push({ name: d.group_name, items: [d] });
+  }
+
+  const row = (key: string, label: string, count: number, selected: boolean, onClick: () => void, dim = false) => (
     <button
       key={key} type="button" onClick={onClick} aria-current={selected ? "true" : undefined}
-      className={cn("flex w-full items-center justify-between gap-2 border-b border-border/60 px-4 py-2 text-left text-sm transition-colors hover:bg-muted/60", selected && "bg-primary/10 font-medium text-primary")}
+      className={cn("flex w-full items-center justify-between gap-2 border-b border-border/60 px-4 py-2 text-left text-sm transition-colors hover:bg-muted/60", selected && "bg-primary/10 font-medium text-primary", dim && !selected && "text-muted-foreground")}
     >
       <span className="truncate">{label}</span>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count.toLocaleString()} {count === 1 ? "activity" : "activities"}</span>
     </button>
   );
   return (
-    <PaneShell title="Divisions" count={loading || error ? null : divisions.length}>
+    <PaneShell title="Divisions" count={loading || error ? null : visible.length}>
       {error ? <PaneError message={error} onRetry={onRetry} /> : loading ? <PaneSkeleton rows={12} /> : (
         divisions.length === 0 ? <PaneEmpty>No divisions found.</PaneEmpty> : (
           <>
-            {row("all", "All", total, selectedId === null, () => onSelect(null))}
-            {divisions.map((d) => row(d.id, `Division ${d.code} - ${d.name}`, d.activityCount, selectedId === d.id, () => onSelect(d.id)))}
+            {row("all", "All", total, selectedCode === null, () => onSelect(null))}
+            {groups.map((g) => (
+              <div key={g.name}>
+                <div className="sticky top-0 z-10 border-b border-border/60 bg-muted px-4 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.name}</div>
+                {g.items.map((d) => row(d.code, `${d.code} - ${d.name}`, d.activityCount, selectedCode === d.code, () => onSelect(d.code), !d.is_active))}
+              </div>
+            ))}
+            {(hiddenCount > 0 || showAll) && (
+              <div className="p-2 text-center">
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowAll((v) => !v)}>
+                  {showAll ? "Hide empty divisions" : `Show all divisions (${hiddenCount} empty)`}
+                </Button>
+              </div>
+            )}
           </>
         )
       )}
@@ -112,9 +137,9 @@ interface BoqRow { id: string; code: string; description: string; unit: string; 
 interface BoqState { key: string; rows: BoqRow[]; total: number; error: string | null }
 
 export function BoqPane({
-  db, divisionId, focusActivity, searching, searchItems, refreshKey,
+  db, divisionCode, focusActivity, searching, searchItems, refreshKey,
 }: {
-  db: SupabaseClient; divisionId: string | null;
+  db: SupabaseClient; divisionCode: string | null;
   /** Hovered / selected activity: show only its links. */
   focusActivity: ActivityListItem | null;
   /** A search is active: show its results instead. */
@@ -124,7 +149,7 @@ export function BoqPane({
   refreshKey: number;
 }) {
   const focusId = focusActivity?.id ?? null;
-  const key = searching ? "search" : focusId ? `act:${focusId}:${refreshKey}` : `div:${divisionId ?? "all"}:${refreshKey}`;
+  const key = searching ? "search" : focusId ? `act:${focusId}:${refreshKey}` : `div:${divisionCode ?? "all"}:${refreshKey}`;
   const [state, setState] = useState<BoqState | null>(null);
   const [more, setMore] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -144,7 +169,7 @@ export function BoqPane({
           const g = await listWorkItemsForMaster(db, focusId);
           next = { key, rows: g.links.map((l) => ({ id: l.workItem.id, code: l.workItem.code, description: l.workItem.description, unit: l.workItem.unit })), total: g.links.length, error: null };
         } else {
-          const p = await listWorkItemsForDivision(db, divisionId, { limit: PAGE_SIZE, offset: 0 });
+          const p = await listWorkItemsForDivision(db, divisionCode, { limit: PAGE_SIZE, offset: 0 });
           next = { key, rows: p.items, total: p.total, error: null };
         }
       } catch (e) { next = { key, rows: [], total: 0, error: errorMessage(e, "Failed to load BOQs") }; }
@@ -153,7 +178,7 @@ export function BoqPane({
       setState(next);
     })();
     return () => { live = false; };
-  }, [db, key, focusId, divisionId, searching, retry]);
+  }, [db, key, focusId, divisionCode, searching, retry]);
 
   // Drop cached results when the data is refreshed.
   useEffect(() => { cache.current.clear(); }, [refreshKey]);
@@ -164,7 +189,7 @@ export function BoqPane({
     const offset = state.rows.length;
     setMore(true);
     try {
-      const p = await listWorkItemsForDivision(db, divisionId, { limit: PAGE_SIZE, offset });
+      const p = await listWorkItemsForDivision(db, divisionCode, { limit: PAGE_SIZE, offset });
       if (liveKey.current !== startKey) return; // the pane moved on; drop this page
       setState((s) => {
         if (!s || s.key !== startKey) return s;
@@ -219,13 +244,13 @@ export function BoqPane({
 // ---------------------------------------------------------------- tab
 
 export function MasterActivityTab({
-  db, divisions, divisionsLoading, divisionsError, onRetryDivisions, selectedDivisionId, onSelectDivision,
+  db, divisions, divisionsLoading, divisionsError, onRetryDivisions, selectedDivisionCode, onSelectDivision,
   activities, activitiesLoading, activitiesError, onRetryActivities, searchActive, searchWorkItems,
   selectedActivityId, onOpenActivity, refreshKey,
 }: {
   db: SupabaseClient;
   divisions: DivisionWithCounts[]; divisionsLoading: boolean; divisionsError: string | null; onRetryDivisions: () => void;
-  selectedDivisionId: string | null; onSelectDivision: (id: string | null) => void;
+  selectedDivisionCode: string | null; onSelectDivision: (id: string | null) => void;
   activities: ActivityListItem[]; activitiesLoading: boolean; activitiesError: string | null; onRetryActivities: () => void;
   searchActive: boolean; searchWorkItems: WorkItemRef[] | null;
   selectedActivityId: string | null; onOpenActivity: (id: string) => void; refreshKey: number;
@@ -242,12 +267,12 @@ export function MasterActivityTab({
 
   return (
     <div className="grid gap-4 lg:h-[calc(100vh-18rem)] lg:min-h-[28rem] lg:grid-cols-[minmax(260px,1fr)_minmax(320px,1.5fr)_minmax(320px,1.5fr)]">
-      <DivisionPane divisions={divisions} loading={divisionsLoading} error={divisionsError} onRetry={onRetryDivisions} selectedId={selectedDivisionId} onSelect={onSelectDivision} />
+      <DivisionPane divisions={divisions} loading={divisionsLoading} error={divisionsError} onRetry={onRetryDivisions} selectedCode={selectedDivisionCode} onSelect={onSelectDivision} />
       <ActivityPane
         activities={activities} loading={activitiesLoading} error={activitiesError} onRetry={onRetryActivities} searching={searchActive}
         selectedId={selectedActivityId} onOpen={onOpenActivity} onFocus={setHoverId}
       />
-      <BoqPane db={db} divisionId={selectedDivisionId} focusActivity={searchActive ? null : focusActivity} searching={searchActive} searchItems={searchActive ? searchWorkItems : null} refreshKey={refreshKey} />
+      <BoqPane db={db} divisionCode={selectedDivisionCode} focusActivity={searchActive ? null : focusActivity} searching={searchActive} searchItems={searchActive ? searchWorkItems : null} refreshKey={refreshKey} />
     </div>
   );
 }

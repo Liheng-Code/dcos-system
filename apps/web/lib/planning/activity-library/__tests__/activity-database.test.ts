@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseActivityImport, type RawRow } from "../activity-database-import";
 import { layoutLogicNetwork, RELATION_COLORS, edgeLabel } from "../logic-network-layout";
-import { formatVisibleCode, normalizeDivisionCode, parseVisibleCode } from "../visible-code";
+import { formatVisibleCode, isValidDivisionCode, normalizeDivisionCode, parseVisibleCode } from "../visible-code";
 
 const act = (o: RawRow = {}): RawRow => ({ "Division Code": "04", "Visible Code": "", Code: "MAS-001", Name: "Block wall", Unit: "m2", Trade: "Mason", Type: "construction", "Min %": 50, "Max %": 100, Description: "", ...o });
 
@@ -25,11 +25,46 @@ describe("activity import validation", () => {
     expect(r.errors).toEqual([]);
     expect(r.activities[0]).toMatchObject({ divisionCode: "04", code: "MAS-001", activityType: "construction", minPct: 50, maxPct: 100 });
   });
-  it("rejects a bad division", () => {
-    const r = parseActivityImport({ activities: [act({ "Division Code": "17" }), act({ "Division Code": "xx", Code: "B" })], links: [] });
+  it("rejects a malformed division", () => {
+    const r = parseActivityImport({ activities: [act({ "Division Code": "123" }), act({ "Division Code": "xx", Code: "B" })], links: [] });
     expect(r.activities).toHaveLength(0);
     expect(r.errors.map((e) => e.row)).toEqual([2, 3]);
-    expect(r.errors[0].message).toMatch(/01 to 16/);
+    expect(r.errors[0].message).toMatch(/two-digit CSI division/);
+  });
+  it("rejects a division missing from the CSI library (15) and accepts MasterFormat 2016 ones (26)", () => {
+    const knownDivisions = new Set(["03", "04", "21", "26", "31"]);
+    const r = parseActivityImport(
+      { activities: [act({ "Division Code": "15", Code: "A" }), act({ "Division Code": "26", Code: "B", "Visible Code": "D26-001" })], links: [] },
+      { knownDivisions },
+    );
+    expect(r.errors).toEqual([{ sheet: "Activities", row: 2, message: "Unknown CSI division 15" }]);
+    expect(r.activities.map((a) => a.divisionCode)).toEqual(["26"]);
+  });
+  it("validates the optional CSI section column", () => {
+    const knownSections = new Set(["04 20 00", "26 05 00"]);
+    const r = parseActivityImport({
+      activities: [
+        act({ "CSI Section": "042000", Code: "A" }),
+        act({ "CSI Section": "26 05 00", Code: "B" }),
+        act({ "CSI Section": "04 99 00", Code: "C" }),
+        act({ "CSI Section": "nope", Code: "D" }),
+        act({ Code: "E" }),
+      ],
+      links: [],
+    }, { knownSections });
+    expect(r.activities.map((a) => [a.code, a.sectionCode])).toEqual([["A", "04 20 00"], ["E", null]]);
+    expect(r.errors.map((e) => e.message)).toEqual([
+      "CSI section 26 05 00 does not belong to division 04",
+      "Unknown CSI section 04 99 00",
+      'CSI section "nope" must look like 03 30 00',
+    ]);
+  });
+  it("division validity uses the known set when given", () => {
+    expect(isValidDivisionCode("15")).toBe(true);
+    expect(isValidDivisionCode("15", new Set(["26"]))).toBe(false);
+    expect(isValidDivisionCode("26", ["26"])).toBe(true);
+    expect(isValidDivisionCode("7")).toBe(false);
+    expect(isValidDivisionCode(null)).toBe(false);
   });
   it("rejects duplicate codes", () => {
     const r = parseActivityImport({ activities: [act(), act()], links: [] });

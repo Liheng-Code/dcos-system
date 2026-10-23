@@ -1,14 +1,15 @@
 // I/O for the Activity Database Excel import: read the workbook, preview what would change, commit.
 // Parsing and validation are pure (activity-database-import.ts). New activities land as DRAFT, upserted by visible
-// code (or code). Existing non-draft activities only get catalogue fields (division, trade, visible code);
+// code (or code). Existing non-draft activities only get catalogue fields (CSI division / section, trade, visible code);
 // BOQ links are only written for drafts because the database freezes them otherwise.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import {
   ACTIVITIES_SHEET, ACTIVITY_HEADERS, LINKS_SHEET, LINK_HEADERS, isPercentHeader, parseActivityImport, percentCellValue,
-  type ImportActivity, type ImportLink, type ParsedImport, type RawRow, type RawSheets,
+  type ImportActivity, type ImportLink, type ImportValidationOptions, type ParsedImport, type RawRow, type RawSheets,
 } from "./activity-database-import";
+import { listCsiDivisions, listCsiSections } from "@/lib/csi-divisions";
 import { allPages, inChunks } from "./in-chunks";
 import { dedupeLast } from "./catalogue-rules";
 import { friendlyDbError } from "./activity-database-service";
@@ -42,9 +43,19 @@ export async function readWorkbook(file: File): Promise<RawSheets> {
   return { activities: sheetRows(wb, ACTIVITIES_SHEET, 0), links: sheetRows(wb, LINKS_SHEET, 1) };
 }
 
-/** Convenience: workbook file -> validated rows. */
-export async function parseWorkbookFile(file: File): Promise<ParsedImport> {
-  return parseActivityImport(await readWorkbook(file));
+/** Division and section codes of the core CSI library, for import validation ("Unknown CSI division 15"). */
+export async function loadCsiValidation(db: Db): Promise<ImportValidationOptions> {
+  const [divisions, sections] = await Promise.all([listCsiDivisions(db), listCsiSections(db)]);
+  return { knownDivisions: new Set(divisions.map((d) => d.code)), knownSections: new Set(sections.map((s) => s.code)) };
+}
+
+/**
+ * Convenience: workbook file -> validated rows. Pass `db` to validate divisions / sections against the CSI library;
+ * without it only the code formats are checked (previewImport / commitImport still reject unknown codes).
+ */
+export async function parseWorkbookFile(file: File, db?: Db): Promise<ParsedImport> {
+  const sheets = await readWorkbook(file);
+  return parseActivityImport(sheets, db ? await loadCsiValidation(db) : {});
 }
 
 /** Empty xlsx with the two sheets and their headers (plus a short help sheet). */
@@ -54,8 +65,10 @@ export function downloadTemplate(): Blob {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([LINK_HEADERS]), LINKS_SHEET);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
     ["Sheet", "Column", "Rule"],
-    [ACTIVITIES_SHEET, "Division Code", "01 to 16 (CSI division)"],
-    [ACTIVITIES_SHEET, "Visible Code", "Optional, e.g. D04-001. Existing rows are updated by it. Empty = assigned automatically"],
+    ["Help", "Standard", "CSI MasterFormat 2016, maintained in Administration > Master Libraries > CSI Divisions"],
+    [ACTIVITIES_SHEET, "Division Code", "Two-digit CSI MasterFormat 2016 division that exists in the CSI library, e.g. 03 Concrete, 09 Finishes, 26 Electrical"],
+    [ACTIVITIES_SHEET, "CSI Section", "Optional, e.g. 03 30 00. Must exist in the CSI library and belong to the division"],
+    [ACTIVITIES_SHEET, "Visible Code", "Optional, D + division + number, e.g. D26-001 (the division must match). Existing rows are updated by it. Empty = assigned automatically"],
     [ACTIVITIES_SHEET, "Code", "Unique activity code. Optional when Visible Code is given"],
     [ACTIVITIES_SHEET, "Type", "construction, procurement, design, submittal, testing or milestone"],
     [ACTIVITIES_SHEET, "Min % / Max %", "0 to 100, min must not exceed max"],
@@ -72,9 +85,9 @@ export function downloadTemplate(): Blob {
 interface ExistingMaster {
   id: string; code: string; visible_code: string | null; status: string; version: number;
   name: string; description: string | null; default_unit: string | null; activity_type: string | null;
-  min_duration_pct: number | null; max_duration_pct: number | null; trade: string | null; division_id: string | null;
+  min_duration_pct: number | null; max_duration_pct: number | null; trade: string | null; csi_division_code: string | null; csi_section_code: string | null;
 }
-const EXISTING_COLS = "id, code, visible_code, status, version, name, description, default_unit, activity_type, min_duration_pct, max_duration_pct, trade, division_id";
+const EXISTING_COLS = "id, code, visible_code, status, version, name, description, default_unit, activity_type, min_duration_pct, max_duration_pct, trade, csi_division_code, csi_section_code";
 
 export type ActivityAction = "create" | "update" | "update_catalogue";
 export interface ActivityPreview {
@@ -103,8 +116,9 @@ interface Plan {
   refToExisting: Map<string, ExistingMaster>;
   refToRow: Map<string, number>;
   existingLinks: Set<string>;
-  hierarchyByDivisionId: Map<string, Hierarchy | null>;
-  divisionIdByCode: Map<string, string>;
+  hierarchyByDivision: Map<string, Hierarchy | null>;
+  knownDivisions: Set<string>;
+  knownSections: Set<string>;
 }
 
 interface Hierarchy { domain_id: string; category_id: string; family_id: string; label: string }
@@ -134,18 +148,17 @@ async function buildPlan(db: Db, parsed: ParsedImport): Promise<Plan> {
     byCode.set(m.code, [...(byCode.get(m.code) ?? []), m]);
   }
 
-  const { data: divs, error: divErr } = await db.from("plan_act_divisions").select("id, code");
-  if (divErr) throw friendlyDbError(divErr);
-  const divisionIdByCode = new Map(((divs ?? []) as { id: string; code: string }[]).map((d) => [d.code, d.id]));
-  const hierarchyByDivisionId = new Map<string, Hierarchy | null>();
+  const csi = await loadCsiValidation(db);
+  const knownDivisions = new Set(csi.knownDivisions);
+  const knownSections = new Set(csi.knownSections);
+  const hierarchyByDivision = new Map<string, Hierarchy | null>();
   const wantsHierarchy = new Set<string>();
   for (const a of parsed.activities) {
     const isNew = !((a.visibleCode ? pickCurrent(byVisible.get(a.visibleCode) ?? []) : undefined) ?? (a.code ? pickCurrent(byCode.get(a.code) ?? []) : undefined));
-    const id = divisionIdByCode.get(a.divisionCode);
-    if (isNew && id) wantsHierarchy.add(id);
+    if (isNew && knownDivisions.has(a.divisionCode)) wantsHierarchy.add(a.divisionCode);
   }
-  for (const id of wantsHierarchy) hierarchyByDivisionId.set(id, await defaultHierarchy(db, id));
-  const hierarchyLabel = (a: ImportActivity) => hierarchyByDivisionId.get(divisionIdByCode.get(a.divisionCode) ?? "")?.label ?? null;
+  for (const code of wantsHierarchy) hierarchyByDivision.set(code, await defaultHierarchy(db, code));
+  const hierarchyLabel = (a: ImportActivity) => hierarchyByDivision.get(a.divisionCode)?.label ?? null;
 
   const existingByRow = new Map<number, ExistingMaster>();
   const refToExisting = new Map<string, ExistingMaster>();
@@ -211,7 +224,7 @@ async function buildPlan(db: Db, parsed: ParsedImport): Promise<Plan> {
       linksSkipped: links.length - n(links, "create") - n(links, "update"),
     },
   };
-  return { preview, existingByRow, workItemIdByCode, refToExisting, refToRow, existingLinks, hierarchyByDivisionId, divisionIdByCode };
+  return { preview, existingByRow, workItemIdByCode, refToExisting, refToRow, existingLinks, hierarchyByDivision, knownDivisions, knownSections };
 }
 
 /** Which rows would be created / updated / skipped, and which work item codes are unknown. Writes nothing. */
@@ -231,15 +244,15 @@ export interface ImportResult {
  * Domain / category / family for a new activity: the first existing activity of the same division, else the first
  * of the whole library. Deterministic (ordered by code, then id) and shown in the preview. Null when the library is empty.
  */
-async function defaultHierarchy(db: Db, divisionId: string): Promise<Hierarchy | null> {
+async function defaultHierarchy(db: Db, divisionCode: string): Promise<Hierarchy | null> {
   const pick = async (division?: string) => {
     let qb = db.from("plan_act_masters").select("domain_id, category_id, family_id");
-    if (division) qb = qb.eq("division_id", division);
+    if (division) qb = qb.eq("csi_division_code", division);
     const { data, error } = await qb.order("code").order("id").limit(1);
     if (error) throw friendlyDbError(error);
     return (data?.[0] ?? null) as { domain_id: string; category_id: string; family_id: string } | null;
   };
-  const h = (await pick(divisionId)) ?? (await pick());
+  const h = (await pick(divisionCode)) ?? (await pick());
   if (!h) return null;
   const [d, c, f] = await Promise.all([
     db.from("plan_act_domains").select("name").eq("id", h.domain_id).maybeSingle(),
@@ -255,8 +268,6 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
   const plan = await buildPlan(db, parsed);
   const result: ImportResult = { created: 0, updated: 0, cataloguedOnly: 0, linksWritten: 0, linksSkipped: 0, errors: [] };
 
-  const divId = plan.divisionIdByCode;
-
   /** ref -> master id and whether it is a draft (links allowed) */
   const target = new Map<string, { id: string; draft: boolean }>();
   const remember = (a: ImportActivity, id: string, draft: boolean) => {
@@ -266,15 +277,15 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
   for (const a of parsed.activities) {
     const fail = (message: string) => result.errors.push({ sheet: ACTIVITIES_SHEET, row: a.row, message });
     try {
-      const division_id = divId.get(a.divisionCode);
-      if (!division_id) { fail(`Division ${a.divisionCode} does not exist`); continue; }
+      if (!plan.knownDivisions.has(a.divisionCode)) { fail(`Unknown CSI division ${a.divisionCode}`); continue; }
+      if (a.sectionCode && !plan.knownSections.has(a.sectionCode)) { fail(`Unknown CSI section ${a.sectionCode}`); continue; }
       const ex = plan.existingByRow.get(a.row);
       if (!ex) {
-        const h = plan.hierarchyByDivisionId.get(division_id);
+        const h = plan.hierarchyByDivision.get(a.divisionCode);
         if (!h) { fail("The library has no activity to take a domain / category / family from. Create one activity first."); continue; }
         const { data, error } = await db.from("plan_act_masters").insert({
           domain_id: h.domain_id, category_id: h.category_id, family_id: h.family_id, code: a.code ?? a.visibleCode, name: a.name, description: a.description, default_unit: a.unit,
-          division_id, visible_code: a.visibleCode, trade: a.trade, activity_type: a.activityType,
+          csi_division_code: a.divisionCode, csi_section_code: a.sectionCode, visible_code: a.visibleCode, trade: a.trade, activity_type: a.activityType,
           min_duration_pct: a.minPct, max_duration_pct: a.maxPct, status: "draft", version: 1,
         }).select("id").single();
         if (error) { fail(friendlyDbError(error).message); continue; }
@@ -282,7 +293,8 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
         remember(a, (data as { id: string }).id, true);
         continue;
       }
-      const catalogue: Record<string, unknown> = { division_id };
+      const catalogue: Record<string, unknown> = { csi_division_code: a.divisionCode };
+      if (a.sectionCode) catalogue.csi_section_code = a.sectionCode;
       if (a.trade) catalogue.trade = a.trade;
       if (!ex.visible_code && a.visibleCode) catalogue.visible_code = a.visibleCode;
       const patch: Record<string, unknown> = { ...catalogue };

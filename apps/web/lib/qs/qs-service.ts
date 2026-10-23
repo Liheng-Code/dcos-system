@@ -9,11 +9,20 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export interface CsiRef {
+  code: string;
+  name: string;
+  group_name?: string;
+}
+
 export interface QsCostDivision {
   id: string;
   code: string;
   name: string;
   seq: number;
+  /** Core CSI division (csi_divisions); defaults to `code` and is enforced by the database. */
+  csi_division_code: string | null;
+  csi_division?: CsiRef | null;
 }
 
 export interface QsCostSection {
@@ -22,6 +31,9 @@ export interface QsCostSection {
   code: string;
   name: string;
   seq: number;
+  /** Core CSI section (csi_sections), e.g. "03 30 00". */
+  csi_section_code?: string | null;
+  csi_section?: CsiRef | null;
   qs_cost_divisions?: { code: string; name: string } | null;
 }
 
@@ -39,7 +51,9 @@ export interface QsCostItem {
   qs_cost_sections?: {
     code: string;
     name: string;
-    qs_cost_divisions?: { code: string; name: string } | null;
+    csi_section_code?: string | null;
+    csi_section?: CsiRef | null;
+    qs_cost_divisions?: { code: string; name: string; csi_division_code?: string | null; csi_division?: CsiRef | null } | null;
   } | null;
 }
 
@@ -355,7 +369,7 @@ export async function updateBoqStatus(id: string, status: BoqStatus): Promise<Qs
 export async function getCostDivisions(): Promise<QsCostDivision[]> {
   const { data, error } = await createClient()
     .from("qs_cost_divisions")
-    .select("*")
+    .select("*, csi_division:csi_divisions(code, name, group_name)")
     .order("seq");
   if (error) throw new Error(error.message);
   return (data ?? []) as QsCostDivision[];
@@ -364,7 +378,7 @@ export async function getCostDivisions(): Promise<QsCostDivision[]> {
 export async function getCostItems(): Promise<QsCostItem[]> {
   const { data, error } = await createClient()
     .from("qs_cost_items")
-    .select("*, qs_cost_sections(code, name, qs_cost_divisions(code, name))")
+    .select("*, qs_cost_sections(code, name, csi_section_code, csi_section:csi_sections(code, name), qs_cost_divisions(code, name, csi_division_code, csi_division:csi_divisions(code, name, group_name)))")
     .eq("is_active", true)
     .order("code");
   if (error) throw new Error(error.message);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DWL_UNITS, type DwlUnit } from "@/components/qs/dwl-types";
+import { CsiSectionPicker } from "@/components/csi/csi-section-picker";
+import type { CsiSection } from "@/lib/csi-divisions";
 
 // SOP §6 Decision D2 — locked coding standard: {BOQ section}.{trade}.{NNN}, e.g. 03.02.010.
 const CODE_PATTERN = /^\d{2}\.\d{2}\.\d{3}$/;
@@ -37,6 +39,7 @@ const workItemFormSchema = z
       .min(15, "Description must state inclusions AND exclusions (SOP §8 Step 2.1) — too short to cover both"),
     unit: z.enum(DWL_UNITS, { message: "Unit is required" }),
     method_note: z.string().trim().optional(),
+    csi_section_code: z.string().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.boq_section && data.code && !data.code.startsWith(`${data.boq_section}.`)) {
@@ -55,7 +58,9 @@ interface DwlWorkItemFormDialogProps {
   onOpenChange: (open: boolean) => void;
   tenantId: string;
   userId: string | null;
-  editItem?: { id: string; code: string; boq_section: string; description: string; unit: string; method_note: string | null } | null;
+  editItem?: { id: string; code: string; boq_section: string; description: string; unit: string; method_note: string | null; csi_section_code?: string | null } | null;
+  /** Core CSI sections for the picker (loaded by the page). */
+  csiSections: CsiSection[];
   onCreated: (newWorkItemId: string) => void;
   onSaved?: () => void;
 }
@@ -66,6 +71,7 @@ export function DwlWorkItemFormDialog({
   tenantId,
   userId,
   editItem,
+  csiSections,
   onCreated,
   onSaved,
 }: DwlWorkItemFormDialogProps) {
@@ -75,6 +81,8 @@ export function DwlWorkItemFormDialog({
     register,
     handleSubmit,
     reset,
+    control,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<WorkItemFormValues>({
@@ -85,8 +93,11 @@ export function DwlWorkItemFormDialog({
       description: "",
       unit: "m3",
       method_note: "",
+      csi_section_code: null,
     },
   });
+
+  const csiValue = useWatch({ control, name: "csi_section_code" });
 
   useEffect(() => {
     if (open) {
@@ -97,9 +108,10 @@ export function DwlWorkItemFormDialog({
           description: editItem.description,
           unit: ((DWL_UNITS as readonly string[]).includes(editItem.unit) ? editItem.unit : "m3") as DwlUnit,
           method_note: editItem.method_note ?? "",
+          csi_section_code: editItem.csi_section_code ?? null,
         });
       } else {
-        reset({ code: "", boq_section: "", description: "", unit: "m3", method_note: "" });
+        reset({ code: "", boq_section: "", description: "", unit: "m3", method_note: "", csi_section_code: null });
       }
     }
   }, [open, editItem, reset]);
@@ -116,6 +128,7 @@ export function DwlWorkItemFormDialog({
       description: values.description.trim(),
       unit: values.unit,
       method_note: values.method_note?.trim() || null,
+      csi_section_code: values.csi_section_code || null,
     };
 
     if (isEdit) {
@@ -215,6 +228,17 @@ export function DwlWorkItemFormDialog({
               <Label htmlFor="method_note">Method Note</Label>
               <Input id="method_note" placeholder="e.g. Pump placement" {...register("method_note")} />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="csi_section_code">CSI Section</Label>
+            <CsiSectionPicker
+              id="csi_section_code"
+              sections={csiSections}
+              value={csiValue ?? null}
+              onChange={(code) => setValue("csi_section_code", code, { shouldDirty: true })}
+            />
+            <p className="text-[11px] text-muted-foreground">Optional. Links this item to its MasterFormat section so Planning can find it by division.</p>
           </div>
 
           <DialogFooter className="pt-2">

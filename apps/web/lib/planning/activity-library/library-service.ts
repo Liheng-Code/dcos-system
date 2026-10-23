@@ -74,7 +74,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   const next = ((latest?.[0] as { version: number } | undefined)?.version ?? src.version) + 1;
 
   const srcCat = src as unknown as {
-    division_id?: string | null; trade?: string | null; activity_type?: string | null;
+    csi_division_code?: string | null; csi_section_code?: string | null; trade?: string | null; activity_type?: string | null;
     min_duration_pct?: number | null; max_duration_pct?: number | null; image_path?: string | null;
   };
   const { data: created, error } = await db.from("plan_act_masters").insert({
@@ -82,7 +82,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
     family_id: src.family_id, discipline: src.discipline, work_type: src.work_type, default_unit: src.default_unit,
     owner: src.owner, source: src.source, sectors: src.sectors, building_types: src.building_types,
     // Activity Database catalogue fields (visible_code is inherited from the predecessor by trigger)
-    division_id: srcCat.division_id ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
+    csi_division_code: srcCat.csi_division_code ?? null, csi_section_code: srcCat.csi_section_code ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
     min_duration_pct: srcCat.min_duration_pct ?? null, max_duration_pct: srcCat.max_duration_pct ?? null, image_path: srcCat.image_path ?? null,
     status: "draft", version: next, supersedes_id: src.id,
   }).select("*").single();

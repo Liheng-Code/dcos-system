@@ -38,6 +38,13 @@
 - **Cost & Rate Library (`dwl_*`):**
   - `dwl_resources` + `dwl_resource_prices` (`20260720000003`), `dwl_work_items` (`…06`), `dwl_assemblies` (`…08`).
   - Tenant-isolated through `profiles.company_id` (`…17`). The legacy rate tables are frozen read-only (`20260721000002`).
+- **Core CSI library (2026-10-23, `20261023122000`; see `docs/01-DCOS-Foundation/DCOS-CSI-Division-Standard.md`):** QS divisions are now the core `csi_divisions` / `csi_sections` (MasterFormat 2016), edited in Administration > Master Libraries > CSI Divisions.
+  - `dwl_material_categories.division_code` → FK `csi_divisions`. `qs_cost_divisions.csi_division_code` and `qs_cost_sections.csi_section_code` are FKs (trigger `qs_cost_division_csi_default` rejects a non-CSI code).
+  - `dwl_work_items.csi_section_code` / `csi_division_code` (nullable FKs; trigger `dwl_work_item_csi_sync`). Backfilled for 86 of 305 items; the rest need classifying.
+  - `qs_wbs_template_items.masterformat_code` → FK `csi_sections`, `NOT VALID`.
+  - **Frozen:** `dwl_material_divisions` and `dwl_material_division_sections` (writes rejected; dropped in a later cleanup). The Material Divisions page is read-only with a link to Administration.
+  - Old FK `dwl_material_categories` → `dwl_material_divisions` still limits categories to the old 25 codes until cleanup.
+  - Planning reads the new RPCs `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`, which filter `dwl_work_items` by CSI division.
 - **Triggers:**
   - `tender_lock_guard` on 12 tender pricing tables + `tender_commercial_items` + alternates.
   - `qs_audit_trigger_fn()` on tender BOQ tables and alternates.

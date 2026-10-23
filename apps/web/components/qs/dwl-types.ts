@@ -136,6 +136,9 @@ export interface DwlWorkItem {
   unit: string;
   method_note: string | null;
   is_active: boolean;
+  // Core CSI library (csi_sections / csi_divisions); the division follows the section.
+  csi_section_code?: string | null;
+  csi_division_code?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -921,6 +924,8 @@ export interface DwlMaterialDivisionSection {
   name: string;
   parent_code: string | null;
   sort_order: number;
+  level?: 2 | 3;
+  is_active?: boolean;
 }
 
 // public.dwl_material_photos row — tenant-scoped Material Master photo /

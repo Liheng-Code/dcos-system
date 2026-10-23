@@ -35,7 +35,12 @@
   - `plan_act_master_work_items` (master_id, work_item_id, unique pair) links a master to `dwl_work_items`.
   - Private storage bucket `activity-images`.
   - Triggers `trg_plan_act_master_visible_code` (assigns the code) and `trg_plan_act_master_work_items_frozen`.
-  - RPCs `plan_act_bank_search(q, p_division)`, `plan_act_division_counts()`.
+  - RPCs `plan_act_bank_search(q, p_division)`, `plan_act_division_counts()` (uuid versions, now wrappers).
+- **Core CSI library (2026-10-23, `20261023122000`; see `docs/01-DCOS-Foundation/DCOS-CSI-Division-Standard.md`):**
+  - `plan_act_masters.csi_division_code` (FK `csi_divisions`) and `csi_section_code` (FK `csi_sections`) replace `division_id`. Trigger `trg_plan_act_master_csi_sync` keeps them consistent.
+  - `visible_code` is now `D<csi division>-NNN`. `plan_act_division_counters.division_code` is keyed on the CSI division (FK).
+  - New RPCs `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`. The uuid overloads stay as wrappers until cleanup.
+  - **Frozen:** `plan_act_divisions` (writes rejected) and `plan_act_masters.division_id` (unused). Dropped in a later cleanup migration, only when no lanes are active.
 - **QS bridge and generation inputs:**
   - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`).
   - `plan_act_kits` / `plan_act_kit_items` (`20261021000022`), `plan_act_attributes` (`…23`), `plan_act_generation_profiles` (project_id PK, `…25`).
@@ -99,8 +104,8 @@
 - **Locked WBS node:** only WBS managers can change its tasks (`trg_wbs_tasks_lock_guard`).
 - **Locked baselines are immutable;** a revised baseline needs a reason (`20260919000004`).
 - **Approved or active masters, templates, kits and norms are immutable:** change them through a new version (guard triggers). Approving norms needs the planning norms approve permission.
-- **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`).
-- **Master guard (doc 23):** `division_id`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.
+- **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`). It must match `csi_division_code` (`D26-…` for division 26); a division change on a root master regenerates it.
+- **Master guard (doc 23):** `csi_division_code`, `csi_section_code`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.
 - **`plan_act_master_work_items` is frozen unless the master is a draft** (`trg_plan_act_master_work_items_frozen`). M/E hrs per unit are read-only in Planning: they come from `dwl_work_item_resources`.
 - **Not enforced:** the "no later than" constraints (flagged only, `schedule-engine.ts`), and step weights summing to 100 (UI warning only).
 

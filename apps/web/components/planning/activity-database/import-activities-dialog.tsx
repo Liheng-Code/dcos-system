@@ -56,7 +56,7 @@ export function ImportActivitiesDialog({
     setParsed(null); setPreview(null); setResult(null); setError(null);
     setBusy("read");
     try {
-      const p = await parseWorkbookFile(file);
+      const p = await parseWorkbookFile(file, db);
       setParsed(p);
       if (p.activities.length || p.links.length) setPreview(await previewImport(db, p));
     } catch (e) {

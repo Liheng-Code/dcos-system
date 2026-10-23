@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   listDivisionsWithCounts, listMastersForDivision, searchBank, type BankSearchResult, type DivisionWithCounts,
 } from "@/lib/planning/activity-library/activity-database-service";
+import { listCsiSections, type CsiSection } from "@/lib/csi-divisions";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { ActivityDetailDialog } from "./activity-detail-dialog";
 import { ImportActivitiesDialog } from "./import-activities-dialog";
@@ -27,7 +28,7 @@ export function ActivityDatabaseView() {
   const [tab, setTab] = useState("master");
   const [refreshKey, setRefreshKey] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
-  const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
+  const [selectedDivisionCode, setSelectedDivisionCode] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [dialogId, setDialogId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -41,6 +42,8 @@ export function ActivityDatabaseView() {
   const searchActive = query.length >= MIN_SEARCH;
 
   useEffect(() => { void canManageLibraries(db).then(setCanManage); }, [db]);
+  const [csiSections, setCsiSections] = useState<CsiSection[]>([]);
+  useEffect(() => { listCsiSections(db).then(setCsiSections).catch(() => setCsiSections([])); }, [db]);
 
   // Divisions (with counts)
   const [divs, setDivs] = useState<Keyed<DivisionWithCounts[]> | null>(null);
@@ -55,28 +58,28 @@ export function ActivityDatabaseView() {
 
   // Activities of the selected division
   const [masters, setMasters] = useState<Keyed<ActivityListItem[]> | null>(null);
-  const mScope = selectedDivisionId ?? "all";
+  const mScope = selectedDivisionCode ?? "all";
   const mKey = `${mScope}:${refreshKey}:${reloadTick}`;
   useEffect(() => {
     let live = true;
-    listMastersForDivision(db, selectedDivisionId)
+    listMastersForDivision(db, selectedDivisionCode)
       .then((rows) => { if (live) setMasters({ key: mKey, scope: mScope, data: rows, error: null }); })
       .catch((e) => { if (live) setMasters({ key: mKey, scope: mScope, data: [], error: errorMessage(e, "Failed to load activities") }); });
     return () => { live = false; };
-  }, [db, selectedDivisionId, mKey, mScope]);
+  }, [db, selectedDivisionCode, mKey, mScope]);
 
   // Search results (activities + BOQ items)
   const [found, setFound] = useState<Keyed<BankSearchResult> | null>(null);
-  const sScope = `${query}:${selectedDivisionId ?? "all"}`;
+  const sScope = `${query}:${selectedDivisionCode ?? "all"}`;
   const sKey = `${sScope}:${refreshKey}`;
   useEffect(() => {
     if (!searchActive) return;
     let live = true;
-    searchBank(db, query, selectedDivisionId)
+    searchBank(db, query, selectedDivisionCode)
       .then((data) => { if (live) setFound({ key: sKey, scope: sScope, data, error: null }); })
       .catch((e) => { if (live) setFound({ key: sKey, scope: sScope, data: { activities: [], workItems: [] }, error: errorMessage(e, "Search failed") }); });
     return () => { live = false; };
-  }, [db, query, selectedDivisionId, searchActive, sKey, sScope]);
+  }, [db, query, selectedDivisionCode, searchActive, sKey, sScope]);
 
   // Stale-while-revalidate: keep the last result of the same scope while a refresh is running.
   const divisionsLoaded = divs;
@@ -126,8 +129,8 @@ export function ActivityDatabaseView() {
           <MasterActivityTab
             db={db}
             divisions={divisionsLoaded?.data ?? []} divisionsLoading={!divisionsLoaded} divisionsError={divisionsLoaded?.error ?? null} onRetryDivisions={reload}
-            selectedDivisionId={selectedDivisionId}
-            onSelectDivision={(id) => { setSelectedDivisionId(id); setSelectedActivityId(null); }}
+            selectedDivisionCode={selectedDivisionCode}
+            onSelectDivision={(id) => { setSelectedDivisionCode(id); setSelectedActivityId(null); }}
             activities={activities} activitiesLoading={activitiesLoading} activitiesError={activitiesError} onRetryActivities={reload}
             searchActive={searchActive} searchWorkItems={searchActive ? foundLoaded?.data.workItems ?? null : null}
             selectedActivityId={selectedActivityId}
@@ -145,7 +148,7 @@ export function ActivityDatabaseView() {
 
       {dialogId && (
         <ActivityDetailDialog
-          db={db} activityId={dialogId} list={activities} divisions={divisionsLoaded?.data ?? []} canManage={canManage}
+          db={db} activityId={dialogId} list={activities} divisions={divisionsLoaded?.data ?? []} sections={csiSections} canManage={canManage}
           onNavigate={(id) => { setDialogId(id); setSelectedActivityId(id); }}
           onClose={() => setDialogId(null)}
           onChanged={refresh}

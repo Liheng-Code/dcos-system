@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { UseFormReturn } from "react-hook-form";
+import { useWatch, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { ImagePlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ACTIVITY_TYPES } from "@/lib/planning/activity-library/activity-database-import";
 import type { Division } from "@/lib/planning/activity-library/activity-database-service";
+import { CsiSectionPicker } from "@/components/csi/csi-section-picker";
+import type { CsiSection } from "@/lib/csi-divisions";
 import { SELECT_CLS } from "./activity-database-shared";
 
 const pct = z.string().refine((s) => s.trim() === "" || (Number.isFinite(Number(s)) && Number(s) >= 0 && Number(s) <= 100), "Enter 0 to 100");
@@ -21,7 +23,8 @@ export const detailsSchema = z
     activity_type: z.string(),
     visible_code: z.string().trim().regex(/^$|^D\d{2}-\d{3,}$/i, "Use the format D04-001"),
     trade: z.string(),
-    division_id: z.string(),
+    csi_division_code: z.string(),
+    csi_section_code: z.string(),
     min_pct: pct,
     max_pct: pct,
   })
@@ -48,10 +51,11 @@ function Field({ label, error, children, className }: { label: string; error?: s
 
 /** Details tab: image, name, description and the Identity & Duration fields. */
 export function ActivityDetailsTab({
-  form, divisions, status, versionedEditable, canEdit, imageUrl, onUploadImage,
+  form, divisions, sections, status, versionedEditable, canEdit, imageUrl, onUploadImage,
 }: {
   form: UseFormReturn<DetailsValues>;
   divisions: Division[];
+  sections: CsiSection[];
   status: string;
   versionedEditable: boolean;
   canEdit: boolean;
@@ -59,6 +63,10 @@ export function ActivityDetailsTab({
   onUploadImage: (file: File) => Promise<void>;
 }) {
   const { register, formState: { errors } } = form;
+  const divisionValue = useWatch({ control: form.control, name: "csi_division_code" });
+  const sectionValue = useWatch({ control: form.control, name: "csi_section_code" });
+  // Offer active divisions, plus the current one if it has since been deactivated.
+  const divisionOptions = divisions.filter((d) => d.is_active || d.code === divisionValue);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const lockV = !canEdit || !versionedEditable;
@@ -122,11 +130,21 @@ export function ActivityDetailsTab({
           <Field label="Trade" error={errors.trade?.message}>
             <Input {...register("trade")} disabled={lockAny} placeholder="Finishes Works" />
           </Field>
-          <Field label="Division" error={errors.division_id?.message}>
-            <select {...register("division_id")} disabled={lockAny} className={SELECT_CLS}>
+          <Field label="Division" error={errors.csi_division_code?.message}>
+            <select
+              {...register("csi_division_code", { onChange: () => form.setValue("csi_section_code", "", { shouldDirty: true }) })}
+              disabled={lockAny} className={SELECT_CLS}
+            >
               <option value="">No division</option>
-              {divisions.map((d) => <option key={d.id} value={d.id}>Division {d.code} - {d.name}</option>)}
+              {divisionOptions.map((d) => <option key={d.code} value={d.code}>{d.code} — {d.name}</option>)}
             </select>
+          </Field>
+          <Field label="CSI Section (optional)" error={errors.csi_section_code?.message}>
+            <CsiSectionPicker
+              sections={sections} divisionCode={divisionValue || null} value={sectionValue || null}
+              disabled={lockAny || !divisionValue} placeholder={divisionValue ? "No section" : "Choose a division first"}
+              onChange={(code) => form.setValue("csi_section_code", code ?? "", { shouldDirty: true })}
+            />
           </Field>
           <Field label="Type" error={errors.activity_type?.message}>
             <select {...register("activity_type")} disabled={lockV} title={hint} className={SELECT_CLS}>

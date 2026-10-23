@@ -1,4 +1,4 @@
-// Data access for the Activity Database (doc 23): CSI divisions, catalogue fields on plan_act_masters,
+// Data access for the Activity Database (doc 23): CSI divisions (core library, lib/csi-divisions.ts), catalogue fields on plan_act_masters,
 // master <-> BOQ (dwl_work_items) links with manpower / equipment hrs per unit, image upload, duplicate / delete.
 // Migration: 20261023091500_planning_activity_database.sql. Reads are open to every authenticated user; writes are
 // enforced by RLS (can_manage_master_libraries()) and the frozen guards, whose messages are translated here.
@@ -10,6 +10,7 @@ import { listLogicRules } from "./library-service";
 import type { LibraryStatus, Relation } from "./types";
 import type { ActivityType } from "./activity-database-import";
 import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
+import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
 
@@ -46,7 +47,9 @@ const CURRENT_EXCLUDED = "(superseded,archived)"; // "current" master = status n
 
 // ---------------------------------------------------------------- types
 
-export interface Division { id: string; code: string; name: string; sort_order: number }
+/** A CSI MasterFormat 2016 division (csi_divisions); `code` is the key everywhere. */
+export type Division = CsiDivision;
+export interface CsiSectionRef { code: string; name: string }
 export interface DivisionWithCounts extends Division { activityCount: number; workItemCount: number }
 
 export interface MasterRow {
@@ -58,7 +61,8 @@ export interface MasterRow {
   default_unit: string | null;
   status: LibraryStatus;
   version: number;
-  division_id: string | null;
+  csi_division_code: string | null;
+  csi_section_code: string | null;
   trade: string | null;
   activity_type: ActivityType | null;
   min_duration_pct: number | null;
@@ -75,6 +79,7 @@ export interface MasterListRow extends MasterRow { workItemCount: number }
 export interface MasterDetail {
   master: MasterRow;
   division: Division | null;
+  section: CsiSectionRef | null;
   workItemCount: number;
   /** Name, unit, description, type and duration % can only change while the master is a draft. */
   versionedFieldsEditable: boolean;
@@ -89,7 +94,10 @@ export interface MasterDetailsPatch {
   min_duration_pct?: number | null;
   max_duration_pct?: number | null;
   // catalogue (any status)
-  division_id?: string | null;
+  /** CSI division code, two digits, e.g. "26". Changing it re-issues the visible code (D26-nnn) unless the code already fits. */
+  csi_division_code?: string | null;
+  /** CSI section code, e.g. "26 05 00"; must belong to the division. */
+  csi_section_code?: string | null;
   visible_code?: string | null;
   trade?: string | null;
   image_path?: string | null;
@@ -109,7 +117,7 @@ export interface ResourceColumn { resourceId: string; name: string; kind: "M" | 
 export interface MasterWorkItemGrid { links: MasterWorkItemLink[]; columns: ResourceColumn[] }
 
 export interface BankSearchResult {
-  activities: { id: string; visible_code: string | null; code: string; name: string; default_unit: string | null; division_id: string | null }[];
+  activities: { id: string; visible_code: string | null; code: string; name: string; default_unit: string | null; csi_division_code: string | null; csi_section_code: string | null }[];
   workItems: WorkItemRef[];
 }
 
@@ -138,7 +146,7 @@ export interface DuplicateResult {
 }
 
 const MASTER_COLS =
-  "id, visible_code, code, name, description, default_unit, status, version, division_id, trade, activity_type, min_duration_pct, max_duration_pct, image_path, domain_id, category_id, family_id, discipline, work_type";
+  "id, visible_code, code, name, description, default_unit, status, version, csi_division_code, csi_section_code, trade, activity_type, min_duration_pct, max_duration_pct, image_path, domain_id, category_id, family_id, discipline, work_type";
 
 function toMasterRow(r: Record<string, unknown>): MasterRow {
   const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -148,18 +156,15 @@ function toMasterRow(r: Record<string, unknown>): MasterRow {
 
 // ---------------------------------------------------------------- divisions
 
+/** Every CSI division (active and inactive, with group_name and is_active) with its activity and BOQ item counts. */
 export async function listDivisionsWithCounts(db: Db): Promise<DivisionWithCounts[]> {
-  const [d, c] = await Promise.all([
-    db.from("plan_act_divisions").select("id, code, name, sort_order").order("sort_order"),
-    db.rpc("plan_act_division_counts"),
-  ]);
-  must(d.error);
+  const [divisions, c] = await Promise.all([listCsiDivisions(db), db.rpc("plan_act_csi_division_counts")]);
   must(c.error);
   const counts = new Map<string, { a: number; w: number }>();
-  for (const r of (c.data ?? []) as { division_id: string; activity_count: number | string; work_item_count: number | string }[]) {
-    counts.set(r.division_id, { a: Number(r.activity_count), w: Number(r.work_item_count) });
+  for (const r of (c.data ?? []) as { division_code: string; activity_count: number | string; work_item_count: number | string }[]) {
+    counts.set(r.division_code, { a: Number(r.activity_count), w: Number(r.work_item_count) });
   }
-  return ((d.data ?? []) as Division[]).map((x) => ({ ...x, activityCount: counts.get(x.id)?.a ?? 0, workItemCount: counts.get(x.id)?.w ?? 0 }));
+  return divisions.map((x) => ({ ...x, activityCount: counts.get(x.code)?.a ?? 0, workItemCount: counts.get(x.code)?.w ?? 0 }));
 }
 
 // ---------------------------------------------------------------- masters
@@ -175,11 +180,11 @@ async function linkCounts(db: Db, masterIds: string[]): Promise<Map<string, numb
   return map;
 }
 
-/** Current masters (not superseded / archived) of a division, or of every division when null, ordered by visible code. */
-export async function listMastersForDivision(db: Db, divisionId: string | null): Promise<MasterListRow[]> {
+/** Current masters (not superseded / archived) of a CSI division, or of every division when null, ordered by visible code. */
+export async function listMastersForDivision(db: Db, divisionCode: string | null): Promise<MasterListRow[]> {
   const all = await allPages<Record<string, unknown>>((from, to) => {
     let qb = db.from("plan_act_masters").select(MASTER_COLS).not("status", "in", CURRENT_EXCLUDED);
-    if (divisionId) qb = qb.eq("division_id", divisionId);
+    if (divisionCode) qb = qb.eq("csi_division_code", divisionCode);
     return qb.order("visible_code", { nullsFirst: false }).order("code").order("version", { ascending: false }).order("id").range(from, to);
   });
   // one row per activity: the latest non-superseded version (see pickLatestPerCode)
@@ -193,13 +198,15 @@ export async function getMasterDetail(db: Db, id: string): Promise<MasterDetail 
   must(error);
   if (!data) return null;
   const master = toMasterRow(data as Record<string, unknown>);
-  const [div, cnt] = await Promise.all([
-    master.division_id ? db.from("plan_act_divisions").select("id, code, name, sort_order").eq("id", master.division_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  const [div, sec, cnt] = await Promise.all([
+    master.csi_division_code ? db.from("csi_divisions").select("code, name, group_name, sort_order, is_active").eq("code", master.csi_division_code).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    master.csi_section_code ? db.from("csi_sections").select("code, name").eq("code", master.csi_section_code).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from("plan_act_master_work_items").select("id", { count: "exact", head: true }).eq("master_id", id),
   ]);
   must(div.error);
+  must(sec.error);
   must(cnt.error);
-  return { master, division: (div.data as Division | null) ?? null, workItemCount: cnt.count ?? 0, versionedFieldsEditable: master.status === "draft" };
+  return { master, division: (div.data as Division | null) ?? null, section: (sec.data as CsiSectionRef | null) ?? null, workItemCount: cnt.count ?? 0, versionedFieldsEditable: master.status === "draft" };
 }
 
 export async function updateMasterDetails(db: Db, id: string, patch: MasterDetailsPatch): Promise<MasterRow> {
@@ -210,13 +217,23 @@ export async function updateMasterDetails(db: Db, id: string, patch: MasterDetai
   const touched = VERSIONED_KEYS.filter((k) => k in patch && (patch[k] ?? null) !== (m[k as keyof MasterRow] ?? null));
   if (m.status !== "draft" && touched.length) {
     throw new Error(
-      `This activity is ${m.status}, so ${touched.join(", ").replace(/_/g, " ")} cannot be changed. Create a new version, or edit only division, visible code, trade and image.`,
+      `This activity is ${m.status}, so ${touched.join(", ").replace(/_/g, " ")} cannot be changed. Create a new version, or edit only the CSI division / section, visible code, trade and image.`,
     );
   }
   const min = "min_duration_pct" in patch ? patch.min_duration_pct ?? null : m.min_duration_pct;
   const max = "max_duration_pct" in patch ? patch.max_duration_pct ?? null : m.max_duration_pct;
   if (min !== null && max !== null && min > max) throw new Error("Min duration % must not exceed max duration %.");
   if (patch.name !== undefined && !patch.name.trim()) throw new Error("Name is required.");
+
+  // CSI division / section: format, and the section must belong to the division it will end up with
+  const divPatch = "csi_division_code" in patch ? (patch.csi_division_code?.trim() || null) : undefined;
+  const secPatch = "csi_section_code" in patch ? (patch.csi_section_code?.trim() || null) : undefined;
+  if (divPatch && !isValidDivisionCode(divPatch)) throw new Error(`CSI division must be two digits such as 03 or 26 (got "${divPatch}").`);
+  if (secPatch && !isValidSectionCode(secPatch)) throw new Error(`CSI section must look like 03 30 00 (got "${secPatch}").`);
+  if (secPatch) {
+    const finalDivision = divPatch !== undefined ? divPatch : m.csi_division_code;
+    if (finalDivision && divisionOfSection(secPatch) !== finalDivision) throw new Error(`CSI section ${secPatch} does not belong to division ${finalDivision}.`);
+  }
 
   const clean: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(patch)) {
@@ -332,12 +349,15 @@ async function usedByCounts(db: Db, workItemIds: string[]): Promise<Map<string, 
   return map;
 }
 
-/** Work items linked to the current activities of a division; null lists the whole cost library. */
-export async function listWorkItemsForDivision(db: Db, divisionId: string | null, opts: { limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
+/**
+ * Work items of a CSI division: those whose own csi_division_code matches, plus those linked to the current
+ * activities of the division (union, each once). null lists the whole cost library.
+ */
+export async function listWorkItemsForDivision(db: Db, divisionCode: string | null, opts: { limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
   const { limit, offset } = opts;
-  if (!divisionId) return listWorkItemsLibrary(db, { limit, offset });
+  if (!divisionCode) return listWorkItemsLibrary(db, { limit, offset });
   const masters = await allPages<{ id: string }>((from, to) =>
-    db.from("plan_act_masters").select("id").eq("division_id", divisionId).not("status", "in", CURRENT_EXCLUDED).order("id").range(from, to));
+    db.from("plan_act_masters").select("id").eq("csi_division_code", divisionCode).not("status", "in", CURRENT_EXCLUDED).order("id").range(from, to));
   const links: { work_item_id: string }[] = [];
   for (let i = 0; i < masters.length; i += 150) {
     const part = masters.slice(i, i + 150).map((m) => m.id);
@@ -347,8 +367,12 @@ export async function listWorkItemsForDivision(db: Db, divisionId: string | null
   const uses = new Map<string, number>();
   for (const l of links) uses.set(l.work_item_id, (uses.get(l.work_item_id) ?? 0) + 1);
   const ids = [...uses.keys()];
-  const items = (await inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, description, unit").in("id", p)))
-    .sort((a, b) => a.code.localeCompare(b.code));
+  const [linked, own] = await Promise.all([
+    inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, description, unit").eq("is_active", true).in("id", p)),
+    allPages<WorkItemRef>((from, to) =>
+      db.from("dwl_work_items").select("id, code, description, unit").eq("csi_division_code", divisionCode).eq("is_active", true).order("id").range(from, to)),
+  ]);
+  const items = [...new Map([...linked, ...own].map((i) => [i.id, i])).values()].sort((a, b) => a.code.localeCompare(b.code));
   return { total: items.length, items: items.slice(offset, offset + limit).map((i) => ({ ...i, usedBy: uses.get(i.id) ?? 0 })) };
 }
 
@@ -396,8 +420,9 @@ export async function listResourcesLibrary(db: Db, opts: { q?: string; kind?: "l
   return res.map((r) => ({ id: r.id, code: r.code, name: r.description, kind: r.category, unit: r.unit, workItemCount: counts.get(r.id) ?? 0 }));
 }
 
-export async function searchBank(db: Db, q: string, divisionId: string | null): Promise<BankSearchResult> {
-  const { data, error } = await db.rpc("plan_act_bank_search", { q, p_division: divisionId });
+export async function searchBank(db: Db, q: string, divisionCode: string | null): Promise<BankSearchResult> {
+  // named argument p_division_code selects the text overload (the uuid overload is deprecated)
+  const { data, error } = await db.rpc("plan_act_bank_search", { q, p_division_code: divisionCode });
   must(error);
   const r = (data ?? {}) as { activities?: BankSearchResult["activities"]; work_items?: WorkItemRef[] };
   return { activities: r.activities ?? [], workItems: r.work_items ?? [] };
@@ -439,7 +464,7 @@ async function uniqueCopyCode(db: Db, code: string): Promise<string> {
 }
 
 /**
- * New draft root master (version 1) from any master: same division / trade / type / duration %, a new unique code
+ * New draft root master (version 1) from any master: same CSI division / section / trade / type / duration %, a new unique code
  * and a visible code assigned by the database. Copies BOQ links, requirements, methods, quantity rules, applicability
  * and the logic rules where this master is predecessor or successor (same counterpart).
  */
@@ -455,7 +480,7 @@ export async function duplicateMaster(db: Db, id: string): Promise<DuplicateResu
     discipline: src.discipline, work_type: src.work_type, default_unit: src.default_unit, owner: src.owner, source: src.source,
     sectors: src.sectors, building_types: src.building_types, duration_basis: src.duration_basis,
     default_work_group: src.default_work_group, default_step_template_id: src.default_step_template_id,
-    division_id: src.division_id, trade: src.trade, activity_type: src.activity_type,
+    csi_division_code: src.csi_division_code, csi_section_code: src.csi_section_code, trade: src.trade, activity_type: src.activity_type,
     min_duration_pct: src.min_duration_pct, max_duration_pct: src.max_duration_pct, image_path: null,
     applicable_project_types: src.applicable_project_types, effective_date: src.effective_date,
     visible_code: null, status: "draft", version: 1,

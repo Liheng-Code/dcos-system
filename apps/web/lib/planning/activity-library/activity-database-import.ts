@@ -1,7 +1,8 @@
 // Pure parse + validate for the Activity Database Excel import (no I/O).
-// Sheet "Activities": division code, visible code, code, name, unit, trade, type, min %, max %, description.
+// Sheet "Activities": CSI division (MasterFormat 2016, two digits), optional CSI section, visible code, code, name, unit, trade, type, min %, max %, description.
 // Sheet "BOQ links": activity visible code or code, work item code, days per unit, share %.
 
+import { divisionOfSection, formatSectionCode, isValidSectionCode } from "@/lib/csi-divisions";
 import { isValidDivisionCode, normalizeDivisionCode, parseVisibleCode } from "./visible-code";
 
 export const ACTIVITY_TYPES = ["construction", "procurement", "design", "submittal", "testing", "milestone"] as const;
@@ -9,7 +10,7 @@ export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
 export const ACTIVITIES_SHEET = "Activities";
 export const LINKS_SHEET = "BOQ links";
-export const ACTIVITY_HEADERS = ["Division Code", "Visible Code", "Code", "Name", "Unit", "Trade", "Type", "Min %", "Max %", "Description"];
+export const ACTIVITY_HEADERS = ["Division Code", "CSI Section", "Visible Code", "Code", "Name", "Unit", "Trade", "Type", "Min %", "Max %", "Description"];
 export const LINK_HEADERS = ["Activity Code", "Work Item Code", "Days/Unit", "%"];
 
 export type RawRow = Record<string, unknown>;
@@ -18,7 +19,10 @@ export interface RawSheets { activities: RawRow[]; links: RawRow[] }
 export interface ImportActivity {
   /** Spreadsheet row number (header = row 1). */
   row: number;
+  /** CSI division, two digits (csi_divisions.code). */
   divisionCode: string;
+  /** CSI section "xx yy zz" (csi_sections.code) or null. */
+  sectionCode: string | null;
   visibleCode: string | null;
   code: string | null;
   name: string;
@@ -40,6 +44,11 @@ export interface ImportLink {
 }
 
 export interface ImportError { sheet: string; row: number; message: string }
+/** Codes loaded from the core CSI library, used to reject unknown divisions / sections. Omit to check formats only. */
+export interface ImportValidationOptions {
+  knownDivisions?: ReadonlySet<string>;
+  knownSections?: ReadonlySet<string>;
+}
 export interface ParsedImport { activities: ImportActivity[]; links: ImportLink[]; errors: ImportError[] }
 
 /** "Min %" -> "minpct", "Work Item Code" -> "workitemcode". */
@@ -88,7 +97,7 @@ function isBlank(row: RawRow): boolean {
 }
 
 /** `rows[0]` is spreadsheet row 2 (row 1 holds the headers). Rows with any error are reported and left out. */
-export function parseActivityImport(sheets: RawSheets): ParsedImport {
+export function parseActivityImport(sheets: RawSheets, opts: ImportValidationOptions = {}): ParsedImport {
   const errors: ImportError[] = [];
   const activities: ImportActivity[] = [];
   const links: ImportLink[] = [];
@@ -101,9 +110,20 @@ export function parseActivityImport(sheets: RawSheets): ParsedImport {
     const err = (message: string) => errors.push({ sheet: ACTIVITIES_SHEET, row, message });
     const before = errors.length;
 
-    const divRaw = pick(raw, "Division Code", "Division");
+    const divRaw = pick(raw, "Division Code", "CSI Division", "Division");
     const divisionCode = normalizeDivisionCode(divRaw);
-    if (!divisionCode || !isValidDivisionCode(divisionCode)) err(`Division must be 01 to 16 (got "${text(divRaw) ?? ""}")`);
+    if (!divisionCode || !isValidDivisionCode(divisionCode)) err(`Division must be a two-digit CSI division such as 03 or 26 (got "${text(divRaw) ?? ""}")`);
+    else if (!isValidDivisionCode(divisionCode, opts.knownDivisions)) err(`Unknown CSI division ${divisionCode}`);
+
+    const secRaw = text(pick(raw, "CSI Section", "Section", "Section Code"));
+    let sectionCode: string | null = null;
+    if (secRaw) {
+      const formatted = formatSectionCode(secRaw);
+      if (!formatted || !isValidSectionCode(formatted)) err(`CSI section "${secRaw}" must look like 03 30 00`);
+      else if (divisionCode && divisionOfSection(formatted) !== divisionCode) err(`CSI section ${formatted} does not belong to division ${divisionCode}`);
+      else if (opts.knownSections && !opts.knownSections.has(formatted)) err(`Unknown CSI section ${formatted}`);
+      else sectionCode = formatted;
+    }
 
     const visibleRaw = text(pick(raw, "Visible Code", "Visible ID"));
     const visibleCode = visibleRaw ? visibleRaw.toUpperCase() : null;
@@ -151,7 +171,7 @@ export function parseActivityImport(sheets: RawSheets): ParsedImport {
 
     if (errors.length === before && divisionCode && name) {
       activities.push({
-        row, divisionCode, visibleCode, code, name, unit: text(pick(raw, "Unit", "Default Unit")), trade: text(pick(raw, "Trade")),
+        row, divisionCode, sectionCode, visibleCode, code, name, unit: text(pick(raw, "Unit", "Default Unit")), trade: text(pick(raw, "Trade")),
         activityType, minPct, maxPct, description: text(pick(raw, "Description")),
       });
     }

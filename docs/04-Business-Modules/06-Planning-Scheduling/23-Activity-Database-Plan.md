@@ -144,3 +144,16 @@ File: `supabase/migrations/<YYYYMMDDHHMMSS>_planning_activity_database.sql`. Add
 - Phase 2 libraries (method statement, material, coordination, shop drawing, T&C).
 - [TBD - human to confirm] Whether Planning may write `dwl_work_item_resources` (QS-owned) or stays read-only.
 - Release: add the page to `lib/modules/release.ts` (core request, main lane).
+
+## Update 2026-10-23: divisions now come from the core CSI library (MasterFormat 2016)
+
+This section supersedes every statement above that says "CSI 16 divisions", `plan_act_divisions` (16 rows), `division_id`, or a `D16-xxx`-style code from the old list.
+
+- **One standard.** Divisions are the core MasterFormat 2016 library (`csi_divisions`, `csi_sections`), edited in Administration > Master Libraries > CSI Divisions. Planning no longer keeps its own list. Standard, code formats and ownership: `docs/01-DCOS-Foundation/DCOS-CSI-Division-Standard.md`.
+- **Masters.** `plan_act_masters.csi_division_code` (FK `csi_divisions`) and optional `csi_section_code` (FK `csi_sections`) replace `division_id`. All 233 masters were remapped (old 02 Site Works split into 31/32/33/03; old 15 Mechanical into 21/22/23/25/28; old 16 Electrical into 26/27). 14 low-confidence placements need domain review.
+- **Visible codes** are `D<csi division>-NNN` (for example `D26-001`) and were regenerated. `plan_act_division_counters` is keyed on the CSI division.
+- **RPCs.** `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)` are the ones in use. The uuid versions remain as wrappers until cleanup.
+- **Frozen, to be dropped.** `plan_act_divisions` rejects writes and `plan_act_masters.division_id` is unused; both are dropped in the later cleanup migration (run only when no lanes are active).
+- **BOQ side.** `dwl_work_items` gained `csi_section_code` and `csi_division_code`, so the bank search can filter BOQ items by their own division and not only through activity links.
+- **UI.** The division pane shows 2016 divisions with group headers and hides empty ones behind "Show all". Import validates against the loaded division list (division 15 is rejected, 26 accepted).
+- Migration `20261023122000_core_csi_divisions.sql`; seed `supabase/seeds/seed_csi_remap_activities.sql`.
