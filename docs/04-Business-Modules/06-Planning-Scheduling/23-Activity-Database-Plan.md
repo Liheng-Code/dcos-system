@@ -75,7 +75,7 @@ File: `supabase/migrations/<YYYYMMDDHHMMSS>_planning_activity_database.sql`. Add
 - **Unit tests** in `lib/planning/activity-library/__tests__/`: import validation (bad division, duplicate code, min > max), visible-code formatting, network layout.
 
 ## 3. UI (`frontend-engineer`, `components/planning/activity-database/`)
-- **Route:** `app/dashboard/planning/activity-library/database/page.tsx`.
+- **Route:** `app/dashboard/planning/activity-database/page.tsx`.
 - **Nav:** add an "Activity Database" item under Activity Library in `lib/planning/planning-nav.ts`. Its status is `development`, so it stays hidden until it is switched on in Module Settings.
 - **`activity-database-view.tsx`:** header + tabs **Master Activity | BOQ | Resource**. The other tabs (Method Statement, Material, Coordination, Shop Drawing, T&C) are left for phase 2. The view also has the search bar, Refresh and "Import activities".
   - **Master Activity tab:** 3 panes (`division-pane`, `activity-pane`, `boq-pane`) with counts. Selecting a division filters the activities; selecting an activity filters its BOQ items. Long lists are paginated or virtualised.
@@ -111,7 +111,7 @@ File: `supabase/migrations/<YYYYMMDDHHMMSS>_planning_activity_database.sql`. Add
   - every master has a `division_id` after the seed;
   - links were created from the norms.
 - `cd apps/web && pnpm typecheck && pnpm lint && pnpm test` (new tests pass).
-- On the lane's dev port with `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true`, open `/dashboard/planning/activity-library/database` and check:
+- On the lane's dev port with `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true`, open `/dashboard/planning/activity-database` and check:
   - division counts;
   - selecting a division filters activities, and an activity filters BOQ items;
   - search finds both activities and BOQ items;
@@ -126,7 +126,7 @@ File: `supabase/migrations/<YYYYMMDDHHMMSS>_planning_activity_database.sql`. Add
 ### Built (phase 1)
 - Migration `20261023091500_planning_activity_database.sql`: `plan_act_divisions` (16 rows), new master columns (`division_id`, `visible_code`, `trade`, `activity_type`, `min_duration_pct`, `max_duration_pct`, `image_path`), link table `plan_act_master_work_items` (activity to QS work item), private storage bucket `activity-images`, RPCs `plan_act_bank_search` and `plan_act_division_counts`.
 - Seed `supabase/seeds/seed_activity_database.sql`.
-- Code: `lib/planning/activity-library/` (`activity-database-service`, `activity-import-service`, `activity-database-import`, `logic-network-layout`, `visible-code`), `components/planning/activity-database/*`, page `/dashboard/planning/activity-library/database` (nav item "Activity Database", status `development`).
+- Code: `lib/planning/activity-library/` (`activity-database-service`, `activity-import-service`, `activity-database-import`, `logic-network-layout`, `visible-code`), `components/planning/activity-database/*`, page `/dashboard/planning/activity-database` (nav item "Activity Database", status `development`).
 
 ### Decisions made during build
 - `visible_code` is unique across root masters; new versions inherit the code of their root.

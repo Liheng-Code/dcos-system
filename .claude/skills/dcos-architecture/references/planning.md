@@ -9,7 +9,8 @@
 - **Schedule:** Overview, Dashboard, Gantt, Sheet (grid editor), Look-ahead (`/dashboard/wbs/lookahead`, with the Weekly Plans, S-Curve & EVM and Progress Reviews tabs), Calendars, Comparison, MS Project Sync (`/sync`).
 - **Resources & Reports:** Resources (loading), Members, Delay Register (+ TIA), Reports.
 - **Productivity:** Norm Library, Task Work, BOQ Mapping, Cost Rollup, Site Records.
-- **Activity Library:** Activity Database (`/activity-library/database`, doc 23), Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
+- **Activity Database** (own sidebar group, `/dashboard/planning/activity-database`, doc 23).
+- **Activity Library:** Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
 - **Not in the nav:** `/dashboard/planning/scurve`, and the client programme portal `app/portal/programme/[projectId]`.
 
 ## 2. Data model
@@ -78,7 +79,7 @@
   - Pure: `generation-planner`, `kit-plan`, `qs-bridge`, `bridge-calc`, `location-map`, `recovery-engine`, `scenario-compare`.
   - Each has an I/O `*-service.ts`. `generation-service.ts` commits runs atomically.
   - `ai/` is advisory only: the model picks among engine-produced options.
-- **Activity Database:** services `activity-database-service.ts` (divisions, masters, links, bank search, duplicate/delete), `activity-import-service.ts` + `activity-database-import.ts` (workbook import to drafts), pure `logic-network-layout.ts`, `visible-code.ts`. UI `components/planning/activity-database/*`; page `app/dashboard/planning/activity-library/database/page.tsx`; nav item "Activity Database" (`development`).
+- **Activity Database:** services `activity-database-service.ts` (divisions, masters, links, bank search, duplicate/delete), `activity-import-service.ts` + `activity-database-import.ts` (workbook import to drafts), pure `logic-network-layout.ts`, `visible-code.ts`. UI `components/planning/activity-database/*`; page `app/dashboard/planning/activity-database/page.tsx`; nav item "Activity Database" (`development`).
 - **Big components:** `components/planning/plan-schedule-view.tsx`, `gantt-view.tsx`, `sheet-grid.tsx` + `use-sheet-data.ts`, `plan-resource-loading.tsx`, `plan-delay-analysis.tsx`, `sync/sync-dashboard.tsx`.
 - **Planning-owned files under `components/project/wbs/`:** `wbs-lookahead-view`, `wbs-lookahead-timeline`, `wbs-scurve-chart`, `wbs-gantt-view`.
 - **Public API (`PUBLIC_API.planning`):**

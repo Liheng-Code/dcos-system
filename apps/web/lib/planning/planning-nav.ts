@@ -92,8 +92,6 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/planning/activity-library",
     items: [
       { label: "Activities", href: "/dashboard/planning/activity-library" },
-      // Activity Database (doc 23): divisions, activities, BOQs and resources in one screen. Hidden until switched on.
-      { label: "Activity Database", href: "/dashboard/planning/activity-library/database", status: "development" },
       { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
       // Generation kits: the templates per part of a building pattern (Generate builds a building in one run)
       { label: "Kits", href: "/dashboard/planning/activity-library/kits" },
@@ -106,6 +104,17 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "BIM Quantities", href: "/dashboard/planning/activity-library/bim" },
       { label: "Recovery", href: "/dashboard/planning/activity-library/recovery" },
       { label: "AI Assistant", href: "/dashboard/planning/activity-library/ai" },
+    ],
+  },
+  {
+    // Activity Database (doc 23): CSI divisions, activities, BOQs and resources in one screen,
+    // built on the Activity Library masters. Hidden until switched on.
+    key: "activity_database",
+    navKey: "group:planning:activity_database",
+    label: "Activity Database",
+    href: "/dashboard/planning/activity-database",
+    items: [
+      { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
     ],
   },
 ];
