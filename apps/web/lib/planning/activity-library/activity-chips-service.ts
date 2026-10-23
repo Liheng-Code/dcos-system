@@ -5,15 +5,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages, inChunks } from "./in-chunks";
 import { safeTerm } from "./catalogue-rules";
-import { countBy, materialDisplayName, sortShopDrawingsForDivision, type ChipKind } from "./activity-chips-rules";
+import { countBy, materialDisplayName, sortByDivision, type ChipKind, type TcType } from "./activity-chips-rules";
 
 type Db = SupabaseClient;
 type DbError = { message: string; code?: string } | null;
 
 export type { ChipKind };
 
-export interface Chip { linkId: string; id: string; code: string; name: string; unit?: string }
-export interface MasterChips { shopDrawings: Chip[]; materials: Chip[]; coordination: Chip[] }
+export interface Chip { linkId: string; id: string; code: string; name: string; unit?: string; tcType?: TcType }
+export interface MasterChips { shopDrawings: Chip[]; materials: Chip[]; coordination: Chip[]; methodStatements: Chip[]; tcItems: Chip[] }
+
+export interface MethodStatement {
+  id: string; code: string; name: string; csi_division_code: string | null; description: string | null; reference_doc: string | null; is_active: boolean; sort_order: number;
+}
+export interface TcItem {
+  id: string; code: string; name: string; csi_division_code: string | null; tc_type: TcType; standard_ref: string | null; acceptance_criteria: string | null;
+  is_active: boolean; sort_order: number;
+}
+const MS_COLS = "id, code, name, csi_division_code, description, reference_doc, is_active, sort_order";
+const TC_COLS = "id, code, name, csi_division_code, tc_type, standard_ref, acceptance_criteria, is_active, sort_order";
 
 export interface ShopDrawingType {
   id: string; code: string; name: string; csi_division_code: string | null; description: string | null; is_active: boolean; sort_order: number;
@@ -33,6 +43,8 @@ const LINK: Record<ChipKind, { table: string; ref: string }> = {
   shop_drawing: { table: "plan_act_master_shop_drawings", ref: "shop_drawing_type_id" },
   material: { table: "plan_act_master_materials", ref: "resource_id" },
   coordination: { table: "plan_act_master_coordination", ref: "coordination_item_id" },
+  method_statement: { table: "plan_act_master_method_statements", ref: "method_statement_id" },
+  tc: { table: "plan_act_master_tc_items", ref: "tc_item_id" },
 };
 
 function fail(error: NonNullable<DbError>): Error {
@@ -53,10 +65,14 @@ function must(error: DbError): void {
 export async function getMasterChips(db: Db, masterId: string): Promise<MasterChips> {
   const { data, error } = await db.rpc("plan_act_master_chips", { p_master_id: masterId });
   must(error);
-  type Raw = { link_id: string; id: string; code: string; name: string; unit?: string };
-  const r = (data ?? {}) as { shop_drawings?: Raw[]; materials?: Raw[]; coordination?: Raw[] };
-  const map = (rows: Raw[] | undefined): Chip[] => (rows ?? []).map((x) => ({ linkId: x.link_id, id: x.id, code: x.code, name: x.name, unit: x.unit }));
-  return { shopDrawings: map(r.shop_drawings), materials: map(r.materials), coordination: map(r.coordination) };
+  type Raw = { link_id: string; id: string; code: string; name: string; unit?: string; tc_type?: TcType };
+  const r = (data ?? {}) as { shop_drawings?: Raw[]; materials?: Raw[]; coordination?: Raw[]; method_statements?: Raw[]; tc_items?: Raw[] };
+  const map = (rows: Raw[] | undefined): Chip[] =>
+    (rows ?? []).map((x) => ({ linkId: x.link_id, id: x.id, code: x.code, name: x.name, unit: x.unit, tcType: x.tc_type }));
+  return {
+    shopDrawings: map(r.shop_drawings), materials: map(r.materials), coordination: map(r.coordination),
+    methodStatements: map(r.method_statements), tcItems: map(r.tc_items),
+  };
 }
 
 async function addChip(db: Db, kind: ChipKind, masterId: string, refId: string): Promise<string> {
@@ -71,6 +87,8 @@ async function addChip(db: Db, kind: ChipKind, masterId: string, refId: string):
 export const addShopDrawing = (db: Db, masterId: string, shopDrawingTypeId: string) => addChip(db, "shop_drawing", masterId, shopDrawingTypeId);
 export const addMaterial = (db: Db, masterId: string, resourceId: string) => addChip(db, "material", masterId, resourceId);
 export const addCoordination = (db: Db, masterId: string, coordinationItemId: string) => addChip(db, "coordination", masterId, coordinationItemId);
+export const addMethodStatement = (db: Db, masterId: string, methodStatementId: string) => addChip(db, "method_statement", masterId, methodStatementId);
+export const addTcItem = (db: Db, masterId: string, tcItemId: string) => addChip(db, "tc", masterId, tcItemId);
 
 export async function removeChip(db: Db, kind: ChipKind, linkId: string): Promise<void> {
   const { data, error } = await db.from(LINK[kind].table).delete().eq("id", linkId).select("id");
@@ -102,7 +120,25 @@ export async function searchShopDrawingTypes(db: Db, q: string, divisionCode?: s
   if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%`);
   const { data, error } = await qb.order("code").limit(200);
   must(error);
-  return sortShopDrawingsForDivision((data ?? []) as ShopDrawingType[], divisionCode ?? null).slice(0, limit);
+  return sortByDivision((data ?? []) as ShopDrawingType[], divisionCode ?? null).slice(0, limit);
+}
+
+export async function searchMethodStatements(db: Db, q: string, divisionCode?: string | null, limit = 40): Promise<MethodStatement[]> {
+  const s = safeTerm(q);
+  let qb = db.from("plan_act_method_statements").select(MS_COLS).eq("is_active", true);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%`);
+  const { data, error } = await qb.order("code").limit(200);
+  must(error);
+  return sortByDivision((data ?? []) as MethodStatement[], divisionCode ?? null).slice(0, limit);
+}
+
+export async function searchTcItems(db: Db, q: string, divisionCode?: string | null, limit = 40): Promise<TcItem[]> {
+  const s = safeTerm(q);
+  let qb = db.from("plan_act_tc_items").select(TC_COLS).eq("is_active", true);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%`);
+  const { data, error } = await qb.order("code").limit(200);
+  must(error);
+  return sortByDivision((data ?? []) as TcItem[], divisionCode ?? null).slice(0, limit);
 }
 
 export async function searchCoordinationItems(db: Db, q: string, limit = 40): Promise<CoordinationItem[]> {
@@ -217,3 +253,38 @@ async function setActive(db: Db, table: string, id: string, active: boolean): Pr
 }
 export const setShopDrawingTypeActive = (db: Db, id: string, active: boolean) => setActive(db, "plan_act_shop_drawing_types", id, active);
 export const setCoordinationItemActive = (db: Db, id: string, active: boolean) => setActive(db, "plan_act_coordination_items", id, active);
+
+// ---------------------------------------------------------------- method statements and T&C libraries
+
+export interface MethodStatementInput { id?: string; code: string; name: string; csi_division_code: string | null; description: string | null; reference_doc: string | null; sort_order: number }
+export interface TcItemInput {
+  id?: string; code: string; name: string; csi_division_code: string | null; tc_type: TcType; standard_ref: string | null; acceptance_criteria: string | null; sort_order: number;
+}
+
+export async function listMethodStatements(db: Db, opts: { q?: string } = {}): Promise<WithUsage<MethodStatement>[]> {
+  const s = safeTerm(opts.q ?? "");
+  let qb = db.from("plan_act_method_statements").select(MS_COLS);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%`);
+  const { data, error } = await qb.order("code").limit(1000);
+  must(error);
+  const rows = (data ?? []) as MethodStatement[];
+  const used = await usageCounts(db, "method_statement", rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, usedBy: used.get(r.id) ?? 0 }));
+}
+
+export async function listTcItems(db: Db, opts: { q?: string; type?: TcType | "all" } = {}): Promise<WithUsage<TcItem>[]> {
+  const s = safeTerm(opts.q ?? "");
+  let qb = db.from("plan_act_tc_items").select(TC_COLS);
+  if (opts.type && opts.type !== "all") qb = qb.eq("tc_type", opts.type);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,standard_ref.ilike.%${s}%`);
+  const { data, error } = await qb.order("code").limit(1000);
+  must(error);
+  const rows = (data ?? []) as TcItem[];
+  const used = await usageCounts(db, "tc", rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, usedBy: used.get(r.id) ?? 0 }));
+}
+
+export const upsertMethodStatement = (db: Db, input: MethodStatementInput) => upsert(db, "plan_act_method_statements", { ...input });
+export const upsertTcItem = (db: Db, input: TcItemInput) => upsert(db, "plan_act_tc_items", { ...input });
+export const setMethodStatementActive = (db: Db, id: string, active: boolean) => setActive(db, "plan_act_method_statements", id, active);
+export const setTcItemActive = (db: Db, id: string, active: boolean) => setActive(db, "plan_act_tc_items", id, active);

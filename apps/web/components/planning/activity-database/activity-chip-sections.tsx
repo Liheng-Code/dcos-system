@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  addCoordination, addMaterial, addShopDrawing, getMasterChips, removeChip, searchCoordinationItems, searchMaterials, searchShopDrawingTypes,
+  addCoordination, addMaterial, addMethodStatement, addShopDrawing, addTcItem, getMasterChips, removeChip, searchCoordinationItems, searchMaterials,
+  searchMethodStatements, searchShopDrawingTypes, searchTcItems,
   type Chip, type ChipKind, type MasterChips,
 } from "@/lib/planning/activity-library/activity-chips-service";
+import { TC_TYPE_LABEL } from "@/lib/planning/activity-library/activity-chips-rules";
 import { errorMessage } from "./activity-database-shared";
 
 interface Option { id: string; label: string; sub?: string }
@@ -96,6 +98,7 @@ function ChipSection({
         {chips.map((c) => (
           <span key={c.linkId} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-muted/40 pl-3 pr-1.5 text-sm" title={c.code}>
             {c.name}
+            {c.tcType && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">{TC_TYPE_LABEL[c.tcType]}</span>}
             {canEdit && (
               <button
                 type="button" aria-label={`Remove ${c.name}`} onClick={() => onRemove(c)}
@@ -132,10 +135,17 @@ export function ActivityChipSections({
   const searchCo = useCallback(async (q: string): Promise<Option[]> =>
     (await searchCoordinationItems(db, q)).map((c) => ({ id: c.id, label: c.name, sub: c.code })), [db]);
 
+  const searchMs = useCallback(async (q: string): Promise<Option[]> =>
+    (await searchMethodStatements(db, q, divisionCode)).map((m) => ({ id: m.id, label: m.name, sub: m.code })), [db, divisionCode]);
+  const searchTc = useCallback(async (q: string): Promise<Option[]> =>
+    (await searchTcItems(db, q, divisionCode)).map((t) => ({ id: t.id, label: t.name, sub: TC_TYPE_LABEL[t.tc_type] })), [db, divisionCode]);
+
   async function add(kind: ChipKind, o: Option) {
     try {
       if (kind === "shop_drawing") await addShopDrawing(db, masterId, o.id);
       else if (kind === "material") await addMaterial(db, masterId, o.id);
+      else if (kind === "method_statement") await addMethodStatement(db, masterId, o.id);
+      else if (kind === "tc") await addTcItem(db, masterId, o.id);
       else await addCoordination(db, masterId, o.id);
       toast.success(`${o.label} added`);
       await load();
@@ -153,7 +163,7 @@ export function ActivityChipSections({
       </div>
     );
   }
-  if (!chips) return <div className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div>;
+  if (!chips) return <div className="space-y-3"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div>;
 
   const ids = (c: Chip[]) => new Set(c.map((x) => x.id));
   return (
@@ -169,6 +179,14 @@ export function ActivityChipSections({
       <ChipSection
         title="Coordination" chips={chips.coordination} canEdit={canEdit} onRemove={(c) => void remove("coordination", c)}
         picker={<ChipPicker label="coordination" search={searchCo} excludeIds={ids(chips.coordination)} onPick={(o) => add("coordination", o)} />}
+      />
+      <ChipSection
+        title="Method statements" chips={chips.methodStatements} canEdit={canEdit} onRemove={(c) => void remove("method_statement", c)}
+        picker={<ChipPicker label="method statement" search={searchMs} excludeIds={ids(chips.methodStatements)} onPick={(o) => add("method_statement", o)} />}
+      />
+      <ChipSection
+        title="Testing & commissioning" chips={chips.tcItems} canEdit={canEdit} onRemove={(c) => void remove("tc", c)}
+        picker={<ChipPicker label="testing or commissioning item" search={searchTc} excludeIds={ids(chips.tcItems)} onPick={(o) => add("tc", o)} />}
       />
     </div>
   );

@@ -1,6 +1,15 @@
 // Pure helpers for the Activity Database detail chips (shop drawings, materials, coordination) and the Details display.
 
-export type ChipKind = "shop_drawing" | "material" | "coordination";
+export type ChipKind = "shop_drawing" | "material" | "coordination" | "method_statement" | "tc";
+
+export const TC_TYPES = ["inspection", "test", "commissioning"] as const;
+export type TcType = (typeof TC_TYPES)[number];
+export const TC_TYPE_LABEL: Record<TcType, string> = { inspection: "Inspection", test: "Test", commissioning: "Commissioning" };
+
+/** True for an http(s) URL, so a reference document can be shown as a link. */
+export function isHttpUrl(s: string | null | undefined): boolean {
+  return /^https?:\/\/\S+$/i.test((s ?? "").trim());
+}
 
 /** Material name: the material attribute name when set, else the resource description. */
 export function materialDisplayName(materialName: string | null | undefined, description: string | null | undefined): string {
@@ -42,6 +51,9 @@ export function percentLabel(v: string | null | undefined): string {
   const s = (v ?? "").trim();
   return s === "" ? "-" : `${s}%`;
 }
+
+/** Any library row type with a CSI division: same-division rows first. */
+export const sortByDivision = sortShopDrawingsForDivision;
 
 /** Counts how many times each key occurs. */
 export function countBy<T>(rows: readonly T[], key: (r: T) => string): Map<string, number> {
