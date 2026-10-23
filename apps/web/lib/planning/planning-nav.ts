@@ -106,6 +106,17 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "AI Assistant", href: "/dashboard/planning/activity-library/ai" },
     ],
   },
+  {
+    // Activity Database (doc 23): CSI divisions, activities, BOQs and resources in one screen,
+    // built on the Activity Library masters. Hidden until switched on.
+    key: "activity_database",
+    navKey: "group:planning:activity_database",
+    label: "Activity Database",
+    href: "/dashboard/planning/activity-database",
+    items: [
+      { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
+    ],
+  },
 ];
 
 export function getActivePlanningGroup(pathname: string): ModuleNavGroup | null {

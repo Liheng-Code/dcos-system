@@ -1,4 +1,4 @@
-import { BookMarked, CalendarRange,GanttChartSquare, Gauge, Users } from "lucide-react";
+import { BookMarked, CalendarRange, Database, GanttChartSquare, Gauge, Users } from "lucide-react";
 import { PLANNING_GROUPS } from "@/lib/planning/planning-nav";
 import type { ModuleManifest } from "@/lib/modules/types";
 
@@ -16,6 +16,7 @@ export const planningModule: ModuleManifest = {
     resources_reports: Users,
     productivity: Gauge,
     activity_library: BookMarked,
+    activity_database: Database,
   },
   hub: {
     title: "Planning",

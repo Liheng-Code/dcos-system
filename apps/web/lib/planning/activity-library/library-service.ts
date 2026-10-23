@@ -73,16 +73,24 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   const { data: latest } = await db.from("plan_act_masters").select("version").eq("code", src.code).order("version", { ascending: false }).limit(1);
   const next = ((latest?.[0] as { version: number } | undefined)?.version ?? src.version) + 1;
 
+  const srcCat = src as unknown as {
+    division_id?: string | null; trade?: string | null; activity_type?: string | null;
+    min_duration_pct?: number | null; max_duration_pct?: number | null; image_path?: string | null;
+  };
   const { data: created, error } = await db.from("plan_act_masters").insert({
     code: src.code, name: src.name, description: src.description, domain_id: src.domain_id, category_id: src.category_id,
     family_id: src.family_id, discipline: src.discipline, work_type: src.work_type, default_unit: src.default_unit,
     owner: src.owner, source: src.source, sectors: src.sectors, building_types: src.building_types,
+    // Activity Database catalogue fields (visible_code is inherited from the predecessor by trigger)
+    division_id: srcCat.division_id ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
+    min_duration_pct: srcCat.min_duration_pct ?? null, max_duration_pct: srcCat.max_duration_pct ?? null, image_path: srcCat.image_path ?? null,
     status: "draft", version: next, supersedes_id: src.id,
   }).select("*").single();
   if (error) throw new Error(error.message);
   const nm = created as ActMaster;
 
-  const [methods, qrules, reqs, appl, logicOut, logicIn] = await Promise.all([
+  const [methods, qrules, reqs, appl, logicOut, logicIn, wiLinks] = await Promise.all([
+    db.from("plan_act_master_work_items").select("*").eq("master_id", id),
     db.from("plan_act_methods").select("*").eq("master_id", id),
     db.from("plan_act_quantity_rules").select("*").eq("master_id", id),
     db.from("plan_act_requirements").select("*").eq("master_id", id),
@@ -96,6 +104,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
     const { error: e } = await db.from(table).insert(rows);
     if (e) throw new Error(e.message);
   };
+  await ins("plan_act_master_work_items", strip(unwrap<Record<string, unknown>[]>(wiLinks)).map((r) => ({ ...r, master_id: nm.id })));
   await ins("plan_act_methods", strip(unwrap<Record<string, unknown>[]>(methods)).map((r) => ({ ...r, master_id: nm.id })));
   await ins("plan_act_quantity_rules", strip(unwrap<Record<string, unknown>[]>(qrules)).map((r) => ({ ...r, master_id: nm.id })));
   await ins("plan_act_requirements", strip(unwrap<Record<string, unknown>[]>(reqs)).map((r) => ({ ...r, master_id: nm.id })));
