@@ -18,10 +18,11 @@ import {
   addWorkItemLink, listWorkItemsForMaster, removeWorkItemLink, searchWorkItems, updateWorkItemLink,
   type MasterWorkItemGrid, type MasterWorkItemLink, type WorkItemRef,
 } from "@/lib/planning/activity-library/activity-database-service";
+import { resourceColumnLabel } from "@/lib/planning/activity-library/boq-item-rules";
 import { COST_LIBRARY_HREF, errorMessage } from "./activity-database-shared";
 
 /** Number cell that saves on blur when the value changed. */
-function NumberCell({
+export function NumberCell({
   value, disabled, min, max, label, onSave,
 }: { value: number | null; disabled: boolean; min?: number; max?: number; label: string; onSave: (v: number | null) => Promise<void> }) {
   const [text, setText] = useState(value === null ? "" : String(value));
@@ -33,7 +34,7 @@ function NumberCell({
     if (next === value) return;
     setSaving(true);
     try { await onSave(next); } catch (e) {
-      toast.error(errorMessage(e, "Could not save"));
+      if (!(e instanceof Error) || e.message) toast.error(errorMessage(e, "Could not save")); // an empty message means the caller cancelled
       setText(value === null ? "" : String(value));
     } finally { setSaving(false); }
   }
@@ -168,7 +169,7 @@ export function ActivityBoqsTab({
                 <TableHead className="min-w-64">BOQ</TableHead>
                 {grid.columns.map((c) => (
                   <TableHead key={c.resourceId} className="whitespace-nowrap text-right" title={`${c.kind === "M" ? "Manpower" : "Equipment"}: ${c.name}`}>
-                    {c.kind} {c.name} ({/^(hr|hrs|hour|hours)$/i.test(c.unit.trim()) ? "hr" : c.unit}/unit)
+                    {resourceColumnLabel(c)}
                   </TableHead>
                 ))}
                 <TableHead className="whitespace-nowrap text-right">Duration (days/unit)</TableHead>

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   listWorkItemsForDivision, listWorkItemsForMaster, type DivisionWithCounts, type WorkItemRef,
 } from "@/lib/planning/activity-library/activity-database-service";
+import { workItemLabel } from "@/lib/planning/activity-library/boq-item-rules";
 import { activityLabel, errorMessage, PAGE_SIZE, type ActivityListItem } from "./activity-database-shared";
 
 function PaneShell({ title, count, children }: { title: string; count: number | null; children: React.ReactNode }) {
@@ -133,12 +134,14 @@ export function ActivityPane({
 
 // ---------------------------------------------------------------- BOQs
 
-interface BoqRow { id: string; code: string; description: string; unit: string; usedBy?: number }
+interface BoqRow { id: string; code: string; name?: string | null; description: string; unit: string; usedBy?: number }
 interface BoqState { key: string; rows: BoqRow[]; total: number; error: string | null }
 
 export function BoqPane({
-  db, divisionCode, focusActivity, searching, searchItems, refreshKey,
+  db, divisionCode, focusActivity, searching, searchItems, refreshKey, onOpenBoq,
 }: {
+  /** Opens the BOQ item dialog; the visible rows become its prev / next list. */
+  onOpenBoq: (id: string, list: BoqRow[]) => void;
   db: SupabaseClient; divisionCode: string | null;
   /** Hovered / selected activity: show only its links. */
   focusActivity: ActivityListItem | null;
@@ -167,7 +170,7 @@ export function BoqPane({
       try {
         if (focusId) {
           const g = await listWorkItemsForMaster(db, focusId);
-          next = { key, rows: g.links.map((l) => ({ id: l.workItem.id, code: l.workItem.code, description: l.workItem.description, unit: l.workItem.unit })), total: g.links.length, error: null };
+          next = { key, rows: g.links.map((l) => ({ id: l.workItem.id, code: l.workItem.code, name: l.workItem.name, description: l.workItem.description, unit: l.workItem.unit })), total: g.links.length, error: null };
         } else {
           const p = await listWorkItemsForDivision(db, divisionCode, { limit: PAGE_SIZE, offset: 0 });
           next = { key, rows: p.items, total: p.total, error: null };
@@ -221,10 +224,15 @@ export function BoqPane({
         <>
           <ul>
             {rows.map((r) => (
-              <li key={r.id} className="flex items-baseline gap-3 border-b border-border/60 px-4 py-2 text-sm" title={`${r.code} ${r.description}`}>
-                <span className="w-20 shrink-0 truncate font-mono text-xs text-muted-foreground">{r.code}</span>
-                <span className="min-w-0 flex-1 truncate">{r.description} <span className="text-muted-foreground">({r.unit})</span></span>
-                {r.usedBy !== undefined && r.usedBy > 1 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums">x{r.usedBy}</span>}
+              <li key={r.id}>
+                <button
+                  type="button" onClick={() => onOpenBoq(r.id, rows)} title={`${r.code} ${r.description}`}
+                  className="flex w-full items-baseline gap-3 border-b border-border/60 px-4 py-2 text-left text-sm transition-colors hover:bg-muted/60"
+                >
+                  <span className="w-20 shrink-0 truncate font-mono text-xs text-muted-foreground">{r.code}</span>
+                  <span className="min-w-0 flex-1 truncate">{workItemLabel(r)} <span className="text-muted-foreground">({r.unit})</span></span>
+                  {r.usedBy !== undefined && r.usedBy > 1 && <span className="shrink-0 text-xs text-muted-foreground tabular-nums">x{r.usedBy}</span>}
+                </button>
               </li>
             ))}
           </ul>
@@ -246,8 +254,9 @@ export function BoqPane({
 export function MasterActivityTab({
   db, divisions, divisionsLoading, divisionsError, onRetryDivisions, selectedDivisionCode, onSelectDivision,
   activities, activitiesLoading, activitiesError, onRetryActivities, searchActive, searchWorkItems,
-  selectedActivityId, onOpenActivity, refreshKey,
+  selectedActivityId, onOpenActivity, refreshKey, onOpenBoq,
 }: {
+  onOpenBoq: (id: string, list: BoqRow[]) => void;
   db: SupabaseClient;
   divisions: DivisionWithCounts[]; divisionsLoading: boolean; divisionsError: string | null; onRetryDivisions: () => void;
   selectedDivisionCode: string | null; onSelectDivision: (id: string | null) => void;
@@ -272,7 +281,7 @@ export function MasterActivityTab({
         activities={activities} loading={activitiesLoading} error={activitiesError} onRetry={onRetryActivities} searching={searchActive}
         selectedId={selectedActivityId} onOpen={onOpenActivity} onFocus={setHoverId}
       />
-      <BoqPane db={db} divisionCode={selectedDivisionCode} focusActivity={searchActive ? null : focusActivity} searching={searchActive} searchItems={searchActive ? searchWorkItems : null} refreshKey={refreshKey} />
+      <BoqPane db={db} divisionCode={selectedDivisionCode} focusActivity={searchActive ? null : focusActivity} searching={searchActive} searchItems={searchActive ? searchWorkItems : null} refreshKey={refreshKey} onOpenBoq={onOpenBoq} />
     </div>
   );
 }

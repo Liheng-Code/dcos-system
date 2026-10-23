@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   listActivitiesUsingWorkItem, listResourcesLibrary, listWorkItemsLibrary, type MasterRow, type ResourceListRow, type WorkItemListRow,
 } from "@/lib/planning/activity-library/activity-database-service";
+import { workItemLabel } from "@/lib/planning/activity-library/boq-item-rules";
 import { errorMessage, PAGE_SIZE, SELECT_CLS } from "./activity-database-shared";
 
 function TableError({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -56,8 +57,8 @@ function UsedByCell({ db, workItemId, onOpenActivity }: { db: SupabaseClient; wo
 
 /** BOQ tab: the cost library's work items with the activities that use each one. */
 export function BoqLibraryTab({
-  db, query, refreshKey, onOpenActivity,
-}: { db: SupabaseClient; query: string; refreshKey: number; onOpenActivity: (id: string) => void }) {
+  db, query, refreshKey, onOpenActivity, onOpenBoq,
+}: { db: SupabaseClient; query: string; refreshKey: number; onOpenActivity: (id: string) => void; onOpenBoq: (id: string, list: WorkItemListRow[]) => void }) {
   const key = `${query}|${refreshKey}`;
   const [state, setState] = useState<{ key: string; items: WorkItemListRow[]; total: number; error: string | null } | null>(null);
   const [more, setMore] = useState(false);
@@ -97,7 +98,7 @@ export function BoqLibraryTab({
   }
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">{state.total.toLocaleString()} BOQ item{state.total === 1 ? "" : "s"}. Select a row to see the activities that use it.</p>
+      <p className="text-sm text-muted-foreground">{state.total.toLocaleString()} BOQ item{state.total === 1 ? "" : "s"}. Select a row to open the BOQ item; use the arrow to see the activities that use it.</p>
       <div className="overflow-auto rounded-lg border border-border">
         <Table>
           <TableHeader>
@@ -110,10 +111,14 @@ export function BoqLibraryTab({
               const open = openId === w.id;
               return (
                 <Fragment key={w.id}>
-                  <TableRow className="cursor-pointer" onClick={() => setOpenId(open ? null : w.id)} aria-expanded={open}>
-                    <TableCell>{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
+                  <TableRow className="cursor-pointer" onClick={() => onOpenBoq(w.id, state.items)}>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <button type="button" aria-expanded={open} aria-label={open ? "Hide activities" : "Show activities"} onClick={() => setOpenId(open ? null : w.id)}>
+                        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{w.code}</TableCell>
-                    <TableCell>{w.description}</TableCell>
+                    <TableCell>{workItemLabel(w)}</TableCell>
                     <TableCell>{w.unit}</TableCell>
                     <TableCell className="text-muted-foreground">{w.boqSection ?? "-"}</TableCell>
                     <TableCell className="text-right"><Badge variant={w.usedBy > 0 ? "default" : "secondary"}>{w.usedBy} {w.usedBy === 1 ? "activity" : "activities"}</Badge></TableCell>

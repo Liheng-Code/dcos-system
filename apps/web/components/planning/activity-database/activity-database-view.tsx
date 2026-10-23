@@ -12,6 +12,7 @@ import {
 import { listCsiSections, type CsiSection } from "@/lib/csi-divisions";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { ActivityDetailDialog } from "./activity-detail-dialog";
+import { BoqItemDetailDialog, type BoqListItem } from "./boq-item-detail-dialog";
 import { ImportActivitiesDialog } from "./import-activities-dialog";
 import { ChipLibraryTab, MaterialLibraryTab } from "./chip-library-tabs";
 import { BoqLibraryTab, ResourceLibraryTab } from "./library-tabs";
@@ -33,6 +34,7 @@ export function ActivityDatabaseView() {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [dialogId, setDialogId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [boqDialog, setBoqDialog] = useState<{ id: string; list: BoqListItem[] } | null>(null);
 
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
@@ -142,11 +144,11 @@ export function ActivityDatabaseView() {
             searchActive={searchActive} searchWorkItems={searchActive ? foundLoaded?.data.workItems ?? null : null}
             selectedActivityId={selectedActivityId}
             onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }}
-            refreshKey={refreshKey}
+            refreshKey={refreshKey} onOpenBoq={(id, list) => setBoqDialog({ id, list })}
           />
         </TabsContent>
         <TabsContent value="boq" className="pt-2">
-          <BoqLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} />
+          <BoqLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} onOpenBoq={(id, list) => setBoqDialog({ id, list })} />
         </TabsContent>
         <TabsContent value="method_statement" className="pt-2">
           <ChipLibraryTab kind="method_statement" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
@@ -173,6 +175,14 @@ export function ActivityDatabaseView() {
           db={db} activityId={dialogId} list={activities} divisions={divisionsLoaded?.data ?? []} sections={csiSections} canManage={canManage}
           onNavigate={(id) => { setDialogId(id); setSelectedActivityId(id); }}
           onClose={() => setDialogId(null)}
+          onChanged={refresh}
+        />
+      )}
+      {boqDialog && (
+        <BoqItemDetailDialog
+          db={db} workItemId={boqDialog.id} list={boqDialog.list} divisions={divisionsLoaded?.data ?? []} sections={csiSections} canManage={canManage}
+          onNavigate={(id) => setBoqDialog((b) => (b ? { ...b, id } : b))}
+          onClose={() => setBoqDialog(null)}
           onChanged={refresh}
         />
       )}

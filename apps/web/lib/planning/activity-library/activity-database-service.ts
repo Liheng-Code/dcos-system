@@ -105,7 +105,7 @@ export interface MasterDetailsPatch {
 }
 const VERSIONED_KEYS: (keyof MasterDetailsPatch)[] = ["name", "description", "default_unit", "activity_type", "min_duration_pct", "max_duration_pct"];
 
-export interface WorkItemRef { id: string; code: string; description: string; unit: string }
+export interface WorkItemRef { id: string; code: string; name?: string | null; description: string; unit: string }
 export interface MasterWorkItemLink {
   linkId: string;
   workItem: WorkItemRef;
@@ -260,7 +260,7 @@ export async function listWorkItemsForMaster(db: Db, masterId: string): Promise<
   const ids = links.map((l) => l.work_item_id);
 
   const [items, res] = await Promise.all([
-    inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, description, unit").in("id", p)),
+    inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, name, description, unit").in("id", p)),
     inChunks<{ work_item_id: string; resource_id: string; consumption: number | string; dwl_resources: { id: string; code: string; description: string; category: string; unit: string } | null }>(
       ids,
       (p) => db.from("dwl_work_item_resources").select("work_item_id, resource_id, consumption, dwl_resources!inner(id, code, description, category, unit)")
@@ -330,8 +330,8 @@ export async function removeWorkItemLink(db: Db, linkId: string): Promise<void> 
 /** Work items for a picker: active items whose code or description contains `q`. */
 export async function searchWorkItems(db: Db, q: string, limit = 30): Promise<WorkItemRef[]> {
   const s = safeTerm(q);
-  let qb = db.from("dwl_work_items").select("id, code, description, unit").eq("is_active", true);
-  if (s) qb = qb.or(`code.ilike.%${s}%,description.ilike.%${s}%`);
+  let qb = db.from("dwl_work_items").select("id, code, name, description, unit").eq("is_active", true);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
   const { data, error } = await qb.order("code").limit(limit);
   must(error);
   return (data ?? []) as WorkItemRef[];
@@ -369,9 +369,9 @@ export async function listWorkItemsForDivision(db: Db, divisionCode: string | nu
   for (const l of links) uses.set(l.work_item_id, (uses.get(l.work_item_id) ?? 0) + 1);
   const ids = [...uses.keys()];
   const [linked, own] = await Promise.all([
-    inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, description, unit").eq("is_active", true).in("id", p)),
+    inChunks<WorkItemRef>(ids, (p) => db.from("dwl_work_items").select("id, code, name, description, unit").eq("is_active", true).in("id", p)),
     allPages<WorkItemRef>((from, to) =>
-      db.from("dwl_work_items").select("id, code, description, unit").eq("csi_division_code", divisionCode).eq("is_active", true).order("id").range(from, to)),
+      db.from("dwl_work_items").select("id, code, name, description, unit").eq("csi_division_code", divisionCode).eq("is_active", true).order("id").range(from, to)),
   ]);
   const items = [...new Map([...linked, ...own].map((i) => [i.id, i])).values()].sort((a, b) => a.code.localeCompare(b.code));
   return { total: items.length, items: items.slice(offset, offset + limit).map((i) => ({ ...i, usedBy: uses.get(i.id) ?? 0 })) };
@@ -380,15 +380,15 @@ export async function listWorkItemsForDivision(db: Db, divisionCode: string | nu
 /** BOQ tab: the cost library's work items with the number of activities that use each. */
 export async function listWorkItemsLibrary(db: Db, opts: { q?: string; limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
   const s = safeTerm(opts.q ?? "");
-  let qb = db.from("dwl_work_items").select("id, code, description, unit, boq_section", { count: "exact" }).eq("is_active", true);
-  if (s) qb = qb.or(`code.ilike.%${s}%,description.ilike.%${s}%`);
+  let qb = db.from("dwl_work_items").select("id, code, name, description, unit, boq_section", { count: "exact" }).eq("is_active", true);
+  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
   const { data, error, count } = await qb.order("code").order("id").range(opts.offset, opts.offset + opts.limit - 1);
   must(error);
   const rows = (data ?? []) as (WorkItemRef & { boq_section: string })[];
   const used = await usedByCounts(db, rows.map((r) => r.id));
   return {
     total: count ?? rows.length,
-    items: rows.map((r) => ({ id: r.id, code: r.code, description: r.description, unit: r.unit, boqSection: r.boq_section, usedBy: used.get(r.id) ?? 0 })),
+    items: rows.map((r) => ({ id: r.id, code: r.code, name: r.name, description: r.description, unit: r.unit, boqSection: r.boq_section, usedBy: used.get(r.id) ?? 0 })),
   };
 }
 
@@ -426,7 +426,11 @@ export async function searchBank(db: Db, q: string, divisionCode: string | null)
   const { data, error } = await db.rpc("plan_act_bank_search", { q, p_division_code: divisionCode });
   must(error);
   const r = (data ?? {}) as { activities?: BankSearchResult["activities"]; work_items?: WorkItemRef[] };
-  return { activities: r.activities ?? [], workItems: r.work_items ?? [] };
+  // the RPC does not return the work item name: add it so lists can show it instead of the long description
+  const workItems = r.work_items ?? [];
+  const names = await inChunks<{ id: string; name: string | null }>(workItems.map((w) => w.id), (p) => db.from("dwl_work_items").select("id, name").in("id", p));
+  const nameById = new Map(names.map((n) => [n.id, n.name]));
+  return { activities: r.activities ?? [], workItems: workItems.map((w) => ({ ...w, name: nameById.get(w.id) ?? null })) };
 }
 
 // ---------------------------------------------------------------- logic (predecessors / successors)
