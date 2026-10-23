@@ -13,6 +13,7 @@ Mechanism key:
 |---|---|---|---|---|
 | QS → Planning | Tender BOQ → activity quantities and durations (bridge) | public + db | `components/qs/tenders/cost-estimation/tender-planning-bridge-dialog.tsx` → `lib/planning/public.ts`; `plan_act_qs_bridge`, `plan_act_quantity_links`, `plan_task_work` | Doc 21. Bridge phases 1–3 are built. |
 | Planning → QS | Reads BOQ lines for the bridge, BOQ mapping and productivity | db (direct read) | `lib/planning/activity-library/qs-bridge-service.ts`, `boq-mapping-service.ts`, `productivity-service.ts` read `qs_boq_items`, `tender_boq_items` | Read-only. |
+| Planning → QS | Activity Database reads the QS cost library: `dwl_work_items`, `dwl_work_item_resources`, `dwl_resources`; FK `plan_act_master_work_items.work_item_id` → `dwl_work_items` | db (direct read + FK) | `lib/planning/activity-library/activity-database-service.ts`; migration `20261023091500` | Read-only. M/E hrs are edited in QS `/dashboard/qs/dwl-work-items`. Open: may Planning write `dwl_work_item_resources`? Doc 23. |
 | Planning → QS | Task progress for IPC certification | db | RPC `get_node_progress_asof` (`20260919000013`) | |
 | QS → Planning | Cost S-curve | public | `components/qs/cost-scurve.tsx` → `lib/planning/schedule-service.ts` | |
 | Admin → QS + Planning | QS template ↔ Planning template links | public | `components/administration/qs-wbs-planning-link-editor.tsx` → `lib/qs/public-tender.ts`; `qs_wbs_template_planning_links` | |

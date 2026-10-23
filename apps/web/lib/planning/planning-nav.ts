@@ -92,6 +92,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/planning/activity-library",
     items: [
       { label: "Activities", href: "/dashboard/planning/activity-library" },
+      // Activity Database (doc 23): divisions, activities, BOQs and resources in one screen. Hidden until switched on.
+      { label: "Activity Database", href: "/dashboard/planning/activity-library/database", status: "development" },
       { label: "Templates", href: "/dashboard/planning/activity-library/templates" },
       // Generation kits: the templates per part of a building pattern (Generate builds a building in one run)
       { label: "Kits", href: "/dashboard/planning/activity-library/kits" },

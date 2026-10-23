@@ -9,7 +9,7 @@
 - **Schedule:** Overview, Dashboard, Gantt, Sheet (grid editor), Look-ahead (`/dashboard/wbs/lookahead`, with the Weekly Plans, S-Curve & EVM and Progress Reviews tabs), Calendars, Comparison, MS Project Sync (`/sync`).
 - **Resources & Reports:** Resources (loading), Members, Delay Register (+ TIA), Reports.
 - **Productivity:** Norm Library, Task Work, BOQ Mapping, Cost Rollup, Site Records.
-- **Activity Library:** Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
+- **Activity Library:** Activity Database (`/activity-library/database`, doc 23), Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
 - **Not in the nav:** `/dashboard/planning/scurve`, and the client programme portal `app/portal/programme/[projectId]`.
 
 ## 2. Data model
@@ -28,6 +28,13 @@
   - Knowledge: `…02`. Templates, items and dependencies: `…03`.
   - Generation runs, items and overrides: `…04`. Node quantities: `…05`. Quantity links: `…08`.
   - BIM maps, AI and recovery: `20261013000001–3`.
+- **Activity Database (doc 23, `20261023091500`):**
+  - `plan_act_divisions` (16 rows; `code` unique).
+  - `plan_act_masters` gained `division_id`, `visible_code`, `trade`, `activity_type`, `min_duration_pct`, `max_duration_pct`, `image_path`.
+  - `plan_act_master_work_items` (master_id, work_item_id, unique pair) links a master to `dwl_work_items`.
+  - Private storage bucket `activity-images`.
+  - Triggers `trg_plan_act_master_visible_code` (assigns the code) and `trg_plan_act_master_work_items_frozen`.
+  - RPCs `plan_act_bank_search(q, p_division)`, `plan_act_division_counts()`.
 - **QS bridge and generation inputs:**
   - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`).
   - `plan_act_kits` / `plan_act_kit_items` (`20261021000022`), `plan_act_attributes` (`…23`), `plan_act_generation_profiles` (project_id PK, `…25`).
@@ -71,6 +78,7 @@
   - Pure: `generation-planner`, `kit-plan`, `qs-bridge`, `bridge-calc`, `location-map`, `recovery-engine`, `scenario-compare`.
   - Each has an I/O `*-service.ts`. `generation-service.ts` commits runs atomically.
   - `ai/` is advisory only: the model picks among engine-produced options.
+- **Activity Database:** services `activity-database-service.ts` (divisions, masters, links, bank search, duplicate/delete), `activity-import-service.ts` + `activity-database-import.ts` (workbook import to drafts), pure `logic-network-layout.ts`, `visible-code.ts`. UI `components/planning/activity-database/*`; page `app/dashboard/planning/activity-library/database/page.tsx`; nav item "Activity Database" (`development`).
 - **Big components:** `components/planning/plan-schedule-view.tsx`, `gantt-view.tsx`, `sheet-grid.tsx` + `use-sheet-data.ts`, `plan-resource-loading.tsx`, `plan-delay-analysis.tsx`, `sync/sync-dashboard.tsx`.
 - **Planning-owned files under `components/project/wbs/`:** `wbs-lookahead-view`, `wbs-lookahead-timeline`, `wbs-scurve-chart`, `wbs-gantt-view`.
 - **Public API (`PUBLIC_API.planning`):**
@@ -90,6 +98,9 @@
 - **Locked WBS node:** only WBS managers can change its tasks (`trg_wbs_tasks_lock_guard`).
 - **Locked baselines are immutable;** a revised baseline needs a reason (`20260919000004`).
 - **Approved or active masters, templates, kits and norms are immutable:** change them through a new version (guard triggers). Approving norms needs the planning norms approve permission.
+- **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`).
+- **Master guard (doc 23):** `division_id`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.
+- **`plan_act_master_work_items` is frozen unless the master is a draft** (`trg_plan_act_master_work_items_frozen`). M/E hrs per unit are read-only in Planning: they come from `dwl_work_item_resources`.
 - **Not enforced:** the "no later than" constraints (flagged only, `schedule-engine.ts`), and step weights summing to 100 (UI warning only).
 
 ## 5. Integration points
@@ -114,4 +125,4 @@ See `integration-map.md`, rows tagged **Planning**.
   - `lib/planning/activity-library/__tests__`: generation planner, kits, qs-bridge, bridge-calc, location map, recovery, scenarios, BIM/BOQ quantity.
   - `ai/__tests__`.
 - **Security:** `using (true)` RLS on `wbs_task_steps` and on core `wbs_tasks`; project RLS blocked by the empty `project_members`. Six `NOT VALID` CHECKs on `wbs_tasks` (dep arrays length, no-self, types, hours, progress method, reviewer independent). Release plan: `docs/04-Business-Modules/06-Planning-Scheduling/22-Release-Readiness-Plan.md`.
-- **Docs behind the code:** doc 19 says "nothing built" but the AI, recovery, BIM and scenario code exists; doc 21 says "for decision" but bridge phases 1–3 are built; docs 13 and 14 are unverified. Docs folder: `docs/04-Business-Modules/06-Planning-Scheduling/` (00–12 standard pack, 13–21 plans; doc 21 is the QS bridge).
+- **Docs behind the code:** doc 19 says "nothing built" but the AI, recovery, BIM and scenario code exists; doc 21 says "for decision" but bridge phases 1–3 are built; docs 13 and 14 are unverified. Doc 23 (Activity Database plan) has an implementation status section. Docs folder: `docs/04-Business-Modules/06-Planning-Scheduling/` (00–12 standard pack, 13–21 plans; doc 21 is the QS bridge).
