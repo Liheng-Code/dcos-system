@@ -68,6 +68,10 @@ export interface MasterRow {
   activity_type: ActivityType | null;
   min_duration_pct: number | null;
   max_duration_pct: number | null;
+  /** Default workers per crew (BOQ-driven programme: duration = man-hours / (crew x hours per day)). */
+  crew_size: number | null;
+  /** Working hours per day for the crew; defaults to 8. */
+  hours_per_day: number | null;
   image_path: string | null;
   domain_id: string;
   category_id: string;
@@ -101,6 +105,10 @@ export interface MasterDetailsPatch {
   csi_section_code?: string | null;
   visible_code?: string | null;
   trade?: string | null;
+  /** Whole number > 0, or null. Editable on any status. */
+  crew_size?: number | null;
+  /** More than 0 and at most 24, or null. Editable on any status. */
+  hours_per_day?: number | null;
   image_path?: string | null;
 }
 const VERSIONED_KEYS: (keyof MasterDetailsPatch)[] = ["name", "description", "default_unit", "activity_type", "min_duration_pct", "max_duration_pct"];
@@ -147,11 +155,14 @@ export interface DuplicateResult {
 }
 
 const MASTER_COLS =
-  "id, visible_code, code, name, description, default_unit, status, version, csi_division_code, csi_section_code, trade, activity_type, min_duration_pct, max_duration_pct, image_path, domain_id, category_id, family_id, discipline, work_type";
+  "id, visible_code, code, name, description, default_unit, status, version, csi_division_code, csi_section_code, trade, activity_type, min_duration_pct, max_duration_pct, crew_size, hours_per_day, image_path, domain_id, category_id, family_id, discipline, work_type";
 
 function toMasterRow(r: Record<string, unknown>): MasterRow {
   const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-  return { ...(r as unknown as MasterRow), min_duration_pct: n(r.min_duration_pct), max_duration_pct: n(r.max_duration_pct) };
+  return {
+    ...(r as unknown as MasterRow),
+    min_duration_pct: n(r.min_duration_pct), max_duration_pct: n(r.max_duration_pct), crew_size: n(r.crew_size), hours_per_day: n(r.hours_per_day),
+  };
 }
 
 
@@ -225,6 +236,8 @@ export async function updateMasterDetails(db: Db, id: string, patch: MasterDetai
   const max = "max_duration_pct" in patch ? patch.max_duration_pct ?? null : m.max_duration_pct;
   if (min !== null && max !== null && min > max) throw new Error("Min duration % must not exceed max duration %.");
   if (patch.name !== undefined && !patch.name.trim()) throw new Error("Name is required.");
+  if (patch.crew_size != null && !(Number.isInteger(patch.crew_size) && patch.crew_size > 0)) throw new Error("Crew size must be a whole number greater than 0.");
+  if (patch.hours_per_day != null && !(patch.hours_per_day > 0 && patch.hours_per_day <= 24)) throw new Error("Hours per day must be more than 0 and at most 24.");
 
   // CSI division / section: format, and the section must belong to the division it will end up with
   const divPatch = "csi_division_code" in patch ? (patch.csi_division_code?.trim() || null) : undefined;
@@ -486,7 +499,8 @@ export async function duplicateMaster(db: Db, id: string): Promise<DuplicateResu
     sectors: src.sectors, building_types: src.building_types, duration_basis: src.duration_basis,
     default_work_group: src.default_work_group, default_step_template_id: src.default_step_template_id,
     csi_division_code: src.csi_division_code, csi_section_code: src.csi_section_code, trade: src.trade, activity_type: src.activity_type,
-    min_duration_pct: src.min_duration_pct, max_duration_pct: src.max_duration_pct, image_path: null,
+    min_duration_pct: src.min_duration_pct, max_duration_pct: src.max_duration_pct,
+    crew_size: src.crew_size, hours_per_day: src.hours_per_day, image_path: null,
     applicable_project_types: src.applicable_project_types, effective_date: src.effective_date,
     visible_code: null, status: "draft", version: 1,
   }).select(MASTER_COLS).single();

@@ -2784,6 +2784,15 @@ export async function carryOverBoq(
       notes: t.notes,
       wbs_node_id: t.wbs_node_id ?? null,
       budget_code_id: t.budget_code_id ?? null,
+      // BOQ-driven programme (doc 24): the contract line keeps the BOQ-item mapping, location and classification
+      dwl_work_item_id: t.dwl_work_item_id ?? null,
+      building_code: t.building_code ?? null,
+      level: t.level ?? null,
+      discipline: t.discipline ?? null,
+      section: t.section ?? null,
+      sub_section: t.sub_section ?? null,
+      sub_element: t.sub_element ?? null,
+      source_tender_boq_item_id: t.id,
       baseline_status: "locked" as const,
       locked_at: new Date().toISOString(),
     }));

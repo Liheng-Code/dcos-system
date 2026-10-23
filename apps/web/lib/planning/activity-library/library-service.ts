@@ -77,6 +77,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   const srcCat = src as unknown as {
     csi_division_code?: string | null; csi_section_code?: string | null; trade?: string | null; activity_type?: string | null;
     min_duration_pct?: number | null; max_duration_pct?: number | null; image_path?: string | null;
+    crew_size?: number | null; hours_per_day?: number | null;
   };
   const { data: created, error } = await db.from("plan_act_masters").insert({
     code: src.code, name: src.name, description: src.description, domain_id: src.domain_id, category_id: src.category_id,
@@ -85,6 +86,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
     // Activity Database catalogue fields (visible_code is inherited from the predecessor by trigger)
     csi_division_code: srcCat.csi_division_code ?? null, csi_section_code: srcCat.csi_section_code ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
     min_duration_pct: srcCat.min_duration_pct ?? null, max_duration_pct: srcCat.max_duration_pct ?? null, image_path: srcCat.image_path ?? null,
+    crew_size: srcCat.crew_size ?? null, hours_per_day: srcCat.hours_per_day ?? null,
     status: "draft", version: next, supersedes_id: src.id,
   }).select("*").single();
   if (error) throw new Error(error.message);
