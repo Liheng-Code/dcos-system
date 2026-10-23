@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Section {
   id: string;
@@ -60,12 +61,12 @@ export function BoqItemEditor({ item: rawItem, sections, onSaved, onCancel }: { 
 
     if (isNew) {
       const { data, error } = await insertQsBoqItem(payload);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Item created");
       onSaved(data);
     } else {
       const { data, error } = await updateQsBoqItemById(payload, item.id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
+      if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
       toast.success("Item updated");
       onSaved(data);
     }

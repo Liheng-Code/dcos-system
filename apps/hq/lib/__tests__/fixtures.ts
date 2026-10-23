@@ -1,0 +1,35 @@
+import type { License } from "@/lib/types";
+
+export function makeLicense(overrides: Partial<License> = {}): License {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    tenant_id: "00000000-0000-4000-8000-000000000002",
+    deployment_id: "00000000-0000-4000-8000-000000000003",
+    subscription_id: null,
+    number: "DCOS-L-000001",
+    revision: 1,
+    type: "subscription",
+    plan_id: null,
+    status: "draft",
+    hq_state: "active",
+    valid_from: "2026-10-01",
+    valid_until: "2027-09-30",
+    grace_days: 14,
+    readonly_days: 30,
+    modules: ["qs", "planning"],
+    features: ["ai_qs"],
+    limit_users: 50,
+    limit_viewers: 30,
+    limit_projects: 20,
+    support_tier: "premium",
+    support_until: "2027-09-30",
+    maintenance_until: "2027-09-30",
+    suspend_mode: null,
+    notice: null,
+    change_reason: null,
+    supersedes_license_id: null,
+    issued_at: null,
+    created_at: "2026-10-19T00:00:00Z",
+    ...overrides,
+  };
+}

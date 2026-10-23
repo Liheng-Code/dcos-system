@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { LevelTemplateEditor } from "./level-template-editor";
 import { WbsTemplateEditor } from "./wbs-template-editor";
+import { QsWbsPlanningLinkEditor } from "./qs-wbs-planning-link-editor";
+import { CsiDivisionsEditor } from "./csi-divisions-editor";
 import { BookTemplate, Download, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,11 @@ import {
   upsertMasterLibraryItem,
 } from "@/lib/master-libraries";
 import type { MasterLibraryRecord, MasterLibraryType, TaskTemplateMasterRecord } from "@/components/project/wbs/wbs-types";
+
+type TemplateTab = "level_templates" | "wbs_templates" | "qs_wbs_links" | "csi_divisions";
+const TEMPLATE_TABS: readonly (readonly [TemplateTab, string])[] = [
+  ["level_templates", "Level Templates"], ["wbs_templates", "WBS Templates"], ["qs_wbs_links", "QS ↔ Planning Links"], ["csi_divisions", "CSI Divisions"],
+];
 
 type LibraryRecord = MasterLibraryRecord | TaskTemplateMasterRecord;
 
@@ -63,7 +70,12 @@ export function MasterLibrariesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeType, setActiveType] = useState<MasterLibraryType>("phase");
   // Template tabs: Level Templates (level sets copied into a building) and WBS Templates (full WBS copied into a project).
-  const [templateTab, setTemplateTab] = useState<"level_templates" | "wbs_templates" | null>(null);
+  // ?tab=csi_divisions opens a template tab directly (e.g. the link from QS Material Divisions).
+  const [templateTab, setTemplateTab] = useState<TemplateTab | null>(() => {
+    if (typeof window === "undefined") return null;
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return TEMPLATE_TABS.some(([key]) => key === tab) ? (tab as TemplateTab) : null;
+  });
   const [records, setRecords] = useState<LibraryRecord[]>([]);
   const [phaseOptions, setPhaseOptions] = useState<MasterLibraryRecord[]>([]);
   const [disciplineOptions, setDisciplineOptions] = useState<MasterLibraryRecord[]>([]);
@@ -270,7 +282,7 @@ export function MasterLibrariesPage() {
                 >
                   {item.label}
                 </button>
-                {item.type === "stage" && ([["level_templates", "Level Templates"], ["wbs_templates", "WBS Templates"]] as const).map(([tab, label]) => (
+                {item.type === "stage" && TEMPLATE_TABS.map(([tab, label]) => (
                   <button
                     key={tab}
                     type="button"
@@ -290,7 +302,7 @@ export function MasterLibrariesPage() {
           </div>
         </div>
 
-        {templateTab === "level_templates" ? <LevelTemplateEditor /> : templateTab === "wbs_templates" ? <WbsTemplateEditor /> : (
+        {templateTab === "level_templates" ? <LevelTemplateEditor /> : templateTab === "wbs_templates" ? <WbsTemplateEditor /> : templateTab === "qs_wbs_links" ? <QsWbsPlanningLinkEditor /> : templateTab === "csi_divisions" ? <CsiDivisionsEditor /> : (
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
             <div>

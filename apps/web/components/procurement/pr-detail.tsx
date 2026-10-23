@@ -3,24 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Loader2, ArrowLeft, Send, CheckCircle, XCircle, RotateCcw, Pencil, Trash2, type LucideIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { deletePrById, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-queries";
+import { ReasonDialog } from "@/components/procurement/reason-dialog";
+import { transitionClass, transitionIcon, transitionKey } from "@/components/procurement/transition-style";
+import { availableTransitions, procErrorMessage, type ProcTransition } from "@/lib/procurement/procurement-transitions";
+import { transitionPr, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 
 interface PRRecord {
   id: string;
@@ -41,6 +33,9 @@ interface PRRecord {
   approval_status: string;
   approved_by: string | null;
   approved_at: string | null;
+  created_by: string | null;
+  submitted_by: string | null;
+  status_reason: string | null;
   total_estimated_cost: number | null;
   notes: string | null;
   budget_confirmation_id: string | null;
@@ -80,48 +75,22 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-gray-500/10 text-gray-500 border-gray-200",
 };
 
-const STATUS_ACTIONS: Record<string, { label: string; nextStatus: string; icon: LucideIcon; color: string }[]> = {
-  draft: [
-    { label: "Submit for Approval", nextStatus: "submitted", icon: Send, color: "bg-blue-600 hover:bg-blue-700" },
-  ],
-  submitted: [
-    { label: "Send to Budget Review", nextStatus: "under_budget_review", icon: Send, color: "bg-amber-600 hover:bg-amber-700" },
-    { label: "Override Approve", nextStatus: "approved", icon: CheckCircle, color: "bg-emerald-600 hover:bg-emerald-700" },
-    { label: "Return for Revision", nextStatus: "returned", icon: RotateCcw, color: "bg-orange-600 hover:bg-orange-700" },
-    { label: "Reject", nextStatus: "rejected", icon: XCircle, color: "bg-red-600 hover:bg-red-700" },
-  ],
-  under_budget_review: [
-    { label: "Budget Check Passed", nextStatus: "approved", icon: CheckCircle, color: "bg-emerald-600 hover:bg-emerald-700" },
-    { label: "Return for Revision", nextStatus: "returned", icon: RotateCcw, color: "bg-orange-600 hover:bg-orange-700" },
-    { label: "Reject", nextStatus: "rejected", icon: XCircle, color: "bg-red-600 hover:bg-red-700" },
-  ],
-  returned: [
-    { label: "Submit for Approval", nextStatus: "submitted", icon: Send, color: "bg-blue-600 hover:bg-blue-700" },
-  ],
-  approved: [],
-  rejected: [],
-  closed: [],
-  cancelled: [],
-};
-
 interface PRDetailProps {
   id: string;
 }
 
 export function PRDetail({ id }: PRDetailProps) {
   const router = useRouter();
-  const { can } = useProcurementPermissions(["pr"]);
+  const { can, userId } = useProcurementPermissions(["pr"]);
   const [pr, setPr] = useState<PRRecord | null>(null);
   const [items, setItems] = useState<PRItem[]>([]);
   const [projectInfo, setProjectInfo] = useState<{ project_name: string; project_code: string } | null>(null);
   const [budgetGroupName, setBudgetGroupName] = useState<string | null>(null);
   const [budgetConfirmation, setBudgetConfirmation] = useState<BCSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [pending, setPending] = useState<ProcTransition | null>(null);
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
     Promise.all([
       getPrById(id, "*"),
       listPrItemsByPrId(id, "*, qs_boq_items(item_no, item_code, description)"),
@@ -152,53 +121,43 @@ export function PRDetail({ id }: PRDetailProps) {
 
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
 
-  async function handleAction(nextStatus: string) {
-    if (nextStatus === "rejected" || nextStatus === "returned") {
-      const reason = prompt(`Reason for ${nextStatus}:`);
-      if (reason === null) return;
-    }
-
-    const supabase = createClient();
-    const update: Record<string, string | null | boolean> = { approval_status: nextStatus };
-
-    if (nextStatus === "approved") {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        update.approved_by = user.id;
-        update.approved_at = new Date().toISOString();
-      }
-    }
-
-    const { error } = await updatePrById(update, id);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`PR ${nextStatus.replace(/_/g, " ")}`);
+  async function runTransition(t: ProcTransition, reason?: string): Promise<boolean> {
+    const { error } = await transitionPr(id, t.to, reason);
+    if (error) { toast.error(procErrorMessage(error)); return false; }
+    toast.success(`PR ${t.to.replace(/_/g, " ")}`);
     fetchDetail();
-  }
-
-  async function handleDelete() {
-    setDeleting(true);
-    const supabase = createClient();
-    const { error } = await deletePrById(id);
-    if (error) { toast.error(error.message); setDeleting(false); return; }
-    toast.success("Purchase requisition deleted");
-    router.push("/dashboard/procurement/pr");
+    return true;
   }
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (!pr) return <div className="py-20 text-center text-muted-foreground">PR not found.</div>;
 
+  const createdBy = pr.created_by ?? pr.requested_by;
+  const transitions = availableTransitions("pr", pr.approval_status, {
+    can,
+    userId,
+    createdBy,
+    submittedBy: pr.submitted_by,
+  });
   const isBudgetReviewStage = pr.approval_status === "under_budget_review";
-  const canBudgetReview = can("pr", "approve");
-  const possibleActions = isBudgetReviewStage && !canBudgetReview ? [] : (STATUS_ACTIONS[pr.approval_status] ?? []);
-  const canEdit = pr.approval_status === "draft" || pr.approval_status === "returned";
-  const canDelete = pr.approval_status === "draft";
+  const canEdit = (pr.approval_status === "draft" || pr.approval_status === "returned") && can("pr", "edit");
+  const approveHidden =
+    (pr.approval_status === "submitted" || isBudgetReviewStage) &&
+    can("pr", "approve") &&
+    userId != null &&
+    (userId === createdBy || userId === pr.submitted_by) &&
+    !transitions.some(t => t.to === "approved");
 
-  function handleActionClick(action: { nextStatus: string }) {
-    if (action.nextStatus === "approved" && isBudgetReviewStage) {
+  function handleActionClick(t: ProcTransition) {
+    if (t.viaRpc === "confirm_budget") {
       router.push(`/dashboard/procurement/pr/${id}/budget-confirmation/new`);
       return;
     }
-    handleAction(action.nextStatus);
+    if (t.reasonRequired) {
+      setPending(t);
+      return;
+    }
+    void runTransition(t);
   }
 
   return (
@@ -219,39 +178,46 @@ export function PRDetail({ id }: PRDetailProps) {
               <Pencil className="h-4 w-4 mr-1" /> Edit
             </Button>
           )}
-          {canDelete && (
-            <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setShowDeleteDialog(true)}>
-              <Trash2 className="h-4 w-4 mr-1" /> Delete
-            </Button>
-          )}
-          {isBudgetReviewStage && !canBudgetReview && (
+          {isBudgetReviewStage && !can("pr", "approve") && (
             <span className="text-sm text-muted-foreground">Awaiting QS budget review</span>
           )}
-          {possibleActions.map(action => (
-            <Button key={action.nextStatus} className={action.color} size="sm" onClick={() => handleActionClick(action)}>
-              <action.icon className="h-4 w-4 mr-1" /> {action.label}
-            </Button>
-          ))}
+          {transitions.map(t => {
+            const isCancel = t.to === "cancelled";
+            const Icon = isCancel ? Ban : transitionIcon(t);
+            return (
+              <Button key={transitionKey(t)} className={transitionClass(t)} size="sm" onClick={() => handleActionClick(t)}>
+                <Icon className="h-4 w-4 mr-1" /> {isCancel ? "Cancel PR" : t.label}
+              </Button>
+            );
+          })}
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this purchase requisition?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete {pr.pr_number} and all of its line items. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete} disabled={deleting}>
-              {deleting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {approveHidden && (
+        <p className="text-sm text-muted-foreground">
+          You created or submitted this PR, so another approver must approve it.
+        </p>
+      )}
+      {pr.status_reason && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {pr.approval_status === "returned" ? "Returned" : pr.approval_status === "rejected" ? "Rejected" : pr.approval_status === "cancelled" ? "Cancelled" : "Note"}: {pr.status_reason}
+        </div>
+      )}
+
+      <ReasonDialog
+        open={pending != null}
+        onOpenChange={(o) => { if (!o) setPending(null); }}
+        title={pending?.to === "cancelled" ? `Cancel ${pr.pr_number}?` : (pending?.label ?? "")}
+        description={pending?.to === "approved" ? "Approving without budget confirmation is an override. Explain why." : undefined}
+        minLength={pending?.minReasonLength}
+        confirmLabel={pending?.to === "cancelled" ? "Cancel PR" : (pending?.label ?? "Confirm")}
+        destructive={pending?.variant === "reject"}
+        onConfirm={async (reason) => {
+          if (!pending) return;
+          const ok = await runTransition(pending, reason);
+          if (ok) setPending(null);
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <Card>

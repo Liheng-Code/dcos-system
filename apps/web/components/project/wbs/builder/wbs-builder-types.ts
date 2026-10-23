@@ -84,6 +84,7 @@ export type WbsColumnKey =
   | "finish"
   | "progress"
   | "activities"
+  | "activity_progress"
   | "gfa"
   | "action";
 
@@ -153,7 +154,8 @@ export const WBS_BUILDER_COLUMNS: WbsBuilderColumn[] = [
   { field: "start", label: "Start", width: 96, variant: "text", align: "right" },
   { field: "finish", label: "Finish", width: 96, variant: "text", align: "right" },
   { field: "progress", label: "Progress", width: 90, variant: "number", align: "right" },
-  { field: "activities", label: "Activities", width: 120, variant: "text", align: "right" },
+  { field: "activities", label: "Activities", width: 90, variant: "text", align: "right" },
+  { field: "activity_progress", label: "Progress %", width: 90, variant: "text", align: "right" },
   { field: "gfa", label: "GFA (m²)", width: 110, variant: "number", align: "right" },
   { field: "action", label: "", width: 96, variant: "action" },
 ];
@@ -165,11 +167,11 @@ export const WBS_BUILDER_COLUMNS: WbsBuilderColumn[] = [
 export const FIXED_COLUMNS: WbsColumnKey[] = ["wbs_code", "wbs_name", "action"];
 
 export const COLUMN_PRESETS: { id: string; label: string; columns: WbsColumnKey[] }[] = [
-  { id: "standard", label: "Standard", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "activities", "gfa"] },
+  { id: "standard", label: "Standard", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "activities", "activity_progress", "gfa"] },
   { id: "structure", label: "Structure", columns: ["node_type", "area_label", "status"] },
-  { id: "cost", label: "Cost", columns: ["cost_code", "activities", "gfa"] },
-  { id: "schedule", label: "Schedule", columns: ["discipline", "duration", "start", "finish", "progress", "activities"] },
-  { id: "all", label: "All", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "duration", "start", "finish", "progress", "activities", "gfa"] },
+  { id: "cost", label: "Cost", columns: ["cost_code", "activities", "activity_progress", "gfa"] },
+  { id: "schedule", label: "Schedule", columns: ["discipline", "duration", "start", "finish", "progress", "activities", "activity_progress"] },
+  { id: "all", label: "All", columns: ["node_type", "discipline", "area_label", "cost_code", "status", "duration", "start", "finish", "progress", "activities", "activity_progress", "gfa"] },
 ];
 
 export type WbsDepth = "all" | 1 | 2 | 3 | 4;
@@ -179,9 +181,26 @@ export interface WbsViewPrefs {
   columns: WbsColumnKey[];
   depth: WbsDepth;
   showActivities: boolean;
+  /** Saved-view format; 2 = Activities count and Progress % are separate columns. */
+  version?: number;
 }
 
-export const DEFAULT_VIEW: WbsViewPrefs = { columns: COLUMN_PRESETS[0].columns, depth: 2, showActivities: false };
+export const VIEW_VERSION = 2;
+
+export const DEFAULT_VIEW: WbsViewPrefs = { columns: COLUMN_PRESETS[0].columns, depth: 2, showActivities: false, version: VIEW_VERSION };
+
+/**
+ * A view saved in this browser, made current: unknown columns dropped (e.g. the removed Level
+ * Breakdown), and views saved before Progress % was split out of Activities get it next to Activities.
+ */
+export function upgradeSavedView(saved: Partial<WbsViewPrefs>): WbsViewPrefs {
+  const known = new Set(WBS_BUILDER_COLUMNS.map((c) => c.field));
+  let columns = Array.isArray(saved.columns) ? saved.columns.filter((c) => known.has(c)) : DEFAULT_VIEW.columns;
+  if ((saved.version ?? 1) < 2 && columns.includes("activities") && !columns.includes("activity_progress")) {
+    columns = [...columns, "activity_progress"];
+  }
+  return { ...DEFAULT_VIEW, ...saved, columns, version: VIEW_VERSION };
+}
 
 /** Columns to render, in their fixed order. */
 export function visibleColumnsFor(columns: WbsColumnKey[]): WbsBuilderColumn[] {

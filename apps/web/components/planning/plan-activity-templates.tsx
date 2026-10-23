@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,14 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import * as lib from "@/lib/planning/activity-library/library-service";
 import type { ActMethod, ActTemplate, Relation } from "@/lib/planning/activity-library/types";
-import { ApplicabilityEditor } from "./plan-act-master-editors";
+import { ApplicabilityEditor, valueLabel } from "./plan-act-master-editors";
+import { usePlanningChoices } from "./plan-planning-choices";
+import { choiceLabel } from "@/lib/planning/activity-library/planning-choices";
 import { ActStatusPill, CodeChip, EmptyNote, STATUS_LABEL, nextStatuses } from "./plan-act-shared";
+import { SectorListFields } from "@/components/administration/template-sector-fields";
+import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
+import { buildingTypeLabel } from "@/lib/project-categories";
+import { sectorListLabel } from "@/lib/template-fit";
 
 type Pickable = Awaited<ReturnType<typeof lib.listPickableMasters>>[number];
 const selectCls = "h-8 rounded-md border border-input bg-background px-1.5 text-xs";
@@ -35,30 +41,61 @@ export function PlanActivityTemplates() {
   const [masters, setMasters] = useState<Pickable[]>([]);
   const [methods, setMethods] = useState<ActMethod[]>([]);
   const [pick, setPick] = useState("");
+  const [opening, setOpening] = useState(false);
+  const catalogue = usePlanningChoices();
+  // latest open() call: a slower response for a template clicked earlier must not replace the current one
+  const openSeq = useRef(0);
+  // the pickable masters and their methods are loaded once per visit, then topped up for masters not seen yet
+  const mastersReq = useRef<Promise<Pickable[]> | null>(null);
+  const methodsLoaded = useRef(new Set<string>());
+
+  async function ensureMastersAndMethods(itemMasterIds: string[]) {
+    mastersReq.current ??= lib.listPickableMasters(supabase).then((m) => { setMasters(m); return m; });
+    let m: Pickable[];
+    try { m = await mastersReq.current; } catch (e) { mastersReq.current = null; throw e; }
+    const need = [...new Set([...itemMasterIds, ...m.map((x) => x.id)])].filter((id) => !methodsLoaded.current.has(id));
+    if (!need.length) return;
+    need.forEach((id) => methodsLoaded.current.add(id));
+    try {
+      const rows = await lib.listMethodsForMasters(supabase, need);
+      setMethods((prev) => [...prev, ...rows].sort((a, b) => a.sort_order - b.sort_order));
+    } catch (e) {
+      need.forEach((id) => methodsLoaded.current.delete(id));
+      throw e;
+    }
+  }
 
   async function open(id: string) {
+    const seq = ++openSeq.current;
     setSelected(id);
-    const d = await lib.loadTemplateDetail(supabase, id);
-    setDetail(d);
-    setItems(d.items.map((it) => ({ key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id, duration_days_override: it.duration_days_override, crews: it.crews ?? 1, note: it.note })));
-    setDeps(d.dependencies.map((x) => ({ from_key: x.predecessor_item_id, to_key: x.successor_item_id, relation: x.relation, lag_days: x.lag_days, is_optional: x.is_optional })));
-    setDirty(false);
-    if (d.template.status === "draft") {
-      const [m] = await Promise.all([lib.listPickableMasters(supabase)]);
-      setMasters(m);
-      setMethods(await lib.listMethodsForMasters(supabase, [...new Set([...d.items.map((i) => i.master_id), ...m.map((x) => x.id)])]));
+    setOpening(true);
+    try {
+      const d = await lib.loadTemplateDetail(supabase, id);
+      if (seq !== openSeq.current) return;
+      setDetail(d);
+      setItems(d.items.map((it) => ({ key: it.id, master_id: it.master_id, scope: it.scope, method_id: it.method_id, duration_days_override: it.duration_days_override, crews: it.crews ?? 1, note: it.note })));
+      setDeps(d.dependencies.map((x) => ({ from_key: x.predecessor_item_id, to_key: x.successor_item_id, relation: x.relation, lag_days: x.lag_days, is_optional: x.is_optional })));
+      setDirty(false);
+      if (d.template.status === "draft") await ensureMastersAndMethods(d.items.map((i) => i.master_id));
+    } catch (e) {
+      if (seq === openSeq.current) toast.error(e instanceof Error ? e.message : "Failed to load the template");
+    } finally {
+      if (seq === openSeq.current) setOpening(false);
     }
   }
 
   async function reload(keep?: string) {
+    let list: ActTemplate[];
     try {
-      const list = await lib.listTemplates(supabase);
+      list = await lib.listTemplates(supabase);
       setTemplates(list);
-      const id = keep ?? selected ?? list[0]?.id ?? null;
-      if (id) await open(id); else setDetail(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load templates");
+      return;
     } finally { setLoading(false); }
+    // the list shows straight away; the template detail follows
+    const id = keep ?? selected ?? list[0]?.id ?? null;
+    if (id) await open(id); else setDetail(null);
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- reload() sets state after awaiting
   useEffect(() => { void reload(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -122,12 +159,16 @@ export function PlanActivityTemplates() {
             className={cn("mb-2 w-full rounded-lg border border-border p-3 text-left hover:border-primary", selected === t.id && "border-primary bg-primary/5")}>
             <CodeChip code={t.code} />
             <div className="mt-1 text-sm font-semibold">{t.name}</div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><ActStatusPill status={t.status} /> v{t.version}</div>
+            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <ActStatusPill status={t.status} /> v{t.version}
+              {opening && selected === t.id && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-primary" />}
+            </div>
+            <div className="mt-1 truncate text-[11px] text-muted-foreground">{sectorListLabel(t.sectors ?? [])}</div>
           </button>
         ))}
       </aside>
 
-      <section className="min-h-0 overflow-auto p-6">
+      <section className={cn("min-h-0 overflow-auto p-6 transition-opacity", detail && detail.template.id !== selected && "opacity-50")}>
         {!detail ? <EmptyNote>Select or create a template.</EmptyNote> : (
           <>
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -137,7 +178,7 @@ export function PlanActivityTemplates() {
                 <p className="text-sm text-muted-foreground">{detail.template.description}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {detail.applicability.map((a, i) => (
-                    <span key={i} className="rounded-full border border-border bg-muted px-3 py-0.5 text-xs">{a.attribute} {a.operator} {a.values.join(" | ")}</span>
+                    <span key={i} className="rounded-full border border-border bg-muted px-3 py-0.5 text-xs">{choiceLabel(catalogue, a.attribute)} {a.operator === "in" || a.operator === "eq" ? "is" : "is not"} {a.values.map((v) => valueLabel(a.attribute, v, catalogue)).join(" or ")}</span>
                   ))}
                 </div>
               </div>
@@ -156,6 +197,7 @@ export function PlanActivityTemplates() {
             </div>
 
             <div className="mx-auto mb-6 max-w-3xl space-y-4">
+              <TemplateSectors key={detail.template.id} template={detail.template} onSaved={() => void reload(detail.template.id)} />
               <div>
                 <div className="mb-1 text-xs font-semibold text-muted-foreground">Applicability</div>
                 <ApplicabilityEditor targetType="template" targetId={detail.template.id} editable={editable} />
@@ -364,6 +406,52 @@ function InterLevelEditor({
           lag <Input className="h-8 w-16 text-xs" type="number" value={lag} onChange={(e) => setLag(e.target.value)} /> d
           <Button size="sm" disabled={!from || !to || dirty} title={dirty ? "Save the recipe first: positions must match the saved order" : undefined} onClick={() => void save(false)}>Save link</Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sectors / building types of a template: classification, not recipe content, so library managers
+ * can change it on any status (the template guard does not freeze it).
+ */
+function TemplateSectors({ template, onSaved }: { template: ActTemplate; onSaved: () => void }) {
+  const db = useMemo(() => createClient(), []);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ sectors: template.sectors ?? [], buildingTypes: template.building_types ?? [] });
+  useEffect(() => { canManageLibraries(db).then(setCanEdit).catch(() => setCanEdit(false)); }, [db]);
+
+  async function save() {
+    try {
+      await lib.updateTemplateHeader(db, template.id, { sectors: draft.sectors, building_types: draft.buildingTypes });
+      toast.success("Sectors saved");
+      setEditing(false);
+      onSaved();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save"); }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold text-muted-foreground">Sectors</div>
+        {canEdit && !editing && <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditing(true)}>Edit</Button>}
+      </div>
+      {editing ? (
+        <div className="space-y-3 rounded-lg border border-dashed border-border p-3">
+          <SectorListFields sectors={draft.sectors} buildingTypes={draft.buildingTypes} onChange={setDraft} />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => void save()}>Save</Button>
+            <Button size="sm" variant="outline" onClick={() => { setDraft({ sectors: template.sectors ?? [], buildingTypes: template.building_types ?? [] }); setEditing(false); }}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm">
+          {sectorListLabel(template.sectors ?? [])}
+          {(template.building_types ?? []).length > 0 && (
+            <span className="text-muted-foreground"> · recommended for {template.building_types.map((b) => buildingTypeLabel(b)).join(", ")}</span>
+          )}
+        </p>
       )}
     </div>
   );

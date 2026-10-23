@@ -33,6 +33,11 @@ export interface PlannerInput {
   /** quantity per `${nodeId}|${masterId}`; absent = not resolved */
   quantities: Record<string, ResolvedQuantity>;
   existingTaskCodes: Set<string>;
+  /**
+   * `${nodeId}|${masterCode}` of activities the target node (or a package under it) already has from that
+   * activity master, whatever their task code, e.g. from a WBS template. Those are skipped, not duplicated.
+   */
+  existingMasters?: Set<string>;
   templateApplicable: boolean;
   /** Link between consecutive levels: item `from_seq` of level N drives item `to_seq` of level N+1. */
   interLevel?: { from_seq: number; to_seq: number; relation: Relation; lag_days: number } | null;
@@ -83,7 +88,8 @@ export interface GeneratedItem {
 export interface PlannerResult {
   tasks: GeneratedTask[];
   items: GeneratedItem[];
-  skipped: { node_id: string; task_code: string }[];
+  /** reason "master" = the node already has an activity from this master under another code */
+  skipped: { node_id: string; task_code: string; reason?: "master" }[];
   counts: { total: number; high: number; review: number; low: number; warnings: number };
   snapshot: {
     template: { id: string; version: number };
@@ -127,6 +133,10 @@ export function planGeneration(input: PlannerInput): PlannerResult {
       snapshot.masters[ctx.master.id] = { code: ctx.master.code, version: ctx.master.version };
 
       let code = `${ctx.master.code}@${nodeCode}`;
+      if (!input.existingTaskCodes.has(code) && input.existingMasters?.has(`${node.id}|${ctx.master.code}`)) {
+        skipped.push({ node_id: node.id, task_code: code, reason: "master" });
+        continue;
+      }
       if (usedCodes.has(code)) {
         if (input.existingTaskCodes.has(code)) { skipped.push({ node_id: node.id, task_code: code }); continue; }
         let n = 2;

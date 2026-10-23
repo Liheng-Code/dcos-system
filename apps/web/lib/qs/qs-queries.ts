@@ -539,46 +539,59 @@ export function updateDwlMaterialCategoryById(patch: object, id: string | number
   return db().from("dwl_material_categories").update(patch).eq("id", id);
 }
 
-// ── dwl_material_division_sections ────────────────────────────────────────────
+// ── CSI divisions / sections (core library: csi_divisions, csi_sections) ──────
+// Material Divisions are read from the core CSI library (lib/csi-divisions.ts) and edited in
+// Administration > Master Libraries > CSI Divisions. The old dwl_material_division* tables are frozen.
+// Reads keep their old row shape: sections expose `id` (= the section code, the table's key).
 
-// @table dwl_material_division_sections
-export function deleteDwlMaterialDivisionSectionById(id: string | number | boolean) {
-  return db().from("dwl_material_division_sections").delete().eq("id", id);
+const CSI_READ_ONLY_MESSAGE = "Managed in Administration › Master Libraries › CSI Divisions";
+
+// Returns an already-failed result (not a throw) so callers that do `const { error } = await ...` show it as a toast.
+function csiReadOnly() {
+  return Promise.resolve({ data: null, error: { message: CSI_READ_ONLY_MESSAGE, code: "CSI_READ_ONLY" } });
 }
 
-// @table dwl_material_division_sections
-export function insertDwlMaterialDivisionSection(row: object) {
-  return db().from("dwl_material_division_sections").insert([row]);
+// @table csi_sections
+export function deleteDwlMaterialDivisionSectionById(_id: string | number | boolean) {
+  void _id;
+  return csiReadOnly();
 }
 
-// @table dwl_material_division_sections
+// @table csi_sections
+export function insertDwlMaterialDivisionSection(_row: object) {
+  void _row;
+  return csiReadOnly();
+}
+
+// @table csi_sections
 export function listDwlMaterialDivisionSectionsOrderedBySortOrderAndCode() {
   return db()
-    .from("dwl_material_division_sections")
-    .select("id, division_code, code, name, parent_code, sort_order")
+    .from("csi_sections")
+    .select("id:code, division_code, code, name, parent_code, sort_order, level, is_active")
     .order("sort_order")
     .order("code");
 }
 
-// ── dwl_material_divisions ────────────────────────────────────────────────────
-
-// @table dwl_material_divisions
-export function insertDwlMaterialDivision(row: object) {
-  return db().from("dwl_material_divisions").insert([row]);
+// @table csi_divisions
+export function insertDwlMaterialDivision(_row: object) {
+  void _row;
+  return csiReadOnly();
 }
 
-// @table dwl_material_divisions
+// @table csi_divisions
 export function listDwlMaterialDivisionsOrderedBySortOrderAndCode() {
   return db()
-    .from("dwl_material_divisions")
+    .from("csi_divisions")
     .select("code, name, group_name, sort_order, is_active")
     .order("sort_order")
     .order("code");
 }
 
-// @table dwl_material_divisions
-export function updateDwlMaterialDivisionByCode(patch: object, code: string) {
-  return db().from("dwl_material_divisions").update(patch).eq("code", code);
+// @table csi_divisions
+export function updateDwlMaterialDivisionByCode(_patch: object, _code: string) {
+  void _patch;
+  void _code;
+  return csiReadOnly();
 }
 
 // ── dwl_material_photos ───────────────────────────────────────────────────────
@@ -1297,7 +1310,7 @@ export function insertDwlWorkItemReturning(row: object) {
   return db()
     .from("dwl_work_items")
     .insert([row])
-    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
+    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at, csi_section_code, csi_division_code")
     .single();
 }
 
@@ -1315,7 +1328,7 @@ export function listDwlWorkItems() {
 export function listDwlWorkItemsByIds(ids: readonly (string | number)[]) {
   return db()
     .from("dwl_work_items")
-    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
+    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at, csi_section_code, csi_division_code")
     .in("id", ids);
 }
 
@@ -1323,7 +1336,7 @@ export function listDwlWorkItemsByIds(ids: readonly (string | number)[]) {
 export function listDwlWorkItemsOrderedByCode() {
   return db()
     .from("dwl_work_items")
-    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
+    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at, csi_section_code, csi_division_code")
     .order("code");
 }
 
@@ -1331,7 +1344,7 @@ export function listDwlWorkItemsOrderedByCode() {
 export function listDwlWorkItemsWithIsActive() {
   return db()
     .from("dwl_work_items")
-    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at")
+    .select("id, tenant_id, code, boq_section, description, unit, method_note, is_active, created_by, created_at, updated_at, csi_section_code, csi_division_code")
     .eq("is_active", true)
     .order("code");
 }

@@ -101,3 +101,24 @@ describe("allocateLine", () => {
       .toEqual([{ wbs_node_id: "01.GF", share: 0.5 }, { wbs_node_id: "02.MZ", share: 0.5 }]);
   });
 });
+
+describe("chainage sections (Phase E)", () => {
+  const sec = (id: string, from: number, to: number) => ({ id, wbs_code: id, wbs_name: id, building_code: "RD1", chainage_from: from, chainage_to: to });
+  const sections = [sec("s1", 0, 1000), sec("s2", 1000, 2000), sec("s3", 2000, 2500)];
+  const confirmed = (label: string, split_rule: "length" | "chainage") =>
+    [{ building_code: "RD1", qs_level_label: label, wbs_node_id: null, status: "confirmed" as const, split_rule }];
+
+  it("suggests sharing a chainage-labelled line over the sections it overlaps", () => {
+    const [row] = suggestLocationMap([{ building_code: "RD1", qs_level_label: "CH 0+500 - 1+500", lines: 3 }], sections, []);
+    expect(row).toMatchObject({ status: "suggested", split_rule: "chainage", wbs_node_id: null, canonical: "CH 0+500 – 1+500" });
+    const [off] = suggestLocationMap([{ building_code: "RD1", qs_level_label: "CH 9+000 - 9+500", lines: 1 }], sections, []);
+    expect(off.status).toBe("unmatched");
+  });
+
+  it("allocates by overlap once confirmed, and a whole-route line by section length", () => {
+    expect(allocateLine({ building_code: "RD1", level: "CH 0+500 - 1+500" }, confirmed("CH 0+500 - 1+500", "chainage"), sections, new Map()))
+      .toEqual([{ wbs_node_id: "s1", share: 0.5 }, { wbs_node_id: "s2", share: 0.5 }]);
+    expect(allocateLine({ building_code: "RD1", level: "ALL" }, confirmed("ALL", "length"), sections, new Map()))
+      .toEqual([{ wbs_node_id: "s1", share: 0.4 }, { wbs_node_id: "s2", share: 0.4 }, { wbs_node_id: "s3", share: 0.2 }]);
+  });
+});

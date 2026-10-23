@@ -13,6 +13,8 @@ import { createClient } from "@/lib/supabase/client";
 import { listMasters, loadLibraryTree, type LibraryTree } from "@/lib/planning/activity-library/library-service";
 import { LIBRARY_STATUSES, type ActMaster, type LibraryStatus } from "@/lib/planning/activity-library/types";
 import { ActStatusPill, CodeChip, EmptyNote, STATUS_LABEL } from "./plan-act-shared";
+import { PROJECT_SECTORS } from "@/lib/project-categories";
+import { sectorListLabel } from "@/lib/template-fit";
 
 type Selection = { level: "all" } | { level: "domain" | "category" | "family"; id: string };
 
@@ -26,6 +28,8 @@ export function PlanActivityLibrary() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<LibraryStatus | "">("");
+  /** Sector slug: masters used in that sector (or in every sector). */
+  const [sector, setSector] = useState("");
   const [creating, setCreating] = useState(false);
   const [aiText, setAiText] = useState("");
   const ai = useAskAi();
@@ -67,9 +71,10 @@ export function PlanActivityLibrary() {
       if (selection.level === "category" && m.category_id !== selection.id) return false;
       if (selection.level === "family" && m.family_id !== selection.id) return false;
       if (status && m.status !== status) return false;
+      if (sector && m.sectors.length > 0 && !m.sectors.includes(sector)) return false;
       return !q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
     });
-  }, [latest, selection, search, status]);
+  }, [latest, selection, search, status, sector]);
 
   function toggle(id: string) {
     setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -141,6 +146,15 @@ export function PlanActivityLibrary() {
             <option value="">All statuses</option>
             {LIBRARY_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
           </select>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            value={sector}
+            onChange={(e) => setSector(e.target.value)}
+            aria-label="Sector"
+          >
+            <option value="">All sectors</option>
+            {PROJECT_SECTORS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
           <span className="ml-auto text-sm text-muted-foreground">{rows.length} activit{rows.length === 1 ? "y" : "ies"}</span>
           <div className="flex items-center gap-2">
             <Input className="h-8 w-64" placeholder="Describe the work, e.g. cast the level 3 slab…" value={aiText} onChange={(e) => setAiText(e.target.value)}
@@ -163,7 +177,7 @@ export function PlanActivityLibrary() {
               <thead>
                 <tr className="bg-muted/50 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2">Code</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Unit</th>
-                  <th className="px-3 py-2">Discipline</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Version</th>
+                  <th className="px-3 py-2">Discipline</th><th className="px-3 py-2">Sectors</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Version</th>
                 </tr>
               </thead>
               <tbody>
@@ -173,6 +187,7 @@ export function PlanActivityLibrary() {
                     <td className="px-3 py-2">{m.name}</td>
                     <td className="px-3 py-2">{m.default_unit ?? "—"}</td>
                     <td className="px-3 py-2">{m.discipline ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground" title={m.building_types.length ? `${m.building_types.length} building types recommended` : undefined}>{sectorListLabel(m.sectors)}</td>
                     <td className="px-3 py-2"><ActStatusPill status={m.status} /></td>
                     <td className="px-3 py-2 text-muted-foreground">v{m.version}</td>
                   </tr>

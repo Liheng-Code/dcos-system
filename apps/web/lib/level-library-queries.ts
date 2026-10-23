@@ -11,6 +11,8 @@ interface TemplateRow {
   template_name: string;
   description: string | null;
   building_type: string | null;
+  template_category: string | null;
+  building_types: string[] | null;
   is_active: boolean;
   version: number;
   level_template_items: {
@@ -30,6 +32,8 @@ function toTemplate(row: TemplateRow): LevelTemplate {
     template_name: row.template_name,
     description: row.description,
     building_type: row.building_type,
+    template_category: row.template_category,
+    building_types: row.building_types ?? [],
     is_active: row.is_active,
     version: row.version,
     items: [...(row.level_template_items ?? [])]
@@ -49,7 +53,7 @@ function toTemplate(row: TemplateRow): LevelTemplate {
 export async function listLevelTemplates(opts: { activeOnly?: boolean } = {}): Promise<LevelTemplate[]> {
   let q = db()
     .from("level_naming_templates")
-    .select("id, template_name, description, building_type, is_active, version, level_template_items(sort_order, level_code, level_name, level_type, floor_height_m, typical_gfa_m2, source_level_id)")
+    .select("id, template_name, description, building_type, template_category, building_types, is_active, version, level_template_items(sort_order, level_code, level_name, level_type, floor_height_m, typical_gfa_m2, source_level_id)")
     .order("template_name");
   if (opts.activeOnly) q = q.eq("is_active", true);
   const { data, error } = await q;
@@ -62,7 +66,9 @@ export async function saveLevelTemplate(t: {
   id?: string | null;
   template_name: string;
   description?: string | null;
-  building_type?: string | null;
+  template_category?: string | null;
+  /** Omitted = keep the stored list. */
+  building_types?: string[];
   is_active?: boolean;
   items: LevelItem[];
 }): Promise<string> {

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "inst001",
+    "name": "Hospital Surgical Steel",
+    "materialType": "Steel",
+    "grade": "AISI 304",
+    "unit": "kg",
+    "currency": "USD",
+    "price": 3.20,
+    "effectiveDate": "2024-01-01",
+    "source": "Medical Metals Co"
+  },
+  {
+    "id": "inst002",
+    "name": "Classroom Furniture Set",
+    "materialType": "Furniture",
+    "grade": "Standard",
+    "unit": "set",
+    "currency": "USD",
+    "price": 350.0,
+    "effectiveDate": "2024-01-01",
+    "source": "School Supplies Ltd"
+  }
+]

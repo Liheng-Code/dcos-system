@@ -11,6 +11,7 @@ import {
 import { isFeatureActive, moduleHasActiveFeature } from "@/lib/modules/features";
 import { createClient } from "@/lib/supabase/client";
 import { usePermittedModules } from "@/hooks/use-permitted-modules";
+import { useLicense } from "@/contexts/license-context";
 
 interface ModuleSettingsContextValue {
   activeKeys: string[];
@@ -123,9 +124,14 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
     [activeKeys],
   );
 
+  // The license sits above the admin toggles: a module or page that is not
+  // licensed stays hidden whatever its settings row says (design 7.1).
+  const license = useLicense();
+
   const isModuleVisible = useCallback(
-    (key: string) => activeKeys.includes(key) && moduleHasActiveFeature(key, navItemSettings),
-    [activeKeys, navItemSettings],
+    (key: string) =>
+      activeKeys.includes(key) && license.isManifestLicensed(key) && moduleHasActiveFeature(key, navItemSettings),
+    [activeKeys, navItemSettings, license],
   );
 
   const {
@@ -135,8 +141,8 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
   } = usePermittedModules();
 
   const isModulePermitted = useCallback(
-    (key: string) => isModuleActive(key) && permittedModuleKeys.includes(key),
-    [isModuleActive, permittedModuleKeys],
+    (key: string) => isModuleActive(key) && license.isManifestLicensed(key) && permittedModuleKeys.includes(key),
+    [isModuleActive, permittedModuleKeys, license],
   );
 
   const toggleModule = useCallback(
@@ -157,8 +163,8 @@ export function ModuleSettingsProvider({ children }: { children: React.ReactNode
   // A settings row wins; with no row a "released" feature is on and a
   // "development" feature is off (see lib/modules/features.ts).
   const isNavItemActive = useCallback(
-    (navKey: string) => isFeatureActive(navKey, navItemSettings),
-    [navItemSettings],
+    (navKey: string) => isFeatureActive(navKey, navItemSettings) && license.isNavKeyLicensed(navKey),
+    [navItemSettings, license],
   );
 
   const toggleNavItem = useCallback(

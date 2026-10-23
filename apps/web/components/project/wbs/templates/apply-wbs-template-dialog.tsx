@@ -19,7 +19,11 @@ import {
   type ExpandedTemplate,
   type SrcNode,
 } from "@/lib/project/wbs/wbs-template";
-import { applyWbsTemplate, getProjectWbsTemplateId, listWbsTemplates, loadProjectWbsSource, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import { recommendedTemplate, type ProjectKind } from "@/lib/template-fit";
+import { attachDefaultStepTemplates } from "@/lib/planning/step-template-bulk-service";
+import { createClient } from "@/lib/supabase/client";
+import { applyWbsTemplate, getProjectTemplateContext, listWbsTemplates, loadProjectWbsSource, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import { TemplateOptions, WbsTemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { LevelItemsEditor } from "@/components/project/wbs/levels/level-items-editor";
 import { TemplateSelectionTree } from "./template-selection-tree";
 
@@ -56,6 +60,7 @@ let rowSeq = 0;
  */
 export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplied }: ApplyWbsTemplateDialogProps) {
   const [templates, setTemplates] = useState<WbsTemplate[]>([]);
+  const [projectKind, setProjectKind] = useState<ProjectKind>({});
   const [levelTemplates, setLevelTemplates] = useState<LevelTemplate[]>([]);
   const [projectNodes, setProjectNodes] = useState<ProjectNode[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -73,13 +78,15 @@ export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplie
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([listWbsTemplates({ activeOnly: true }), listLevelTemplates({ activeOnly: true }), loadProjectWbsSource(projectId), getProjectWbsTemplateId(projectId)])
-      .then(([tpls, lts, src, chosen]) => {
+    Promise.all([listWbsTemplates({ activeOnly: true }), listLevelTemplates({ activeOnly: true }), loadProjectWbsSource(projectId), getProjectTemplateContext(projectId)])
+      .then(([tpls, lts, src, ctx]) => {
         if (cancelled) return;
         setTemplates(tpls);
         setLevelTemplates(lts);
         setProjectNodes(src.nodes as ProjectNode[]);
-        const pick = tpls.find((t) => t.id === chosen) ?? tpls[0] ?? null;
+        const kind = { sector: ctx.sector, buildingType: ctx.buildingType };
+        setProjectKind(kind);
+        const pick = tpls.find((t) => t.id === ctx.wbsTemplateId) ?? recommendedTemplate(tpls, kind) ?? tpls[0] ?? null;
         setTemplateId(pick?.id ?? "");
         setRows(initialRows(src.nodes as ProjectNode[], pick, lts));
       })
@@ -148,10 +155,22 @@ export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplie
     setApplying(true);
     try {
       const r = await applyWbsTemplate(projectId, template.id, preview.expanded);
+      // Activities that got their activity master also get its default step template (as after Generate).
+      let stepsNote = "";
+      if (r.linked_task_ids?.length) {
+        try {
+          const s = await attachDefaultStepTemplates(createClient(), projectId, r.linked_task_ids);
+          if (s.applied > 0) stepsNote = ` · ${s.applied} got their standard steps`;
+        } catch (e) {
+          toast.warning(`Activities were added, but their standard steps were not: ${e instanceof Error ? e.message : "unknown error"}. Use Step Templates › Apply to Activities.`);
+        }
+      }
       toast.success(
         `Added ${r.nodes_created} WBS nodes and ${r.tasks_created} activities` +
           (r.nodes_skipped + r.tasks_skipped > 0 ? ` · ${r.nodes_skipped + r.tasks_skipped} already in the project` : "") +
-          (r.deps_linked ? ` · ${r.deps_linked} links` : ""),
+          (r.deps_linked ? ` · ${r.deps_linked} links` : "") +
+          (r.masters_linked ? ` · ${r.masters_linked} linked to activity masters` : "") +
+          stepsNote,
       );
       onApplied();
       onOpenChange(false);
@@ -183,7 +202,7 @@ export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplie
             <label className="block space-y-1 text-xs font-medium">
               WBS template
               <select value={templateId} onChange={(e) => chooseTemplate(e.target.value)} className={cn(field, "h-9 w-full")}>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.template_name} (v{t.version})</option>)}
+                <WbsTemplateOptions templates={templates} project={projectKind} showVersion />
               </select>
             </label>
             {stats && (
@@ -191,6 +210,7 @@ export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplie
                 {stats.sectionTasks} activities · {stats.blocks.length} floor block{stats.blocks.length === 1 ? "" : "s"}
               </p>
             )}
+            {template?.template_desc && <p className="text-xs text-muted-foreground">{template.template_desc}</p>}
 
             {template && (
               <div className="space-y-2">
@@ -250,7 +270,7 @@ export function ApplyWbsTemplateDialog({ projectId, open, onOpenChange, onApplie
                     >
                       {r.existingNodeId && <option value="__existing">Existing levels ({r.existingLevels.length})</option>}
                       <option value="">Custom level list</option>
-                      {levelTemplates.map((t) => <option key={t.id} value={t.id}>{t.template_name} ({t.items.length})</option>)}
+                      <TemplateOptions templates={levelTemplates} project={projectKind} label={(t) => `${t.template_name} (${t.items.length})`} />
                     </select>
                     {r.levelSource === "template" && (
                       <button type="button" onClick={() => patchRow(r.rowId, { open: !r.open })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">

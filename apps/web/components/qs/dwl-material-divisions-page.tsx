@@ -4,28 +4,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ChevronDown, ChevronRight, FileCode, Folder, FolderOpen, Layers,
-  Loader2, Network, Package, Pencil, Plus, Search, Trash2, X,
+  AlertTriangle, ChevronDown, ChevronRight, ExternalLink, FileCode, Folder, FolderOpen, Info, Layers,
+  Network, Package, Search, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useQsPermissions } from "@/hooks/use-qs-permissions";
+import { createClient } from "@/lib/supabase/client";
+import { canManageCsiLibrary } from "@/lib/csi-divisions";
 import type {
   DwlMaterialCategory, DwlMaterialDivision, DwlMaterialDivisionSection,
 } from "@/components/qs/dwl-types";
 import {
-  deleteDwlMaterialDivisionSectionById, insertDwlMaterialDivision, insertDwlMaterialDivisionSection,
   listDwlMaterialCategoriesOrderedBySortOrderAndName, listDwlMaterialDivisionSectionsOrderedBySortOrderAndCode,
   listDwlMaterialDivisionsOrderedBySortOrderAndCode, listDwlVMaterials, updateDwlMaterialCategoryById,
-  updateDwlMaterialDivisionByCode,
 } from "@/lib/qs/qs-queries";
 
 interface MaterialLite {
@@ -42,7 +37,8 @@ type CategoryLite = Pick<DwlMaterialCategory, "id" | "name" | "code" | "cost_cod
 };
 
 const DIVISION_GROUPS = [
-  "General Requirements", "Facility Construction", "Facility Services", "Site and Infrastructure",
+  "Procurement and Contracting", "General Requirements", "Facility Construction", "Facility Services",
+  "Site and Infrastructure", "Process Equipment",
 ] as const;
 const OTHER_GROUP = "Other";
 
@@ -70,10 +66,6 @@ export default function DwlMaterialDivisionsPage() {
   const [selectedDivisionCode, setSelectedDivisionCode] = useState<string | null>(null);
   const [selectedNodeCode, setSelectedNodeCode] = useState<string | null>(null);
 
-  const [divisionDialog, setDivisionDialog] = useState<{ edit: DwlMaterialDivision | null } | null>(null);
-  const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
-  const [deleteSection, setDeleteSection] = useState<DwlMaterialDivisionSection | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     setErrorMsg(null);
@@ -102,9 +94,11 @@ export default function DwlMaterialDivisionsPage() {
   useEffect(() => { void loadData(); }, [loadData]);
 
   const canView = !permsLoaded || can("qs_libraries", "view");
-  const canCreate = can("qs_libraries", "can_create");
   const canEdit = can("qs_libraries", "edit");
-  const canDelete = can("qs_libraries", "delete");
+  const [canManageCsi, setCanManageCsi] = useState(false);
+  useEffect(() => {
+    void canManageCsiLibrary(createClient()).then(setCanManageCsi);
+  }, []);
 
   // Each category sits on the deepest section its cost code prefix matches:
   // the exact section or subclass, else the section sharing its first three digits.
@@ -203,20 +197,6 @@ export default function DwlMaterialDivisionsPage() {
     await loadData();
   }
 
-  async function handleDeleteSection() {
-    if (!deleteSection) return;
-    setSaving(true);
-    const { error } = await deleteDwlMaterialDivisionSectionById(deleteSection.id);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success(`${deleteSection.code} deleted`);
-    if (selectedNodeCode === deleteSection.code) setSelectedNodeCode(null);
-    setDeleteSection(null);
-    await loadData();
-  }
 
   if (permsLoaded && !canView) {
     return (
@@ -242,12 +222,20 @@ export default function DwlMaterialDivisionsPage() {
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/qs/dwl-materials"><Package className="h-3.5 w-3.5" /> Material Master</Link>
           </Button>
-          <Button size="sm" onClick={() => setDivisionDialog({ edit: null })} disabled={!canCreate} title={!canCreate ? "You lack create permission on QS libraries" : undefined}>
-            <Plus className="h-3.5 w-3.5" /> Add Division
-          </Button>
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
+        <span className="flex items-center gap-2">
+          <Info className="h-4 w-4 shrink-0" />
+          CSI divisions are managed centrally in Administration › Master Libraries › CSI Divisions.
+        </span>
+        {canManageCsi && (
+          <Button asChild variant="outline" size="sm" className="h-7">
+            <Link href="/dashboard/administration/master-libraries?tab=csi_divisions"><ExternalLink className="h-3 w-3" /> Edit in Administration</Link>
+          </Button>
+        )}
+      </div>
       {loading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <Skeleton className="h-96 lg:col-span-7" />
@@ -428,23 +416,6 @@ export default function DwlMaterialDivisionsPage() {
               <>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Hierarchy Inspector</span>
-                  <div className="flex items-center gap-1">
-                    {canEdit && !selectedNode && (
-                      <Button variant="ghost" size="sm" onClick={() => setDivisionDialog({ edit: selectedDivision })}>
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </Button>
-                    )}
-                    {canDelete && selectedNode && (
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteSection(selectedNode)}>
-                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                      </Button>
-                    )}
-                    {canCreate && (
-                      <Button variant="outline" size="sm" onClick={() => setSectionDialogOpen(true)}>
-                        <Plus className="h-3.5 w-3.5" /> Add Section
-                      </Button>
-                    )}
-                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
@@ -555,52 +526,6 @@ export default function DwlMaterialDivisionsPage() {
         </div>
       )}
 
-      {divisionDialog && (
-        <DivisionDialog
-          edit={divisionDialog.edit}
-          existingCodes={divisions.map((d) => d.code)}
-          nextSortOrder={(divisions.at(-1)?.sort_order ?? 0) + 10}
-          onClose={() => setDivisionDialog(null)}
-          onSaved={async (code) => {
-            setDivisionDialog(null);
-            select(code, null);
-            await loadData();
-          }}
-        />
-      )}
-
-      {sectionDialogOpen && selectedDivision && (
-        <SectionDialog
-          division={selectedDivision}
-          parents={model.sectionsByDivision.get(selectedDivision.code) ?? []}
-          defaultParentCode={selectedNode ? selectedNode.parent_code ?? selectedNode.code : ""}
-          existingCodes={sections.map((s) => s.code)}
-          onClose={() => setSectionDialogOpen(false)}
-          onSaved={async (code, parentCode) => {
-            setSectionDialogOpen(false);
-            setExpanded((prev) => new Set([...prev, selectedDivision.code, ...(parentCode ? [parentCode] : [])]));
-            select(selectedDivision.code, code);
-            await loadData();
-          }}
-        />
-      )}
-
-      <Dialog open={deleteSection != null} onOpenChange={(open) => { if (!open) setDeleteSection(null); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete {deleteSection?.code}</DialogTitle>
-            <DialogDescription>
-              Delete &quot;{deleteSection?.name}&quot;{deleteSection && !deleteSection.parent_code ? " and its subclasses" : ""}? Categories and materials are not changed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteSection(null)} disabled={saving}>Cancel</Button>
-            <Button variant="destructive" size="sm" onClick={() => void handleDeleteSection()} disabled={saving}>
-              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -611,155 +536,5 @@ function Row({ label, value, mono, accent }: { label: string; value: string; mon
       <span className="text-muted-foreground">{label}</span>
       <span className={cn("font-semibold", mono && "font-mono", accent && "text-emerald-600")}>{value}</span>
     </div>
-  );
-}
-
-function DivisionDialog({
-  edit, existingCodes, nextSortOrder, onClose, onSaved,
-}: {
-  edit: DwlMaterialDivision | null;
-  existingCodes: string[];
-  nextSortOrder: number;
-  onClose: () => void;
-  onSaved: (code: string) => Promise<void>;
-}) {
-  const [code, setCode] = useState(edit?.code ?? "");
-  const [name, setName] = useState(edit?.name ?? "");
-  const [groupName, setGroupName] = useState(edit?.group_name ?? DIVISION_GROUPS[1]);
-  const [isActive, setIsActive] = useState(edit?.is_active ?? true);
-  const [saving, setSaving] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmedCode = code.trim();
-    if (!trimmedCode || !name.trim()) return;
-    if (!edit && existingCodes.includes(trimmedCode)) {
-      toast.error(`Division ${trimmedCode} already exists`);
-      return;
-    }
-    setSaving(true);
-    const { error } = edit
-      ? await updateDwlMaterialDivisionByCode({ name: name.trim(), group_name: groupName, is_active: isActive }, edit.code)
-      : await insertDwlMaterialDivision({ code: trimmedCode, name: name.trim(), group_name: groupName, is_active: isActive, sort_order: nextSortOrder });
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success(edit ? "Division updated" : "Division created");
-    await onSaved(trimmedCode);
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{edit ? `Edit Division ${edit.code}` : "New Division"}</DialogTitle>
-          <DialogDescription>A MasterFormat division groups Material Master categories.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="grid grid-cols-4 gap-3">
-            <div className="col-span-1 flex flex-col gap-1.5">
-              <Label htmlFor="division-code">Code *</Label>
-              <Input id="division-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="03" maxLength={4} disabled={!!edit} required className="font-mono" />
-            </div>
-            <div className="col-span-3 flex flex-col gap-1.5">
-              <Label htmlFor="division-name">Name *</Label>
-              <Input id="division-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Concrete" required />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="division-group">Group</Label>
-            <select id="division-group" value={groupName} onChange={(e) => setGroupName(e.target.value)} className={selectClass}>
-              {[...new Set([...DIVISION_GROUPS, groupName])].map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} /> Active
-          </label>
-          <DialogFooter>
-            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving}>
-              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {edit ? "Save" : "Create"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SectionDialog({
-  division, parents, defaultParentCode, existingCodes, onClose, onSaved,
-}: {
-  division: DwlMaterialDivision;
-  parents: DwlMaterialDivisionSection[];
-  defaultParentCode: string;
-  existingCodes: string[];
-  onClose: () => void;
-  onSaved: (code: string, parentCode: string | null) => Promise<void>;
-}) {
-  const [code, setCode] = useState(`${division.code} `);
-  const [name, setName] = useState("");
-  const [parentCode, setParentCode] = useState(defaultParentCode);
-  const [saving, setSaving] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmedCode = code.trim().replace(/\s+/g, " ");
-    if (!trimmedCode || !name.trim()) return;
-    if (existingCodes.includes(trimmedCode)) {
-      toast.error(`Section ${trimmedCode} already exists`);
-      return;
-    }
-    setSaving(true);
-    const { error } = await insertDwlMaterialDivisionSection({
-      division_code: division.code, code: trimmedCode, name: name.trim(), parent_code: parentCode || null,
-      // Codes sort the same way MasterFormat orders them.
-      sort_order: Number(trimmedCode.replace(/\D/g, "").slice(2, 6)) || 0,
-    });
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("Section created");
-    await onSaved(trimmedCode, parentCode || null);
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New Section in Division {division.code}</DialogTitle>
-          <DialogDescription>Add a section, or a subclass under an existing section.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="section-parent">Under</Label>
-            <select id="section-parent" value={parentCode} onChange={(e) => setParentCode(e.target.value)} className={selectClass}>
-              <option value="">Division {division.code} — {division.name} (new section)</option>
-              {parents.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name} (new subclass)</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1 flex flex-col gap-1.5">
-              <Label htmlFor="section-code">Code *</Label>
-              <Input id="section-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder={`${division.code} 10 00`} required className="font-mono" />
-            </div>
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <Label htmlFor="section-name">Title *</Label>
-              <Input id="section-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Section title" required />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={saving}>
-              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Create
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

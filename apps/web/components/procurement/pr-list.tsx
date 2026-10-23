@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listProjectsByIds, listPrs, updatePrsByIds } from "@/lib/procurement/procurement-queries";
-import { Search, Plus, Loader2, Eye, CheckCircle, XCircle } from "lucide-react";
+import { listProjectsByIds, listPrs, transitionPr } from "@/lib/procurement/procurement-queries";
+import { Search, Plus, Loader2, Eye, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface PR {
   id: string;
@@ -82,28 +83,23 @@ export function PRList() {
     setSelected(new Set(filtered.map(p => p.id)));
   }
 
-  async function bulkApprove() {
-    if (selected.size === 0) { toast.error("Select PRs to approve"); return; }
-    const valid = filtered.filter(p => selected.has(p.id) && (p.approval_status === "submitted" || p.approval_status === "under_budget_review"));
-    if (valid.length === 0) { toast.error("None of the selected PRs are ready for approval"); return; }
-    setBulkLoading("approve");
-    const ids = valid.map(p => p.id);
-    const { error } = await updatePrsByIds({ approval_status: "approved", approved_at: new Date().toISOString() }, ids);
-    if (error) { toast.error(error.message); setBulkLoading(""); return; }
-    toast.success(`${ids.length} PRs approved`);
-    setSelected(new Set());
-    setBulkLoading("");
-    fetchPRs();
-  }
-
+  // Bulk approve was removed: the only approve edge available from a list row is the
+  // "submitted -> approved" override, which needs a per-PR reason and a separation-of-duties
+  // check. Approve from the PR detail page instead.
   async function bulkClose() {
     if (selected.size === 0) { toast.error("Select PRs to close"); return; }
     const valid = filtered.filter(p => selected.has(p.id) && p.approval_status === "approved");
     if (valid.length === 0) { toast.error("Only approved PRs can be closed"); return; }
     setBulkLoading("close");
-    const { error } = await updatePrsByIds({ approval_status: "closed" }, valid.map(p => p.id));
-    if (error) { toast.error(error.message); setBulkLoading(""); return; }
-    toast.success(`${valid.length} PRs closed`);
+    let ok = 0;
+    const failures: string[] = [];
+    for (const pr of valid) {
+      const { error } = await transitionPr(pr.id, "closed");
+      if (error) failures.push(`${pr.pr_number}: ${procErrorMessage(error)}`);
+      else ok++;
+    }
+    if (ok > 0) toast.success(`${ok} PR${ok === 1 ? "" : "s"} closed`);
+    if (failures.length > 0) toast.error(`${failures.length} failed. ${failures.join("; ")}`);
     setSelected(new Set());
     setBulkLoading("");
     fetchPRs();
@@ -141,10 +137,6 @@ export function PRList() {
         <div className="flex items-center gap-2">
           {selected.size > 0 && (
             <>
-              <Button size="sm" variant="outline" className="text-emerald-600" onClick={bulkApprove} disabled={bulkLoading === "approve"}>
-                {bulkLoading === "approve" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
-                Approve ({selected.size})
-              </Button>
               <Button size="sm" variant="outline" className="text-slate-600" onClick={bulkClose} disabled={bulkLoading === "close"}>
                 {bulkLoading === "close" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
                 Close ({selected.size})

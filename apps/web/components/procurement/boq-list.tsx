@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { BoqItemEditor } from "./boq-item-editor";
 import { BoqSectionForm } from "./boq-section-form";
 import { useProject } from "@/components/dashboard/project-context";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Section {
   id: string;
@@ -91,7 +92,7 @@ export function BoqList() {
   async function handleDeleteItem(id: string) {
     if (!confirm("Delete this BOQ item?")) return;
     const { error } = await deleteQsBoqItemById(id);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(procErrorMessage(error)); return; }
     toast.success("Item deleted");
     setItems(prev => prev.filter(i => i.id !== id));
   }
@@ -101,7 +102,7 @@ export function BoqList() {
     if (hasItems) { toast.error("Remove all items from this section first"); return; }
     if (!confirm("Delete this section?")) return;
     const { error } = await deleteQsBoqSectionById(id);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(procErrorMessage(error)); return; }
     toast.success("Section deleted");
     setSections(prev => prev.filter(s => s.id !== id));
   }

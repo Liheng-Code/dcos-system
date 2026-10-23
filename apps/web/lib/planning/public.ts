@@ -8,3 +8,17 @@ export {
   addAssignment,
   findOrCreateResourceForProfile,
 } from "./resource-service";
+
+// QS → Planning bridge (doc 21), run from the tender BOQ
+export { listBridgeRules, listProjectBoqLines } from "./activity-library/qs-bridge-service";
+export type { BridgeBoqLine, BridgeRule } from "./activity-library/qs-bridge";
+export { listLevelGfa, listSavedLocations, listWbsLevels } from "./activity-library/location-map-service";
+export type { SavedLocation, WbsLevel } from "./activity-library/location-map";
+export {
+  applyBridgeLinks,
+  countBridgeLinks,
+  listManualPairs,
+  loadMasterRates,
+  refreshTaskWorkFromLinks,
+} from "./activity-library/bridge-calc-service";
+export { computeBridgeLinks, type BridgeCalcResult, type MasterRate } from "./activity-library/bridge-calc";

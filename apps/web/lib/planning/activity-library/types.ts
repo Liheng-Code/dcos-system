@@ -38,7 +38,10 @@ export interface ActMaster {
   supersedes_id: string | null;
   owner: string | null;
   source: string | null;
-  applicable_project_types: string[];
+  /** Sector slugs (projects.category) this master is used in; empty = every sector. */
+  sectors: string[];
+  /** Building-type slugs (projects.building_type) it is written for. */
+  building_types: string[];
   effective_date: string | null;
   superseded_date: string | null;
   approved_at: string | null;
@@ -164,6 +167,10 @@ export interface ActTemplate {
   inter_level_to_seq: number | null;
   inter_level_relation: Relation;
   inter_level_lag_days: number;
+  /** Sector slugs this template is used in; empty = every sector. */
+  sectors: string[];
+  /** Building-type slugs this template is recommended for. */
+  building_types: string[];
   owner: string | null;
   created_at: string;
   updated_at: string;

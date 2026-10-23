@@ -22,6 +22,7 @@ import type {
   DwlWorkItemResource,
   DwlWorkItemRow,
 } from "@/components/qs/dwl-types";
+import { listCsiSections, type CsiSection } from "@/lib/csi-divisions";
 import { deleteDwlWorkItemByIdReturning, deleteDwlWorkItemResourceById, getProfileById, listDwlVWorkItemExplosionByWorkItemCode, listDwlVWorkItemRates, listDwlWorkItemResourcesByWorkItemId, listDwlWorkItemsOrderedByCode } from "@/lib/qs/qs-queries";
 
 function formatMoney(value: number) {
@@ -59,6 +60,7 @@ export default function DwlWorkItemsListPage() {
   // Pre-filled when arriving from a Cost Item's "Open in Rate Build-Up" link.
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [sectionFilter, setSectionFilter] = useState<string>("all");
+  const [csiSections, setCsiSections] = useState<CsiSection[]>([]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailLines, setDetailLines] = useState<DetailLine[]>([]);
@@ -120,6 +122,13 @@ export default function DwlWorkItemsListPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadList(); }, [loadList]);
+
+  useEffect(() => {
+    // Sections only feed the CSI picker and column names; the page still works without them.
+    listCsiSections(supabase).then(setCsiSections).catch(() => setCsiSections([]));
+  }, [supabase]);
+
+  const csiSectionName = useMemo(() => new Map(csiSections.map((s) => [s.code, s.name])), [csiSections]);
 
   const sectionOptions = useMemo(() => {
     const set = new Set(rows.map((r) => r.workItem.boq_section));
@@ -340,6 +349,7 @@ export default function DwlWorkItemsListPage() {
                   <TableRow>
                     <TableHead className="w-28">Code</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead className="w-28">CSI Section</TableHead>
                     <TableHead className="w-24 text-right">Rate</TableHead>
                     <TableHead className="w-20 text-center">Actions</TableHead>
                   </TableRow>
@@ -357,6 +367,11 @@ export default function DwlWorkItemsListPage() {
                         <span className="text-[10px] text-muted-foreground">
                           {row.workItem.boq_section} · {row.rate?.recipe_lines ?? 0} line{row.rate?.recipe_lines === 1 ? "" : "s"}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-xs" title={row.workItem.csi_section_code ? csiSectionName.get(row.workItem.csi_section_code) : undefined}>
+                        {row.workItem.csi_section_code
+                          ? <span className="font-mono">{row.workItem.csi_section_code}</span>
+                          : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs font-medium">
                         {row.rate ? formatMoney(row.rate.net_direct_rate) : <span className="font-sans text-muted-foreground">—</span>}
@@ -411,6 +426,11 @@ export default function DwlWorkItemsListPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{selectedRow.workItem.code}</span>
                     <Badge variant="outline">{selectedRow.workItem.boq_section}</Badge>
+                    {selectedRow.workItem.csi_section_code && (
+                      <Badge variant="secondary" className="font-mono">
+                        {selectedRow.workItem.csi_section_code} — {csiSectionName.get(selectedRow.workItem.csi_section_code) ?? ""}
+                      </Badge>
+                    )}
                     {selectedRow.rate?.has_expired_price && <Badge variant="destructive">Has expired price</Badge>}
                   </div>
                   <p className="mt-1 text-sm">{selectedRow.workItem.description}</p>
@@ -573,6 +593,7 @@ export default function DwlWorkItemsListPage() {
         tenantId={tenantId}
         userId={userId}
         editItem={editingWorkItem}
+        csiSections={csiSections}
         onCreated={(newId) => {
           void loadList();
           setSelectedId(newId);

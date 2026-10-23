@@ -5,20 +5,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_THRESHOLDS, summariseHistory, type HistoryLog, type HistoryStats, type LearningThresholds, type Proposal } from "./productivity-learning";
 import type { ActProductivityStandard } from "./types";
+import { inChunks } from "./in-chunks";
 
 type Db = SupabaseClient;
-
-const CHUNK = 150;
-
-async function inChunks<T>(ids: string[], run: (part: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data, error } = await run(ids.slice(i, i + CHUNK));
-    if (error) throw new Error(error.message);
-    out.push(...(data ?? []));
-  }
-  return out;
-}
 
 /** Logs recorded against tasks that used this standard (or a project copy calibrated from it). */
 export async function loadStandardHistory(db: Db, stdId: string): Promise<HistoryLog[]> {

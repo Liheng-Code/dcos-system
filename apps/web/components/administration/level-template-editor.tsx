@@ -7,24 +7,28 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { validateLevelItems, type LevelItem, type LevelTemplate } from "@/lib/level-library";
 import { deleteLevelTemplate, listLevelTemplates, saveLevelTemplate } from "@/lib/level-library-queries";
+import { groupTemplates } from "@/lib/template-fit";
+import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
 import { LevelItemsEditor } from "@/components/project/wbs/levels/level-items-editor";
 
 interface Draft {
   id: string | null;
   template_name: string;
   description: string;
-  building_type: string;
+  template_category: string;
+  building_types: string[];
   is_active: boolean;
   items: LevelItem[];
 }
 
-const blankDraft = (): Draft => ({ id: null, template_name: "", description: "", building_type: "", is_active: true, items: [] });
+const blankDraft = (): Draft => ({ id: null, template_name: "", description: "", template_category: "", building_types: [], is_active: true, items: [] });
 
 const toDraft = (t: LevelTemplate): Draft => ({
   id: t.id,
   template_name: t.template_name,
   description: t.description ?? "",
-  building_type: t.building_type ?? "",
+  template_category: t.template_category ?? "",
+  building_types: t.building_types,
   is_active: t.is_active,
   items: t.items.map((i) => ({ ...i })),
 });
@@ -90,7 +94,8 @@ export function LevelTemplateEditor() {
         id: draft.id,
         template_name: draft.template_name,
         description: draft.description || null,
-        building_type: draft.building_type || null,
+        template_category: draft.template_category || null,
+        building_types: draft.building_types,
         is_active: draft.is_active,
         items: draft.items,
       });
@@ -125,7 +130,10 @@ export function LevelTemplateEditor() {
         <Button size="sm" variant="outline" className="w-full" onClick={() => select(blankDraft())}>
           <Plus className="mr-1.5 h-3.5 w-3.5" /> New template
         </Button>
-        {templates.map((t) => (
+        {groupTemplates(templates).map((g) => (
+          <div key={g.label} className="space-y-2">
+            <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.label}</p>
+        {g.items.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -140,6 +148,8 @@ export function LevelTemplateEditor() {
               {t.items.length} levels · v{t.version}{t.is_active ? "" : " · inactive"}
             </p>
           </button>
+        ))}
+          </div>
         ))}
       </aside>
 
@@ -173,10 +183,11 @@ export function LevelTemplateEditor() {
               Template name *
               <input value={draft.template_name} onChange={(e) => patch({ template_name: e.target.value })} placeholder="e.g. Typical Condo 20F" className={field} />
             </label>
-            <label className="space-y-1 text-xs font-medium">
-              Building type
-              <input value={draft.building_type} onChange={(e) => patch({ building_type: e.target.value })} placeholder="e.g. Condominium" className={field} />
-            </label>
+            <TemplateSectorFields
+              sector={draft.template_category}
+              buildingTypes={draft.building_types}
+              onChange={(v) => patch({ template_category: v.sector, building_types: v.buildingTypes })}
+            />
             <label className="space-y-1 text-xs font-medium sm:col-span-2">
               Description
               <input value={draft.description} onChange={(e) => patch({ description: e.target.value })} className={field} />

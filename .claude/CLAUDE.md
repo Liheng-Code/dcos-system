@@ -32,7 +32,7 @@ pnpm install
 # Start dev server (from root or apps/web). Root `pnpm dev` proxies to apps/web.
 # VS Code auto-starts it on folder open via .vscode/tasks.json ("DCOS: web dev server").
 pnpm dev
-# Runs Next.js on http://localhost:3000
+# Runs Next.js on http://localhost:3100 (the `dev` script in apps/web/package.json sets -p 3100)
 
 # Run single dev server at custom host
 cd apps/web && pnpm dev -H 0.0.0.0
@@ -139,6 +139,15 @@ supabase db dump --local --data-only -f <file>.sql
   A full replay-from-empty test (`stop --no-backup && start`) is only done when the user asks for it, after the backup in "Wiping the local DB" above.
 - Former drift (prod-only tables/columns such as `snap_*`, `tender_dayworks`, `tender_provisional_sums`, `qs_boq_items.source_tender_*`, `wbs_nodes.is_basement`) is now captured by the idempotent migration `20260925000001_capture_prod_drift_tables.sql`. If new drift is found, capture it the same way (guarded, no-op where it exists).
 
+#### DCOS HQ (licensing control plane) — a second local stack
+`apps/hq` is a separate Next.js app (port 3200) with its **own** Supabase stack (`apps/hq/supabase/`, project `dcos-hq`, API `http://127.0.0.1:55321`, Postgres `127.0.0.1:55322`, container `supabase_db_dcos-hq`). It holds customers, plans and licenses, never tenant data. Design: `docs/01-DCOS-Foundation/DCOS-Licensing-Control-Plane-Design.md`.
+- Start/stop: `supabase start --workdir apps/hq` / `supabase stop --workdir apps/hq` (or root `pnpm hq:db:start`). The same no-wipe rules apply to it.
+- HQ migrations live in `apps/hq/supabase/migrations/`, never in `supabase/migrations/` (and `/dbpush` is for the tenant DB only). Apply locally with `docker exec -i supabase_db_dcos-hq psql -U postgres -d postgres -v ON_ERROR_STOP=1 -1 < <file>`.
+- Staff logins: `node apps/hq/scripts/create-hq-user.mjs --email … --name … --role owner`.
+- Demo data (local HQ only, fictional `DEMO-` tenants, signed with the dev key): `node apps/hq/scripts/seed-demo.mjs --key .licensing/dev-local.key.json`; hide with `--hide` (license events and the audit log are append-only, so demo rows are soft-deleted, not removed).
+- Shared license contract: `packages/licensing` (used by both apps). The tenant side is `apps/web/lib/licensing`, `apps/web/proxy.ts`, `DCOS_LICENSE_MODE` (default `off`) and `DCOS_DEPLOYMENT_ID`.
+- Signing keys are passphrase-encrypted files kept by the owner (`.licensing/` locally, gitignored). Never commit one, never ask for a passphrase; `.licensing/dev-local.key.json` is a development key that production builds reject.
+
 #### Out of scope: production
 - Claude does not touch the remote/production Supabase project in any way: no `supabase ... --linked`, no `db push` / `migration up --linked` / `db pull`, no `supabase login` or access tokens, and no Supabase MCP connector (`mcp__claude_ai_Supabase__*`). If a task seems to need production, stop and tell the user.
 - Promoting migrations to production is done only by the user via `/dbpush` (skill in `.claude/skills/dbpush/`).
@@ -193,10 +202,24 @@ dcos-system/
 - A nav item with `status: "development"` is hidden and route-blocked until switched on in Module Settings (or `NEXT_PUBLIC_DCOS_SHOW_DEV_FEATURES=true` locally). **Default is development:** only what `apps/web/lib/modules/release.ts` lists ships on; edit that file to release a page or module. A module with no visible page leaves the sidebar and hub.
 - `apps/web/module-boundaries.mjs` maps every folder to its owning module and lists each module's public API. The `dcos/module-boundaries` ESLint rule fails on an import of another module's internals. Anything not listed there is core, which any module may import.
 - One code folder per module and layer: `components/<module>/`, `lib/<module>/`. Put a new sub-area in a subfolder there (e.g. `components/construction/hse`), not a new top-level folder. Page URLs (`app/dashboard/...`) do not have to follow this; the module's route folders are listed in `module-boundaries.mjs`.
-- Core component folders (shared by every module, owned by the project owner): `ui` (shadcn), `report-kit` (charts, report frame, export), `dashboard`, `project` (projects, wbs, tasks, stakeholders: the Project module in the sidebar, kept core because every module builds on it), `naming`, `settings`, `administration`, `auth`, `landing`.
+- Core component folders (shared by every module, owned by the project owner): `ui` (shadcn), `report-kit` (charts, report frame, export), `dashboard`, `project` (projects, wbs, tasks, stakeholders: the Project module in the sidebar, kept core because every module builds on it), `naming`, `settings`, `administration`, `auth`, `landing`, `csi` (shared CSI division/section pickers).
 - Do not add to the boundary baseline in `eslint-suppressions.json` to get an import through; add the file to `PUBLIC_API` (a deliberate contract) or move the shared code to core.
 - **Choosing modules per deployment (optional; normally leave unset):** day-to-day visibility is controlled in Administration > Module Settings, and every deploy ships all modules. Only to hard-limit one deployment, set `DCOS_ENABLED_MODULES=qs,planning` (comma-separated `module_settings` keys) on the Vercel project before deploying. `project` and `administration` are always on; unset or `all` ships everything (the local default). A module that is off leaves the sidebar and hub (`lib/modules/registry.ts`) and its pages redirect to `/dashboard` while its API routes 404 (`next.config.ts`, routes derived from `module-boundaries.mjs`). An unknown key fails the build. Logic: `module-deployment.mjs`. It hides modules, it does not remove their code from the bundle.
 - Full plan and status: `docs/01-DCOS-Foundation/DCOS-Modularisation-Plan.md`.
+- **As-built maps:** the `dcos-architecture` skill holds one map per module (tables, RPCs, invariants, public API, gaps) plus a cross-module integration map. Read the module's map before changing it, and update it when a change adds tables, exports or cross-module links. As of 2026-10-22: Planning, QS and Procurement are mapped; the rest are pending.
+
+### Parallel lanes (several sessions at once)
+Work is split into **lanes**: one Claude session per business module, each in its own git worktree. Inside a lane the lead session uses subagents. Agent Teams are only for a feature that spans 2–3 modules at once. The main window runs the procedure (start, status, merge, cleanup, team) with the `/lanes` skill (`.claude/skills/lanes/`). The rules below apply to every lane.
+
+- **Run at most 3 lanes at a time.** Create one with `scripts/new-lane.ps1 -Module <key> -Topic <slug>`. It makes branch `feat/<module>-<topic>` in worktree `D:\dcos-lanes\<module>-<topic>`, copies `apps/web/.env.local`, runs `pnpm install` and prints the dev port to use (`pnpm dev -p 3001`, `3002`, `3003`; the main checkout keeps 3100). In a lane window, don't let the "DCOS: web dev server" auto-start task run, because it starts on 3100 too. Open that folder in its own VS Code window or `claude` session. Remove it with `git worktree remove <path>` after merge.
+- **A lane edits only its own module's paths** (`MODULE_PATHS[<key>]` in `apps/web/module-boundaries.mjs`, e.g. `components/qs`, `lib/qs`, `app/dashboard/tenders`, `app/api/tenders`) plus its migrations and docs. Cross-module imports go through `PUBLIC_API` only.
+- **Core files are main-lane only:** `components/ui`, `components/dashboard`, `components/project`, `components/report-kit`, `lib/modules/*` (incl. `release.ts`, `registry.ts`, `features.ts`), `module-boundaries.mjs`, `next.config.ts`, `proxy.ts`, `package.json`/`pnpm-lock.yaml`, `.claude/`. A lane that needs one of these stops and records it as a "core request" in its final report; the main lane makes the change and the lane rebases.
+- **One shared local DB.** Every lane talks to the same `127.0.0.1:54321` stack, so a migration applied in one lane is live for all. While other lanes run, migrations must be **additive only**: new tables, `add column if not exists`, new functions. No rename, drop or type change. Within a lane only `database-engineer` writes `supabase/migrations/`.
+- **Migration version = real timestamp** `YYYYMMDDHHMMSS_<module>_<what>.sql` (e.g. `20261022143015_qs_boq_alternates.sql`), never "last number + 1". That way two lanes can't pick the same version. Dry-run then apply exactly as in "Migrations" above. The no-wipe rules apply unchanged.
+- **Subagent pipeline inside a lane:** `system-architect` / `<dept>-manager` (design and domain check, read-only) → `database-engineer` (schema first) → `backend-engineer` ∥ `frontend-engineer` (in parallel once the schema is fixed) → `code-reviewer` (read-only) → `docs-writer`. The lead then runs `pnpm typecheck && pnpm lint && pnpm test` before committing.
+- **Report back to the main window.** When a lane has committed and given its final report, it also sends a short summary to the main session with `SendMessage`. The main session is the `ListAgents` row named `dcos-system-…`, the session in `D:\dcos-system`. The summary covers branch and commits, what changed, how to test it on the lane's port, any migration added, and Core requests. A lane that needs a decision only the main window can make (a core file, another module) messages it the same way.
+- **Merge one lane at a time** into the integration branch. The next lane rebases onto it and re-runs typecheck/lint/test before merging.
+- **Agent Team (cross-module feature):** the lead first writes the contract (tables, RPCs, which module owns which file, `PUBLIC_API` additions). Then one teammate per module, with `database-engineer` as the only migration owner.
 
 **apps/web/hooks/** - Custom React hooks
 - `useAuth()` - Authentication and session management

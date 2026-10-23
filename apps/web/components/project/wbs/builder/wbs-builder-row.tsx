@@ -60,7 +60,8 @@ function ActivityRowView({
       case "node_type": return "Activity";
       case "discipline": return task.discipline ?? "";
       case "status": return task.status ? statusLabel(task.status) : "";
-      case "progress": return pct(task.progress);
+      case "progress":
+      case "activity_progress": return pct(task.progress);
       case "duration": return task.is_milestone ? "Milestone" : formatDuration(task.duration_days, task.duration_unit);
       case "start": return shortDate(task.start_date);
       case "finish": return shortDate(task.end_date);
@@ -481,18 +482,23 @@ export function WbsBuilderRowView({
           );
         }
 
-        if (col.field === "progress" || col.field === "activities") {
+        if (col.field === "progress" || col.field === "activities" || col.field === "activity_progress") {
+          const hasActivities = !!rollup && rollup.count > 0;
           const content = col.field === "progress"
             ? pct(data.progress_percent)
-            : rollup && rollup.count > 0
-              ? <><span>{rollup.count}</span><span className="text-muted-foreground"> · {pct(rollup.progress)}</span></>
-              : <span className="text-muted-foreground/40">—</span>;
+            : !hasActivities
+              ? <span className="text-muted-foreground/40">—</span>
+              : col.field === "activities" ? rollup.count : pct(rollup.progress);
           return (
             <div
               key={col.field}
               className="flex h-full items-center justify-end border-r border-border/60 px-1.5 text-xs tabular-nums"
               style={{ width: colWidths[col.field] }}
-              title={col.field === "activities" && rollup?.count ? `${rollup.count} activities below · ${pct(rollup.progress)} complete` : undefined}
+              title={
+                col.field === "activities" && rollup?.count ? `${rollup.count} activities below`
+                  : col.field === "activity_progress" && rollup?.count ? `${pct(rollup.progress)} complete across ${rollup.count} activities`
+                    : undefined
+              }
             >
               {content}
             </div>

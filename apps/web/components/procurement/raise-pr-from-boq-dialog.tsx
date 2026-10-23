@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds, listPrsByProjectId } from "@/lib/procurement/procurement-queries";
+import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds } from "@/lib/procurement/procurement-queries";
 import { Loader2, ShoppingCart, Hash, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { BoqItemForPr } from "@/lib/qs/public";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface Props {
   projectId: string;
@@ -36,8 +37,6 @@ interface Props {
 export function RaisePrFromBoqDialog({
   projectId,
   projectName,
-  projectCode,
-  companyCode,
   projectLocation,
   boqItemIds,
   triggerLabel,
@@ -49,7 +48,6 @@ export function RaisePrFromBoqDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sourceItems, setSourceItems] = useState<BoqItemForPr[]>([]);
-  const [generatedPrNumber, setGeneratedPrNumber] = useState("");
 
   const [form, setForm] = useState({
     preparation_date: new Date().toISOString().slice(0, 10),
@@ -70,33 +68,11 @@ export function RaisePrFromBoqDialog({
     notes: string;
   }[]>([]);
 
-  const generatePrNumber = useCallback(async () => {
-    let pc = projectCode ?? "";
-    let cc = companyCode ?? "";
-    if (!pc || !cc) {
-      const { data: proj } = await getProjectById(projectId, "project_code, company_code");
-      if (proj) {
-        pc = proj.project_code;
-        cc = proj.company_code ?? "";
-      }
-    }
-    const { data: existingPRs } = await listPrsByProjectId(projectId);
-    const prefix = `${pc}-${cc || "DCOS"}-PR-`;
-    let maxSeq = 0;
-    for (const pr of (existingPRs ?? [])) {
-      if (pr.pr_number.startsWith(prefix)) {
-        const num = parseInt(pr.pr_number.slice(prefix.length), 10);
-        if (!isNaN(num) && num > maxSeq) maxSeq = num;
-      }
-    }
-    setGeneratedPrNumber(`${prefix}${String(maxSeq + 1).padStart(3, "0")}`);
-  }, [projectId, projectCode, companyCode]);
-
   useEffect(() => {
     if (!open || boqItemIds.length === 0) return;
     setLoading(true);
     listBoqRequisitionStatusByBoqItemIds(boqItemIds).then((boqRes) => {
-      if (boqRes.error) { toast.error(boqRes.error.message); return; }
+      if (boqRes.error) { toast.error(procErrorMessage(boqRes.error)); return; }
       const rows = (boqRes.data ?? []) as BoqItemForPr[];
       setSourceItems(rows);
       setLineItems(
@@ -113,7 +89,6 @@ export function RaisePrFromBoqDialog({
       );
     }, () => {}).then(() => {
       setLoading(false);
-      generatePrNumber();
     });
     if (projectLocation) {
       setForm(prev => ({ ...prev, ship_to: projectLocation }));
@@ -122,7 +97,7 @@ export function RaisePrFromBoqDialog({
         if (data?.location) setForm(prev => ({ ...prev, ship_to: data.location }));
       });
     }
-  }, [open, boqItemIds, projectLocation, projectId, generatePrNumber]);
+  }, [open, boqItemIds, projectLocation, projectId]);
 
   function updateLine(idx: number, field: string, value: string | number) {
     setLineItems((prev) =>
@@ -162,7 +137,6 @@ export function RaisePrFromBoqDialog({
     setSaving(true);
 
     const { data: prData, error: prError } = await insertPr({
-          pr_number: generatedPrNumber,
           project_id: projectId,
           preparation_date: form.preparation_date || null,
           required_date: form.required_date || null,
@@ -172,7 +146,7 @@ export function RaisePrFromBoqDialog({
         });
 
     if (prError) {
-      toast.error(prError.message);
+      toast.error(procErrorMessage(prError));
       setSaving(false);
       return;
     }
@@ -196,12 +170,13 @@ export function RaisePrFromBoqDialog({
     const { error: itemsError } = await insertPrItems(itemInserts);
 
     if (itemsError) {
-      toast.error(itemsError.message);
+      toast.error(procErrorMessage(itemsError));
       setSaving(false);
       return;
     }
 
-    toast.success("Purchase requisition created from BOQ");
+    const createdNumber = (prData as { pr_number?: string }).pr_number;
+    toast.success(createdNumber ? `Purchase requisition ${createdNumber} created from BOQ` : "Purchase requisition created from BOQ");
     setOpen(false);
     router.push(`/dashboard/procurement/pr/${prId}`);
   }
@@ -233,7 +208,7 @@ export function RaisePrFromBoqDialog({
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
             <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono">
               <Hash className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{generatedPrNumber || "Generating..."}</span>
+              <span className="font-medium">Assigned on save</span>
             </div>
 
             <div className="grid grid-cols-3 gap-3">

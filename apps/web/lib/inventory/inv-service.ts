@@ -99,17 +99,18 @@ export async function resolveTenantId(
 
 // ── GRN Service ────────────────────────────────────────────────────────────────
 
-/** BR-F3-01: Every GRN must reference a valid, approved PO owned by the same tenant. */
+/**
+ * BR-F3-01: Every GRN must reference a valid, approved PO.
+ * procurement_pos has no tenant_id (one deployment per customer); procurement RLS limits which POs the user can read.
+ */
 async function validatePo(
   supabase: SupabaseClient,
   poId: string,
-  tenantId: string,
 ): Promise<{ po_number: string; supplier_id: string | null }> {
   const { data: po, error } = await supabase
     .from("procurement_pos")
     .select("id, po_number, status, supplier_id")
     .eq("id", poId)
-    .eq("tenant_id", tenantId)
     .single()
 
   if (error || !po) throw new InvError("INV_PO_NOT_FOUND", "Purchase Order not found", 404)
@@ -159,7 +160,7 @@ export async function createGrn(
   tenantId: string,
   data: GrnCreate,
 ) {
-  const { po_number, supplier_id } = await validatePo(supabase, data.po_id, tenantId)
+  const { po_number, supplier_id } = await validatePo(supabase, data.po_id)
   await validateGrnQuantities(supabase, data.po_id, tenantId, data.lines)
 
   const grnNumber = await nextSequence(supabase, "inv_grns", "grn_number", data.project_id, "GRN")

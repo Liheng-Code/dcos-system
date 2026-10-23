@@ -29,7 +29,12 @@ export interface LevelTemplate {
   id: string;
   template_name: string;
   description: string | null;
+  /** Deprecated free text; use template_category + building_types. */
   building_type: string | null;
+  /** Sector slug (projects.category). */
+  template_category: string | null;
+  /** Building-type slugs (projects.building_type) this template is recommended for; empty = any in its sector. */
+  building_types: string[];
   is_active: boolean;
   version: number;
   items: LevelItem[];

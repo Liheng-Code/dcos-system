@@ -18,6 +18,7 @@ import {
   type StepSpreadContext,
   deleteTaskStep,
   listActivityStepTemplates,
+  loadTaskProjectKind,
   listTaskSteps,
   stepDateOutOfRange,
   totalWeight,
@@ -27,6 +28,8 @@ import {
   type WbsTaskStep,
 } from "@/lib/planning/activity-steps-service";
 import { StepTemplateSelector } from "./wbs-step-template-selector";
+import { groupStepTemplates } from "@/lib/planning/step-template-matching";
+import type { ProjectKind } from "@/lib/template-fit";
 
 /** Searchable dropdown for picking a template — a plain <select> becomes unusable once the
  * library grows past a screenful, so this filters by template name or group as you type. */
@@ -203,6 +206,8 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
   const supabase = useMemo(() => createClient(), []);
   const [steps, setSteps] = useState<WbsTaskStep[]>([]);
   const [templates, setTemplates] = useState<ActivityStepTemplate[]>([]);
+  // The activity's project sector / building type: matching step templates are listed first.
+  const [projectKind, setProjectKind] = useState<ProjectKind>({});
   const [loading, setLoading] = useState(true);
   const [assignOpen, setAssignOpen] = useState(false);
   const [pickerTemplateId, setPickerTemplateId] = useState("");
@@ -239,6 +244,7 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload() flips its own loading flag
     void reload();
     listActivityStepTemplates(supabase).then(setTemplates).catch(() => {});
+    loadTaskProjectKind(supabase, taskId).then(setProjectKind).catch(() => {});
     canManageStepTemplates(supabase).then(setCanManage).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
@@ -298,16 +304,11 @@ export function WbsActivityStepsPanel({ taskId, taskStart, taskEnd, canEdit, onS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps]);
 
-  const groups = useMemo(() => {
-    const map = new Map<string, ActivityStepTemplate[]>();
-    for (const t of templates) {
-      if (!t.is_active) continue;
-      const list = map.get(t.group_name) ?? [];
-      list.push(t);
-      map.set(t.group_name, list);
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [templates]);
+  // "Recommended for this project" first, then the trade groups.
+  const groups = useMemo(
+    () => groupStepTemplates(templates, projectKind).map((g): [string, ActivityStepTemplate[]] => [g.label, g.items]),
+    [templates, projectKind],
+  );
 
   const weightTotal = totalWeight(steps);
   const computedProgress = weightedProgress(steps);

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deleteSupplierById, listSuppliersByName } from "@/lib/procurement/procurement-queries";
-import { Search, Plus, Loader2, Pencil, Trash2, ShieldCheck } from "lucide-react";
+import { deactivateSupplierById, listSuppliersByName } from "@/lib/procurement/procurement-queries";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
+import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
+import { Search, Plus, Loader2, Pencil, UserX, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +56,7 @@ function formatExpiry(date: string | null) {
 }
 
 export function SupplierList() {
+  const { can } = useProcurementPermissions(["supplier"]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -74,12 +77,13 @@ export function SupplierList() {
     s.supplier_code.toLowerCase().includes(search.toLowerCase())
   );
 
-  function handleDelete(id: string) {
-    if (!confirm("Delete this supplier?")) return;
-    deleteSupplierById(id).then(({ error }) => {
-      if (error) { toast.error(error.message); return; }
-      toast.success("Supplier deleted");
-      setSuppliers(prev => prev.filter(s => s.id !== id));
+  function handleDeactivate(id: string) {
+    if (!confirm("Deactivate this supplier? It will no longer be selectable on new documents. Existing documents are unaffected.")) return;
+    deactivateSupplierById(id).then(({ data, error }) => {
+      if (error) { toast.error(procErrorMessage(error)); return; }
+      if (!data || data.length === 0) { toast.error("You don't have permission to deactivate this supplier."); return; }
+      toast.success("Supplier deactivated");
+      setSuppliers(prev => prev.map(s => s.id === id ? { ...s, status: "inactive" } : s));
     });
   }
 
@@ -142,7 +146,9 @@ export function SupplierList() {
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => setEditing(s)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(s.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    {can("supplier", "edit") && s.status !== "inactive" && (
+                      <Button variant="ghost" size="sm" title="Deactivate" onClick={() => handleDeactivate(s.id)}><UserX className="h-4 w-4 text-red-500" /></Button>
+                    )}
                   </div>
                 </td>
               </tr>

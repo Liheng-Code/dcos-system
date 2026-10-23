@@ -30,6 +30,7 @@ import {
   type LocationDecision,
 } from "@/lib/planning/activity-library/location-map-service";
 import { EmptyNote } from "./plan-act-shared";
+import { parseChainageRange } from "@/lib/chainage";
 
 const STATUS: Record<LocationStatus, { label: string; cls: string }> = {
   confirmed: { label: "Confirmed", cls: "bg-emerald-100 text-emerald-700" },
@@ -45,7 +46,12 @@ const SPLIT_LABEL: Record<SplitRule, string> = {
   none: "Not per level (does not drive durations)",
   equal: "Share equally over the building's levels",
   gfa: "Share by each level's GFA",
+  length: "Share over the route's chainage sections by length",
+  chainage: "Share over the chainage sections it overlaps",
 };
+/** Rules offered for a project-wide line, and for a line labelled with a chainage range. */
+const PROJECT_WIDE_RULES: SplitRule[] = ["none", "equal", "gfa", "length"];
+const CHAINAGE_RULES: SplitRule[] = ["chainage", "none"];
 
 /** BOQ location (building + level label) -> WBS level node, per project. Doc 21 Phase 2. */
 export function PlanLocationMap({ projectId, lines }: { projectId: string; lines: BridgeBoqLine[] }) {
@@ -85,6 +91,7 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
   const rows = useMemo(() => (levels ? suggestLocationMap(locations, levels, saved) : []), [locations, levels, saved]);
 
   const levelById = useMemo(() => new Map((levels ?? []).map((l) => [l.id, l])), [levels]);
+  const hasSections = (levels ?? []).some((l) => l.chainage_from != null);
   const sortedLevels = useMemo(
     () => [...(levels ?? [])].sort((a, b) => (wbsLevelCanonical(a)?.rank ?? 5000) - (wbsLevelCanonical(b)?.rank ?? 5000) || a.wbs_code.localeCompare(b.wbs_code)),
     [levels],
@@ -164,7 +171,9 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
         </thead>
         <tbody>
           {rows.map((r) => {
-            const projectWide = isProjectWideLabel(r.qs_level_label);
+            const chainageRange = parseChainageRange(r.qs_level_label);
+            const projectWide = isProjectWideLabel(r.qs_level_label) || !!chainageRange;
+            const rules = chainageRange ? CHAINAGE_RULES : PROJECT_WIDE_RULES;
             const options = r.candidates.length > 0 ? sortedLevels.filter((l) => r.candidates.includes(l.id)) : sortedLevels;
             return (
               <tr key={r.key} className="border-t border-border">
@@ -181,9 +190,14 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
                       onChange={(e) => void persist([decision(r, { wbs_node_id: null, split_rule: e.target.value as SplitRule, status: "confirmed" })])}
                       className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary disabled:opacity-60"
                     >
-                      {(Object.keys(SPLIT_LABEL) as SplitRule[]).map((s) => (
-                        <option key={s} value={s} disabled={s === "gfa" && gfa.size === 0}>{SPLIT_LABEL[s]}{s === "gfa" && gfa.size === 0 ? " (no GFA recorded)" : ""}</option>
-                      ))}
+                      {rules.map((s) => {
+                        const off = (s === "gfa" && gfa.size === 0) || ((s === "length" || s === "chainage") && !hasSections);
+                        return (
+                          <option key={s} value={s} disabled={off}>
+                            {SPLIT_LABEL[s]}{s === "gfa" && gfa.size === 0 ? " (no GFA recorded)" : ""}{(s === "length" || s === "chainage") && !hasSections ? " (no chainage sections)" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <select

@@ -13,9 +13,15 @@ Every change you make is permanent once applied. Be deliberate, be precise, and 
 
 - **Database:** Supabase (PostgreSQL 15+)
 - **Auth:** Supabase Auth — `auth.uid()` and `auth.jwt()` available in RLS policies
-- **CLI:** `supabase` CLI for local testing (`supabase db push --local`)
+- **CLI:** `supabase` CLI against the **local** stack only (`--local`; see "Migrations" in `.claude/CLAUDE.md`)
 - **Migration files:** `supabase/migrations/` — forward-only, timestamped
-- **Remote project:** `swyhplzjhdypvkhstpgp` (production — never reset, never touch with destructive commands)
+- **Production:** out of scope. No `--linked`, `db push`, `db pull` or Supabase MCP. The user promotes migrations with `/dbpush`.
+
+## Parallel lanes
+Other lanes (sessions in other worktrees) share the same local DB. While they run:
+- **Additive only:** new tables, `add column if not exists`, new functions and policies. No rename, drop or type change of an existing object without the human's explicit OK.
+- **Version = real timestamp** `YYYYMMDDHHMMSS_<module>_<what>.sql` (the current time, e.g. `20261022143015_qs_boq_alternates.sql`). Never "last number + 1", because another lane may take the same number.
+- Before choosing a name, `ls supabase/migrations | tail` to confirm the version is unique and later than every existing file.
 
 ---
 
@@ -30,9 +36,9 @@ Every change you make is permanent once applied. Be deliberate, be precise, and 
 
 ## Migration File Conventions
 
-**Naming:** `YYYYMMDDNNNNNN_description_of_change.sql`
-- Example: `20260621000001_create_retention_ledger.sql`
-- `NNNNNN` is a 6-digit sequence: `000001`, `000002`, etc.
+**Naming:** `YYYYMMDDHHMMSS_<module>_<description_of_change>.sql`
+- Example: `20261022143015_qs_create_retention_ledger.sql`
+- `HHMMSS` is the current time, not a sequence (older files use `000001`-style sequences; they sort before any real time)
 - Use today's date (from `currentDate` context if available)
 - Description uses underscores, lowercase, concise
 
@@ -133,7 +139,7 @@ Status values must match exactly what is defined in Doc 02 of the module spec.
 2. **No DROP without human confirmation:** Before writing any `DROP TABLE`, `DROP COLUMN`, or `TRUNCATE`, pause and ask the human to confirm. Show what data would be lost.
 3. **Never:** `supabase db reset --linked` — this wipes the remote database
 4. **Never:** Edit files in `supabase/migrations/` that were applied before today's date without explicit human instruction
-5. **Always test locally:** `supabase db push --local` before declaring a migration ready
+5. **Always test locally:** dry-run in a rolled-back transaction, then apply (see below) before declaring a migration ready. Never `db reset` / `stop --no-backup`.
 6. **Seed data** goes in `supabase/seed/` as standalone `.sql` files, not embedded in migration files
 
 ---
@@ -141,11 +147,14 @@ Status values must match exactly what is defined in Doc 02 of the module spec.
 ## Testing a Migration
 
 ```bash
+# Dry run (nothing persists). Use Git Bash: PowerShell piping corrupts non-ASCII characters
+{ echo "begin;"; cat supabase/migrations/<file>.sql; echo "rollback;"; } | docker exec -i supabase_db_dcos-system psql -U postgres -d postgres -v ON_ERROR_STOP=1
+
 # Apply to local
-supabase db push --local
+docker exec -i supabase_db_dcos-system psql -U postgres -d postgres -v ON_ERROR_STOP=1 -1 < supabase/migrations/<file>.sql
 
 # Verify table exists
-supabase db execute --local "select * from module_table limit 1;"
+supabase db query --local "select * from module_table limit 1;"
 
 # Verify RLS blocks cross-tenant access
 # (manual test — log in as two different users from different tenants)
@@ -164,7 +173,7 @@ Before marking a database task complete:
 - [ ] Status columns have a `CHECK` constraint matching Doc 02 status list
 - [ ] Indexes on `(tenant_id)` and `(project_id)` at minimum
 - [ ] `updated_at` trigger attached
-- [ ] Tested locally with `supabase db push --local`
+- [ ] Dry-run passed and applied to the local DB
 - [ ] No DROP statements without human confirmation
 
 ---

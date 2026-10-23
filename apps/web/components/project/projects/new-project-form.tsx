@@ -12,6 +12,8 @@ import type { Project } from "@/lib/project/projects/project-types";
 import type { ProjectCreateKind } from "@/lib/project/projects/project-routes";
 import { createProject } from "@/lib/project/projects/create-project";
 import { listWbsTemplates, type WbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import { recommendedTemplate } from "@/lib/template-fit";
+import { WbsTemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { ClientField, Field, SectorFields, StaffSelect, inputClass, useStaff } from "@/components/project/projects/fields/project-fields";
 import { ProjectCodeField } from "@/components/project/projects/project-code-field";
 
@@ -59,10 +61,18 @@ export function NewProjectForm({ initialKind, onCancel, onCreated }: NewProjectF
   });
   const kind = useWatch({ control, name: "kind" });
   const buildingType = useWatch({ control, name: "buildingType" });
+  const category = useWatch({ control, name: "category" });
+  // Until the user picks one, the WBS template follows the sector / building type.
+  const [templatePicked, setTemplatePicked] = useState(false);
 
   useEffect(() => {
     listWbsTemplates({ activeOnly: true }).then(setTemplates).catch(() => setTemplates([]));
   }, []);
+
+  useEffect(() => {
+    if (templatePicked) return;
+    setValue("wbsTemplateId", recommendedTemplate(templates, { sector: category, buildingType })?.id ?? "");
+  }, [templates, category, buildingType, templatePicked, setValue]);
 
   async function onSubmit(v: FormValues) {
     try {
@@ -163,9 +173,9 @@ export function NewProjectForm({ initialKind, onCancel, onCreated }: NewProjectF
             className="sm:col-span-2"
             hint={templates.length ? "Applied from the WBS builder, where you choose the buildings and levels." : "No company WBS templates yet; you can build the WBS later."}
           >
-            <select id="np_wbs" {...register("wbsTemplateId")} className={inputClass} disabled={!templates.length}>
+            <select id="np_wbs" {...register("wbsTemplateId", { onChange: () => setTemplatePicked(true) })} className={inputClass} disabled={!templates.length}>
               <option value="">— Choose later —</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.template_name}</option>)}
+              <WbsTemplateOptions templates={templates} project={{ sector: category, buildingType }} />
             </select>
           </Field>
         )}

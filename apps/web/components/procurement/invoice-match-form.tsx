@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { insertInvoiceMatch, listGoodsReceiptsByPoId, listPosReadyForInvoiceMatch, updatePoById } from "@/lib/procurement/procurement-queries";
+import { getInvoiceMatchById, insertInvoiceMatch, listGoodsReceiptsByPoId, listPosReadyForInvoiceMatch } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface POSummary {
   id: string;
@@ -86,6 +87,8 @@ export function InvoiceMatchForm() {
 
     setSaving(true);
 
+    // Client preview only: a database trigger recomputes matched_po_amount, matched_gr_amount,
+    // variance_amount and the initial status on insert, so the server values are authoritative.
     const threshold = matchedPoAmount * 0.02;
     const hasVariance = Math.abs(form.invoice_amount - matchedPoAmount) > threshold;
     const matchStatus = hasVariance ? "variance_detected" : "matched";
@@ -103,12 +106,14 @@ export function InvoiceMatchForm() {
         notes: form.notes || null,
       });
 
-    if (error) { toast.error(error.message); setSaving(false); return; }
+    if (error) { toast.error(procErrorMessage(error)); setSaving(false); return; }
 
-    await updatePoById({ status: "under_invoice_match" }, form.po_id);
+    // The PO moves to under_invoice_match via a database trigger on insert.
 
     const matchId = (result as { id: string }).id;
-    toast.success(hasVariance ? "Invoice match created — variance detected" : "Invoice matched successfully");
+    const { data: saved } = await getInvoiceMatchById(matchId);
+    const serverStatus = (saved as { status?: string } | null)?.status ?? matchStatus;
+    toast.success(serverStatus === "variance_detected" ? "Invoice match created — variance detected" : "Invoice matched successfully");
     router.push(`/dashboard/procurement/invoice-matches/${matchId}`);
   }
 

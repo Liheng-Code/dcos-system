@@ -18,6 +18,9 @@ import Link from "next/link";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { listActivityStepTemplates, type ActivityStepTemplate } from "@/lib/planning/activity-steps-service";
 import { PlanActMasterForm } from "./plan-act-master-form";
+import { SectorListFields } from "@/components/administration/template-sector-fields";
+import { sectorListLabel } from "@/lib/template-fit";
+import { buildingTypeLabel } from "@/lib/project-categories";
 import { PlanActSiteHistory } from "./plan-act-site-history";
 import { ApplicabilityEditor, LogicEditor, NewStandardForm, QuantityRulesEditor, RequirementsEditor } from "./plan-act-master-editors";
 import * as ed from "@/lib/planning/activity-library/library-editors";
@@ -174,7 +177,6 @@ function Overview({ d }: { d: Loaded }) {
       <Card title="Governance"><Dl rows={[
         ["Source", m.source], ["Effective", m.effective_date], ["Superseded", m.superseded_date],
         ["Approved", m.approved_at ? new Date(m.approved_at).toLocaleDateString() : null],
-        ["Project types", m.applicable_project_types.join(", ")],
       ]} /></Card>
       <PlanningAttributes master={m} />
     </div>
@@ -198,6 +200,8 @@ function PlanningAttributes({ master }: { master: ActMaster }) {
     duration_basis: master.duration_basis ?? "quantity",
     default_work_group: master.default_work_group ?? null,
     default_step_template_id: master.default_step_template_id ?? null,
+    sectors: master.sectors ?? [],
+    building_types: master.building_types ?? [],
   });
   const [draft, setDraft] = useState(saved);
 
@@ -246,6 +250,11 @@ function PlanningAttributes({ master }: { master: ActMaster }) {
               {stepTemplates.map((t) => <option key={t.id} value={t.id}>{t.group_name} › {t.template_name}</option>)}
             </select>
           </label>
+          <SectorListFields
+            sectors={draft.sectors}
+            buildingTypes={draft.building_types}
+            onChange={(v) => setDraft({ ...draft, sectors: v.sectors, building_types: v.buildingTypes })}
+          />
           <div className="flex gap-2 pt-1">
             <Button size="sm" onClick={() => void save()}>Save</Button>
             <Button size="sm" variant="outline" onClick={() => { setDraft(saved); setEditing(false); }}>Cancel</Button>
@@ -259,6 +268,8 @@ function PlanningAttributes({ master }: { master: ActMaster }) {
             ["Step template", stepTemplate
               ? <Link href={`/dashboard/planning/activity-step-templates?template=${stepTemplate.id}`} className="text-primary hover:underline">{stepTemplate.template_name}</Link>
               : saved.default_step_template_id ? "(inactive template)" : null],
+            ["Sectors", sectorListLabel(saved.sectors)],
+            ["Recommended for", saved.building_types.length ? saved.building_types.map((b) => buildingTypeLabel(b)).join(", ") : null],
           ]} />
           {canEdit && <Button size="sm" variant="outline" className="mt-3" onClick={() => { setDraft(saved); setEditing(true); }}>Edit</Button>}
         </>

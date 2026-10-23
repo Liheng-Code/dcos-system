@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listPosNewestFirst, updatePosByIds } from "@/lib/procurement/procurement-queries";
+import { listPosNewestFirst, transitionPo } from "@/lib/procurement/procurement-queries";
 import { Search, Plus, Loader2, Eye, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
 
 interface PO {
   id: string;
@@ -69,9 +70,15 @@ export function POList() {
     const valid = filtered.filter(p => selected.has(p.id) && (p.status === "delivered" || p.status === "under_invoice_match"));
     if (valid.length === 0) { toast.error("Only delivered POs can be closed"); return; }
     setBulkLoading("close");
-    const { error } = await updatePosByIds({ status: "closed" }, valid.map(p => p.id));
-    if (error) { toast.error(error.message); setBulkLoading(""); return; }
-    toast.success(`${valid.length} POs closed`);
+    let ok = 0;
+    const failures: string[] = [];
+    for (const po of valid) {
+      const { error } = await transitionPo(po.id, "closed");
+      if (error) failures.push(`${po.po_number}: ${procErrorMessage(error)}`);
+      else ok++;
+    }
+    if (ok > 0) toast.success(`${ok} PO${ok === 1 ? "" : "s"} closed`);
+    if (failures.length > 0) toast.error(`${failures.length} failed. ${failures.join("; ")}`);
     setSelected(new Set());
     setBulkLoading("");
     fetchPOs();

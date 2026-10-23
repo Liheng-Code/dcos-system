@@ -4,10 +4,18 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Save, RotateCcw, Loader2, ChevronDown, ChevronUp, Plus, Copy, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "sonner";
 import {
   type SiteDataParams,
   type PrelimCaseSummary,
-  DEFAULT_SITE_DATA,
+  type PrelimCase,
+  PROFILE_PARAMS,
+  PROFILE_REQUIRED_PARAMS,
+  SITE_DATA_META,
+  PRELIM_PROFILES,
+  getDefaultSiteData,
+  getDefaultPrelimProfile,
+  type PrelimProfileCode,
   listCases,
   getCase,
   getDefaultCase,
@@ -20,32 +28,15 @@ import {
 
 interface SiteDataPanelProps {
   params: SiteDataParams;
+  profile: PrelimProfileCode;
+  caseContext?: { sector_slug?: string | null; building_type_slug?: string | null; override_reason?: string | null };
   onParamsChange: (params: SiteDataParams) => void;
   onRecalculate: () => void;
   onCaseChanged?: (name: string) => void;
+  onCaseContextChange?: (value: PrelimCase) => void;
 }
 
-const PARAM_ORDER: (keyof SiteDataParams)[] = [
-  "P01", "P02", "P03", "P04", "P05", "P06",
-  "P07", "P08", "P09", "P10", "P11", "P12",
-];
-
-const META: Record<string, { label: string; unit: string; derived?: string }> = {
-  P01: { label: "Site perimeter (hoarding line)", unit: "m" },
-  P02: { label: "Building footprint", unit: "m2" },
-  P03: { label: "Building perimeter", unit: "m" },
-  P04: { label: "Storeys above ground", unit: "no" },
-  P05: { label: "Building height", unit: "m" },
-  P06: { label: "Facade area", unit: "m2", derived: "P03 x P05" },
-  P07: { label: "Programme duration", unit: "months" },
-  P08: { label: "Structure phase duration", unit: "months" },
-  P09: { label: "Scaffold rental duration", unit: "months" },
-  P10: { label: "Peak workforce", unit: "no" },
-  P11: { label: "Floors incl. roof (edge protection)", unit: "no" },
-  P12: { label: "Gross floor area", unit: "m2", derived: "P02 x P04" },
-};
-
-export default function SiteDataPanel({ params, onParamsChange, onRecalculate, onCaseChanged }: SiteDataPanelProps) {
+export default function SiteDataPanel({ params, profile, caseContext, onParamsChange, onRecalculate, onCaseChanged, onCaseContextChange }: SiteDataPanelProps) {
   const [local, setLocal] = useState<SiteDataParams>({ ...params });
   const [recalculating, setRecalculating] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -62,6 +53,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const missingParams = PROFILE_REQUIRED_PARAMS[profile].filter((key) => local[key] <= 0);
 
   // Load cases on mount
   const loadCases = useCallback(async () => {
@@ -79,10 +71,11 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
       setLocal(def.params);
       onRecalculate();
       onCaseChanged?.(def.name);
+      onCaseContextChange?.(def);
     } catch {
       // silent
     }
-  }, [activeCaseId, onParamsChange, onRecalculate, onCaseChanged]);
+  }, [activeCaseId, onParamsChange, onRecalculate, onCaseChanged, onCaseContextChange]);
 
   useEffect(() => { loadCases(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -108,24 +101,29 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     const num = parseFloat(value) || 0;
     const next = { ...local, [key]: num };
     if (key === "P03" || key === "P05") next.P06 = next.P03 * next.P05;
-    if (key === "P02" || key === "P04") next.P12 = next.P02 * next.P04;
+    if ((key === "P02" || key === "P04") && (profile === "PROF-BLD-HR" || profile === "PROF-BLD-LR")) next.P12 = next.P02 * next.P04;
     setLocal(next);
   }
 
   async function handleApply() {
+    if (caseContext?.building_type_slug && profile !== getDefaultPrelimProfile(caseContext.building_type_slug) && !caseContext.override_reason?.trim()) {
+      toast.error("Add a reason before saving a profile override.");
+      return;
+    }
     setRecalculating(true);
     onParamsChange(local);
     onRecalculate();
     // auto-save to active case
     if (activeCaseId) {
-      try { await saveCase(activeCaseId, local); } catch { /* silent */ }
+      try { await saveCase(activeCaseId, local, { profile_code: profile, ...caseContext }); } catch { /* silent */ }
     }
     setRecalculating(false);
   }
 
   function handleReset() {
-    setLocal({ ...DEFAULT_SITE_DATA });
-    onParamsChange({ ...DEFAULT_SITE_DATA });
+    const defaults = getDefaultSiteData(profile);
+    setLocal(defaults);
+    onParamsChange(defaults);
     onRecalculate();
   }
 
@@ -139,6 +137,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     onParamsChange(c.params);
     onRecalculate();
     onCaseChanged?.(c.name);
+    onCaseContextChange?.(c);
     setDropdownOpen(false);
   }
 
@@ -147,15 +146,20 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
   async function handleCreateCase() {
     const trimmed = newName.trim();
     if (!trimmed) return;
+    if (caseContext?.building_type_slug && profile !== getDefaultPrelimProfile(caseContext.building_type_slug) && !caseContext.override_reason?.trim()) {
+      toast.error("Add a reason before saving a profile override.");
+      return;
+    }
     setSaving(true);
     try {
       const c = newSourceId && newSourceId !== "__local__"
         ? await duplicateCase(newSourceId, trimmed)
-        : await createCase(trimmed, local);
+        : await createCase(trimmed, local, { profile_code: profile, ...caseContext });
       setActiveCaseId(c.id);
       setActiveCaseName(c.name);
-      setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default }]);
+      setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default, profile_code: c.profile_code, sector_slug: c.sector_slug, building_type_slug: c.building_type_slug }]);
       onCaseChanged?.(c.name);
+      onCaseContextChange?.(c);
       setShowNewDialog(false);
       setNewName("");
       setNewSourceId("");
@@ -183,13 +187,14 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
     const newName = name + " (Copy)";
     try {
       const c = await duplicateCase(id, newName);
-      setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default }]);
+      setCases((prev) => [...prev, { id: c.id, name: c.name, is_default: c.is_default, profile_code: c.profile_code, sector_slug: c.sector_slug, building_type_slug: c.building_type_slug }]);
       setActiveCaseId(c.id);
       setActiveCaseName(c.name);
       setLocal(c.params);
       onParamsChange(c.params);
       onRecalculate();
       onCaseChanged?.(c.name);
+      onCaseContextChange?.(c);
     } catch { /* silent */ }
   }
 
@@ -212,6 +217,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
         onParamsChange(def.params);
         onRecalculate();
         onCaseChanged?.(def.name);
+        onCaseContextChange?.(def);
       }
     }
   }
@@ -221,10 +227,10 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
       <CardContent className="p-4 space-y-3">
         {/* Top row: Case selector + title */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h3 className="text-sm font-semibold whitespace-nowrap">Site Data Parameters</h3>
             {/* Case dropdown */}
-            <div className="relative" ref={dropdownRef}>
+            <div className="contents" ref={dropdownRef}>
               <button
                 type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -234,8 +240,8 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </button>
               {dropdownOpen && (
-                <div className="absolute z-50 mt-1 w-64 rounded-lg border border-border bg-background shadow-lg">
-                  <div className="p-1 max-h-60 overflow-y-auto">
+                <div className="relative z-10 mt-1 basis-full w-80 max-w-full rounded-lg border border-border bg-background shadow-md">
+                  <div className="max-h-60 overflow-y-auto p-2">
                     {cases.map((c) => (
                       <div key={c.id} className="flex items-center gap-1 group">
                         {renamingId === c.id ? (
@@ -258,7 +264,7 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
                               c.id === activeCaseId ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-medium" : "hover:bg-muted/50"
                             }`}
                           >
-                            {c.name}
+                            {c.name}<span className="ml-1 text-[10px] text-muted-foreground">· {PRELIM_PROFILES.find((item) => item.code === c.profile_code)?.name ?? "Legacy"}</span>
                             {c.is_default && <span className="text-[10px] text-muted-foreground ml-1">(default)</span>}
                           </button>
                         )}
@@ -362,10 +368,11 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
 
         {/* Param grid */}
         {!collapsed && (
+        <>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {PARAM_ORDER.map((key) => {
-            const meta = META[key];
-            const isDerived = !!meta.derived;
+          {PROFILE_PARAMS[profile].map((key) => {
+            const meta = SITE_DATA_META[key];
+            const isDerived = !!meta.derived && !(key === "P12" && profile === "PROF-IND");
             return (
               <div key={key} className="space-y-1">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -384,13 +391,21 @@ export default function SiteDataPanel({ params, onParamsChange, onRecalculate, o
                   />
                   <span className="shrink-0 text-xs text-muted-foreground">{meta.unit}</span>
                 </div>
-                {meta.derived && (
+                {meta.derived && !((key === "P12") && profile === "PROF-IND") && (
                   <p className="text-[10px] text-muted-foreground/60">= {meta.derived}</p>
                 )}
               </div>
             );
           })}
         </div>
+        {missingParams.length > 0 ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Required site data is missing: {missingParams.map((key) => `${key} ${SITE_DATA_META[key].label}`).join(", ")}. Enter measured values before relying on this estimate.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">Confirm each value against project drawings, programme, or method statement. Building profile defaults are illustrative.</p>
+        )}
+        </>
         )}
       </CardContent>
     </Card>

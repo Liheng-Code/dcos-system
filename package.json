@@ -15,7 +15,10 @@
 		"build": "pnpm --dir apps/web build",
 		"lint": "pnpm --dir apps/web lint",
 		"typecheck": "pnpm --dir apps/web typecheck",
-		"test": "pnpm --dir apps/web test"
+		"test": "pnpm --dir apps/web test",
+		"dev:hq": "pnpm --dir apps/hq dev",
+		"hq:db:start": "supabase start --workdir apps/hq",
+		"hq:db:stop": "supabase stop --workdir apps/hq"
 	},
 	"repository": {
 		"type": "git",

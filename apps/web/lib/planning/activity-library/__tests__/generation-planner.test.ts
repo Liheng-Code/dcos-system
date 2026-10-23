@@ -87,6 +87,14 @@ describe("planGeneration", () => {
     expect(r.counts.warnings).toBe(1);
   });
 
+  it("skips an activity the level already has from the same master under another code (WBS template)", () => {
+    const input = base();
+    input.existingMasters = new Set(["L06|CONC"]);
+    const r = planGeneration(input);
+    expect(r.skipped).toEqual([{ node_id: "L06", task_code: "CONC@L06", reason: "master" }]);
+    expect(r.tasks.map((t) => t.task_code).sort()).toEqual(["CONC@L05", "INSP@L05", "INSP@L06"]);
+  });
+
   it("draft productivity is review, not high", () => {
     const input = base();
     input.contexts.conc.standards = [{ ...standard, status: "draft" }];

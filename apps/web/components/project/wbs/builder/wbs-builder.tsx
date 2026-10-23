@@ -8,11 +8,12 @@ import { WbsBuilderGrid } from "./wbs-builder-grid";
 import { WbsBuilderToolbar } from "./wbs-builder-toolbar";
 import { WbsVersionsDialog } from "./wbs-versions-dialog";
 import { ApplyLevelTemplateDialog } from "@/components/project/wbs/levels/apply-level-template-dialog";
+import { ChainageSectionsDialog } from "@/components/project/wbs/levels/chainage-sections-dialog";
 import { ApplyWbsTemplateDialog } from "@/components/project/wbs/templates/apply-wbs-template-dialog";
 import { SaveAsWbsTemplateDialog } from "@/components/project/wbs/templates/save-as-wbs-template-dialog";
 import { MasterWbsImportDialog } from "@/components/project/wbs/master-wbs-import-dialog";
 import { useWbsBuilderData } from "./use-wbs-builder-data";
-import { DEFAULT_VIEW, WBS_BUILDER_COLUMNS, type BuilderProject, type WbsBuilderNode, type WbsBuilderRow, type WbsViewPrefs } from "./wbs-builder-types";
+import { DEFAULT_VIEW, upgradeSavedView, type BuilderProject, type WbsBuilderNode, type WbsBuilderRow, type WbsViewPrefs } from "./wbs-builder-types";
 import { useProjectCalendar, useWbsActivities, useWbsCodeMask } from "./use-wbs-activities";
 import { ScheduleWbsDialog } from "./schedule-wbs-dialog";
 import { WbsBuilderViewMenu } from "./wbs-builder-view-menu";
@@ -60,6 +61,18 @@ export function WbsBuilder({
   // "Add levels": open for any building; default to the selected building, or the building
   // above a selected level/zone, else the first building.
   const [levelsFor, setLevelsFor] = useState<string | null>(null);
+  // "Chainage sections": routes are rows that can hold sections (not levels / sections themselves).
+  const [chainageFor, setChainageFor] = useState<string | null>(null);
+  const routes = useMemo(
+    () => data.nodes.filter((n) => n.node_type !== "level" && n.node_type !== "segment" && n.node_type !== "project"),
+    [data.nodes],
+  );
+  const defaultRouteId = useMemo(() => {
+    let node = selectedRowId?.startsWith("node:") ? data.getNodeById(selectedRowId.slice(5)) : null;
+    if (node?.node_type === "segment" && node.parent_id) node = data.getNodeById(node.parent_id);
+    if (node && node.node_type !== "level") return node.id;
+    return routes.find((n) => n.node_type === "section" || n.node_type === "location")?.id ?? routes[0]?.id ?? null;
+  }, [selectedRowId, data, routes]);
   const [wbsTemplateDialog, setWbsTemplateDialog] = useState<"apply" | "save" | "import" | "schedule" | null>(null);
   const [scheduleNonce, setScheduleNonce] = useState(0);
   const buildings = useMemo(() => data.nodes.filter((n) => n.node_type === "building"), [data.nodes]);
@@ -102,12 +115,8 @@ export function WbsBuilder({
     try {
       const raw = localStorage.getItem(VIEW_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as Partial<WbsViewPrefs>;
-        // Drop columns that no longer exist (e.g. the removed Level Breakdown).
-        const known = new Set(WBS_BUILDER_COLUMNS.map((c) => c.field));
-        const columns = Array.isArray(saved.columns) ? saved.columns.filter((c) => known.has(c)) : DEFAULT_VIEW.columns;
         /* eslint-disable-next-line react-hooks/set-state-in-effect */
-        setView({ ...DEFAULT_VIEW, ...saved, columns });
+        setView(upgradeSavedView(JSON.parse(raw) as Partial<WbsViewPrefs>));
       }
     } catch {
       /* ignore — private mode, blocked storage, bad JSON */
@@ -150,6 +159,7 @@ export function WbsBuilder({
         viewMenu={<WbsBuilderViewMenu view={view} onChange={changeView} />}
         onOpenVersions={() => setVersionsOpen(true)}
         onAddLevels={defaultBuildingId ? () => setLevelsFor(defaultBuildingId) : undefined}
+        onAddChainage={defaultRouteId ? () => setChainageFor(defaultRouteId) : undefined}
         onApplyWbsTemplate={() => setWbsTemplateDialog("apply")}
         onSaveWbsTemplate={() => setWbsTemplateDialog("save")}
         onImportFile={() => setWbsTemplateDialog("import")}
@@ -208,10 +218,23 @@ export function WbsBuilder({
         calendar={calendar}
         activities={activities}
       />
+      {chainageFor && (
+        <ChainageSectionsDialog
+          routes={routes}
+          initialRouteId={chainageFor}
+          open
+          onOpenChange={(open) => { if (!open) setChainageFor(null); }}
+          onApplied={() => {
+            data.reload();
+            onDataChanged?.();
+          }}
+        />
+      )}
       {levelsFor && (
         <ApplyLevelTemplateDialog
           buildings={buildings}
           initialBuildingId={levelsFor}
+          projectId={projectId}
           open
           onOpenChange={(open) => { if (!open) setLevelsFor(null); }}
           onApplied={() => {

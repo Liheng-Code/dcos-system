@@ -20,3 +20,13 @@ docs/04-Business-Modules/31-cwims/TLY*.csv
 .claude/settings.local.json
 
 .backups/
+
+# Parallel-lane worktree marker (scripts/new-lane.ps1)
+.lane-port
+
+# Licensing signing keys and issued tokens (never commit)
+.licensing/
+*.key.json
+
+# TypeScript incremental build info
+*.tsbuildinfo

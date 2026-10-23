@@ -13,6 +13,7 @@ import {
   IndentDecrease,
   IndentIncrease,
   Layers,
+  Ruler,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -28,6 +29,8 @@ interface WbsBuilderToolbarProps {
   onOpenVersions: () => void;
   /** Set when the selected row is a building: opens "Add levels from template". */
   onAddLevels?: () => void;
+  /** Opens "Chainage sections" (road / pipeline routes split into sections). */
+  onAddChainage?: () => void;
   onApplyWbsTemplate: () => void;
   onSaveWbsTemplate: () => void;
   /** Import WBS + activities from an Excel / CSV file. */
@@ -49,6 +52,7 @@ export function WbsBuilderToolbar({
   onCollapseAll,
   onOpenVersions,
   onAddLevels,
+  onAddChainage,
   onApplyWbsTemplate,
   onSaveWbsTemplate,
   onImportFile,
@@ -67,6 +71,16 @@ export function WbsBuilderToolbar({
         title={onAddLevels ? "Add levels from a level template" : "Add a Building / Area row first"}
       >
         <Layers className="h-3.5 w-3.5" /> Levels from template
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1 text-[11px]"
+        onClick={onAddChainage}
+        disabled={!onAddChainage}
+        title={onAddChainage ? "Split a road / pipeline route into chainage sections" : "Add a route row first"}
+      >
+        <Ruler className="h-3.5 w-3.5" /> Chainage sections
       </Button>
 
       <span className="mx-1 h-4 w-px bg-border" />

@@ -3,6 +3,7 @@ import { engineDuration } from "./schedule-engine";
 import { loadProjectCalendar } from "./project-schedule";
 import { ALL_DAYS_CALENDAR, resolveActivityDuration, type ActivityDuration, type DurationBasis, type SpreadUpdate } from "./activity-step-spread";
 import type { WorkCalendar } from "./work-calendar";
+import type { ProjectKind } from "@/lib/template-fit";
 
 export type { DurationBasis } from "./activity-step-spread";
 
@@ -12,6 +13,10 @@ export interface ActivityStepTemplate {
   template_name: string;
   description: string | null;
   is_active: boolean;
+  /** Sector slug (projects.category); null = common to every building type. */
+  template_category: string | null;
+  /** Building-type slugs the steps are written for; empty = any in its sector. */
+  building_types: string[];
 }
 
 export interface ActivityStepTemplateItem {
@@ -87,6 +92,18 @@ export function stepDateOutOfRange(
   return false;
 }
 
+/** Sector / building type of a project, so step templates written for it are preferred. */
+export async function loadProjectKind(supabase: SupabaseClient, projectId: string): Promise<ProjectKind> {
+  const { data } = await supabase.from("projects").select("category, building_type").eq("id", projectId).maybeSingle();
+  return { sector: (data?.category as string | null) ?? null, buildingType: (data?.building_type as string | null) ?? null };
+}
+
+/** Sector / building type of the project an activity belongs to. */
+export async function loadTaskProjectKind(supabase: SupabaseClient, taskId: string): Promise<ProjectKind> {
+  const { data } = await supabase.from("wbs_tasks").select("project_id").eq("id", taskId).maybeSingle();
+  return data?.project_id ? loadProjectKind(supabase, data.project_id as string) : {};
+}
+
 // ---------------------------------------------------------------------------
 // Template library (company-wide master data)
 // ---------------------------------------------------------------------------
@@ -94,11 +111,11 @@ export function stepDateOutOfRange(
 export async function listActivityStepTemplates(supabase: SupabaseClient): Promise<ActivityStepTemplate[]> {
   const { data, error } = await supabase
     .from("activity_step_template_master")
-    .select("id, group_name, template_name, description, is_active")
+    .select("id, group_name, template_name, description, is_active, template_category, building_types")
     .order("group_name", { ascending: true })
     .order("template_name", { ascending: true });
   if (error) throw error;
-  return (data ?? []) as ActivityStepTemplate[];
+  return ((data ?? []) as ActivityStepTemplate[]).map((t) => ({ ...t, building_types: t.building_types ?? [] }));
 }
 
 export async function listTemplateItems(supabase: SupabaseClient, templateId: string): Promise<ActivityStepTemplateItem[]> {
@@ -113,7 +130,10 @@ export async function listTemplateItems(supabase: SupabaseClient, templateId: st
 
 export async function saveTemplate(
   supabase: SupabaseClient,
-  template: { id?: string; group_name: string; template_name: string; description: string | null; is_active: boolean },
+  template: {
+    id?: string; group_name: string; template_name: string; description: string | null; is_active: boolean;
+    template_category: string | null; building_types: string[];
+  },
   items: StepDraft[],
 ): Promise<string> {
   let templateId = template.id;
@@ -125,6 +145,8 @@ export async function saveTemplate(
         template_name: template.template_name,
         description: template.description,
         is_active: template.is_active,
+        template_category: template.template_category,
+        building_types: template.building_types,
         updated_at: new Date().toISOString(),
       })
       .eq("id", templateId);
@@ -137,6 +159,8 @@ export async function saveTemplate(
         template_name: template.template_name,
         description: template.description,
         is_active: template.is_active,
+        template_category: template.template_category,
+        building_types: template.building_types,
       })
       .select("id")
       .single();

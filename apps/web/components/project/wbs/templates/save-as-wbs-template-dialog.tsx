@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { LevelTemplate } from "@/lib/level-library";
 import { listLevelTemplates } from "@/lib/level-library-queries";
 import { projectWbsToTemplate, suggestBlocks, suggestContainer, type SrcNode, type SrcTask, type ToTemplateOptions } from "@/lib/project/wbs/wbs-template";
-import { loadProjectWbsSource, saveWbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
+import { TemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
+import { getProjectTemplateContext, loadProjectWbsSource, saveWbsTemplate } from "@/lib/project/wbs/wbs-template-queries";
 import { FloorBlockPicker } from "./floor-block-picker";
 
 const field = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm";
@@ -29,13 +30,16 @@ export function SaveAsWbsTemplateDialog({ projectId, projectName, open, onOpenCh
   const [desc, setDesc] = useState("");
   const [levelTemplateId, setLevelTemplateId] = useState("");
   const [saving, setSaving] = useState(false);
+  // The new template is tagged with this project's sector / building type (editable in Master Libraries).
+  const [kind, setKind] = useState<{ sector: string | null; buildingType: string | null }>({ sector: null, buildingType: null });
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([loadProjectWbsSource(projectId), listLevelTemplates({ activeOnly: true })])
-      .then(([source, lts]) => {
+    Promise.all([loadProjectWbsSource(projectId), listLevelTemplates({ activeOnly: true }), getProjectTemplateContext(projectId)])
+      .then(([source, lts, ctx]) => {
         if (cancelled) return;
+        setKind({ sector: ctx.sector, buildingType: ctx.buildingType });
         setSrc(source);
         setLevelTemplates(lts);
         const containerId = suggestContainer(source.nodes);
@@ -57,6 +61,8 @@ export function SaveAsWbsTemplateDialog({ projectId, projectName, open, onOpenCh
         template_name: name.trim(),
         template_desc: desc.trim() || null,
         source: "project",
+        template_category: kind.sector,
+        building_types: kind.buildingType ? [kind.buildingType] : [],
         default_level_template_id: levelTemplateId || null,
         doc,
       });
@@ -93,7 +99,7 @@ export function SaveAsWbsTemplateDialog({ projectId, projectName, open, onOpenCh
                 Default level template
                 <select value={levelTemplateId} onChange={(e) => setLevelTemplateId(e.target.value)} className={field}>
                   <option value="">— None —</option>
-                  {levelTemplates.map((t) => <option key={t.id} value={t.id}>{t.template_name} ({t.items.length} levels)</option>)}
+                  <TemplateOptions templates={levelTemplates} project={kind} label={(t) => `${t.template_name} (${t.items.length} levels)`} />
                 </select>
               </label>
               <label className="space-y-1 text-xs font-medium sm:col-span-2">

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "c001",
+    "name": "Office Carpet Tile",
+    "materialType": "Carpet",
+    "grade": "Standard",
+    "unit": "m²",
+    "currency": "USD",
+    "price": 22.5,
+    "effectiveDate": "2024-01-01",
+    "source": "Flooring Co"
+  },
+  {
+    "id": "c002",
+    "name": "Glass Partition 10mm",
+    "materialType": "Glass",
+    "grade": "Tempered",
+    "unit": "m²",
+    "currency": "USD",
+    "price": 45.0,
+    "effectiveDate": "2024-01-01",
+    "source": "GlassWorks"
+  }
+]

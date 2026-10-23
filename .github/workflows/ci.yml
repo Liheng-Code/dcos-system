@@ -46,3 +46,14 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # DCOS HQ (apps/hq), the licensing control plane, and the shared
+      # packages/licensing contract it uses.
+      - run: pnpm run typecheck
+        working-directory: apps/hq
+
+      - run: pnpm run test
+        working-directory: apps/hq
+
+      - run: pnpm run build
+        working-directory: apps/hq

@@ -53,6 +53,7 @@ export const PROCUREMENT_GROUPS: ModuleNavGroup[] = [
       { label: "Purchase Requisitions", href: "/dashboard/procurement/pr" },
       { label: "RFQs", href: "/dashboard/procurement/rfq" },
       { label: "Purchase Orders", href: "/dashboard/procurement/po" },
+      { label: "Approval Bands", href: "/dashboard/procurement/approval-bands" },
       { label: "Auto Reorder", href: "/dashboard/procurement/auto-reorder" },
       { label: "Goods Receipt", href: "/dashboard/procurement/goods-receipt" },
       { label: "Invoice Matching", href: "/dashboard/procurement/invoice-matches" },

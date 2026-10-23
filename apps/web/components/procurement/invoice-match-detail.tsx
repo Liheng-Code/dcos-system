@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, ArrowLeft, CheckCircle, XCircle,
   FileSpreadsheet, Calculator, Package,
@@ -11,7 +10,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getInvoiceMatchById, listPoItemsByPoId, listPos, listSuppliers, updateInvoiceMatchById, updatePoById } from "@/lib/procurement/procurement-queries";
+import { getInvoiceMatchById, listPoItemsByPoId, listPos, listSuppliers, transitionInvoiceMatch } from "@/lib/procurement/procurement-queries";
+import { availableTransitions, procErrorMessage } from "@/lib/procurement/procurement-transitions";
+import { useProcurementPermissions } from "@/components/procurement/use-procurement-permissions";
+import { ReasonDialog } from "@/components/procurement/reason-dialog";
 
 interface InvoiceMatch {
   id: string;
@@ -25,6 +27,7 @@ interface InvoiceMatch {
   variance_amount: number;
   variance_reason: string | null;
   status: string;
+  created_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
   notes: string | null;
@@ -54,6 +57,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function InvoiceMatchDetail({ id }: { id: string }) {
   const router = useRouter();
+  const { can, userId } = useProcurementPermissions(["invoice"]);
+  const [dialog, setDialog] = useState<"approve" | "reject" | null>(null);
   const [match, setMatch] = useState<InvoiceMatch | null>(null);
   const [poItems, setPoItems] = useState<POItem[]>([]);
   const [supplierName, setSupplierName] = useState("");
@@ -62,7 +67,6 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
   const [actionLoading, setActionLoading] = useState("");
 
   const fetchDetail = useCallback(() => {
-    const supabase = createClient();
     Promise.all([
       getInvoiceMatchById(id),
       listSuppliers(),
@@ -91,58 +95,29 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
 
   useEffect(() => { fetchDetail(); }, [fetchDetail]);
 
-  async function handleApprove() {
-    if (!match) return;
-    const reason = match.variance_amount !== 0 && !match.variance_reason
-      ? prompt("Variance detected — enter explanation before approving:")
-      : null;
-    if (reason === "") return;
-    if (match.variance_amount !== 0 && !match.variance_reason && reason === null) return;
-
-    setActionLoading("approve");
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const update: Record<string, string | null> = {
-      status: "approved",
-      variance_reason: reason || match.variance_reason || null,
-      approved_by: user?.id ?? null,
-      approved_at: new Date().toISOString(),
-    };
-
-    const { error } = await updateInvoiceMatchById(update, id);
-    if (error) { toast.error(error.message); setActionLoading(""); return; }
-
-    await updatePoById({ status: "closed" }, match.po_id);
-
-    toast.success("Invoice approved — PO closed");
-    fetchDetail();
+  async function runTransition(to: "approved" | "rejected", reason?: string): Promise<boolean> {
+    setActionLoading(to === "approved" ? "approve" : "reject");
+    const { error } = await transitionInvoiceMatch(id, to, reason);
     setActionLoading("");
+    if (error) { toast.error(procErrorMessage(error)); return false; }
+    toast.success(to === "approved" ? "Invoice approved — PO closed" : "Invoice rejected");
+    fetchDetail();
+    return true;
   }
 
-  async function handleReject() {
+  function handleApprove() {
     if (!match) return;
-    const reason = prompt("Reason for rejection:");
-    if (!reason) return;
-
-    setActionLoading("reject");
-    const supabase = createClient();
-    const { error } = await updateInvoiceMatchById({
-      status: "rejected",
-      variance_reason: reason,
-    }, id);
-    if (error) { toast.error(error.message); setActionLoading(""); return; }
-
-    toast.success("Invoice rejected");
-    fetchDetail();
-    setActionLoading("");
+    // A variance needs an explanation before approval (unless one is already stored).
+    if (match.variance_amount !== 0 && !match.variance_reason) { setDialog("approve"); return; }
+    void runTransition("approved");
   }
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (!match) return <div className="py-20 text-center text-muted-foreground">Invoice match not found.</div>;
 
-  const canApprove = match.status === "matched" || match.status === "variance_detected";
-  const canReject = match.status === "matched" || match.status === "variance_detected" || match.status === "pending";
+  const transitions = availableTransitions("invoice_match", match.status, { can, userId, createdBy: match.created_by });
+  const canApprove = transitions.some(t => t.to === "approved");
+  const canReject = transitions.some(t => t.to === "rejected");
 
   return (
     <div className="space-y-6">
@@ -164,13 +139,26 @@ export function InvoiceMatchDetail({ id }: { id: string }) {
             </Button>
           )}
           {canReject && (
-            <Button size="sm" variant="outline" className="text-red-600" onClick={handleReject} disabled={actionLoading === "reject"}>
+            <Button size="sm" variant="outline" className="text-red-600" onClick={() => setDialog("reject")} disabled={actionLoading === "reject"}>
               {actionLoading === "reject" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
               Reject
             </Button>
           )}
         </div>
       </div>
+
+      <ReasonDialog
+        open={dialog != null}
+        onOpenChange={(o) => { if (!o) setDialog(null); }}
+        title={dialog === "approve" ? "Variance explanation" : "Reject invoice"}
+        description={dialog === "approve" ? "A variance was detected between the invoice and the PO. Explain it before approving." : "Explain why this invoice is rejected."}
+        confirmLabel={dialog === "approve" ? "Approve & Close PO" : "Reject"}
+        destructive={dialog === "reject"}
+        onConfirm={async (reason) => {
+          const ok = await runTransition(dialog === "approve" ? "approved" : "rejected", reason);
+          if (ok) setDialog(null);
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <Card>

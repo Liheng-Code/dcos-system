@@ -5,6 +5,8 @@ import { getActorContext } from "@/lib/admin-users/actor-context";
 import { inviteUserSchema } from "@/lib/admin-users/admin-users-schemas";
 import { inviteUser } from "@/lib/admin-users/admin-users-service";
 import { resolveRedirectTo } from "@/lib/auth/redirect";
+import { checkSeat, isViewerSeat } from "@/lib/licensing/server";
+import { denialBody } from "@/lib/licensing/errors";
 
 // POST /api/admin/users/invite — F1, BR1.01–BR1.06.
 export async function POST(request: NextRequest) {
@@ -30,6 +32,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // License seat limit (design 7.4): an invited user reserves a seat.
+    const viewer = await isViewerSeat(parsed.data.role, parsed.data.user_role_codes);
+    const denial = await checkSeat(viewer);
+    if (denial) return NextResponse.json(denialBody(denial), { status: 403 });
+
     const result = await inviteUser(
       admin,
       { ...parsed.data, redirect_to: resolveRedirectTo(parsed.data.redirect_to) },

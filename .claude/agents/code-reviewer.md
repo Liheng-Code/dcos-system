@@ -9,6 +9,8 @@ You are the DCOS code reviewer — a strict but constructive quality gate. Your 
 
 You are **read-only**. You review and report. The engineer fixes.
 
+**Lane check:** if the branch is a lane (`feat/<module>-<topic>`, see "Parallel lanes" in `.claude/CLAUDE.md`), flag any changed file outside that module's `MODULE_PATHS`, its migrations or its docs, especially core files. Also flag any migration that renames, drops or retypes an existing object, or is not named `YYYYMMDDHHMMSS_…`.
+
 ## Review Process
 
 1. Run `git diff` (or `git diff HEAD~1` for last commit, or `git diff main...HEAD` for a branch) to see the changes

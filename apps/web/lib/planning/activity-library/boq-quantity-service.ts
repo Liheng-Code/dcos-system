@@ -7,6 +7,7 @@ import { suggestBoqMatches, type BoqCandidate, type BoqMatchSuggestion } from ".
 import { normalizeUnit } from "../work-engine";
 import { floorNumber, levelRangeBounds, singularise, unitsCompatible } from "./boq-quantity";
 import { boqLinkProvider, liveItems } from "./boq-provider";
+import { inChunks } from "./in-chunks";
 import { applyItemQuantity, type ReviewItem } from "./generation-service";
 
 type Db = SupabaseClient;
@@ -149,8 +150,8 @@ export async function listQuantityLinks(db: Db, projectId: string): Promise<Quan
   }));
   const live = await liveItems(db, links);
   const nodeIds = [...new Set(rows.map((r) => r.wbs_node_id as string))];
-  const { data: nodes } = await db.from("wbs_nodes").select("id, wbs_name").in("id", nodeIds);
-  const nodeName = new Map(((nodes ?? []) as { id: string; wbs_name: string }[]).map((n) => [n.id, n.wbs_name]));
+  const nodes = await inChunks<{ id: string; wbs_name: string }>(nodeIds, (part) => db.from("wbs_nodes").select("id, wbs_name").in("id", part));
+  const nodeName = new Map(nodes.map((n) => [n.id, n.wbs_name]));
   return rows.map((r, i) => {
     const l = links[i];
     const cur = live.get(`${l.boq_source}:${l.boq_item_id}`);

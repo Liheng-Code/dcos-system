@@ -1,0 +1,24 @@
+[
+  {
+    "id": "up_inst001",
+    "name": "Medical Equipment Installation",
+    "unit": "set",
+    "currency": "USD",
+    "price": 1500.0,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "07 10 00",
+    "laborFactor": 1.3,
+    "source": "Hospital Rates"
+  },
+  {
+    "id": "up_inst002",
+    "name": "Classroom Furniture Assembly",
+    "unit": "set",
+    "currency": "USD",
+    "price": 300.0,
+    "effectiveDate": "2024-01-01",
+    "activityCode": "07 20 00",
+    "laborFactor": 1.1,
+    "source": "School Rates"
+  }
+]

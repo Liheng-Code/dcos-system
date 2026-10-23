@@ -50,6 +50,8 @@ const taskSchema = z.object({
   discipline: z.string().nullable().default(null),
   cost_code: z.string().nullable().default(null),
   duration_days: z.number().nullable().default(null),
+  /** Activity master (plan_act_masters.code) the activity is created from: norms, quantity rules, default steps. */
+  master_code: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
   schedule_level: z.number().nullable().default(null),
   sort_order: z.number().default(0),
@@ -139,6 +141,8 @@ export interface ImportTask {
   area_label: string | null; cost_code: string | null; start_date: null; end_date: null;
   duration_days: number | null; owner_name: null; description: string | null; dependency_text: null;
   schedule_level: number | null; sort_order: number; predecessors: { code: string; type: string; lag: number }[];
+  /** Read by apply_wbs_template (not import_master_wbs) to set wbs_tasks.activity_master_id. */
+  master_code: string | null;
 }
 
 export interface LevelAttrs {
@@ -252,7 +256,7 @@ function toImportTask(
     task_type: t.task_type, activity_type: t.activity_type, is_milestone: t.is_milestone,
     discipline: t.discipline, area_label: area, cost_code: t.cost_code, start_date: null, end_date: null,
     duration_days: t.duration_days, owner_name: null, description: t.description, dependency_text: null,
-    schedule_level: t.schedule_level, sort_order: t.sort_order, predecessors,
+    schedule_level: t.schedule_level, sort_order: t.sort_order, predecessors, master_code: t.master_code,
   };
 }
 
@@ -270,6 +274,8 @@ export interface SrcTask {
   discipline?: string | null; cost_code?: string | null; duration_days?: number | null;
   description?: string | null; schedule_level?: number | null; sort_order?: number | null;
   dependency_task_ids?: string[] | null; dependency_types?: string[] | null; dependency_lag_days?: number[] | null;
+  /** Code of the activity's master (from wbs_tasks.activity_master_id), kept by "Save as template". */
+  master_code?: string | null;
 }
 
 export interface ToTemplateOptions {
@@ -385,7 +391,7 @@ export function projectWbsToTemplate(src: { nodes: SrcNode[]; tasks: SrcTask[] }
       activity_type: t.activity_type ?? "normal", is_milestone: !!t.is_milestone, discipline: t.discipline ?? null,
       cost_code: t.cost_code ?? null, duration_days: t.duration_days != null ? Number(t.duration_days) : null,
       description: t.description ?? null, schedule_level: t.schedule_level ?? null, sort_order: t.sort_order ?? 0,
-      predecessors,
+      predecessors, master_code: t.master_code ?? null,
     };
   };
 
@@ -570,7 +576,7 @@ export function addTemplateTask(doc: WbsTemplateDoc, id: TemplatePartId, nodeKey
   const task: TplTask = {
     key: joinKey(nodeKey, code), node_key: nodeKey, task_name: name, task_type: "activity", activity_type: "normal",
     is_milestone: false, discipline: null, cost_code: null, duration_days: 1, description: null, schedule_level: null,
-    sort_order: own.reduce((m, t) => Math.max(m, t.sort_order), 0) + 10, predecessors: [],
+    sort_order: own.reduce((m, t) => Math.max(m, t.sort_order), 0) + 10, predecessors: [], master_code: null,
   };
   return withPart(doc, id, { ...part, tasks: [...part.tasks, task] });
 }
