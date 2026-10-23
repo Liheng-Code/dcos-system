@@ -107,6 +107,8 @@ function DetailBody({
   const [detail, setDetail] = useState<MasterDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tree, setTree] = useState<LibraryTree | null>(null);
@@ -127,7 +129,8 @@ function DetailBody({
       setDetail(d);
       setLoadError(null);
       form.reset(toValues(d));
-      setImageUrl(await getMasterImageUrl(db, d.master.image_path));
+      setImageLoading(!!d.master.image_path);
+      try { setImageUrl(await getMasterImageUrl(db, d.master.image_path)); } finally { setImageLoading(false); }
     } catch (e) { setLoadError(errorMessage(e, "Failed to load the activity")); }
   }, [db, activityId, form]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load() sets state after awaiting
@@ -155,6 +158,7 @@ function DetailBody({
     try {
       await updateMasterDetails(db, detail.master.id, patch);
       toast.success("Changes saved");
+      setEditing(false);
       await load();
       onChanged();
     } catch (e) {
@@ -271,12 +275,14 @@ function DetailBody({
             <TabsContent value="details" className="pt-2">
               <form id="activity-details-form" onSubmit={form.handleSubmit(save)} noValidate>
                 <ActivityDetailsTab
+                  db={db} masterId={detail.master.id} imageLoading={imageLoading} editing={editing} onToggleEdit={() => setEditing((e) => !e)}
                   form={form} divisions={divisions} sections={sections} status={detail.master.status} versionedEditable={editable} canEdit={canManage} imageUrl={imageUrl}
                   onUploadImage={async (file) => {
                     try {
                       await uploadMasterImage(db, detail.master.id, file);
                       toast.success("Image uploaded");
-                      setImageUrl(await getMasterImageUrl(db, (await getMasterDetail(db, detail.master.id))?.master.image_path ?? null));
+                      setImageLoading(true);
+                      try { setImageUrl(await getMasterImageUrl(db, (await getMasterDetail(db, detail.master.id))?.master.image_path ?? null)); } finally { setImageLoading(false); }
                       onChanged();
                     } catch (e) { toast.error(errorMessage(e, "Could not upload the image")); }
                   }}

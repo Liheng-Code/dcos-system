@@ -10,6 +10,7 @@ import { listLogicRules } from "./library-service";
 import type { LibraryStatus, Relation } from "./types";
 import type { ActivityType } from "./activity-database-import";
 import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
+import { copyMasterChips } from "./activity-chips-service";
 import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
@@ -536,6 +537,7 @@ export async function duplicateMaster(db: Db, id: string): Promise<DuplicateResu
     links: await ins("plan_act_master_work_items", rows(links).map((r) => ({ ...r, master_id: master.id }))),
     logic: 0,
   };
+  await copyMasterChips(db, id, master.id);
   // Logic is owned by the successor: a rule whose successor is not a draft is frozen, so insert one by one and count the misses.
   let skippedLogic = 0;
   const logic: Record<string, unknown>[] = [

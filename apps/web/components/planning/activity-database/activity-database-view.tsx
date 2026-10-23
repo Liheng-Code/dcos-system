@@ -13,6 +13,7 @@ import { listCsiSections, type CsiSection } from "@/lib/csi-divisions";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { ActivityDetailDialog } from "./activity-detail-dialog";
 import { ImportActivitiesDialog } from "./import-activities-dialog";
+import { ChipLibraryTab, MaterialLibraryTab } from "./chip-library-tabs";
 import { BoqLibraryTab, ResourceLibraryTab } from "./library-tabs";
 import { MasterActivityTab } from "./master-activity-tab";
 import { errorMessage, type ActivityListItem } from "./activity-database-shared";
@@ -93,6 +94,7 @@ export function ActivityDatabaseView() {
   const activitiesLoading = searchActive ? !foundLoaded : !mastersLoaded;
   const activitiesError = searchActive ? foundLoaded?.error ?? null : mastersLoaded?.error ?? null;
 
+  const openFromLibrary = (id: string) => { setSelectedActivityId(id); setDialogId(id); };
   const refresh = () => setRefreshKey((n) => n + 1);
   const reload = () => setReloadTick((n) => n + 1);
 
@@ -103,6 +105,9 @@ export function ActivityDatabaseView() {
           <TabsList>
             <TabsTrigger value="master">Master Activity</TabsTrigger>
             <TabsTrigger value="boq">BOQ</TabsTrigger>
+            <TabsTrigger value="material">Material</TabsTrigger>
+            <TabsTrigger value="shop_drawing">Shop Drawing</TabsTrigger>
+            <TabsTrigger value="coordination">Coordination</TabsTrigger>
             <TabsTrigger value="resource">Resource</TabsTrigger>
           </TabsList>
           {canManage && (
@@ -115,7 +120,7 @@ export function ActivityDatabaseView() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={input} onChange={(e) => setInput(e.target.value)} className="pl-8" aria-label="Search"
-              placeholder={tab === "master" ? "Search activities and BOQs by name or code..." : tab === "boq" ? "Search BOQ items by code or description..." : "Search resources by code or name..."}
+              placeholder={tab === "master" ? "Search activities and BOQs by name or code..." : tab === "boq" ? "Search BOQ items by code or description..." : tab === "material" ? "Search materials by code or name..." : tab === "shop_drawing" || tab === "coordination" ? "Search by code or name..." : "Search resources by code or name..."}
             />
           </div>
           {input.trim() !== query && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -140,6 +145,15 @@ export function ActivityDatabaseView() {
         </TabsContent>
         <TabsContent value="boq" className="pt-2">
           <BoqLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} />
+        </TabsContent>
+        <TabsContent value="material" className="pt-2">
+          <MaterialLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
+        </TabsContent>
+        <TabsContent value="shop_drawing" className="pt-2">
+          <ChipLibraryTab kind="shop_drawing" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
+        </TabsContent>
+        <TabsContent value="coordination" className="pt-2">
+          <ChipLibraryTab kind="coordination" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
         </TabsContent>
         <TabsContent value="resource" className="pt-2">
           <ResourceLibraryTab db={db} query={query} refreshKey={refreshKey} />

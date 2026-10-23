@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inChunks } from "./in-chunks";
+import { copyMasterChips } from "./activity-chips-service";
 import type {
   ActCategory, ActDomain, ActFamily, ActLogicRule, ActMaster, ActMethod, ActQuantityRule,
   ActRequirement, ActTemplate, ActTemplateDependency, ActTemplateItem, ActProductivityStandard,
@@ -111,6 +112,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   await ins("plan_act_applicability", strip(unwrap<Record<string, unknown>[]>(appl)).map((r) => ({ ...r, target_id: nm.id })));
   await ins("plan_act_logic_rules", strip(unwrap<Record<string, unknown>[]>(logicOut)).map((r) => ({ ...r, predecessor_master_id: nm.id })));
   await ins("plan_act_logic_rules", strip(unwrap<Record<string, unknown>[]>(logicIn)).map((r) => ({ ...r, successor_master_id: nm.id })));
+  await copyMasterChips(db, id, nm.id);
   return nm;
 }
 
