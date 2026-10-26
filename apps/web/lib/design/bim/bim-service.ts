@@ -330,6 +330,45 @@ export async function bulkUpsertElementTakeoff(
   return data?.length ?? 0;
 }
 
+/** Records of an earlier extraction that are not building elements (relationships, property sets, types, groups). */
+const NON_ELEMENT_FILTER = [
+  "ifc_class.ilike.IFCREL%", "ifc_class.ilike.IFCPROPERTY%", "ifc_class.ilike.IFCQUANTITY%", "ifc_class.eq.IFCELEMENTQUANTITY",
+  "ifc_class.ilike.%TYPE", "ifc_class.eq.IFCGROUP", "ifc_class.eq.IFCZONE", "ifc_class.eq.IFCSYSTEM", "ifc_class.eq.IFCDISTRIBUTIONSYSTEM",
+].join(",");
+
+/**
+ * Removes the non-element rows an older extraction stored (about 30,000 relationship / property-set / type records in a
+ * typical model). A row that a BOQ promotion points to is never removed. Returns how many rows were deleted.
+ */
+export async function pruneNonElementTakeoff(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  modelId: string,
+): Promise<number> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("bim_element_takeoff").select("id").eq("tenant_id", tenantId).eq("model_id", modelId).or(NON_ELEMENT_FILTER).range(from, from + 999);
+    if (error) throw new BimError(`Failed to find old non-element records: ${error.message}`, "PRUNE_FAILED", 500);
+    ids.push(...(data ?? []).map((r) => r.id as string));
+    if (!data || data.length < 1000) break;
+  }
+  if (ids.length === 0) return 0;
+
+  const promoted = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase.from("bim_element_boq_promotions").select("takeoff_id").in("takeoff_id", ids.slice(i, i + 200));
+    for (const p of data ?? []) promoted.add(p.takeoff_id as string);
+  }
+  const deletable = ids.filter((id) => !promoted.has(id));
+  let deleted = 0;
+  for (let i = 0; i < deletable.length; i += 200) {
+    const { error, count } = await supabase.from("bim_element_takeoff").delete({ count: "exact" }).in("id", deletable.slice(i, i + 200));
+    if (error) throw new BimError(`Failed to remove old non-element records: ${error.message}`, "PRUNE_FAILED", 500);
+    deleted += count ?? 0;
+  }
+  return deleted;
+}
+
 export async function listElementTakeoff(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,

@@ -124,7 +124,7 @@ export function MyTasksDashboard() {
         ? myTasks.filter(
             (t) =>
               (t.status === "submitted" || t.status === "review") &&
-              t.assignee_id === viewer.userId,
+              t.assigned_by === viewer.userId,
           )
         : [],
     [myTasks, viewer],

@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { MyTasksDashboard } from "@/components/project/tasks/my-tasks-dashboard";
+import { MyWorkspace } from "@/components/project/tasks/my-workspace";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function MyTasksPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
+  const [tab, setTab] = useState<"work" | "overview">("work");
 
   useEffect(() => {
     const supabase = createClient();
@@ -31,7 +34,15 @@ export default function MyTasksPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MyTasksDashboard />
+      <div className="border-b border-slate-200 bg-white px-4 pt-2">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "work" | "overview")}>
+          <TabsList>
+            <TabsTrigger value="work">My Work</TabsTrigger>
+            <TabsTrigger value="overview">Overview &amp; approvals</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      <div className="min-h-0 flex-1">{tab === "work" ? <MyWorkspace /> : <MyTasksDashboard />}</div>
     </div>
   );
 }
