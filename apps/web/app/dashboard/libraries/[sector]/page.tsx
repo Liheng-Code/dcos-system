@@ -37,8 +37,8 @@ export default function LibrarySectorPage() {
     try {
       await deleteItem(id);
       toast.success("Item deleted");
-    } catch (err: any) {
-      toast.error(err.message ?? "Delete failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
@@ -48,12 +48,12 @@ export default function LibrarySectorPage() {
         await updateItem({ ...(data as LibraryItemBase) });
         toast.success("Item updated");
       } else {
-        await createItem({ ...data, sector } as any);
+        await createItem({ ...data, sector });
         toast.success("Item created");
       }
       setEditorOpen(false);
-    } catch (err: any) {
-      toast.error(err.message ?? "Save failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
     }
   };
 
@@ -61,7 +61,7 @@ export default function LibrarySectorPage() {
     let created = 0;
     for (const it of imported) {
       try {
-        await createItem({ ...it, sector } as any);
+        await createItem({ ...it, sector });
         created++;
       } catch {
         /* skip invalid rows */
