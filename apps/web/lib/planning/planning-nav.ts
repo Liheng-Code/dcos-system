@@ -115,6 +115,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     href: "/dashboard/planning/activity-database",
     items: [
       { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
+      // Doc 24 phase 1: BOQ readiness report (programme generation follows in phase 2)
+      { label: "Generate from BOQ", href: "/dashboard/planning/boq-programme", status: "development" },
     ],
   },
 ];

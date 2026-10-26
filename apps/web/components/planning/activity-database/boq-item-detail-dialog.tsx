@@ -38,6 +38,8 @@ interface Props {
   canManage: boolean;
   onNavigate: (id: string) => void;
   onClose: () => void;
+  /** Tab to open first. */
+  initialTab?: "details" | "activities";
   /** Something changed (save, link, delete, create): the lists behind the dialog should refresh. */
   onChanged: () => void;
 }
@@ -47,7 +49,7 @@ const toValues = (d: WorkItemDetail): BoqDetailsValues => ({
 });
 
 export function BoqItemDetailDialog(props: Props) {
-  const [tab, setTab] = useState("details");
+  const [tab, setTab] = useState<string>(props.initialTab ?? "details");
   const [guard, setGuard] = useState<(() => void) | null>(null);
   const [dirty, setDirty] = useState(false);
   const [expanded, setExpanded] = useState(false);

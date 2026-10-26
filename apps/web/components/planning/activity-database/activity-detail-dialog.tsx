@@ -52,7 +52,7 @@ function toValues(d: MasterDetail): DetailsValues {
   return {
     name: m.name, description: m.description ?? "", default_unit: m.default_unit ?? "", activity_type: m.activity_type ?? "",
     visible_code: m.visible_code ?? "", trade: m.trade ?? "", csi_division_code: m.csi_division_code ?? "", csi_section_code: m.csi_section_code ?? "",
-    min_pct: str(m.min_duration_pct), max_pct: str(m.max_duration_pct),
+    min_pct: str(m.min_duration_pct), max_pct: str(m.max_duration_pct), crew_size: str(m.crew_size), hours_per_day: str(m.hours_per_day),
   };
 }
 
@@ -116,7 +116,7 @@ function DetailBody({
 
   const form = useForm<DetailsValues>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", csi_division_code: "", csi_section_code: "", min_pct: "", max_pct: "" },
+    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", csi_division_code: "", csi_section_code: "", min_pct: "", max_pct: "", crew_size: "", hours_per_day: "8" },
   });
   const isDirty = form.formState.isDirty;
   useEffect(() => { setDirty(isDirty); }, [isDirty, setDirty]);
@@ -145,6 +145,9 @@ function DetailBody({
       csi_section_code: v.csi_division_code ? v.csi_section_code || null : null,
       visible_code: v.visible_code.trim().toUpperCase() || null,
       trade: v.trade,
+      // crew and working hours are planning inputs, editable at any status
+      crew_size: num(v.crew_size),
+      hours_per_day: num(v.hours_per_day),
     };
     if (editable) {
       patch.name = v.name;

@@ -151,6 +151,8 @@ export interface TenderBoqItem {
   // constraint); both null means manual or price_list entry.
   dwl_work_item_id: string | null;
   dwl_assembly_id: string | null;
+  /** BOQ item mapping review state (doc 24); null = not reviewed. */
+  dwl_match_status?: "auto" | "confirmed" | "rejected" | null;
   rate_source: RateSource;
   // SOP-QS-003 §4.3 — frozen resource-level rate build-up snapshot, written
   // once at pick time and wholesale-replaced (never patched) at Refresh time.

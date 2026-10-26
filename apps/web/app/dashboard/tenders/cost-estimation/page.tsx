@@ -7,6 +7,7 @@ import { useProject } from "@/components/dashboard/project-context";
 import { useTenderPermissions } from "@/hooks/use-tender-permissions";
 import { Loader2, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BoqItemMappingTab } from "@/components/qs/tenders/cost-estimation/boq-item-mapping-tab";
 import { BoqTab } from "@/components/qs/tenders/cost-estimation/boq-tab";
 import { PriceListTab } from "@/components/qs/tenders/cost-estimation/price-list-tab";
 import { PreliminariesTab } from "@/components/qs/tenders/cost-estimation/preliminaries-tab";
@@ -19,7 +20,7 @@ import { ProjectBudgetTab } from "@/components/qs/tenders/cost-estimation/projec
 import { CostPerM2Tab } from "@/components/qs/tenders/cost-estimation/cost-per-m2-tab";
 import { ExcludeItemsTab } from "@/components/qs/tenders/cost-estimation/exclude-items-tab";
 
-type Tab = "bid" | "boq" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2" | "exclude_items";
+type Tab = "bid" | "boq" | "boq_mapping" | "price_list" | "preliminaries" | "cover" | "subquotes" | "risks" | "cost_summary" | "project_budget" | "cost_per_m2" | "exclude_items";
 
 const TABS: { key: Tab; label: string; permissionAction?: string }[] = [
   { key: "bid", label: "Bid Summary", permissionAction: "tender_bid_summary" },
@@ -28,6 +29,7 @@ const TABS: { key: Tab; label: string; permissionAction?: string }[] = [
   { key: "project_budget", label: "Project Budget", permissionAction: "tender_budget" },
   { key: "cover", label: "Cover Page", permissionAction: "tender_cover" },
   { key: "boq", label: "Tender BOQ", permissionAction: "tender_boq" },
+  { key: "boq_mapping", label: "BOQ Item Mapping", permissionAction: "tender_boq" },
   { key: "price_list", label: "Price List", permissionAction: "tender_price_list" },
   { key: "preliminaries", label: "Preliminaries", permissionAction: "tender_preliminaries" },
   { key: "exclude_items", label: "Exclude Items", permissionAction: "tender_exclude_items" },
@@ -49,7 +51,8 @@ function CostEstimationContent() {
   const { selectedProjectId } = useProject();
   const { can, loaded: permsLoaded } = useTenderPermissions();
   const [tenders, setTenders] = useState<{ id: string; tender_no: string; title: string }[]>([]);
-  const [tab, setTab] = useState<Tab>("bid");
+  const tabParam = searchParams.get("tab");
+  const [tab, setTab] = useState<Tab>(TABS.some((t) => t.key === tabParam) ? (tabParam as Tab) : "bid");
   const [loading, setLoading] = useState(true);
   const [selectedTenderId, setSelectedTenderId] = useState<string>(tenderParam ?? "");
 
@@ -147,6 +150,7 @@ function CostEstimationContent() {
 
           {tab === "bid" && <BidSummaryTab tenderId={selectedTenderId} />}
           {tab === "boq" && <BoqTab tenderId={selectedTenderId} isLocked={isLocked} />}
+          {tab === "boq_mapping" && <BoqItemMappingTab key={selectedTenderId} tenderId={selectedTenderId} isLocked={isLocked} />}
           {tab === "price_list" && <PriceListTab tenderId={selectedTenderId} />}
           {tab === "preliminaries" && <PreliminariesTab tenderId={selectedTenderId} />}
           {tab === "cover" && <CoverSummaryTab tenderId={selectedTenderId} />}

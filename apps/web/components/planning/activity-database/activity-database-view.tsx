@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search, Upload } from "lucide-react";
+import { Loader2, RefreshCw, Search, Sparkles, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +13,7 @@ import { listCsiSections, type CsiSection } from "@/lib/csi-divisions";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { ActivityDetailDialog } from "./activity-detail-dialog";
 import { BoqItemDetailDialog, type BoqListItem } from "./boq-item-detail-dialog";
+import { LinkSuggestionDialog } from "./link-suggestion-dialog";
 import { ImportActivitiesDialog } from "./import-activities-dialog";
 import { ChipLibraryTab, MaterialLibraryTab } from "./chip-library-tabs";
 import { BoqLibraryTab, ResourceLibraryTab } from "./library-tabs";
@@ -34,6 +35,7 @@ export function ActivityDatabaseView() {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [dialogId, setDialogId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [boqDialog, setBoqDialog] = useState<{ id: string; list: BoqListItem[] } | null>(null);
 
   const [input, setInput] = useState("");
@@ -115,7 +117,10 @@ export function ActivityDatabaseView() {
             <TabsTrigger value="tc">Testing &amp; Commissioning</TabsTrigger>
           </TabsList>
           {canManage && (
-            <Button size="sm" onClick={() => setImporting(true)}><Upload className="mr-1 h-4 w-4" /> Import activities</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setSuggesting(true)}><Sparkles className="mr-1 h-4 w-4" /> Auto-suggest links</Button>
+              <Button size="sm" onClick={() => setImporting(true)}><Upload className="mr-1 h-4 w-4" /> Import activities</Button>
+            </div>
           )}
         </div>
 
@@ -184,6 +189,12 @@ export function ActivityDatabaseView() {
           onNavigate={(id) => setBoqDialog((b) => (b ? { ...b, id } : b))}
           onClose={() => setBoqDialog(null)}
           onChanged={refresh}
+        />
+      )}
+      {suggesting && (
+        <LinkSuggestionDialog
+          db={db} divisions={divisionsLoaded?.data ?? []} defaultDivision={selectedDivisionCode} onClose={() => setSuggesting(false)} onApplied={refresh}
+          onOpenActivity={openFromLibrary}
         />
       )}
       {importing && <ImportActivitiesDialog db={db} onClose={() => setImporting(false)} onDone={refresh} />}

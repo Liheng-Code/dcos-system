@@ -56,6 +56,15 @@ const emptyForm = {
   quantity: "0", labor_net_cost: "0", labor_margin_pct: "20", material_net_cost: "0", material_margin_pct: "12",
 };
 
+/** Small BOQ-item mapping indicator (doc 24): green linked, amber needs review, grey unmapped, blue assembly. */
+function MappingDot({ item }: { item: TenderBoqItem }) {
+  const linked = !!item.dwl_work_item_id;
+  const review = linked && item.dwl_match_status === "auto";
+  const label = review ? "BOQ item: needs review" : linked ? "BOQ item: linked" : item.dwl_assembly_id ? "Priced from assembly" : "BOQ item: unmapped";
+  const color = review ? "bg-amber-500" : linked ? "bg-green-500" : item.dwl_assembly_id ? "bg-blue-400" : "bg-muted-foreground/30";
+  return <span title={label} aria-label={label} className={`ml-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />;
+}
+
 const fmt = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLocked?: boolean }) {
@@ -1060,6 +1069,7 @@ export function BoqTab({ tenderId, isLocked = false }: { tenderId: string; isLoc
                             <div className="flex items-center gap-1">
                               <AlternateToggle count={itemAlts.length} expanded={altExpanded} onToggle={() => toggleAltExpanded(item.id)} />
                               <span className="truncate">{item.description}</span>
+                              <MappingDot item={item} />
                             </div>
                             {(staleness.rateChangedSincePriced || staleness.libraryPriceExpired || isPriceListSourced) && (
                               <div className="mt-0.5 flex flex-wrap gap-1">
