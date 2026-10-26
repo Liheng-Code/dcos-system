@@ -14,11 +14,19 @@ import { createClient } from "@/lib/supabase/client";
 import { listCsiDivisions, listCsiSections, type CsiDivision, type CsiSection } from "@/lib/csi-divisions";
 import { canManageLibraries } from "@/lib/planning/activity-library/qs-bridge-service";
 import { getProjectReadiness, type ProjectReadiness, type ReadinessSource } from "@/lib/planning/boq-programme/readiness-service";
+import { previewBoqProgramme, type ProgrammePreview } from "@/lib/planning/boq-programme/boq-programme-service";
+import { loadPreviewContext, type PreviewContext } from "@/lib/planning/boq-programme/preview-context";
 import { getLineTarget } from "@/lib/planning/boq-programme/line-targets";
 import {
   defaultReadinessSource, filterSortBlocking, fixKind, reasonCounts, REASON_LABEL, REASONS, STAGE_ORDER, type BlockingSort,
 } from "@/lib/planning/boq-programme/readiness-view";
 import type { BlockingLine, ReadinessReason } from "@/lib/planning/boq-programme/readiness";
+import { BoqProgrammePreview, DateField } from "./boq-programme-preview";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BoqItemDetailDialog } from "@/components/planning/activity-database/boq-item-detail-dialog";
 import { SELECT_CLS } from "@/components/planning/activity-database/activity-database-shared";
 import { cn } from "@/lib/utils";
@@ -57,6 +65,14 @@ export function BoqProgrammeView() {
   const [sort, setSort] = useState<BlockingSort>("amount_desc");
   const [shown, setShown] = useState(PAGE);
   const [busyLine, setBusyLine] = useState<string | null>(null);
+  const [crew, setCrew] = useState("4");
+  const [start, setStart] = useState("");
+  const [plan, setPlan] = useState<{ preview: ProgrammePreview; ctx: PreviewContext; run: number; params: string; tick: number } | null>(null);
+  const [runCounter, setRunCounter] = useState(0);
+  const [projectHasStart, setProjectHasStart] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [confirmAnyway, setConfirmAnyway] = useState(false);
 
   const [divisions, setDivisions] = useState<CsiDivision[]>([]);
   const [sections, setSections] = useState<CsiSection[]>([]);
@@ -70,7 +86,12 @@ export function BoqProgrammeView() {
 
   useEffect(() => {
     if (!selectedProjectId) return;
-    db.from("projects").select("currency").eq("id", selectedProjectId).maybeSingle().then(({ data }) => setCurrency((data as { currency: string | null } | null)?.currency ?? ""));
+    db.from("projects").select("currency, start_date").eq("id", selectedProjectId).maybeSingle().then(({ data }) => {
+      const p = data as { currency: string | null; start_date: string | null } | null;
+      setCurrency(p?.currency ?? "");
+      setStart(p?.start_date ?? "");
+      setProjectHasStart(!!p?.start_date);
+    });
   }, [db, selectedProjectId]);
 
   const key = `${selectedProjectId}|${effectiveSource}|${tick}`;
@@ -88,6 +109,24 @@ export function BoqProgrammeView() {
   const blocking = useMemo(() => (report ? filterSortBlocking(report.blocking, reason, sort) : []), [report, reason, sort]);
   const counts = useMemo(() => (report ? reasonCounts(report.blocking) : null), [report]);
   const isReady = !!report && report.totalLines > 0 && report.blocking.length === 0;
+
+  const crewNumber = Number(crew);
+  const crewValid = Number.isInteger(crewNumber) && crewNumber > 0;
+
+  /** What the preview was built from: a change in any of these makes it out of date. */
+  const previewParams = `${effectiveSource}|${crew}|${start}`;
+
+  async function runPreview() {
+    if (!selectedProjectId || !crewValid) return;
+    setPlanning(true);
+    setPlanError(null);
+    try {
+      const preview = await previewBoqProgramme(db, selectedProjectId, { source: effectiveSource, defaultCrew: crewNumber });
+      const ctx = await loadPreviewContext(db, selectedProjectId, preview);
+      setPlan({ preview, ctx, run: runCounter + 1, params: previewParams, tick });
+      setRunCounter((n) => n + 1);
+    } catch (e) { setPlanError(errorText(e, "Could not build the preview")); } finally { setPlanning(false); }
+  }
 
   async function fix(line: BlockingLine) {
     const kind = fixKind(line.primary);
@@ -121,11 +160,41 @@ export function BoqProgrammeView() {
           ))}
         </div>
         <Button size="sm" variant="outline" onClick={() => { setState(null); setTick((n) => n + 1); }}><RefreshCw className="mr-1 h-4 w-4" /> Refresh</Button>
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" disabled title="Phase 2">Preview programme</Button>
-          <span className="text-xs text-muted-foreground">Phase 2</span>
-        </div>
       </div>
+
+      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card p-4">
+        <div>
+          <Label className="mb-1 block text-xs text-muted-foreground">Default crew (workers)</Label>
+          <Input type="number" min={1} step={1} className="w-32" value={crew} onChange={(e) => setCrew(e.target.value)} aria-invalid={!crewValid} />
+          {!crewValid && <p className="mt-1 text-xs text-destructive">Whole number above 0</p>}
+        </div>
+        <DateField label="Project start date" value={start} onChange={setStart} required hint="This project has no start date. Enter one to commit." />
+        <Button disabled={!report || planning || !crewValid} onClick={() => (report && report.blocking.length === 0 ? void runPreview() : setConfirmAnyway(true))}>
+          {planning && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Preview programme
+        </Button>
+        {report && report.blocking.length > 0 && <span className="text-xs text-muted-foreground">Not fully ready: lines that block will be left out or flagged.</span>}
+      </div>
+      {planError && (
+        <div className="space-y-2 rounded-lg border border-dashed border-border p-4 text-sm"><p className="text-destructive">{planError}</p><Button size="sm" variant="outline" onClick={() => void runPreview()}>Retry</Button></div>
+      )}
+      {plan && plan.preview.projectId === selectedProjectId && (
+        <BoqProgrammePreview
+          key={plan.run} stale={plan.params !== previewParams || plan.tick !== tick} projectHasStart={projectHasStart} db={db} projectId={selectedProjectId} preview={plan.preview} ctx={plan.ctx} divisions={divisions}
+          projectStart={start} money={money} onCommitted={() => { setState(null); setTick((n) => n + 1); }}
+        />
+      )}
+      <AlertDialog open={confirmAnyway} onOpenChange={setConfirmAnyway}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Preview before the BOQ is ready?</AlertDialogTitle>
+            <AlertDialogDescription>{report?.blocking.length.toLocaleString()} BOQ line{report?.blocking.length === 1 ? "" : "s"} still block the programme. The preview will leave them out or flag them with warnings.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void runPreview()}>Preview anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {!loaded ? (
         <div className="space-y-3"><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>

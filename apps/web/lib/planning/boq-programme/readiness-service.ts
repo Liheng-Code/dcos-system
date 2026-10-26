@@ -1,7 +1,7 @@
 // I/O for the data-readiness report (doc 24 phase 1). Pure rules: readiness.ts.
 // Tender source: the lines of every tender of the project (tender_register.project_id), as qs-bridge-service does.
-// Contract source: qs_boq_items of the project (the locked baseline carried over at award, plus later items),
-// without the preliminaries lines. Both read building / level / mapping from the line itself.
+// Contract source: qs_boq_items of the project's main-works BOQs (the locked baseline carried over at award, plus
+// later items); preliminaries and other BOQ types are left out. Both read building / level / mapping from the line itself.
 // Every .in() goes through inChunks (PostgREST URL limit).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -51,8 +51,9 @@ async function tenderLines(db: Db, projectId: string): Promise<ReadinessLine[]> 
 
 async function contractLines(db: Db, projectId: string): Promise<ReadinessLine[]> {
   const rows = await allPages<ContractLine>((from, to) =>
-    db.from("qs_boq_items").select("id, item_code, item_no, description, total_amount, building_code, level, dwl_work_item_id")
-      .eq("project_id", projectId).is("source_tender_prelim_item_id", null).order("id").range(from, to));
+    db.from("qs_boq_items")
+      .select("id, item_code, item_no, description, total_amount, building_code, level, dwl_work_item_id, qs_boq_sections!inner(qs_boq!inner(boq_type))")
+      .eq("project_id", projectId).eq("qs_boq_sections.qs_boq.boq_type", "main_works").order("id").range(from, to) as never);
   return rows.map((r) => ({
     id: r.id, itemCode: r.item_code ?? r.item_no ?? "", description: r.description, amount: Number(r.total_amount) || 0,
     buildingCode: r.building_code, level: r.level, workItemId: r.dwl_work_item_id,
