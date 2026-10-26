@@ -160,9 +160,43 @@ dcos-system/
 
 │   ├── 04-16-Equipment
 
+│   │
+
 │   ├── 04-17-HR
 
-│   ├── 04-18-Payroll
+│   │   ├── 04-17-01-Employee-Master
+
+│   │   ├── 04-17-02-E-Leave
+
+│   │   ├── 04-17-03-Attendance
+
+│   │   ├── 04-17-04-Overtime
+
+│   │   ├── 04-17-05-Payroll
+
+│   │   ├── 04-17-06-Recruitment
+
+│   │   ├── 04-17-07-Performance-Appraisal
+
+│   │   ├── 04-17-08-Training-Development
+
+│   │   └── 04-17-09-Employee-Self-Service
+
+│   │
+
+│   ├── 04-18-Asset-Management
+
+│   │   ├── 04-18-01-Asset-Register
+
+│   │   ├── 04-18-02-Asset-Allocation
+
+│   │   ├── 04-18-03-Maintenance-Schedule
+
+│   │   ├── 04-18-04-Depreciation
+
+│   │   └── 04-18-05-Asset-Disposal
+
+│   │
 
 │   ├── 04-19-Subcontractor
 
@@ -278,9 +312,17 @@ dcos-system/
 
 │   ├── 05-06-HR
 
+│   │   ├── 05-06-01-Employee-Master-Standards.md
+
+│   │   ├── 05-06-02-Leave-Attendance-Standards.md
+
+│   │   └── 05-06-03-Payroll-Standards.md
+
 │   ├── 05-07-Finance
 
-│   └── 05-08-Digital-Twin-BIM-Standards.md
+│   ├── 05-08-Asset-Management-Standards.md
+
+│   └── 05-09-Digital-Twin-BIM-Standards.md
 
 │
 
@@ -334,7 +376,13 @@ dcos-system/
 
 │   ├── 07-11-Change-Order-Template.xlsx
 
-│   └── 07-12-Interface-Matrix-Template.xlsx
+│   ├── 07-12-Interface-Matrix-Template.xlsx
+
+│   ├── 07-13-Employee-Master-Template.xlsx
+
+│   ├── 07-14-Leave-Request-Template.xlsx
+
+│   └── 07-15-Asset-Register-Template.xlsx
 
 │
 
@@ -358,9 +406,17 @@ dcos-system/
 
 │   ├── 08-08-HR
 
+│   │   ├── 08-08-01-Employee-Master-Training.md
+
+│   │   ├── 08-08-02-Leave-Attendance-Training.md
+
+│   │   └── 08-08-03-Payroll-Training.md
+
 │   ├── 08-09-Finance
 
-│   └── 08-10-Mobile-Field-App-Training.md
+│   ├── 08-10-Asset-Management-Training.md
+
+│   └── 08-11-Mobile-Field-App-Training.md
 
 │
 
