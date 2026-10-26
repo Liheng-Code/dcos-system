@@ -165,12 +165,16 @@ export interface TaskWorkRefresh {
  * so Task Work derives their duration. A quantity typed in by hand (source "manual") is kept.
  */
 export async function refreshTaskWorkFromLinks(db: Db, projectId: string, rates: MasterRate[]): Promise<TaskWorkRefresh> {
-  const [tasksRes, nodesRes] = await Promise.all([
+  const [tasksRes, nodesRes, mapRes] = await Promise.all([
     db.from("wbs_tasks").select("id, wbs_node_id, activity_master_id").eq("project_id", projectId).not("activity_master_id", "is", null),
     db.from("wbs_nodes").select("id, parent_id, node_type").eq("project_id", projectId),
+    db.from("plan_location_map").select("wbs_node_id").eq("project_id", projectId).eq("status", "confirmed").not("wbs_node_id", "is", null),
   ]);
   if (tasksRes.error) throw new Error(tasksRes.error.message);
   if (nodesRes.error) throw new Error(nodesRes.error.message);
+  if (mapRes.error) throw new Error(mapRes.error.message);
+  // Floors that are task groups count as levels once they are confirmed in the location map.
+  const mappedNodes = new Set(((mapRes.data ?? []) as { wbs_node_id: string }[]).map((m) => m.wbs_node_id));
   const tasks = (tasksRes.data ?? []) as { id: string; wbs_node_id: string | null; activity_master_id: string }[];
   if (tasks.length === 0) return { updated: 0, keptManual: 0, noQuantity: 0 };
 
@@ -179,7 +183,7 @@ export async function refreshTaskWorkFromLinks(db: Db, projectId: string, rates:
     for (let id = nodeId, guard = 0; id && guard < 20; guard++) {
       const n = nodes.get(id);
       if (!n) return null;
-      if (n.node_type === "level" || n.node_type === "segment") return n.id;
+      if (n.node_type === "level" || n.node_type === "segment" || mappedNodes.has(n.id)) return n.id;
       id = n.parent_id;
     }
     return null;
