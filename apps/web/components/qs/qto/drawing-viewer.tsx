@@ -115,7 +115,7 @@ interface DrawingViewerProps {
   /** Default name and target item for the panel, per tool. */
   takeoffTarget?: (tool: TakeoffTool) => TakeoffTarget & { defaultName: string };
   /** A shape was clicked with no tool selected (null = empty space). */
-  onSelectItem?: (itemId: string | null) => void;
+  onSelectItem?: (itemId: string | null, shapeId?: string | null) => void;
   /** A selected shape was reshaped with its grips (points in page units). */
   onEditShape?: (shapeId: string, points: Pt[]) => void;
   /** The item being measured into, shown as a chip while a tool is active. */
@@ -472,6 +472,7 @@ export function DrawingViewer({
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); finish(); }
     else if (e.key === "Escape" && gripDrag.current) cancelGrip();
+    else if ((e.key === "Delete" || e.key === "Backspace") && (gripDrag.current || draftPts.length > 0)) { e.stopPropagation(); }
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
       if (draftPts.length > 0) cancelDraft();
@@ -653,7 +654,8 @@ export function DrawingViewer({
           const shapes = (savedMeasurements ?? [])
             .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
             .map((m) => ({ id: m.id, itemId: m.itemId, measureType: m.measure_type, points: m.points }));
-          onSelectItem(hitTest(shapes, toPage(e), 6 / view.zoom)?.itemId ?? null);
+          const hit = hitTest(shapes, toPage(e), 6 / view.zoom);
+          onSelectItem(hit?.itemId ?? null, hit?.id ?? null);
         }}
         onAuxClick={(e) => e.preventDefault()}
         onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}

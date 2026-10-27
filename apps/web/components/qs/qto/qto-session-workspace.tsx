@@ -33,6 +33,7 @@ import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "
 import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs/qto/takeoff-start-panel";
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
 import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
+import { DeleteTakeoffDialog } from "@/components/qs/qto/delete-takeoff-dialog";
 import { fmtQty, isAutoRun, measuredRun, volumeOf, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 import { areaInSquareMetres, lengthInMetres, perimeter, polygonArea, polylineLength, type Pt } from "@/lib/qs/qto/geometry";
 
@@ -106,6 +107,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(searchParams.get("item"));
   /** Items hidden on the drawing (eye toggle in the Takeoffs panel); view only. */
   const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
+  /** The shape clicked on the drawing (an item can have several); null when picked from the list. */
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [panelW, setPanelW] = usePanelWidths();
   /** Focus mode: the workspace fills the browser window (over the app bar and module tabs). */
   const [focusMode, setFocusMode] = useState(false);
@@ -178,6 +182,20 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     if (!bundle) return null;
     return bundle.versions.find((v) => v.id === versionId) ?? bundle.versions.find((v) => v.id === bundle.session.current_version_id) ?? null;
   }, [bundle, versionId]);
+
+  // Delete key: confirm deleting the selected take-off (not while typing or in a dialog).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" || !selectedItemId || confirmDelete) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      e.preventDefault();
+      if (!version || !isEditable(version.status)) { toast.error("This version is read-only"); return; }
+      setConfirmDelete(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedItemId, confirmDelete, version]);
 
   const loadWs = useCallback(async (vId: string) => {
     setWsLoading(true);
@@ -624,7 +642,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
                           onClick={() => setHiddenItems((h) => { const n = new Set(h); if (n.has(i.id)) n.delete(i.id); else n.add(i.id); return n; })}>
                           {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
-                        <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelectedItemId(i.id === selectedItemId ? null : i.id)}>
+                        <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => { setSelectedItemId(i.id === selectedItemId ? null : i.id); setSelectedShapeId(null); }}>
                           <TypeIcon size={16} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">{i.description}</span>
@@ -674,7 +692,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
               }, `Scale set to 1:${n}`);
             }}
             onMeasure={(m) => void onMeasure(m)}
-            onSelectItem={(id) => setSelectedItemId(id)}
+            onSelectItem={(id, shapeId) => { setSelectedItemId(id); setSelectedShapeId(shapeId ?? null); }}
             onEditShape={editable ? (id, pts) => void onEditShape(id, pts) : undefined}
             onStartTakeoff={editable ? startTakeoff : undefined}
             takeoffTarget={takeoffTarget}
@@ -728,10 +746,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
               onSetVolume={(v) => guard(() => syncMeasuredQuantities(version.id, [selected.id], { [selected.id]: v }), "Volume dimensions updated")}
               onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await syncMeasuredQuantities(version.id, [selected.id]); })}
                 onDuplicate={() => guard(async () => { const c = await duplicateItem(version, selected); await loadWs(version.id); setSelectedItemId(c.id); }, "Item duplicated")}
-                onDelete={() => guard(async () => {
-                  if (!window.confirm(`Remove ${selected.qto_no} from this version? It stays in the audit history.`)) return;
-                  await deleteItem(selected.id); setSelectedItemId(null); await loadWs(version.id);
-                })}
+                onDelete={async () => setConfirmDelete(true)}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground">
@@ -812,6 +827,34 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
+      {confirmDelete && selected && (() => {
+        const shapes = (ws?.measurements ?? []).filter((m) => m.qto_item_id === selected.id);
+        const shape = shapes.find((m) => m.id === selectedShapeId) ?? null;
+        return (
+          <DeleteTakeoffDialog
+            itemLabel={`${selected.qto_no} · ${selected.description}`}
+            quantity={selected.quantity}
+            unit={selected.unit}
+            shapeCount={shapes.length}
+            shapeType={shape?.measure_type ?? null}
+            canDeleteShape={!!shape && shapes.length > 1}
+            onCancel={() => setConfirmDelete(false)}
+            onDeleteShape={() => guard(async () => {
+              await deleteMeasurement(shape!.id);
+              setSelectedShapeId(null);
+              setConfirmDelete(false);
+              await syncMeasuredQuantities(version.id, [selected.id]);
+            }, "Shape deleted")}
+            onDeleteItem={() => guard(async () => {
+              await deleteItem(selected.id);
+              setConfirmDelete(false);
+              setSelectedItemId(null);
+              setSelectedShapeId(null);
+              await loadWs(version.id);
+            }, `${selected.qto_no} deleted`)}
+          />
+        );
+      })()}
       {pendingCal && revision && (
         <CalibrationDialog pageUnits={pendingCal.pageUnits} onCancel={() => setPendingCal(null)} onSave={async (known, unit) => {
           await guard(async () => {
