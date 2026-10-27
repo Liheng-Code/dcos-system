@@ -387,6 +387,20 @@ export function DrawingViewer({
     setHoverSnap(null);
   };
 
+  const startPan = (e: React.PointerEvent) => {
+    e.preventDefault();
+    pressAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    dragging.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY };
+    viewportRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  /** Pointer position inside the viewport (for the cross-hair). */
+  const toViewport = (e: { clientX: number; clientY: number }) => {
+    const r = viewportRef.current?.getBoundingClientRect();
+    return r ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
+  };
+
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.focus();
     if (gripDrag.current) {
@@ -397,10 +411,8 @@ export function DrawingViewer({
     }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
     if (tool === "pan" || readOnly || e.button === 1) {
-      e.preventDefault();
-      pressAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-      dragging.current = true;
-      panStart.current = { x: e.clientX, y: e.clientY };
+      e.stopPropagation();
+      startPan(e);
       return;
     }
     if (e.button !== 0) return;
@@ -449,13 +461,6 @@ export function DrawingViewer({
       setCursor(pt);
       setHoverSnap(snap);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
-      return;
-    }
-    if (dragging.current && panStart.current) {
-      const dx = e.clientX - panStart.current.x;
-      const dy = e.clientY - panStart.current.y;
-      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
-      panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
     const { pt, snap } = measuring ? resolve(e) : { pt: toPage(e), snap: null };
@@ -612,13 +617,45 @@ export function DrawingViewer({
         ref={viewportRef}
         className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}
         style={{ cursor: readOnly ? undefined : "none" }}
+        onPointerDown={(e) => {
+          // Off the sheet: middle button pans in any tool; with no tool the left button pans (and a click unselects).
+          if (svgRef.current?.contains(e.target as Node) || gripDrag.current) return;
+          // Never pan from controls floating over the drawing (tool panel, chip, buttons).
+          if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
+          if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly))) startPan(e);
+        }}
         onPointerMove={(e) => {
+          if (dragging.current && panStart.current) {
+            // Panning: the sheet moves and the cross-hair stays on the mouse.
+            const dx = e.clientX - panStart.current.x;
+            const dy = e.clientY - panStart.current.y;
+            setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+            panStart.current = { x: e.clientX, y: e.clientY };
+            if (!readOnly) setScreenCursor(toViewport(e));
+            setCursor(toPage(e));
+            setHoverSnap(null);
+            return;
+          }
           // Off the sheet the cross-hair follows the mouse unsnapped (the sheet sets its own position).
           if (readOnly || svgRef.current?.contains(e.target as Node)) return;
-          const r = e.currentTarget.getBoundingClientRect();
-          setScreenCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
+          setScreenCursor(toViewport(e));
           setHoverSnap(null);
         }}
+        onPointerUp={(e) => {
+          if (!dragging.current) return;
+          dragging.current = false;
+          panStart.current = null;
+          if (viewportRef.current?.hasPointerCapture(e.pointerId)) viewportRef.current.releasePointerCapture(e.pointerId);
+          const start = pressAt.current;
+          pressAt.current = null;
+          // A click (not a drag) with no tool selects the shape under the cursor; empty space unselects.
+          if (!start || !onSelectItem || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
+          const shapes = (savedMeasurements ?? [])
+            .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
+            .map((m) => ({ id: m.id, itemId: m.itemId, measureType: m.measure_type, points: m.points }));
+          onSelectItem(hitTest(shapes, toPage(e), 6 / view.zoom)?.itemId ?? null);
+        }}
+        onAuxClick={(e) => e.preventDefault()}
         onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}
       >
         {loading && (
@@ -661,16 +698,6 @@ export function DrawingViewer({
                     if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) placeGrip(e);
                     return;
                   }
-                  dragging.current = false;
-                  panStart.current = null;
-                  const start = pressAt.current;
-                  pressAt.current = null;
-                  // A click (not a drag) with no tool selects the shape under the cursor.
-                  if (!start || !onSelectItem || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
-                  const shapes = (savedMeasurements ?? [])
-                    .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
-                    .map((m) => ({ id: m.id, itemId: m.itemId, measureType: m.measure_type, points: m.points }));
-                  onSelectItem(hitTest(shapes, toPage(e), 6 / view.zoom)?.itemId ?? null);
                 }}
                 onPointerLeave={() => setHoverSnap(null)}
                 onDoubleClick={finish}
