@@ -152,7 +152,12 @@ export function ProjectScurveCard({ projectId, compact: small = false, className
         {hasAny && (
           <ResponsiveContainer width="100%" height={small ? 260 : 340}>
             <ComposedChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              {/* a vertical line at every month / week, not only at the labelled ticks */}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)"
+                verticalCoordinatesGenerator={(props) => {
+                  const scale = (props as { xAxis?: { scale?: (v: string) => number | undefined } }).xAxis?.scale;
+                  return scale ? rows.map((r) => scale(r.period)).filter((x): x is number => typeof x === "number" && Number.isFinite(x)) : [];
+                }} />
               <XAxis dataKey="period" tick={TICK} tickLine={false} axisLine={{ stroke: "var(--border)" }} tickFormatter={(v) => (period === "week" ? dayMonth(String(v)).replace(/ d{4}$/, "") : monthYear(String(v)))} minTickGap={24} />
               <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={fmtAxis} width={56} domain={mode === "pct" ? [0, 100] : undefined} />
               <Tooltip {...TOOLTIP_STYLE} labelFormatter={(v) => `${period === "month" ? "Month" : "Week"} of ${dayMonth(String(v))}`}
