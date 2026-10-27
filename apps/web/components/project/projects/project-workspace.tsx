@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/components/dashboard/project-context";
@@ -26,10 +26,20 @@ interface ProjectWorkspaceProps {
   tab: string | null;
 }
 
+/** The tab segment of /dashboard/projects/<code>/<tab> ("" for the project home), or null on another page. */
+function tabFromPath(pathname: string | null, code: string): string | null {
+  const parts = (pathname ?? "").split("/").filter(Boolean).map((p) => decodeURIComponent(p));
+  if (`/${parts.slice(0, 2).join("/")}` !== PROJECTS_PATH || parts[2] !== code) return null;
+  return parts[3] ?? "";
+}
+
 // One project, addressed by /dashboard/projects/[code]/[tab]. Mount with key={code}.
-export function ProjectWorkspace({ code, tab }: ProjectWorkspaceProps) {
+export function ProjectWorkspace({ code, tab: routeTab }: ProjectWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Tab switches change the URL in place (see openTab), which the route param does not see; the pathname does.
+  const pathTab = tabFromPath(usePathname(), code);
+  const tab = pathTab === null ? routeTab : pathTab || null;
   const { setSelectedProjectId, refreshProjects } = useProject();
   const [project, setProject] = useState<Project | null>(null);
   const [missing, setMissing] = useState(false);
@@ -80,8 +90,10 @@ export function ProjectWorkspace({ code, tab }: ProjectWorkspaceProps) {
   const isTender = project.project_type === "tender";
   const home = projectHref(project.project_code);
   const backToList = () => router.push(`${PROJECTS_PATH}?${readLastListQuery() ?? `view=${listViewForType(project.project_type, project.project_status)}`}`);
-  // Switching tabs replaces the entry, so Back leaves the project instead of stepping through tabs.
-  const openTab = (next: string) => router.replace(projectHref(project.project_code, next), { scroll: false });
+  // Switching tabs replaces the entry, so Back leaves the project instead of stepping through tabs. The page is
+  // client-only, so the URL changes in place (Next syncs usePathname): router.replace asked the server for the
+  // route on every click, 0.4-1.5 s on production.
+  const openTab = (next: string) => window.history.replaceState(null, "", projectHref(project.project_code, next));
 
   function handleUpdate(updated: Project) {
     // An award converts the tender in place (same id and code), so the view switches by itself.

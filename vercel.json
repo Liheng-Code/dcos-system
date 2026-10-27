@@ -1,4 +1,7 @@
 {
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "regions": [
+    "icn1"
+  ]
 }
