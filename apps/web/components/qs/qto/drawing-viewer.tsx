@@ -42,6 +42,7 @@ import {
   type OpCodes,
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
+import { hitTest } from "@/lib/qs/qto/hit-test";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
@@ -83,6 +84,8 @@ export interface EmittedMeasurement {
 
 export interface SavedShape {
   id: string;
+  /** Take-off item the measurement belongs to (clicking the shape selects it). */
+  itemId: string;
   page_no: number | null;
   measure_type: string;
   points: Pt[];
@@ -111,6 +114,8 @@ interface DrawingViewerProps {
   onStartTakeoff?: (cfg: TakeoffConfig) => Promise<void>;
   /** Default name and target item for the panel, per tool. */
   takeoffTarget?: (tool: TakeoffTool) => TakeoffTarget & { defaultName: string };
+  /** A shape was clicked with no tool selected (null = empty space). */
+  onSelectItem?: (itemId: string | null) => void;
   /** The item being measured into, shown as a chip while a tool is active. */
   activeTakeoff?: { name: string; color: string; total: number; unit: string } | null;
 }
@@ -154,7 +159,10 @@ export function DrawingViewer({
   onStartTakeoff,
   takeoffTarget,
   activeTakeoff,
+  onSelectItem,
 }: DrawingViewerProps) {
+  /** Where a no-tool press started; a release close to it is a click (select), otherwise a pan. */
+  const pressAt = useRef<{ x: number; y: number } | null>(null);
   /** Tool whose "New …" panel is open. */
   const [panelTool, setPanelTool] = useState<TakeoffTool | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>("points");
@@ -342,6 +350,7 @@ export function DrawingViewer({
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
     if (tool === "pan" || readOnly || e.button === 1) {
       e.preventDefault();
+      pressAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
       dragging.current = true;
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
@@ -437,7 +446,7 @@ export function DrawingViewer({
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
   const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
-    : activeTool?.hint ?? "No tool: drag to move the drawing, wheel to zoom. Click a tool to measure; click it again to put it down.";
+    : activeTool?.hint ?? "No tool: click a shape to select its item, drag to move, wheel to zoom. Click a tool to measure; click it again to put it down.";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
 
@@ -582,7 +591,18 @@ export function DrawingViewer({
                 className="absolute inset-0 outline-none"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
-                onPointerUp={() => { dragging.current = false; panStart.current = null; }}
+                onPointerUp={(e) => {
+                  dragging.current = false;
+                  panStart.current = null;
+                  const start = pressAt.current;
+                  pressAt.current = null;
+                  // A click (not a drag) with no tool selects the shape under the cursor.
+                  if (!start || !onSelectItem || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
+                  const shapes = (savedMeasurements ?? [])
+                    .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
+                    .map((m) => ({ id: m.id, itemId: m.itemId, measureType: m.measure_type, points: m.points }));
+                  onSelectItem(hitTest(shapes, toPage(e), 6 / view.zoom)?.itemId ?? null);
+                }}
                 onPointerLeave={() => setHoverSnap(null)}
                 onDoubleClick={finish}
                 onKeyDown={handleKey}
@@ -617,6 +637,12 @@ export function DrawingViewer({
                       />
                     );
                   })}
+                {(savedMeasurements ?? [])
+                  .filter((m) => m.highlighted && (m.page_no ?? 1) === currentPage && m.measure_type !== "count" && m.measure_type !== "point")
+                  .flatMap((m) => m.points.map((pt, i) => (
+                    <rect key={`h-${m.id}-${i}`} x={pt.x - 3.5 / view.zoom} y={pt.y - 3.5 / view.zoom} width={7 / view.zoom} height={7 / view.zoom}
+                      fill="#fff" stroke="#2563eb" strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  )))}
                 {draftPts.length > 0 && tool !== "count" && (
                   <polyline
                     points={live.map((p) => `${p.x},${p.y}`).join(" ")}
