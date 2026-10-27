@@ -712,7 +712,7 @@ export function DrawingViewer({
           <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow">
             <span className="h-3 w-3 rounded-sm" style={{ background: activeTakeoff.color }} />
             <span className="max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
-            <span className="tabular-nums text-primary">{fmt(activeTakeoff.total)} {activeTakeoff.unit}</span>
+            <span className="tabular-nums text-primary">{activeTakeoff.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeTakeoff.unit}</span>
             {boxMode && <span className="text-muted-foreground">· box</span>}
             <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>

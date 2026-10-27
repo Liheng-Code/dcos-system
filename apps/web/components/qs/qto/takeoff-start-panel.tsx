@@ -114,7 +114,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
         <div className="rounded-md bg-muted/60 px-2 py-1 text-xs font-semibold">Measurements</div>
         <div className="grid grid-cols-[1fr_96px] items-end gap-3">
           <div className="grid gap-1">
-            <span className="flex justify-between text-xs font-semibold">Measurement 1 <span className="font-normal tabular-nums text-primary">{target.total.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></span>
+            <span className="flex justify-between text-xs font-semibold">Measurement 1 <span className="font-normal tabular-nums text-primary">{target.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
             <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{meta.measure}</option></select>
           </div>
           <label className="grid gap-1">

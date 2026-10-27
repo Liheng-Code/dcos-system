@@ -194,7 +194,7 @@ export function calculate(req: CalculationRequest): CalculationRun {
 }
 
 /** The jsonb payload `qto_record_calculation` expects. */
-export function toRunPayload(run: CalculationRun) {
+export function toRunPayload(run: CalculationRun, meta?: Record<string, unknown>) {
   // The DB checks net = gross − deductions; with net-stage rounding the rounding difference is
   // carried as part of the deductions so the identity still holds.
   const gross = dec(run.gross);
@@ -203,7 +203,7 @@ export function toRunPayload(run: CalculationRun) {
     engine_version: run.engine_version,
     rule_code: run.rule_code,
     expression: run.expression,
-    inputs: { values: run.inputs, deductions: run.deduction_lines, factors: run.factors },
+    inputs: { values: run.inputs, deductions: run.deduction_lines, factors: run.factors, ...meta },
     gross: run.gross,
     deductions: toFixedString(sub(gross, net)),
     net: run.net,

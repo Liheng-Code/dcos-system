@@ -12,6 +12,7 @@ import { ITEM_UNITS } from "@/lib/qs/qto/units";
 import { QUANTITY_STATUSES, QUANTITY_STATUS_INFO, type QuantityStatus } from "@/lib/qs/qto/workflow";
 import type { QtoCalculationRunRow, QtoItemFactor, RulesetDefinition, TakeoffItem } from "@/lib/qs/qto/types";
 import type { ItemFields, MeasurementRow, TenderBoqLine } from "@/lib/qs/qto/session-service";
+import { fmtQty, isAutoRun } from "@/lib/qs/qto/measured-quantity";
 
 const fieldCls = "h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-60";
 const labelCls = "text-[11px] font-medium text-muted-foreground";
@@ -94,7 +95,12 @@ export function QtoItemPanel(props: ItemPanelProps) {
         <div>
           <p className="font-mono text-xs text-muted-foreground">{item.qto_no}</p>
           <p className="text-2xl font-semibold tabular-nums">
-            {Number(item.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })} <span className="text-base font-normal text-muted-foreground">{item.unit}</span>
+            {fmtQty(item.quantity)} <span className="text-base font-normal text-muted-foreground">{item.unit}</span>
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {!latestRun ? (["m2", "m", "No."].includes(item.unit) ? "Quantity will follow the drawing measurements." : "Record a calculation to set the quantity.")
+              : isAutoRun(latestRun) ? "Quantity = sum of the drawing measurements (updates automatically)."
+              : "Custom calculation: new measurements do not change it."}
           </p>
           {item.carry_status && (
             <Badge variant="outline" className={cn("mt-1", item.carry_status === "UNVERIFIED" && "border-amber-500 text-amber-700 dark:text-amber-300")}>
@@ -217,7 +223,7 @@ export function QtoItemPanel(props: ItemPanelProps) {
               return (
                 <li key={m.id} className="flex items-center gap-2 px-2 py-1 text-xs">
                   <Badge variant="outline" className="uppercase">{m.measure_type}</Badge>
-                  <span className="tabular-nums">{v ? `${v.value.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${v.unit}` : "uncalibrated"}</span>
+                  <span className="tabular-nums">{v ? `${fmtQty(v.value, v.unit === "No." ? 0 : 2)} ${v.unit}` : "uncalibrated"}</span>
                   <span className="text-muted-foreground">p.{m.page_no ?? 1}</span>
                   {editable && (
                     <button className="ml-auto text-muted-foreground hover:text-destructive" title="Delete measurement" onClick={() => void props.onDeleteMeasurement(m.id)}>

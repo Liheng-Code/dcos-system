@@ -252,8 +252,8 @@ export async function setFactors(itemId: string, factors: { name: string; value:
   }))));
 }
 
-export async function recordCalculation(itemId: string, run: CalculationRun): Promise<string> {
-  return check(await db().rpc("qto_record_calculation", { p_item_id: itemId, p_run: toRunPayload(run) })) as string;
+export async function recordCalculation(itemId: string, run: CalculationRun, meta?: Record<string, unknown>): Promise<string> {
+  return check(await db().rpc("qto_record_calculation", { p_item_id: itemId, p_run: toRunPayload(run, meta) })) as string;
 }
 
 export async function addMeasurement(itemId: string, m: {

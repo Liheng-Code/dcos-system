@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, Eye, EyeOff, GitBranch, History, ListChecks, Loader2,
@@ -33,6 +33,7 @@ import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "
 import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs/qto/takeoff-start-panel";
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
 import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
+import { fmtQty, isAutoRun, measuredRun } from "@/lib/qs/qto/measured-quantity";
 
 const PANEL_KEY = "dcos.qto.panels";
 const PANELS = { left: { def: 280, min: 200, max: 520 }, right: { def: 360, min: 280, max: 680 } };
@@ -345,6 +346,42 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     }
   }
 
+  /**
+   * Items whose quantity follows the drawing (no calculation yet, or one made from the measurements)
+   * get a fresh "sum of measurements" run. A hand-built calculation is never overwritten, and items
+   * carried forward unverified are left for the user to remeasure or confirm.
+   */
+  async function syncMeasuredQuantities(vId: string, onlyItemIds?: string[]) {
+    const fresh = await getVersionWorkspace(vId);
+    const latest = new Map<string, (typeof fresh.runs)[number]>();
+    for (const r of fresh.runs) if (!latest.has(r.item_id)) latest.set(r.item_id, r);
+    let changed = false;
+    for (const item of fresh.items) {
+      if (onlyItemIds && !onlyItemIds.includes(item.id)) continue;
+      const last = latest.get(item.id);
+      if (last && !isAutoRun(last)) continue;
+      const ms = fresh.measurements.filter((m) => m.qto_item_id === item.id);
+      if (!onlyItemIds && (last || ms.length === 0 || item.carry_status === "UNVERIFIED")) continue;
+      const run = measuredRun({
+        unit: item.unit, measurements: ms, ruleset: ruleVersion?.definition ?? null,
+        factors: fresh.factors.filter((f) => f.item_id === item.id).map((f) => ({ name: f.factor_name, value: String(f.factor_value) })),
+      });
+      if (!run?.valid || (last && Number(last.result) === Number(run.result) && Number(item.quantity) === Number(run.result))) continue;
+      await recordCalculation(item.id, run, { auto: true });
+      changed = true;
+    }
+    setWs(changed ? await getVersionWorkspace(vId) : fresh);
+  }
+
+  // When the version opens, catch up items that have measurements but no calculation yet.
+  const synced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!version || !editable || !ruleVersion || synced.current === version.id) return;
+    synced.current = version.id;
+    void syncMeasuredQuantities(version.id).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version?.id, editable, ruleVersion]);
+
   async function onMeasure(m: EmittedMeasurement) {
     if (!editable || !version) return;
     if (m.measure_type !== "count" && m.measure_type !== "point" && !activeCal) {
@@ -363,7 +400,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         measure_type: m.measure_type, points: m.points, length: m.length, area: m.area, count: m.count, unit: m.unit,
         label: null, calibration_id: activeCal?.id ?? null,
       });
-      await loadWs(version.id);
+      await syncMeasuredQuantities(version.id, [target!.id]);
     }, "Measurement saved to " + target.qto_no);
   }
 
@@ -547,7 +584,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
                           </span>
                           {blockingIssue && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
                           <span className="shrink-0 tabular-nums text-primary">
-                            {Number(i.quantity).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                            {fmtQty(i.quantity)}
                             <span className="ml-0.5 text-muted-foreground">{i.unit === "m2" ? "m²" : i.unit === "m3" ? "m³" : i.unit}</span>
                           </span>
                           <span className="h-3.5 w-3.5 shrink-0 rounded-sm border border-black/10" style={{ background: i.display_color ?? "#2563eb" }} />
@@ -562,7 +599,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
             {Object.keys(totals).length === 0 ? <span className="text-muted-foreground">No quantities yet</span> : Object.entries(totals).map(([u, t]) => (
               <div key={u} className="flex justify-between tabular-nums">
                 <span className="text-muted-foreground">Total {u}</span>
-                <span>{t.firm.toLocaleString(undefined, { maximumFractionDigits: 3 })}{t.provisional ? <span className="text-amber-700 dark:text-amber-300"> + {t.provisional.toLocaleString(undefined, { maximumFractionDigits: 3 })} prov.</span> : null}</span>
+                <span>{fmtQty(t.firm)}{t.provisional ? <span className="text-amber-700 dark:text-amber-300"> + {fmtQty(t.provisional)} prov.</span> : null}</span>
               </div>
             ))}
           </div>
@@ -636,7 +673,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
                   await loadWs(version.id);
                 }}
                 onSetBoqLink={(boqId) => guard(async () => { await setBoqLink(selected.id, boqId, Number(selected.quantity)); await loadWs(version.id); })}
-                onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await loadWs(version.id); })}
+                onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await syncMeasuredQuantities(version.id, [selected.id]); })}
                 onDuplicate={() => guard(async () => { const c = await duplicateItem(version, selected); await loadWs(version.id); setSelectedItemId(c.id); }, "Item duplicated")}
                 onDelete={() => guard(async () => {
                   if (!window.confirm(`Remove ${selected.qto_no} from this version? It stays in the audit history.`)) return;
