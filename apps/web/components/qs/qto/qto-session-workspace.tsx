@@ -473,8 +473,76 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         </p>
       )}
 
-      {/* Main: drawing | takeoffs (with visibility) over properties */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_380px]">
+      {/* Main: takeoffs | drawing | properties */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[280px_minmax(0,1fr)_360px]">
+        {/* Takeoffs: one row per item, eye toggles it on the sheet */}
+        <section className="flex min-h-[240px] flex-col rounded-lg border border-border lg:min-h-0" aria-label="Takeoffs">
+          <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+            <h2 className="text-sm font-semibold">Takeoffs</h2>
+            <span className="text-xs text-muted-foreground">({items.length})</span>
+            <button className="ml-auto rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title={hiddenItems.size ? "Show all on the drawing" : "Hide all on the drawing"}
+              onClick={() => setHiddenItems(hiddenItems.size ? new Set() : new Set(items.map((i) => i.id)))}>
+              {hiddenItems.size ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+            {editable && <Button size="sm" className="h-7 w-7 p-0" title="Add item" onClick={() => void addItem()}><Plus className="h-4 w-4" /></Button>}
+          </div>
+          <div className="border-b border-border p-1.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input className="h-7 pl-7 text-xs" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {wsLoading && !ws ? <div className="p-3"><Skeleton className="h-16 w-full" /></div>
+              : visibleItems.length === 0 ? (
+                <p className="p-4 text-center text-xs text-muted-foreground">{items.length === 0 ? (editable ? "No takeoffs yet. Pick a tool and measure on the drawing." : "No items in this version.") : "No items match."}</p>
+              ) : (
+                <ul>
+                  {visibleItems.map((i) => {
+                    const blockingIssue = openIssues.some((x) => x.item_id === i.id && x.severity === "BLOCKING");
+                    const hidden = hiddenItems.has(i.id);
+                    const TypeIcon = i.unit === "No." ? CountIcon : i.unit === "m" ? LengthIcon : AreaIcon;
+                    return (
+                      <li key={i.id}
+                        className={cn("flex items-center gap-2 border-b border-border px-2 py-1.5 text-xs", QTY_TONE[i.quantity_status],
+                          i.id === selectedItemId ? "bg-primary/10" : "hover:bg-muted/60", hidden && "opacity-50")}>
+                        <button className="shrink-0 text-muted-foreground hover:text-foreground" aria-pressed={!hidden}
+                          title={hidden ? "Show on the drawing" : "Hide on the drawing"}
+                          onClick={() => setHiddenItems((h) => { const n = new Set(h); if (n.has(i.id)) n.delete(i.id); else n.add(i.id); return n; })}>
+                          {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                        <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelectedItemId(i.id === selectedItemId ? null : i.id)}>
+                          <TypeIcon size={16} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{i.description}</span>
+                            <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                              {i.qto_no}{i.work_section ? ` · ${i.work_section}` : ""}{i.quantity_status !== "FIRM" ? ` · ${i.quantity_status.replace("_", " ").toLowerCase()}` : ""}
+                            </span>
+                          </span>
+                          {blockingIssue && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
+                          <span className="shrink-0 tabular-nums text-primary">
+                            {Number(i.quantity).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                            <span className="ml-0.5 text-muted-foreground">{i.unit === "m2" ? "m²" : i.unit === "m3" ? "m³" : i.unit}</span>
+                          </span>
+                          <span className="h-3.5 w-3.5 shrink-0 rounded-sm border border-black/10" style={{ background: i.display_color ?? "#2563eb" }} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+          </div>
+          <div className="border-t border-border px-2 py-1 text-[11px]">
+            {Object.keys(totals).length === 0 ? <span className="text-muted-foreground">No quantities yet</span> : Object.entries(totals).map(([u, t]) => (
+              <div key={u} className="flex justify-between tabular-nums">
+                <span className="text-muted-foreground">Total {u}</span>
+                <span>{t.firm.toLocaleString(undefined, { maximumFractionDigits: 3 })}{t.provisional ? <span className="text-amber-700 dark:text-amber-300"> + {t.provisional.toLocaleString(undefined, { maximumFractionDigits: 3 })} prov.</span> : null}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <div className="min-h-[420px] overflow-hidden rounded-lg border border-border">
           <DrawingViewer
             url={drawingUrl}
@@ -515,115 +583,45 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
           />
         </div>
 
-        <div className="flex min-h-0 flex-col gap-2">
-          {/* Takeoffs: one row per item, eye toggles it on the sheet */}
-          <section className="flex max-h-[45%] min-h-[180px] flex-col rounded-lg border border-border" aria-label="Takeoffs">
-            <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-              <h2 className="text-sm font-semibold">Takeoffs</h2>
-              <span className="text-xs text-muted-foreground">({items.length})</span>
-              <button className="ml-auto rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                title={hiddenItems.size ? "Show all on the drawing" : "Hide all on the drawing"}
-                onClick={() => setHiddenItems(hiddenItems.size ? new Set() : new Set(items.map((i) => i.id)))}>
-                {hiddenItems.size ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-              {editable && <Button size="sm" className="h-7 w-7 p-0" title="Add item" onClick={() => void addItem()}><Plus className="h-4 w-4" /></Button>}
-            </div>
-            <div className="border-b border-border p-1.5">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input className="h-7 pl-7 text-xs" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        {/* Properties of the selected takeoff */}
+        <section className="min-h-0 overflow-y-auto rounded-lg border border-border" aria-label="Properties">
+          <h2 className="sticky top-0 z-10 border-b border-border bg-background px-3 py-1.5 text-sm font-semibold">Properties</h2>
+          <div className="p-3">
+            {selected ? (
+              <QtoItemPanel
+                item={selected}
+                editable={editable}
+                ruleset={ruleVersion?.definition ?? null}
+                latestRun={runsByItem.get(selected.id) ?? null}
+                factors={(ws?.factors ?? []).filter((f) => f.item_id === selected.id)}
+                measurements={(ws?.measurements ?? []).filter((m) => m.qto_item_id === selected.id)}
+                boqLines={boqLines}
+                boqLinkId={ws?.boqLinks.find((l) => l.qto_item_id === selected.id)?.boq_item_id ?? null}
+                boqLinkLocked={!!ws?.boqLinks.find((l) => l.qto_item_id === selected.id && l.transfer_id)}
+                wbsNodes={wbsNodes}
+                budgetCodes={budgetCodes}
+                onSave={async (patch) => { await updateItem(selected.id, patch); await loadWs(version.id); }}
+                onSaveCalculation={async ({ run, factors, ruleCode }) => {
+                  await setFactors(selected.id, factors.map((f) => ({ name: f.name, value: String(f.value) })));
+                  await recordCalculation(selected.id, { ...run, rule_code: ruleCode });
+                  await loadWs(version.id);
+                }}
+                onSetBoqLink={(boqId) => guard(async () => { await setBoqLink(selected.id, boqId, Number(selected.quantity)); await loadWs(version.id); })}
+                onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await loadWs(version.id); })}
+                onDuplicate={() => guard(async () => { const c = await duplicateItem(version, selected); await loadWs(version.id); setSelectedItemId(c.id); }, "Item duplicated")}
+                onDelete={() => guard(async () => {
+                  if (!window.confirm(`Remove ${selected.qto_no} from this version? It stays in the audit history.`)) return;
+                  await deleteItem(selected.id); setSelectedItemId(null); await loadWs(version.id);
+                })}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+                <p>Select an item to see its classification, calculation and evidence.</p>
+                {editable && <p>Measuring with no item selected creates a new item.</p>}
               </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {wsLoading && !ws ? <div className="p-3"><Skeleton className="h-16 w-full" /></div>
-                : visibleItems.length === 0 ? (
-                  <p className="p-4 text-center text-xs text-muted-foreground">{items.length === 0 ? (editable ? "No takeoffs yet. Pick a tool and measure on the drawing." : "No items in this version.") : "No items match."}</p>
-                ) : (
-                  <ul>
-                    {visibleItems.map((i) => {
-                      const blockingIssue = openIssues.some((x) => x.item_id === i.id && x.severity === "BLOCKING");
-                      const hidden = hiddenItems.has(i.id);
-                      const TypeIcon = i.unit === "No." ? CountIcon : i.unit === "m" ? LengthIcon : AreaIcon;
-                      return (
-                        <li key={i.id}
-                          className={cn("flex items-center gap-2 border-b border-border px-2 py-1.5 text-xs", QTY_TONE[i.quantity_status],
-                            i.id === selectedItemId ? "bg-primary/10" : "hover:bg-muted/60", hidden && "opacity-50")}>
-                          <button className="shrink-0 text-muted-foreground hover:text-foreground" aria-pressed={!hidden}
-                            title={hidden ? "Show on the drawing" : "Hide on the drawing"}
-                            onClick={() => setHiddenItems((h) => { const n = new Set(h); if (n.has(i.id)) n.delete(i.id); else n.add(i.id); return n; })}>
-                            {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                          <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelectedItemId(i.id === selectedItemId ? null : i.id)}>
-                            <TypeIcon size={16} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{i.description}</span>
-                              <span className="block truncate font-mono text-[10px] text-muted-foreground">
-                                {i.qto_no}{i.work_section ? ` · ${i.work_section}` : ""}{i.quantity_status !== "FIRM" ? ` · ${i.quantity_status.replace("_", " ").toLowerCase()}` : ""}
-                              </span>
-                            </span>
-                            {blockingIssue && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
-                            <span className="shrink-0 tabular-nums text-primary">
-                              {Number(i.quantity).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                              <span className="ml-0.5 text-muted-foreground">{i.unit === "m2" ? "m²" : i.unit === "m3" ? "m³" : i.unit}</span>
-                            </span>
-                            <span className="h-3.5 w-3.5 shrink-0 rounded-sm border border-black/10" style={{ background: i.display_color ?? "#2563eb" }} />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-            </div>
-            <div className="border-t border-border px-2 py-1 text-[11px]">
-              {Object.keys(totals).length === 0 ? <span className="text-muted-foreground">No quantities yet</span> : Object.entries(totals).map(([u, t]) => (
-                <div key={u} className="flex justify-between tabular-nums">
-                  <span className="text-muted-foreground">Total {u}</span>
-                  <span>{t.firm.toLocaleString(undefined, { maximumFractionDigits: 3 })}{t.provisional ? <span className="text-amber-700 dark:text-amber-300"> + {t.provisional.toLocaleString(undefined, { maximumFractionDigits: 3 })} prov.</span> : null}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Properties of the selected takeoff */}
-          <section className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border" aria-label="Properties">
-            <h2 className="sticky top-0 z-10 border-b border-border bg-background px-3 py-1.5 text-sm font-semibold">Properties</h2>
-            <div className="p-3">
-              {selected ? (
-                <QtoItemPanel
-                  item={selected}
-                  editable={editable}
-                  ruleset={ruleVersion?.definition ?? null}
-                  latestRun={runsByItem.get(selected.id) ?? null}
-                  factors={(ws?.factors ?? []).filter((f) => f.item_id === selected.id)}
-                  measurements={(ws?.measurements ?? []).filter((m) => m.qto_item_id === selected.id)}
-                  boqLines={boqLines}
-                  boqLinkId={ws?.boqLinks.find((l) => l.qto_item_id === selected.id)?.boq_item_id ?? null}
-                  boqLinkLocked={!!ws?.boqLinks.find((l) => l.qto_item_id === selected.id && l.transfer_id)}
-                  wbsNodes={wbsNodes}
-                  budgetCodes={budgetCodes}
-                  onSave={async (patch) => { await updateItem(selected.id, patch); await loadWs(version.id); }}
-                  onSaveCalculation={async ({ run, factors, ruleCode }) => {
-                    await setFactors(selected.id, factors.map((f) => ({ name: f.name, value: String(f.value) })));
-                    await recordCalculation(selected.id, { ...run, rule_code: ruleCode });
-                    await loadWs(version.id);
-                  }}
-                  onSetBoqLink={(boqId) => guard(async () => { await setBoqLink(selected.id, boqId, Number(selected.quantity)); await loadWs(version.id); })}
-                  onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await loadWs(version.id); })}
-                  onDuplicate={() => guard(async () => { const c = await duplicateItem(version, selected); await loadWs(version.id); setSelectedItemId(c.id); }, "Item duplicated")}
-                  onDelete={() => guard(async () => {
-                    if (!window.confirm(`Remove ${selected.qto_no} from this version? It stays in the audit history.`)) return;
-                    await deleteItem(selected.id); setSelectedItemId(null); await loadWs(version.id);
-                  })}
-                />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground">
-                  <p>Select an item to see its classification, calculation and evidence.</p>
-                  {editable && <p>Measuring with no item selected creates a new item.</p>}
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* Bottom: issues, changes against the baseline, history */}

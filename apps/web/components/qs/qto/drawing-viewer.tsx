@@ -446,7 +446,7 @@ export function DrawingViewer({
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
   const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
-    : activeTool?.hint ?? "No tool: click a shape to select its item, drag to move, wheel to zoom. Click a tool to measure; click it again to put it down.";
+    : activeTool?.hint ?? "No tool: click a shape to select · drag to move · wheel to zoom";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
 
