@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
+import { evaluate as evaluateExpression } from "@/lib/qs/qto/expression";
+import { round as roundDec, toNumber } from "@/lib/qs/qto/decimal";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -261,22 +263,11 @@ export interface RiskItem {
   discipline?: string | null;
 }
 
-// ── Safe formula evaluator (numbers, + - * / ( ) . only) ─────────────────────
+// ── Safe formula evaluator (plain numbers; see lib/qs/qto/expression.ts) ─────
 export function safeEvaluate(expr: string): { ok: true; value: number } | { ok: false; error: string } {
-  const cleaned = expr.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
-  if (!/^[\d+\-*/().\s]+$/.test(cleaned)) {
-    return { ok: false, error: "Formula contains unsupported characters" };
-  }
-  try {
-    // eslint-disable-next-line no-new-func
-    const value = new Function(`"use strict"; return (${cleaned});`)() as number;
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return { ok: false, error: "Formula does not produce a valid number" };
-    }
-    return { ok: true, value: Math.round(value * 1000) / 1000 };
-  } catch {
-    return { ok: false, error: "Formula could not be evaluated" };
-  }
+  const r = evaluateExpression(expr);
+  if (!r.ok) return r;
+  return { ok: true, value: toNumber(roundDec(r.value.value, 3)) };
 }
 
 // ── Status workflow ──────────────────────────────────────────────────────────
@@ -403,12 +394,14 @@ export async function getRevisionById(revisionId: string): Promise<QtoDrawingRev
   return (data as QtoDrawingRevision) ?? null;
 }
 
-export function getDrawingUrl(revision: Pick<QtoDrawingRevision, "pdf_path" | "file_path"> | null | undefined): string | null {
+/** Short-lived signed URL for a revision's PDF (the qto-files bucket is private). */
+export async function getDrawingUrl(revision: Pick<QtoDrawingRevision, "pdf_path" | "file_path"> | null | undefined): Promise<string | null> {
   if (!revision) return null;
   const path = revision.pdf_path ?? revision.file_path;
   if (!path) return null;
   const supabase = createClient();
-  return supabase.storage.from("qto-files").getPublicUrl(path).data.publicUrl;
+  const { data } = await supabase.storage.from("qto-files").createSignedUrl(path, 60 * 60);
+  return data?.signedUrl ?? null;
 }
 
 // ── QTO items ────────────────────────────────────────────────────────────────

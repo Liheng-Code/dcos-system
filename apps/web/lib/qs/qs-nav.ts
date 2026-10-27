@@ -157,9 +157,10 @@ export const QS_GROUPS: ModuleNavGroup[] = [
     label: "Quantity Take-off",
     href: "/dashboard/qto",
     items: [
-      { label: "Take-off", href: "/dashboard/qto" },
+      { label: "Sessions", href: "/dashboard/qto" },
       { label: "Drawings", href: "/dashboard/qto?tab=drawings" },
       { label: "Documents", href: "/dashboard/qto?tab=documents" },
+      { label: "Measurement Rules", href: "/dashboard/qto?tab=rules" },
     ],
   },
   {

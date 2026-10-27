@@ -1,19 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
-  CheckCircle2,
-  FilePlus2,
+  BookOpenCheck,
   FileText,
   FolderOpen,
   Loader2,
-  Pencil,
   Plus,
-  RefreshCw,
   Ruler,
-  Search,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -21,50 +17,40 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useQtoPermissions } from "@/hooks/use-qto-permissions";
+import { QtoSessionsTab } from "@/components/qs/qto/qto-sessions-tab";
+import { QtoRulesTab } from "@/components/qs/qto/qto-rules-tab";
 import {
-  QTO_BUILDINGS,
-  QTO_DISCIPLINES,
-  QtoItemForm,
-} from "@/components/qs/qto/qto-item-form";
-import {
-  QTO_STATUSES,
   addRevision,
   createDocument,
   createDrawing,
   deleteDocument,
   deleteDrawing,
-  deleteQtoItem,
   getDrawingUrl,
-  getProgress,
-  getQtoSummary,
-  getRiskRegister,
   listDocuments,
   listDrawings,
-  listQtoItems,
   setCurrentRevision,
-  type ProgressStats,
   type QtoDocument,
   type QtoDrawing,
   type QtoDrawingRevision,
-  type QtoItem,
-  type QtoSummaryRow,
-  type RiskItem,
 } from "@/lib/qs/qto-service";
 import { listTenderRegister, updateQtoDrawingRevisionById } from "@/lib/qs/qs-queries";
 
-type Tab = "takeoff" | "drawings" | "documents";
+/** Suggestions for the drawing register; any value can be typed. */
+const QTO_BUILDINGS = ["BA", "BB", "BX", "GENERAL"];
+const QTO_DISCIPLINES = ["STR", "ARC", "MEP", "CIV", "LND", "OTH"];
+
+type Tab = "takeoff" | "drawings" | "documents" | "rules";
 
 export default function QtoListPage() {
   const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
   const tenderParam = searchParams.get("tender");
   const tabParam = searchParams.get("tab");
-  const urlTab: Tab = tabParam === "drawings" || tabParam === "documents" ? tabParam : "takeoff";
+  const urlTab: Tab = tabParam === "drawings" || tabParam === "documents" || tabParam === "rules" ? tabParam : "takeoff";
   const { selectedProjectId } = useProject();
   const { can, loaded: permsLoaded } = useQtoPermissions();
 
@@ -109,7 +95,7 @@ export default function QtoListPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Quantity Take-off</h1>
-        <p className="text-sm text-muted-foreground">Measure from drawings, build calculations, review and approve net quantities for the tender BOQ</p>
+        <p className="text-sm text-muted-foreground">Measure from drawings with approved rules, review, publish a quantity baseline and transfer it to the tender BOQ</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -126,9 +112,10 @@ export default function QtoListPage() {
         </select>
         <div className="ml-auto flex items-center gap-1 border-b border-border">
           {([
-            { key: "takeoff" as Tab, label: "Take-off", icon: Ruler },
+            { key: "takeoff" as Tab, label: "Sessions", icon: Ruler },
             { key: "drawings" as Tab, label: "Drawings", icon: FolderOpen },
             { key: "documents" as Tab, label: "Documents", icon: FileText },
+            { key: "rules" as Tab, label: "Rules", icon: BookOpenCheck },
           ]).map((t) => {
             const Icon = t.icon;
             return (
@@ -148,7 +135,9 @@ export default function QtoListPage() {
         </div>
       </div>
 
-      {!selectedTenderId ? (
+      {tab === "rules" ? (
+        <QtoRulesTab canConfigure={can("qto_rules", "configure")} />
+      ) : !selectedTenderId ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-24 text-center">
           <Ruler className="h-8 w-8 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">Select a tender to start taking quantities off the drawings.</p>
@@ -160,333 +149,13 @@ export default function QtoListPage() {
         </div>
       ) : (
         <>
-          {tab === "takeoff" && (
-            <TakeOffTab
-              tenderId={selectedTenderId}
-              canCreate={can("qto_register", "can_create")}
-              canEdit={can("qto_register", "edit")}
-              canDelete={can("qto_register", "delete")}
-            />
-          )}
+          {tab === "takeoff" && <QtoSessionsTab tenderId={selectedTenderId} canCreate={can("qto_sessions", "can_create")} />}
           {tab === "drawings" && <DrawingsTab tenderId={selectedTenderId} canCreate={can("qto_drawings", "can_create")} canDelete={can("qto_drawings", "delete")} />}
           {tab === "documents" && <DocumentsTab tenderId={selectedTenderId} canCreate={can("qto_documents", "can_create")} canDelete={can("qto_documents", "delete")} />}
         </>
       )}
     </div>
   );
-}
-
-// ── Take-off tab ──────────────────────────────────────────────────────────────
-function TakeOffTab({ tenderId, canCreate, canEdit, canDelete }: { tenderId: string; canCreate: boolean; canEdit: boolean; canDelete: boolean }) {
-  const router = useRouter();
-  const [rows, setRows] = useState<QtoItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [stats, setStats] = useState<ProgressStats | null>(null);
-  const [summary, setSummary] = useState<QtoSummaryRow[]>([]);
-  const [risks, setRisks] = useState<RiskItem[]>([]);
-
-  const [search, setSearch] = useState("");
-  const [building, setBuilding] = useState("all");
-  const [discipline, setDiscipline] = useState("all");
-  const [status, setStatus] = useState("all");
-
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<QtoItem | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<QtoItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg(null);
-    const [listRes, statsRes, summaryRes, riskRes] = await Promise.all([
-      listQtoItems(tenderId),
-      getProgress(tenderId),
-      getQtoSummary(tenderId),
-      getRiskRegister(tenderId),
-    ]);
-    if (listRes.error) setErrorMsg(listRes.error);
-    else setRows(listRes.data ?? []);
-    setStats(statsRes);
-    setSummary(summaryRes);
-    setRisks(riskRes);
-    setLoading(false);
-  }, [tenderId]);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
-
-  const filtered = useMemo(() => {
-    let result = rows;
-    if (building !== "all") result = result.filter((r) => r.building === building);
-    if (discipline !== "all") result = result.filter((r) => r.discipline === discipline);
-    if (status !== "all") result = result.filter((r) => r.status === status);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.qto_no.toLowerCase().includes(q) ||
-          r.description.toLowerCase().includes(q) ||
-          (r.item_code ?? "").toLowerCase().includes(q) ||
-          (r.drawing?.drawing_no ?? "").toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [rows, building, discipline, status, search]);
-
-  const approvedQty = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of summary) {
-      map.set(`${s.building ?? "—"} · ${s.discipline ?? "—"} · ${s.work_section ?? "—"}`, s.quantity);
-    }
-    return map;
-  }, [summary]);
-
-  async function handleDelete() {
-    if (!confirmDelete) return;
-    setDeleting(true);
-    const res = await deleteQtoItem(confirmDelete.id);
-    setDeleting(false);
-    if (res.error) toast.error(res.error);
-    else {
-      toast.success(`${confirmDelete.qto_no} deleted`);
-      setConfirmDelete(null);
-      void load();
-    }
-  }
-
-  const statusCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of QTO_STATUSES) map.set(s, 0);
-    for (const r of rows) map.set(r.status, (map.get(r.status) ?? 0) + 1);
-    return map;
-  }, [rows]);
-
-  return (
-    <div className="flex flex-col gap-6">
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-xs text-muted-foreground">Total Items</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{stats?.total ?? 0}</p>
-        </div>
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-xs text-muted-foreground">Draft / In Progress</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {(stats?.byStatus.DRAFT ?? 0) + (stats?.byStatus.MEASURED ?? 0) + (stats?.byStatus["SELF CHECKED"] ?? 0)}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-xs text-muted-foreground">Approved</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-600">{stats?.approved ?? 0}</p>
-        </div>
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-xs text-muted-foreground">Posted to BOQ</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-blue-600">{stats?.posted ?? 0}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="flex flex-col gap-4 xl:col-span-2">
-          {/* Header + filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search qto no, description, drawing…" className="pl-8" />
-            </div>
-            <select value={building} onChange={(e) => setBuilding(e.target.value)} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm">
-              <option value="all">All Buildings</option>
-              {QTO_BUILDINGS.map((b) => (<option key={b} value={b}>{b}</option>))}
-            </select>
-            <select value={discipline} onChange={(e) => setDiscipline(e.target.value)} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm">
-              <option value="all">All Disciplines</option>
-              {QTO_DISCIPLINES.map((d) => (<option key={d} value={d}>{d}</option>))}
-            </select>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm">
-              <option value="all">All Status</option>
-              {QTO_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
-            </select>
-            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-            </Button>
-            <span className="ml-auto text-xs text-muted-foreground">{filtered.length} items</span>
-            <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }} disabled={!canCreate}>
-              <Plus className="h-4 w-4" /> New QTO Item
-            </Button>
-          </div>
-
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 8 }).map((_, i) => (<Skeleton key={i} className="h-10 w-full" />))}
-            </div>
-          ) : errorMsg ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/30 py-16 text-center">
-              <AlertTriangle className="h-8 w-8 text-destructive/60" />
-              <p className="text-sm text-muted-foreground">{errorMsg}</p>
-              <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
-              <ClipboardIcon />
-              <p className="text-sm text-muted-foreground">
-                {rows.length === 0 ? "No QTO items yet. Create the first item to begin measuring." : "No items match your filters."}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2">QTO No</th>
-                    <th className="px-3 py-2">Building</th>
-                    <th className="px-3 py-2">Description</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 w-14">Unit</th>
-                    <th className="px-3 py-2">Drawing</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2 w-20"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filtered.map((r) => (
-                    <tr key={r.id} onClick={() => router.push(`/dashboard/qto/${r.id}`)} className="cursor-pointer hover:bg-muted/40">
-                      <td className="px-3 py-2 font-mono text-xs font-medium">{r.qto_no}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <span className="font-medium">{r.building ?? "—"}</span>
-                        <span className="block text-[10px] text-muted-foreground">{r.discipline ?? ""}</span>
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        <div className="line-clamp-1">{r.description}</div>
-                        {r.item_code && <span className="font-mono text-[10px] text-muted-foreground">{r.item_code}</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">{r.quantity.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs">{r.unit}</td>
-                      <td className="px-3 py-2 text-xs">
-                        {r.drawing ? (
-                          <>
-                            <span className="font-mono">{r.drawing.drawing_no}</span>
-                            <span className="ml-1 text-[10px] text-muted-foreground">Rev {r.drawing_revision?.revision ?? "—"}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Badge variant={r.status === "APPROVED" || r.status === "POSTED TO BOQ" ? "default" : "outline"}>{r.status}</Badge>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          {canEdit && (
-                            <button
-                              onClick={() => { setEditing(r); setShowForm(true); }}
-                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                              title="Edit"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => setConfirmDelete(r)}
-                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                              title="Delete (draft only)"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Right rail */}
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-sm font-medium">Progress by Status</p>
-            </div>
-            <div className="space-y-2 p-3">
-              {QTO_STATUSES.map((s) => (
-                <div key={s} className="flex items-center gap-2">
-                  <span className="w-36 shrink-0 truncate text-xs text-muted-foreground">{s}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn("h-full rounded-full", s === "APPROVED" ? "bg-emerald-500" : s === "POSTED TO BOQ" ? "bg-blue-500" : "bg-primary")}
-                      style={{ width: `${stats && stats.total > 0 ? ((statusCounts.get(s) ?? 0) / stats.total) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right text-xs tabular-nums">{statusCounts.get(s) ?? 0}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-sm font-medium">Approved Quantities</p>
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-            </div>
-            <div className="max-h-56 overflow-y-auto divide-y divide-border">
-              {approvedQty.size === 0 && (
-                <p className="px-3 py-6 text-center text-xs text-muted-foreground">Nothing approved yet.</p>
-              )}
-              {[...approvedQty.entries()].map(([key, qty]) => (
-                <div key={key} className="flex items-center justify-between px-3 py-2">
-                  <span className="truncate text-xs">{key}</span>
-                  <span className="ml-2 shrink-0 font-mono text-xs tabular-nums">{qty.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-sm font-medium">Risk Register</p>
-            </div>
-            <div className="divide-y divide-border">
-              {risks.map((r) => (
-                <div key={r.type} className="flex items-center justify-between px-3 py-2">
-                  <span className="text-xs">{r.label}</span>
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", r.count > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>
-                    {r.count}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <QtoItemForm open={showForm} onOpenChange={setShowForm} tenderId={tenderId} editItem={editing} onSaved={() => void load()} />
-
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-lg border border-border bg-background p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">Delete {confirmDelete.qto_no}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Only DRAFT items can be deleted. This cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-              <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void handleDelete()}>
-                {deleting && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ClipboardIcon() {
-  return <FilePlus2 className="h-8 w-8 text-muted-foreground/50" />;
 }
 
 // ── Drawings tab ──────────────────────────────────────────────────────────────
@@ -668,14 +337,18 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
                       </span>
                       <span className="w-24 text-[11px] text-muted-foreground">{r.revision_date ?? "—"}</span>
                       <span className="text-[11px] text-muted-foreground">{r.scale ?? "no scale"}</span>
-                      <a
-                        href={getDrawingUrl(r) ?? "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={cn("text-[11px] underline", !getDrawingUrl(r) && "pointer-events-none text-muted-foreground")}
+                      <button
+                        type="button"
+                        disabled={!r.pdf_path && !r.file_path}
+                        onClick={async () => {
+                          const url = await getDrawingUrl(r);
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                          else toast.error("The file could not be opened");
+                        }}
+                        className={cn("text-[11px] underline", !r.pdf_path && !r.file_path && "pointer-events-none text-muted-foreground no-underline")}
                       >
                         {r.pdf_path ? "Open PDF" : r.file_path ? "File (no PDF)" : "No file"}
-                      </a>
+                      </button>
                       {r.status === "superseded" && canCreate && (
                         <button
                           onClick={() => void handleMakeCurrent(d, r.id)}
@@ -703,16 +376,12 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
               <div className="col-span-1"><label className="text-xs font-medium text-muted-foreground">Drawing Type</label><input className={inputCls} value={newDrawing.drawing_type} onChange={(e) => setNewDrawing((f) => ({ ...f, drawing_type: e.target.value }))} placeholder="layout" /></div>
               <div className="col-span-2"><label className="text-xs font-medium text-muted-foreground">Title *</label><input className={inputCls} value={newDrawing.title} onChange={(e) => setNewDrawing((f) => ({ ...f, title: e.target.value }))} placeholder="Foundation Layout" /></div>
               <div className="col-span-1"><label className="text-xs font-medium text-muted-foreground">Discipline</label>
-                <select className={inputCls} value={newDrawing.discipline} onChange={(e) => setNewDrawing((f) => ({ ...f, discipline: e.target.value }))}>
-                  <option value="">—</option>
-                  {QTO_DISCIPLINES.map((d) => (<option key={d} value={d}>{d}</option>))}
-                </select>
+                <input className={inputCls} list="qto-disciplines" value={newDrawing.discipline} onChange={(e) => setNewDrawing((f) => ({ ...f, discipline: e.target.value }))} placeholder="STR" />
+                <datalist id="qto-disciplines">{QTO_DISCIPLINES.map((d) => (<option key={d} value={d} />))}</datalist>
               </div>
               <div className="col-span-1"><label className="text-xs font-medium text-muted-foreground">Building</label>
-                <select className={inputCls} value={newDrawing.building} onChange={(e) => setNewDrawing((f) => ({ ...f, building: e.target.value }))}>
-                  <option value="">—</option>
-                  {QTO_BUILDINGS.map((b) => (<option key={b} value={b}>{b}</option>))}
-                </select>
+                <input className={inputCls} list="qto-buildings" value={newDrawing.building} onChange={(e) => setNewDrawing((f) => ({ ...f, building: e.target.value }))} placeholder="BA" />
+                <datalist id="qto-buildings">{QTO_BUILDINGS.map((b) => (<option key={b} value={b} />))}</datalist>
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -861,17 +530,16 @@ function DocumentsTab({ tenderId, canCreate, canDelete }: { tenderId: string; ca
                   <option value="specification">Specification</option>
                   <option value="boq">BOQ</option>
                   <option value="addendum">Addendum</option>
-                  <option value="drawing">Drawing</option>
+                  <option value="pdf">Drawing (PDF)</option>
+                  <option value="dwg">Drawing (DWG)</option>
                   <option value="other">Other</option>
                 </select>
               </div>
               <div className="col-span-2"><label className="text-xs font-medium text-muted-foreground">Title *</label><input className={inputCls} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Structural Specification Volume 1" /></div>
               <div className="col-span-1"><label className="text-xs font-medium text-muted-foreground">Revision</label><input className={inputCls} value={form.revision} onChange={(e) => setForm((f) => ({ ...f, revision: e.target.value }))} placeholder="C" /></div>
               <div className="col-span-1"><label className="text-xs font-medium text-muted-foreground">Building</label>
-                <select className={inputCls} value={form.building} onChange={(e) => setForm((f) => ({ ...f, building: e.target.value }))}>
-                  <option value="">—</option>
-                  {QTO_BUILDINGS.map((b) => (<option key={b} value={b}>{b}</option>))}
-                </select>
+                <input className={inputCls} list="qto-doc-buildings" value={form.building} onChange={(e) => setForm((f) => ({ ...f, building: e.target.value }))} placeholder="BA" />
+                <datalist id="qto-doc-buildings">{QTO_BUILDINGS.map((b) => (<option key={b} value={b} />))}</datalist>
               </div>
               <div className="col-span-2"><label className="text-xs font-medium text-muted-foreground">Remarks</label><input className={inputCls} value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} /></div>
             </div>

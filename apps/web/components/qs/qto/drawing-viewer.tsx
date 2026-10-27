@@ -3,120 +3,119 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
-  MousePointer2,
-  Ruler,
-  Route,
-  Square,
-  RotateCcw,
-  Plus,
-  Minus,
-  Maximize,
   Crosshair,
-  Type,
   Loader2,
+  Maximize,
+  Minus,
+  MousePointer2,
   MoveRight,
+  Plus,
+  RotateCcw,
+  Route,
+  Ruler,
+  Square,
+  Undo2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { QtoMeasureType, QtoMeasurement } from "@/lib/qs/qto-service";
+import type { QtoMeasureType } from "@/lib/qs/qto-service";
+import {
+  type Pt,
+  areaInSquareMetres,
+  distance,
+  lengthInMetres,
+  perimeter,
+  polygonArea,
+  polylineLength,
+} from "@/lib/qs/qto/geometry";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
+/** Canvas pixels per PDF page unit. Points are stored in page units, independent of this and the zoom. */
+const RENDER_SCALE = 2;
+
 export type ViewerTool = QtoMeasureType | "pan" | "calibrate";
 
-export interface Calibration {
-  pxLength: number;
-  realLength: number;
-  unit: string;
+export interface ActiveCalibration {
+  id: string;
+  /** Metres per PDF page unit. */
+  metresPerUnit: number;
+  knownDistance: number;
+  knownUnit: string;
 }
 
 export interface EmittedMeasurement {
   measure_type: QtoMeasureType;
-  points: { x: number; y: number }[];
+  points: Pt[];
+  /** Metres (length, polyline, perimeter); null when the page is not calibrated. */
   length: number | null;
+  /** Square metres (area); null when the page is not calibrated. */
   area: number | null;
   count: number | null;
   unit: string | null;
+  page_no: number;
+}
+
+export interface SavedShape {
+  id: string;
   page_no: number | null;
+  measure_type: string;
+  points: Pt[];
+  highlighted?: boolean;
 }
 
 interface DrawingViewerProps {
-  url: string;
+  url: string | null;
   pageNo?: number;
-  calibration?: Calibration | null;
-  onCalibrationChange?: (c: Calibration | null) => void;
+  calibration?: ActiveCalibration | null;
+  /** Two points picked with the Scale tool; the parent asks for the known distance and saves it. */
+  onCalibrationPicked?: (c: { points: Pt[]; pageUnits: number; page_no: number }) => void;
   onMeasure?: (m: EmittedMeasurement) => void;
-  savedMeasurements?: QtoMeasurement[];
-  compact?: boolean;
+  onPageChange?: (page: number) => void;
+  savedMeasurements?: SavedShape[];
+  readOnly?: boolean;
 }
 
-const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: typeof Ruler }[] = [
-  { key: "pan", label: "Pan", icon: MousePointer2 },
-  { key: "length", label: "Length", icon: Ruler },
-  { key: "polyline", label: "Polyline", icon: Route },
-  { key: "area", label: "Area", icon: Square },
-  { key: "perimeter", label: "Perimeter", icon: RotateCcw },
-  { key: "count", label: "Count", icon: Plus },
-  { key: "point", label: "Point", icon: Crosshair },
-  { key: "calibrate", label: "Scale", icon: MoveRight },
+const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: typeof Ruler; hint: string }[] = [
+  { key: "pan", label: "Pan", icon: MousePointer2, hint: "Drag to move the drawing" },
+  { key: "length", label: "Length", icon: Ruler, hint: "Click two points" },
+  { key: "polyline", label: "Polyline", icon: Route, hint: "Click points, double-click or Enter to finish" },
+  { key: "area", label: "Area", icon: Square, hint: "Click the corners, double-click or Enter to close" },
+  { key: "perimeter", label: "Perimeter", icon: RotateCcw, hint: "Click the corners, double-click or Enter to close" },
+  { key: "count", label: "Count", icon: Plus, hint: "Click each element, Enter to finish" },
+  { key: "point", label: "Point", icon: Crosshair, hint: "Click a location" },
+  { key: "calibrate", label: "Scale", icon: MoveRight, hint: "Click both ends of a known dimension" },
 ];
 
-function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return Math.hypot(b.x - a.x, b.y - a.y);
-}
-
-function polygonArea(pts: { x: number; y: number }[]) {
-  if (pts.length < 3) return 0;
-  let sum = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const q = pts[(i + 1) % pts.length];
-    sum += p.x * q.y - q.x * p.y;
-  }
-  return Math.abs(sum) / 2;
-}
-
-function polygonPerimeter(pts: { x: number; y: number }[]) {
-  if (pts.length < 2) return 0;
-  let sum = 0;
-  for (let i = 0; i < pts.length; i++) {
-    sum += distance(pts[i], pts[(i + 1) % pts.length]);
-  }
-  return sum;
-}
-
-function toUnits(px: number, calibration: Calibration | null | undefined) {
-  if (!calibration || calibration.pxLength <= 0) return null;
-  return Math.round((px / calibration.pxLength) * calibration.realLength * 1000) / 1000;
-}
+const fmt = (n: number, dp = 3) => n.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
 export function DrawingViewer({
   url,
   pageNo,
   calibration,
-  onCalibrationChange,
+  onCalibrationPicked,
   onMeasure,
+  onPageChange,
   savedMeasurements,
-  compact,
+  readOnly,
 }: DrawingViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pageBoxRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!url);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(pageNo ?? 1);
+  /** Page size in PDF page units. */
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.6);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [tool, setTool] = useState<ViewerTool>("length");
+  const [tool, setTool] = useState<ViewerTool>(readOnly ? "pan" : "length");
 
-  const [draftPts, setDraftPts] = useState<{ x: number; y: number }[]>([]);
-  const [draftCursor, setDraftCursor] = useState<{ x: number; y: number } | null>(null);
-  const [calibPts, setCalibPts] = useState<{ x: number; y: number }[]>([]);
-  const [count, setCount] = useState(0);
+  const [draftPts, setDraftPts] = useState<Pt[]>([]);
+  const [cursor, setCursor] = useState<Pt | null>(null);
   const dragging = useRef(false);
   const panStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -124,30 +123,31 @@ export function DrawingViewer({
     const doc = pdfRef.current;
     if (!doc) return;
     const page = await doc.getPage(pageNumber);
-    const base = page.getViewport({ scale: 2 });
-    setPageSize({ w: base.width, h: base.height });
-    const viewport = page.getViewport({ scale: 2 });
+    const unit = page.getViewport({ scale: 1 });
+    setPageSize({ w: unit.width, h: unit.height });
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+    canvas.style.width = `${unit.width}px`;
+    canvas.style.height = `${unit.height}px`;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     await page.render({ canvasContext: ctx, viewport }).promise;
   }, []);
 
   useEffect(() => {
+    if (!url) return;
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
-
-    async function load() {
+    (async () => {
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to load drawing file");
-        const buf = await res.arrayBuffer();
-        const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+        if (!res.ok) throw new Error("The drawing file could not be loaded");
+        const doc = await pdfjsLib.getDocument({ data: await res.arrayBuffer() }).promise;
         if (cancelled) return;
         pdfRef.current = doc;
         setNumPages(doc.numPages);
@@ -157,12 +157,11 @@ export function DrawingViewer({
         setLoading(false);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Unable to open drawing");
+          setError(e instanceof Error ? e.message : "Unable to open the drawing");
           setLoading(false);
         }
       }
-    }
-    load();
+    })();
     return () => {
       cancelled = true;
     };
@@ -172,253 +171,192 @@ export function DrawingViewer({
   useEffect(() => {
     if (pageNo && pageNo !== currentPage && pdfRef.current) {
       setCurrentPage(pageNo);
-      renderPage(pageNo);
+      void renderPage(pageNo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageNo]);
 
-  const toNatural = (e: { clientX: number; clientY: number }) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
+  /** Pointer position → PDF page units. */
+  const toPage = (e: { clientX: number; clientY: number }): Pt => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || !pageSize) return { x: 0, y: 0 };
+    return { x: ((e.clientX - rect.left) / rect.width) * pageSize.w, y: ((e.clientY - rect.top) / rect.height) * pageSize.h };
   };
 
-  const finishMeasure = useCallback(() => {
+  const cancelDraft = () => {
+    setDraftPts([]);
+    setCursor(null);
+  };
+
+  const emit = useCallback((type: QtoMeasureType, pts: Pt[]) => {
     if (!onMeasure) return;
-    if (tool === "count") {
-      if (count > 0) {
-        onMeasure({
-          measure_type: "count",
-          points: [],
-          length: null,
-          area: null,
-          count,
-          unit: "No.",
-          page_no: currentPage,
-        });
-        setCount(0);
-      }
-      return;
+    const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
+    const base = { measure_type: type, points: pts, length: null, area: null, count: null, unit: null, page_no: currentPage };
+    if (type === "count") onMeasure({ ...base, count: pts.length, unit: "No." });
+    else if (type === "point") onMeasure(base);
+    else if (type === "area") onMeasure({ ...base, area: cal ? areaInSquareMetres(polygonArea(pts), cal) : null, unit: cal ? "m2" : null });
+    else {
+      const units = type === "perimeter" ? perimeter(pts) : polylineLength(pts);
+      onMeasure({ ...base, length: cal ? lengthInMetres(units, cal) : null, unit: cal ? "m" : null });
     }
-    if (tool === "length") {
-      if (draftPts.length === 2) {
-        const px = distance(draftPts[0], draftPts[1]);
-        onMeasure({
-          measure_type: "length",
-          points: draftPts,
-          length: calibration ? toUnits(px, calibration) : null,
-          area: null,
-          count: null,
-          unit: calibration ? calibration.unit : null,
-          page_no: currentPage,
-        });
-      }
-      setDraftPts([]);
-      return;
-    }
-    if (tool === "polyline") {
-      if (draftPts.length >= 2) {
-        const px = draftPts.reduce((acc, p, i) => (i === 0 ? 0 : acc + distance(draftPts[i - 1], p)), 0);
-        onMeasure({
-          measure_type: "polyline",
-          points: draftPts,
-          length: calibration ? toUnits(px, calibration) : null,
-          area: null,
-          count: null,
-          unit: calibration ? calibration.unit : null,
-          page_no: currentPage,
-        });
-      }
-      setDraftPts([]);
-      return;
-    }
-    if (tool === "area" || tool === "perimeter") {
-      if (draftPts.length >= 3) {
-        onMeasure({
-          measure_type: tool,
-          points: draftPts,
-          length: tool === "perimeter" ? (calibration ? toUnits(polygonPerimeter(draftPts), calibration) : null) : null,
-          area: tool === "area" ? (calibration ? toUnits(polygonArea(draftPts), calibration) : null) : null,
-          count: null,
-          unit: calibration ? (tool === "area" ? calibration.unit : calibration.unit) : null,
-          page_no: currentPage,
-        });
-      }
-      setDraftPts([]);
-      return;
-    }
-    if (tool === "point") {
-      if (draftPts.length === 1) {
-        onMeasure({
-          measure_type: "point",
-          points: draftPts,
-          length: null,
-          area: null,
-          count: null,
-          unit: null,
-          page_no: currentPage,
-        });
-      }
-      setDraftPts([]);
-      return;
-    }
-    if (tool === "calibrate") {
-      if (calibPts.length === 2) {
-        const px = distance(calibPts[0], calibPts[1]);
-        onCalibrationChange?.({ pxLength: px, realLength: 1, unit: "m" });
-      }
-      setCalibPts([]);
-    }
-  }, [tool, draftPts, calibPts, count, calibration, currentPage, onMeasure, onCalibrationChange]);
+  }, [onMeasure, calibration, currentPage]);
+
+  const finish = useCallback(() => {
+    const pts = draftPts;
+    if (tool === "count" && pts.length > 0) emit("count", pts);
+    else if ((tool === "polyline") && pts.length >= 2) emit("polyline", pts);
+    else if ((tool === "area" || tool === "perimeter") && pts.length >= 3) emit(tool, pts);
+    cancelDraft();
+  }, [draftPts, tool, emit]);
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    const pt = toNatural(e);
-    if (tool === "pan") {
+    svgRef.current?.focus();
+    if (tool === "pan" || readOnly) {
       dragging.current = true;
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
+    const pt = toPage(e);
     if (tool === "calibrate") {
-      setCalibPts((p) => (p.length >= 2 ? [pt] : [...p, pt]));
-      return;
-    }
-    if (tool === "count") {
-      setCount((c) => c + 1);
-      return;
-    }
-    if (tool === "length") {
-      if (draftPts.length === 0) {
-        setDraftPts([pt]);
-      } else {
-        const complete = [draftPts[0], pt];
-        const px = distance(complete[0], complete[1]);
-        onMeasure?.({
-          measure_type: "length",
-          points: complete,
-          length: calibration ? toUnits(px, calibration) : null,
-          area: null,
-          count: null,
-          unit: calibration ? calibration.unit : null,
-          page_no: currentPage,
-        });
-        setDraftPts([]);
+      const next = draftPts.length >= 2 ? [pt] : [...draftPts, pt];
+      setDraftPts(next);
+      if (next.length === 2) {
+        onCalibrationPicked?.({ points: next, pageUnits: distance(next[0], next[1]), page_no: currentPage });
+        setTimeout(cancelDraft, 0);
       }
       return;
     }
-    if (tool === "polyline" || tool === "area" || tool === "perimeter") {
-      setDraftPts((p) => [...p, pt]);
+    if (tool === "length") {
+      if (draftPts.length === 0) setDraftPts([pt]);
+      else {
+        emit("length", [draftPts[0], pt]);
+        cancelDraft();
+      }
       return;
     }
     if (tool === "point") {
-      setDraftPts([pt]);
-      setTimeout(finishMeasure, 0);
+      emit("point", [pt]);
+      return;
     }
+    setDraftPts((p) => [...p, pt]);
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (tool === "pan" && dragging.current && panStart.current) {
+    if (dragging.current && panStart.current) {
       const dx = e.clientX - panStart.current.x;
       const dy = e.clientY - panStart.current.y;
       setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
-    if (tool === "polyline" || tool === "area" || tool === "perimeter" || tool === "length") {
-      setDraftCursor(toNatural(e));
-    }
+    if (draftPts.length > 0) setCursor(toPage(e));
   };
 
-  const handlePointerUp = () => {
-    dragging.current = false;
-    panStart.current = null;
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(); }
+    else if (e.key === "Escape") cancelDraft();
+    else if (e.key === "Backspace" && draftPts.length > 0) { e.preventDefault(); setDraftPts((p) => p.slice(0, -1)); }
   };
 
   const goPage = (p: number) => {
     const target = Math.max(1, Math.min(p, numPages));
     setCurrentPage(target);
-    renderPage(target);
+    cancelDraft();
+    void renderPage(target);
+    onPageChange?.(target);
   };
 
-  const fit = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
+  const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
+  const live = [...draftPts, ...(cursor ? [cursor] : [])];
+  let liveText: string | null = null;
+  if (draftPts.length > 0) {
+    if (tool === "calibrate") liveText = `Reference: ${fmt(polylineLength(live), 1)} page units`;
+    else if (tool === "count") liveText = `Count: ${draftPts.length}`;
+    else if (!cal) liveText = "Not calibrated — set the scale first for real units";
+    else if (tool === "area") liveText = `Area: ${fmt(areaInSquareMetres(polygonArea(live), cal))} m²`;
+    else if (tool === "perimeter") liveText = `Perimeter: ${fmt(lengthInMetres(perimeter(live), cal))} m`;
+    else liveText = `Length: ${fmt(lengthInMetres(polylineLength(live), cal))} m`;
+  }
+  const tools = readOnly ? TOOL_OPTIONS.filter((t) => t.key === "pan") : TOOL_OPTIONS;
+  const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
 
-  const liveLength = draftCursor && draftPts.length === 1 ? distance(draftPts[0], draftCursor) : null;
-  const livePolyLength = draftCursor && draftPts.length >= 1
-    ? draftPts.reduce((acc, p, i) => (i === 0 ? 0 : acc + distance(draftPts[i - 1], p)), 0) + distance(draftPts[draftPts.length - 1], draftCursor)
-    : null;
-  const liveArea = draftCursor && draftPts.length >= 2
-    ? polygonArea([...draftPts, draftCursor])
-    : null;
-
-  const activeMeasurement = draftPts.length > 0;
+  if (!url) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        No PDF is attached to this drawing revision.
+      </div>
+    );
+  }
 
   return (
-    <div ref={containerRef} className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-wrap items-center gap-1 border-b border-border bg-background px-2 py-1.5">
-        {TOOL_OPTIONS.slice(0, compact ? 4 : 8).map((opt) => {
+        {tools.map((opt) => {
           const Icon = opt.icon;
           return (
             <button
               key={opt.key}
-              title={opt.label}
-              onClick={() => {
-                setTool(opt.key);
-                setDraftPts([]);
-                setCalibPts([]);
-              }}
+              type="button"
+              title={`${opt.label}: ${opt.hint}`}
+              aria-pressed={tool === opt.key}
+              onClick={() => { setTool(opt.key); cancelDraft(); }}
               className={cn(
                 "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                tool === opt.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                tool === opt.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               <Icon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{opt.label}</span>
+              <span className="hidden xl:inline">{opt.label}</span>
             </button>
           );
         })}
-
-        <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))} title="Zoom out">
-            <Minus className="h-3.5 w-3.5" />
-          </Button>
-          <span className="text-xs tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.min(5, z + 0.15))} title="Zoom in">
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={fit} title="Fit drawing">
-            <Maximize className="h-3.5 w-3.5" />
-          </Button>
-          <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={currentPage <= 1} onClick={() => goPage(currentPage - 1)}>
-              Prev
+        {draftPts.length > 0 && (
+          <div className="flex items-center gap-1 border-l border-border pl-1">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDraftPts((p) => p.slice(0, -1))} title="Undo last point (Backspace)">
+              <Undo2 className="h-3.5 w-3.5" />
             </Button>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {currentPage} / {numPages}
-            </span>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={currentPage >= numPages} onClick={() => goPage(currentPage + 1)}>
-              Next
+            {(tool === "polyline" || tool === "area" || tool === "perimeter" || tool === "count") && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={finish} title="Finish (Enter)">Finish</Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={cancelDraft} title="Cancel (Esc)">
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
+        )}
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.max(0.1, z / 1.2))} title="Zoom out">
+            <Minus className="h-3.5 w-3.5" />
+          </Button>
+          <span className="w-10 text-center text-xs tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.min(8, z * 1.2))} title="Zoom in">
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setZoom(0.6); setPan({ x: 0, y: 0 }); }} title="Reset view">
+            <Maximize className="h-3.5 w-3.5" />
+          </Button>
+          {numPages > 1 && (
+            <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={currentPage <= 1} onClick={() => goPage(currentPage - 1)}>Prev</Button>
+              <span className="text-xs tabular-nums text-muted-foreground">{currentPage} / {numPages}</span>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={currentPage >= numPages} onClick={() => goPage(currentPage + 1)}>Next</Button>
+            </div>
+          )}
         </div>
       </div>
 
-      {calibration && (
-        <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
-          <Type className="h-3.5 w-3.5" />
-          Scale: {calibration.pxLength.toFixed(1)}px = {calibration.realLength} {calibration.unit}
-          <button className="underline hover:text-foreground" onClick={() => onCalibrationChange?.(null)}>
-            Clear
-          </button>
-        </div>
-      )}
+      <div className={cn("flex items-center gap-2 border-b border-border px-2 py-1 text-xs",
+        calibration ? "bg-muted/40 text-muted-foreground" : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200")}>
+        {calibration
+          ? <>Scale (page {currentPage}): 1 page unit = {fmt(calibration.metresPerUnit * 1000, 4)} mm · set from a {fmt(calibration.knownDistance)} {calibration.knownUnit} dimension</>
+          : <>Page {currentPage} is not calibrated. Use <b>Scale</b> on a known dimension before measuring lengths or areas.</>}
+        {activeTool && !readOnly && <span className="ml-auto hidden md:inline">{activeTool.hint}</span>}
+      </div>
 
       <div className="relative flex-1 overflow-hidden bg-muted/30">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading drawing...
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading drawing…
             </div>
           </div>
         )}
@@ -427,106 +365,81 @@ export function DrawingViewer({
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
-
         <div
           className="absolute"
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: "0 0",
-            left: "50%",
-            top: "50%",
-            marginLeft: -(pageSize?.w ?? 0) / 2,
-            marginTop: -(pageSize?.h ?? 0) / 2,
+            left: 16,
+            top: 16,
           }}
         >
-          <div ref={pageBoxRef} className="relative shadow-lg">
+          <div className="relative bg-white shadow-lg">
             <canvas ref={canvasRef} className="block" />
-            <svg
-              width={pageSize?.w ?? 0}
-              height={pageSize?.h ?? 0}
-              className="absolute inset-0"
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onDoubleClick={finishMeasure}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") finishMeasure();
-                if (e.key === "Escape") {
-                  setDraftPts([]);
-                  setCalibPts([]);
-                }
-              }}
-              tabIndex={0}
-              style={{ cursor: tool === "pan" ? "grab" : tool === "calibrate" ? "crosshair" : "crosshair" }}
-            >
-              {/* saved measurements */}
-              {(savedMeasurements ?? [])
-                .filter((m) => m.page_no === currentPage && Array.isArray(m.points))
-                .map((m, i) => {
-                  const pts = (m.points ?? []) as { x: number; y: number }[];
-                  if (pts.length === 0) return null;
-                  const isClosed = m.measure_type === "area" || m.measure_type === "perimeter";
-                  const ptsForShape = isClosed && pts.length >= 2 ? [...pts, pts[0]] : pts;
-                  return (
-                    <polyline
-                      key={m.id ?? i}
-                      points={ptsForShape.map((p) => `${p.x},${p.y}`).join(" ")}
-                      fill={m.measure_type === "area" ? "rgba(37,99,235,0.12)" : "none"}
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      strokeDasharray="6 3"
-                      pointerEvents="none"
-                    />
-                  );
-                })}
-
-              {/* draft measurement */}
-              {tool === "length" && draftPts.length === 1 && draftCursor && (
-                <line x1={draftPts[0].x} y1={draftPts[0].y} x2={draftCursor.x} y2={draftCursor.y} stroke="#dc2626" strokeWidth={2} />
-              )}
-              {tool === "length" && draftPts.length === 2 && (
-                <line x1={draftPts[0].x} y1={draftPts[0].y} x2={draftPts[1].x} y2={draftPts[1].y} stroke="#dc2626" strokeWidth={2} />
-              )}
-              {(tool === "polyline" || tool === "area" || tool === "perimeter") && draftPts.length > 0 && (
-                <polyline
-                  points={[...draftPts, ...(draftCursor ? [draftCursor] : [])].map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill={tool === "area" && draftPts.length >= 2 ? "rgba(220,38,38,0.12)" : "none"}
-                  stroke="#dc2626"
-                  strokeWidth={2}
-                  strokeDasharray={draftCursor ? "6 3" : undefined}
-                />
-              )}
-              {(tool === "area" || tool === "perimeter") && draftPts.length >= 3 && draftCursor && (
-                <line x1={draftPts[draftPts.length - 1].x} y1={draftPts[draftPts.length - 1].y} x2={draftPts[0].x} y2={draftPts[0].y} stroke="#dc2626" strokeWidth={1.5} strokeDasharray="6 3" />
-              )}
-              {draftPts.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r={3.5} fill="#dc2626" stroke="#fff" strokeWidth={1} />
-              ))}
-              {tool === "calibrate" && calibPts.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r={4} fill="#16a34a" stroke="#fff" strokeWidth={1} />
-              ))}
-              {tool === "calibrate" && calibPts.length === 2 && (
-                <line x1={calibPts[0].x} y1={calibPts[0].y} x2={calibPts[1].x} y2={calibPts[1].y} stroke="#16a34a" strokeWidth={2} strokeDasharray="6 3" />
-              )}
-              {tool === "count" && count > 0 && (
-                <text x={pageSize ? pageSize.w - 12 : 0} y={pageSize ? pageSize.h - 12 : 0} textAnchor="end" fill="#dc2626" fontSize={16} fontWeight={700}>
-                  Count: {count}
-                </text>
-              )}
-            </svg>
-
-            {(activeMeasurement || (tool === "count" && count > 0)) && (
-              <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-background/90 px-2 py-1 text-xs shadow">
-                {tool === "length" && liveLength !== null && calibration && `Length: ${toUnits(liveLength, calibration)} ${calibration.unit}`}
-                {tool === "polyline" && livePolyLength !== null && calibration && `Length: ${toUnits(livePolyLength, calibration)} ${calibration.unit}`}
-                {tool === "area" && liveArea !== null && calibration && `Area: ${toUnits(liveArea, calibration)} ${calibration.unit}²`}
-                {tool === "perimeter" && livePolyLength !== null && calibration && `Perimeter: ${toUnits(livePolyLength, calibration)} ${calibration.unit}`}
-                {tool === "calibrate" && calibPts.length === 2 && `Reference: ${distance(calibPts[0], calibPts[1]).toFixed(1)}px`}
-                {tool === "count" && `Count: ${count}`}
-              </div>
+            {pageSize && (
+              <svg
+                ref={svgRef}
+                width={pageSize.w}
+                height={pageSize.h}
+                viewBox={`0 0 ${pageSize.w} ${pageSize.h}`}
+                className="absolute inset-0 outline-none"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={() => { dragging.current = false; panStart.current = null; }}
+                onDoubleClick={finish}
+                onKeyDown={handleKey}
+                tabIndex={0}
+                role="application"
+                aria-label="Drawing measurement surface"
+                style={{ cursor: tool === "pan" || readOnly ? "grab" : "crosshair" }}
+              >
+                {(savedMeasurements ?? [])
+                  .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
+                  .map((m) => {
+                    const closed = m.measure_type === "area" || m.measure_type === "perimeter";
+                    const color = m.highlighted ? "#ea580c" : "#2563eb";
+                    if (m.measure_type === "count" || m.measure_type === "point") {
+                      return m.points.map((p, i) => (
+                        <circle key={`${m.id}-${i}`} cx={p.x} cy={p.y} r={4 / zoom} fill={color} fillOpacity={0.7} pointerEvents="none" />
+                      ));
+                    }
+                    return (
+                      <polyline
+                        key={m.id}
+                        points={(closed ? [...m.points, m.points[0]] : m.points).map((p) => `${p.x},${p.y}`).join(" ")}
+                        fill={m.measure_type === "area" ? (m.highlighted ? "rgba(234,88,12,0.18)" : "rgba(37,99,235,0.12)") : "none"}
+                        stroke={color}
+                        strokeWidth={m.highlighted ? 3 : 2}
+                        vectorEffect="non-scaling-stroke"
+                        strokeDasharray={m.highlighted ? undefined : "6 3"}
+                        pointerEvents="none"
+                      />
+                    );
+                  })}
+                {draftPts.length > 0 && tool !== "count" && (
+                  <polyline
+                    points={live.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill={tool === "area" && live.length >= 3 ? "rgba(220,38,38,0.12)" : "none"}
+                    stroke={tool === "calibrate" ? "#16a34a" : "#dc2626"}
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents="none"
+                  />
+                )}
+                {(tool === "area" || tool === "perimeter") && live.length >= 3 && (
+                  <line x1={live[live.length - 1].x} y1={live[live.length - 1].y} x2={live[0].x} y2={live[0].y}
+                    stroke="#dc2626" strokeWidth={1.5} strokeDasharray="6 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                )}
+                {draftPts.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={3.5 / zoom} fill={tool === "calibrate" ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                ))}
+              </svg>
             )}
           </div>
         </div>
+        {liveText && (
+          <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/95 px-2 py-1 text-xs shadow">{liveText}</div>
+        )}
       </div>
     </div>
   );
