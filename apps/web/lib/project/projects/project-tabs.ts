@@ -11,6 +11,8 @@ export const POSTCONTRACT_TABS = [
   { id: "variations", label: "Variations" },
   { id: "claims", label: "Claims" },
   { id: "payments", label: "Payments" },
+  // Cost and time on one curve: cost-loaded baseline vs earned, actual and certified (doc 33).
+  { id: "scurve", label: "S-Curve" },
   // The bid snapshot taken at award and, for projects awarded in place, the read-only pre-contract record.
   { id: "tender", label: "Tender" },
   { id: "settings", label: "Settings" },

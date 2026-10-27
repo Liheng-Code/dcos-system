@@ -2,7 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { EvmDashboard } from "@/components/qs/evm-dashboard";
-import { CostScurve } from "@/components/qs/cost-scurve";
+// The S-curve is the shared project S-curve (doc 33); the hand-typed qs_cost_baseline curve (cost-scurve.tsx) is retired.
+import { ProjectScurveCard } from "@/components/project/scurve/project-scurve-card";
 
 const SUB_TAB_IDS = ["dashboard", "scurve"] as const;
 type SubTab = (typeof SUB_TAB_IDS)[number];
@@ -19,7 +20,7 @@ export function EvmView({ projectId }: Props) {
   return (
     <div className="space-y-4">
       {subTab === "dashboard" && <EvmDashboard projectId={projectId} />}
-      {subTab === "scurve"    && <CostScurve   projectId={projectId} />}
+      {subTab === "scurve"    && <ProjectScurveCard projectId={projectId} />}
     </div>
   );
 }

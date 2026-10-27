@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { type WbsTaskRecord } from "@/components/project/wbs/wbs-types";
 import { type ProgressSnapshotRow } from "@/lib/planning/schedule-service";
+import { evmFrom, scurveMetrics, scurveTrusted } from "@/lib/project-scurve";
+import { getProjectScurve } from "@/lib/project-scurve-service";
 
 export interface EvmMetrics {
   bac: number;
@@ -21,7 +23,9 @@ export interface ProjectCostAnalytics {
   projectCode: string | null;
   projectName: string;
   projectStatus: string;
+  /** BAC when the project has a trusted baseline, else the BOQ total. */
   budget: number;
+  boqTotal: number;
   actual: number;
   progress: number;
   tasks: number;
@@ -37,24 +41,6 @@ interface ProjectRow {
   /** Completion Plan 2.7 — Planned Value is anchored on this, not wall-clock time, so EVM matches the as-of date IPC claims use. */
   data_date: string | null;
 }
-
-interface BoqItemRow {
-  id: string;
-  project_id: string;
-  wbs_node_id: string | null;
-  total_amount: number | string | null;
-}
-
-interface CostTransactionRow {
-  id: string;
-  project_id: string;
-  boq_item_id: string | null;
-  wbs_node_id: string | null;
-  total_cost: number | string | null;
-  cost_date: string | null;
-}
-
-const dayMs = 86_400_000;
 
 export function toNumber(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0);
@@ -106,84 +92,61 @@ export function calculateEvmFromTasks(tasks: WbsTaskRecord[], nowMs = Date.now()
   return completeEvm({ bac, ev, pv, ac });
 }
 
+/** The shared EVM formulas (lib/project-scurve.ts), so every screen computes CPI, SPI, EAC... the same way. */
 export function completeEvm(input: { bac: number; ev: number; pv: number; ac: number }): EvmMetrics {
-  const { bac, ev, pv, ac } = input;
-  const cpi = ac > 0 ? ev / ac : null;
-  const spi = pv > 0 ? ev / pv : null;
-  const cv = ev - ac;
-  const sv = ev - pv;
-  const eac = cpi && cpi > 0 ? bac / cpi : null;
-  const vac = eac != null ? bac - eac : null;
-  const remainingBudget = bac - ev;
-  const remainingCost = bac - ac;
-  const tcpi = remainingCost > 0 ? remainingBudget / remainingCost : null;
-  return { bac, ev, pv, ac, cpi, spi, cv, sv, eac, vac, tcpi };
+  const { etc: _etc, ...m } = evmFrom(input);
+  void _etc;
+  return m;
 }
 
+/**
+ * Cost and EVM per project, from the project S-curve RPC (doc 33): BAC and PV from the active baseline's frozen cost
+ * spread over working days, EV from budget x progress, AC from QS cost records other than purchase orders, all at
+ * the project's data date. `budget` stays the BOQ total and `actual` the actual cost.
+ */
 export async function getProjectCostAnalytics(projectId?: string): Promise<ProjectCostAnalytics[]> {
   const supabase = createClient();
-  const [projectsRes, tasksRes, boqRes, txRes] = await Promise.all([
+  const [projectsRes, tasksRes] = await Promise.all([
     supabase.from("projects").select("id, project_code, project_name, project_status, data_date").order("project_name"),
     (projectId
-      ? supabase.from("wbs_tasks").select("*").eq("project_id", projectId)
-      : supabase.from("wbs_tasks").select("*")),
-    (projectId
-      ? supabase.from("qs_boq_items").select("id, project_id, wbs_node_id, total_amount").eq("project_id", projectId)
-      : supabase.from("qs_boq_items").select("id, project_id, wbs_node_id, total_amount")),
-    (projectId
-      ? supabase.from("qs_cost_transactions").select("id, project_id, boq_item_id, wbs_node_id, total_cost, cost_date").eq("project_id", projectId)
-      : supabase.from("qs_cost_transactions").select("id, project_id, boq_item_id, wbs_node_id, total_cost, cost_date")),
+      ? supabase.from("wbs_tasks").select("project_id, delay_status").eq("project_id", projectId)
+      : supabase.from("wbs_tasks").select("project_id, delay_status")),
   ]);
-
   if (projectsRes.error) throw new Error(projectsRes.error.message);
   if (tasksRes.error) throw new Error(tasksRes.error.message);
-  if (boqRes.error) throw new Error(boqRes.error.message);
-  if (txRes.error) throw new Error(txRes.error.message);
 
   const projects = ((projectsRes.data ?? []) as ProjectRow[])
     .filter((project) => !projectId || project.id === projectId);
-  const tasks = (tasksRes.data ?? []) as WbsTaskRecord[];
-  const boqItems = (boqRes.data ?? []) as BoqItemRow[];
-  const transactions = (txRes.data ?? []) as CostTransactionRow[];
+  const tasks = (tasksRes.data ?? []) as { project_id: string; delay_status: string | null }[];
+  // one failing project must not empty the portfolio screens
+  const curves = await Promise.allSettled(projects.map((p) => getProjectScurve(supabase, p.id, "month")));
 
-  return projects.map((project) => {
+  return projects.map((project, i) => {
+    const res = curves[i];
     const projectTasks = tasks.filter((task) => task.project_id === project.id);
-    const projectBoq = boqItems.filter((item) => item.project_id === project.id);
-    const projectTx = transactions.filter((tx) => tx.project_id === project.id);
-    const budget = projectBoq.reduce((sum, item) => sum + toNumber(item.total_amount), 0);
-    const actual = projectTx.reduce((sum, tx) => sum + toNumber(tx.total_cost), 0);
-    const taskBudget = projectTasks.reduce((sum, task) => sum + toNumber(task.budget_cost), 0);
-    const weightedProgress = taskBudget > 0
-      ? projectTasks.reduce((sum, task) => sum + toNumber(task.budget_cost) * ((task.progress ?? 0) / 100), 0) / taskBudget * 100
-      : average(projectTasks.map((task) => task.progress ?? 0));
-
-    // Anchor Planned Value on the project's schedule data date (falls back to
-    // now if unset) so EVM reads as-of the same date Planning's progress
-    // snapshots and IPC claims use — not today's wall-clock time.
-    const dataDateMs = project.data_date ? new Date(project.data_date).getTime() : Date.now();
-    const nowMs = Number.isFinite(dataDateMs) ? dataDateMs : Date.now();
-
-    const taskEvm = calculateEvmFromTasks(projectTasks, nowMs);
-    const evm = budget > 0
-      ? completeEvm({
-          bac: budget,
-          ev: budget * (weightedProgress / 100),
-          pv: taskEvm?.pv ?? getTimeLinearPlannedValue(projectTasks, budget, nowMs),
-          ac: actual,
-        })
-      : taskEvm;
-
-    return {
+    const base = {
       projectId: project.id,
       projectCode: project.project_code,
       projectName: project.project_name,
       projectStatus: project.project_status ?? "active",
-      budget,
-      actual,
-      progress: weightedProgress,
       tasks: projectTasks.length,
       delayedTasks: projectTasks.filter((task) => task.delay_status === "delayed" || task.delay_status === "blocked").length,
-      evm,
+    };
+    if (res.status === "rejected") return { ...base, budget: 0, boqTotal: 0, actual: 0, progress: 0, evm: null };
+    const curve = res.value;
+    const m = scurveMetrics(curve);
+    const budgetTotal = toNumber(curve.meta.budget_total);
+    const boqTotal = toNumber(curve.meta.boq_total);
+    // EVM only when PV, EV and BAC share one basis (the baseline carries the whole budget)
+    const trusted = m.bac > 0 && scurveTrusted(curve);
+    const evTotal = toNumber(curve.at_data_date.ev_total ?? curve.at_data_date.ev);
+    return {
+      ...base,
+      budget: trusted ? m.bac : boqTotal,
+      boqTotal,
+      actual: m.ac,
+      progress: budgetTotal > 0 ? (evTotal / budgetTotal) * 100 : 0,
+      evm: trusted ? completeEvm({ bac: m.bac, ev: m.ev, pv: m.pv, ac: m.ac }) : null,
     };
   });
 }
@@ -221,25 +184,4 @@ export async function getWbsNodeCostBreakdown(projectId: string, wbsNodeId: stri
     boqItems: boqRes.data ?? [],
     transactions: (txRes.data ?? []).filter((tx) => tx.wbs_node_id === wbsNodeId || (tx.boq_item_id && boqIds.has(tx.boq_item_id))),
   };
-}
-
-function getTimeLinearPlannedValue(tasks: WbsTaskRecord[], fallbackBudget: number, now = Date.now()): number {
-  const baselined = tasks.filter((task) => task.baseline_start_date && task.baseline_finish_date);
-  if (baselined.length === 0) return 0;
-  let plannedWeight = 0;
-
-  for (const task of baselined) {
-    const start = new Date(task.baseline_start_date!).getTime();
-    const finish = new Date(task.baseline_finish_date!).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(finish)) continue;
-    if (now >= finish) plannedWeight += 1;
-    else if (now > start && finish > start) plannedWeight += (now - start) / Math.max(dayMs, finish - start);
-  }
-
-  return fallbackBudget * (plannedWeight / baselined.length);
-}
-
-function average(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }

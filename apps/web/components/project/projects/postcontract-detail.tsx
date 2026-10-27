@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/project/projects/project-types";
 import { ProjectOverview } from "@/components/project/projects/overview/project-overview";
 import { ClaimsTab, PaymentsTab, VariationsTab } from "@/components/project/projects/overview/commercial";
+import { ProjectScurveCard } from "@/components/project/scurve/project-scurve-card";
 import { POSTCONTRACT_TABS, type PostcontractTabId } from "@/lib/project/projects/project-tabs";
 import { ProjectSettings } from "@/components/project/projects/settings/project-settings";
 import { getContractSnapshot, type ContractSnapshot } from "@/lib/qs/public";
@@ -342,6 +343,9 @@ export function PostcontractDetail({ project, onBack, onUpdate, tab, onTabChange
 
       case "payments":
         return <PaymentsTab project={project} />;
+
+      case "scurve":
+        return <ProjectScurveCard projectId={project.id} />;
 
       default:
         return null;

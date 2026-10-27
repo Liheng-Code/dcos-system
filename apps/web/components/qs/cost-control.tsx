@@ -7,9 +7,7 @@ import {
   Activity, BadgeCheck, BarChart3, CircleDollarSign,
   Loader2, RefreshCw, TrendingUp,
 } from "lucide-react";
-import {
-  CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from "recharts";
+import { ProjectScurveCard } from "@/components/project/scurve/project-scurve-card";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BudgetView } from "@/components/qs/budget-view";
@@ -17,8 +15,8 @@ import { BudgetRevisions } from "@/components/qs/budget-revisions";
 import { CostEntry } from "@/components/qs/cost-entry";
 import { CostPerM2Dashboard } from "@/components/qs/cost-per-m2-dashboard";
 import {
-  getBudgetSummary, getCostTransactions, getProgressClaims, getVariationOrders,
-  type BudgetSummary, type QsCostTransaction, type QsProgressClaim, type QsVariationOrder,
+  getBudgetSummary, getProgressClaims, getVariationOrders,
+  type BudgetSummary, type QsProgressClaim, type QsVariationOrder,
 } from "@/lib/qs/qs-service";
 import { cn } from "@/lib/utils";
 
@@ -68,7 +66,6 @@ export function MetricCard({ label, value, detail, icon: Icon, tone = "slate" }:
 
 export function CostDashboard({ projectId, projectName }: Props) {
   const [summary, setSummary] = useState<BudgetSummary | null>(null);
-  const [transactions, setTransactions] = useState<QsCostTransaction[]>([]);
   const [variations, setVariations] = useState<QsVariationOrder[]>([]);
   const [claims, setClaims] = useState<QsProgressClaim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,42 +73,16 @@ export function CostDashboard({ projectId, projectName }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [budget, costs, vos, progressClaims] = await Promise.all([
-        getBudgetSummary(projectId), getCostTransactions(projectId), getVariationOrders(projectId), getProgressClaims(projectId),
+      const [budget, vos, progressClaims] = await Promise.all([
+        getBudgetSummary(projectId), getVariationOrders(projectId), getProgressClaims(projectId),
       ]);
-      setSummary(budget); setTransactions(costs); setVariations(vos); setClaims(progressClaims);
+      setSummary(budget); setVariations(vos); setClaims(progressClaims);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load cost control data");
     } finally { setLoading(false); }
   }, [projectId]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
-
-  const curve = useMemo(() => {
-    const dated = transactions.filter((item) => item.cost_date).map((item) => ({ date: new Date(item.cost_date), amount: Number(item.total_cost) }));
-    const certified = claims.filter((item) => item.certified_at || item.period_end).map((item) => ({
-      date: new Date(item.certified_at ?? item.period_end), amount: Number(item.certified_amount ?? item.current_payment_due),
-    }));
-    const allDates = [...dated, ...certified].map((item) => item.date.getTime()).filter(Number.isFinite);
-    const start = allDates.length ? new Date(Math.min(...allDates)) : new Date();
-    const months = Array.from({ length: 8 }, (_, index) => new Date(start.getFullYear(), start.getMonth() + index, 1));
-    const budget = summary?.totalBudget ?? 0;
-    const totalCertified = certified.reduce((sum, item) => sum + item.amount, 0);
-    const totalCost = dated.reduce((sum, item) => sum + item.amount, 0);
-    return months.map((month, index) => {
-      const cutoff = new Date(month.getFullYear(), month.getMonth() + 1, 0).getTime();
-      const cost = dated.filter((item) => item.date.getTime() <= cutoff).reduce((sum, item) => sum + item.amount, 0);
-      const revenue = certified.filter((item) => item.date.getTime() <= cutoff).reduce((sum, item) => sum + item.amount, 0);
-      // A smooth baseline gives a useful planned S-curve even before a detailed schedule baseline is imported.
-      const t = (index + 1) / months.length;
-      const planned = Math.min(100, Math.round((3 * t * t - 2 * t * t * t) * 100));
-      return {
-        month: new Intl.DateTimeFormat("en-US", { month: "short" }).format(month), planned,
-        certified: totalCertified > 0 ? Math.min(100, Math.round((revenue / totalCertified) * 100)) : null,
-        spent: totalCost > 0 ? Math.min(100, Math.round((cost / Math.max(budget, totalCost)) * 100)) : null,
-      };
-    });
-  }, [claims, summary?.totalBudget, transactions]);
 
   const utilization = useMemo(() => (summary?.sections ?? []).slice(0, 5).map((section) => ({
     name: section.title, budget: section.budget, committed: section.committed,
@@ -152,24 +123,8 @@ export function CostDashboard({ projectId, projectName }: Props) {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-600" />
-          <div className="mb-4 flex items-center justify-between"><h3 className="text-xs font-semibold text-foreground">Project Cash Flow Cumulative S-Curve</h3><span className="text-[11px] text-muted-foreground">CUMULATIVE (%)</span></div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={curve} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#e8edf3" />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value) => value == null ? "No data" : `${value}%`} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }} />
-                <Line type="monotone" dataKey="planned" name="Planned Value S-Curve" stroke="#10b981" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="certified" name="Actual Value Certified" stroke="#3b82f6" strokeWidth={2.5} dot={false} connectNulls />
-                <Line type="monotone" dataKey="spent" name="Actual Cost Spent" stroke="#f59e0b" strokeWidth={2.5} dot={false} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+        {/* The real project S-curve (doc 33): cost-loaded baseline vs earned, actual and certified. */}
+        <ProjectScurveCard projectId={projectId} compact />
         <section className="relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
           <div className="mb-4 flex items-center justify-between"><h3 className="text-xs font-semibold text-foreground">WBS Budget Utilization Profile</h3><BarChart3 className="h-4 w-4 text-muted-foreground" /></div>

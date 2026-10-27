@@ -230,7 +230,8 @@ function SourcePill({
 
 // ── Page component ─────────────────────────────────────────────────────────────
 
-export function WbsScurveChart() {
+/** `title`: the Planning S-Curve page shows this chart under the project S-curve as "Compare baselines". */
+export function WbsScurveChart({ title = "S-Curve & EVM" }: { title?: string } = {}) {
   const { selectedProjectId } = useProject();
   const [series, setSeries] = useState<ScurveSeries | null>(null);
   const [mode, setMode] = useState<"pct" | "cost">("pct");
@@ -469,7 +470,7 @@ export function WbsScurveChart() {
             <TrendingUp className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">S-Curve &amp; EVM</h1>
+            <h1 className="text-xl font-semibold">{title}</h1>
             <p className="text-sm text-muted-foreground">
               {series
                 ? `${series.meta.baselined} of ${series.meta.total_tasks} tasks baselined · ${series.actual.length} snapshot${series.actual.length !== 1 ? "s" : ""}`
