@@ -203,7 +203,11 @@ export function DrawingViewer({
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [hoverSnap, setHoverSnap] = useState<Snap | null>(null);
   /** Grip being dragged on a selected shape, and the shape's live points while dragging. */
-  const gripDrag = useRef<{ shapeId: string; grip: Grip; start: Pt[]; measureType: string; objects: SnapIndex } | null>(null);
+  const gripDrag = useRef<{
+    shapeId: string; grip: Grip; start: Pt[]; measureType: string; objects: SnapIndex;
+    /** Screen position of the press that picked the grip; a release far from it ends a drag. */
+    pressedAt: { x: number; y: number } | null;
+  } | null>(null);
   const [editPreview, setEditPreview] = useState<{ shapeId: string; points: Pt[]; grip?: Grip } | null>(null);
   /** Cross-hair position in viewport pixels (follows the snapped point while over the sheet). */
   const [screenCursor, setScreenCursor] = useState<{ x: number; y: number } | null>(null);
@@ -318,7 +322,11 @@ export function DrawingViewer({
   }, [savedMeasurements, currentPage]);
 
   /** Applies PDF snap (unless Alt is held) and ortho (toggle or Shift) to a pointer position. */
-  const resolve = (e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }, objects: SnapIndex | null = objectIndex): { pt: Pt; snap: Snap | null } => {
+  const resolve = (
+    e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean },
+    objects: SnapIndex | null = objectIndex,
+    anchorOverride?: Pt,
+  ): { pt: Pt; snap: Snap | null } => {
     const raw = toPage(e);
     let snap: Snap | null = null;
     let pt = raw;
@@ -326,8 +334,8 @@ export function DrawingViewer({
       snap = bestSnap([snapIndexRef.current, objects], raw, SNAP_PX / view.zoom);
       if (snap) pt = snap.point;
     }
-    const anchor = draftPts[draftPts.length - 1];
-    if ((orthoOn || e.shiftKey) && anchor && tool !== "count" && tool !== "point" && !boxMode) {
+    const anchor = anchorOverride ?? draftPts[draftPts.length - 1];
+    if ((orthoOn || e.shiftKey) && anchor && (anchorOverride || (tool !== "count" && tool !== "point" && !boxMode))) {
       const o = orthogonal(anchor, pt);
       if (o.x !== pt.x || o.y !== pt.y) snap = null;
       pt = o;
@@ -361,8 +369,32 @@ export function DrawingViewer({
     cancelDraft();
   }, [draftPts, tool, emit]);
 
+  /** Places the hot grip at the pointer (snapped) and saves the shape. */
+  const placeGrip = (e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }) => {
+    const g = gripDrag.current;
+    if (!g) return;
+    gripDrag.current = null;
+    const { pt } = resolve(e, g.objects, g.grip.at);
+    const points = moveGrip(g.start, g.grip, pt, g.measureType);
+    const moved = points.some((q, i) => q.x !== g.start[i].x || q.y !== g.start[i].y);
+    setEditPreview(moved ? { shapeId: g.shapeId, points } : null);
+    setHoverSnap(null);
+    if (moved) onEditShape?.(g.shapeId, points);
+  };
+  const cancelGrip = () => {
+    gripDrag.current = null;
+    setEditPreview(null);
+    setHoverSnap(null);
+  };
+
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.focus();
+    if (gripDrag.current) {
+      e.preventDefault();
+      if (e.button === 2) cancelGrip();
+      else if (e.button === 0) placeGrip(e);
+      return;
+    }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
     if (tool === "pan" || readOnly || e.button === 1) {
       e.preventDefault();
@@ -412,7 +444,7 @@ export function DrawingViewer({
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const g = gripDrag.current;
     if (g) {
-      const { pt, snap } = resolve(e, g.objects);
+      const { pt, snap } = resolve(e, g.objects, g.grip.at);
       setEditPreview({ shapeId: g.shapeId, points: moveGrip(g.start, g.grip, pt, g.measureType), grip: g.grip });
       setCursor(pt);
       setHoverSnap(snap);
@@ -434,6 +466,7 @@ export function DrawingViewer({
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); finish(); }
+    else if (e.key === "Escape" && gripDrag.current) cancelGrip();
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
       if (draftPts.length > 0) cancelDraft();
@@ -470,7 +503,8 @@ export function DrawingViewer({
   }
   const tools = readOnly ? [] : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
-  const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
+  const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
+    : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : activeTool?.hint ?? "No tool: click a shape to select · drag to move · wheel to zoom";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
@@ -620,12 +654,9 @@ export function DrawingViewer({
                 onPointerUp={(e) => {
                   const g = gripDrag.current;
                   if (g) {
-                    gripDrag.current = null;
-                    const moved = editPreview && editPreview.shapeId === g.shapeId
-                      && editPreview.points.some((q, i) => q.x !== g.start[i].x || q.y !== g.start[i].y);
-                    if (moved) onEditShape?.(g.shapeId, editPreview!.points);
-                    else setEditPreview(null);
-                    setHoverSnap(null);
+                    const press = g.pressedAt;
+                    g.pressedAt = null;
+                    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) placeGrip(e);
                     return;
                   }
                   dragging.current = false;
@@ -685,13 +716,17 @@ export function DrawingViewer({
                       const size = (g.kind === "vertex" ? 10 : 6) / view.zoom;
                       const len = 16 / view.zoom;
                       const start = (ev: React.PointerEvent) => {
-                        if (!canEdit || ev.button !== 0) return;
+                        // While a grip is hot, let the sheet handle the click (it places the grip).
+                        if (!canEdit || ev.button !== 0 || gripDrag.current) return;
                         ev.stopPropagation();
                         ev.preventDefault();
-                        svgRef.current?.setPointerCapture(ev.pointerId);
+                        svgRef.current?.focus();
                         // Snap to other shapes and the PDF, never to the shape being edited.
                         const others = (savedMeasurements ?? []).filter((x) => (x.page_no ?? 1) === currentPage && x.id !== m.id);
-                        gripDrag.current = { shapeId: m.id, grip: g, start: m.points, measureType: m.measure_type, objects: new SnapIndex(shapeSegments(others)) };
+                        gripDrag.current = {
+                          shapeId: m.id, grip: g, start: m.points, measureType: m.measure_type,
+                          objects: new SnapIndex(shapeSegments(others)), pressedAt: { x: ev.clientX, y: ev.clientY },
+                        };
                         setEditPreview({ shapeId: m.id, points: m.points, grip: g });
                       };
                       const common = {
@@ -734,6 +769,10 @@ export function DrawingViewer({
                 ))}
 
                 {/* Snap marker (the cross-hair is drawn across the whole viewport below) */}
+                {editPreview?.grip && cursor && (
+                  <line x1={editPreview.grip.at.x} y1={editPreview.grip.at.y} x2={cursor.x} y2={cursor.y}
+                    stroke="#fbbf24" strokeWidth={1} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                )}
                 {cursor && (measuring || !!editPreview) && hoverSnap && (
                   <g pointerEvents="none">
                     {hoverSnap?.kind === "endpoint" && (
@@ -754,6 +793,19 @@ export function DrawingViewer({
             )}
           </div>
         </div>
+        {!readOnly && screenCursor && !panelTool && (measuring || !!editPreview) && cursor && (() => {
+          const base = editPreview?.grip?.at ?? draftPts[draftPts.length - 1] ?? null;
+          let text: string | null = hoverSnap ? SNAP_LABEL[hoverSnap.kind] : null;
+          if (!hoverSnap && orthoOn && base) {
+            const d = distance(base, cursor);
+            const ang = (((Math.atan2(-(cursor.y - base.y), cursor.x - base.x) * 180) / Math.PI) + 360) % 360;
+            text = `Ortho: ${cal ? `${fmt(lengthInMetres(d, cal), 3)} m` : `${fmt(d, 1)} u`} < ${Math.round(ang)}°`;
+          }
+          return text ? (
+            <div className="pointer-events-none absolute z-30 rounded-sm bg-neutral-700/90 px-1.5 py-0.5 text-[11px] text-white"
+              style={{ left: screenCursor.x + 16, top: screenCursor.y + 14 }}>{text}</div>
+          ) : null;
+        })()}
         {!readOnly && screenCursor && !panelTool && (
           <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
             <div className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
