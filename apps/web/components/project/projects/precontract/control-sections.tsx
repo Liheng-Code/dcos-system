@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle, Circle, Loader2, Lock, Plus, Send, Trophy, XCircle } from "lucide-react";
+import { CheckCircle, Circle, GanttChartSquare, Loader2, Lock, Plus, Send, Trophy, XCircle } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -261,6 +262,37 @@ export function CompilationSection({ ctx }: { ctx: PrecontractCtx }) {
 
 // ─── 14 Bid Approval ─────────────────────────────────────────────────────────
 
+/**
+ * After management approval: offer the BOQ-driven tender programme (doc 24 phase 4). Opens Planning › Generate from
+ * BOQ on the tender BOQ, where readiness and the preview come before anything is written.
+ */
+function TenderProgrammeCta({ projectId, tenderId }: { projectId: string; tenderId: string }) {
+  const [counts, setCounts] = useState<{ mapped: number; total: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      db().from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId),
+      db().from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId).not("dwl_work_item_id", "is", null),
+    ]).then(([all, mapped]) => {
+      if (!cancelled) setCounts({ total: all.count ?? 0, mapped: mapped.count ?? 0 });
+    });
+    return () => { cancelled = true; };
+  }, [tenderId]);
+  if (!counts || counts.total === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+      <span>
+        <strong className="font-medium">Tender programme from the BOQ.</strong>{" "}
+        {counts.mapped} of {counts.total} tender BOQ lines are mapped to BOQ items. Generate activities, durations, cost loading
+        and manpower from them. You review the preview before anything is saved.
+      </span>
+      <Button size="sm" variant="outline" render={<Link href={`/dashboard/planning/boq-programme?project=${projectId}&source=tender`} />}>
+        <GanttChartSquare className="h-3.5 w-3.5 mr-1.5" /> Generate tender programme from BOQ
+      </Button>
+    </div>
+  );
+}
+
 export function BidApprovalSection({ ctx }: { ctx: PrecontractCtx }) {
   const tenderId = ctx.tender?.id;
   const { details } = ctx;
@@ -383,6 +415,7 @@ export function BidApprovalSection({ ctx }: { ctx: PrecontractCtx }) {
               Approved bid price <strong>{money(details.bid_price)}</strong> is locked. Changes now need an addendum (controlled re-open).
             </p>
           )}
+          {approved && <TenderProgrammeCta projectId={ctx.project.id} tenderId={tenderId} />}
         </Card>
       )}
 

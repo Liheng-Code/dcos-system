@@ -129,6 +129,14 @@ The planner reviews it and commits.
 - **Award:** the award dialog (`components/project/projects/award-conversion-dialog.tsx`) gets a step "Refresh programme from contract BOQ" before `setBaseline`. It re-runs the generator in diff mode against the contract BOQ (`qs_boq_items`, which now carries the mapping), so the baseline includes BOQ-based quantities, cost and hours.
 - No DB trigger writes the schedule automatically; it is always preview → commit, as decided.
 
+**Status (2026-10-27): built, without migrations.**
+- **Approval:** once the bid is approved, Bid Approval (`precontract/control-sections.tsx`, `TenderProgrammeCta`) shows how many tender lines are mapped. It links to `/dashboard/planning/boq-programme?project=<id>&source=tender`, and the page now reads `project` and `source` from the URL.
+- **Award:** `award-conversion-dialog.tsx` has the option "Refresh programme from contract BOQ". It is shown when tender lines are mapped and the BOQ is carried over.
+  - When the dialog opens, it runs a read-only preview on the tender BOQ: activities added, updated and kept, plus budget.
+  - On award, it runs after the BOQ carry-over and before the baseline: `previewBoqProgramme` (contract) → `commitBoqProgramme`, which uses the default scheduling rule.
+  - If that step fails, it lands in the dialog's "not carried forward" list. For example, it fails when the person awarding has no Planning schedule edit permission or isn't a project member.
+- **Public API:** `lib/planning/boq-programme/boq-programme-service.ts` was added to the Planning `PUBLIC_API`.
+
 ## Modules and execution
 - This is cross-module (QS, Planning, and the core award dialog under `components/project`), so it runs from the main window.
 - Phases ship in order: each one is usable on its own, and Phase 1 data quality decides how good Phase 2 output is.

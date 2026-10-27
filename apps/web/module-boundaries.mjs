@@ -141,6 +141,8 @@ export const PUBLIC_API = {
     "lib/planning/schedule-engine.ts",
     // Whole-project scheduling from a start date (WBS builder "Schedule").
     "lib/planning/project-schedule.ts",
+    // BOQ-driven programme (doc 24): preview + commit, run by the award dialog before the contract baseline.
+    "lib/planning/boq-programme/boq-programme-service.ts",
   ],
   procurement: [
     "lib/procurement/procurement-nav.ts",

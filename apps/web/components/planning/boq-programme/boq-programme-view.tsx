@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -55,8 +55,17 @@ function ProgressRow({ label, pct, lines, total }: { label: string; pct: number;
 export function BoqProgrammeView() {
   const db = useMemo(() => createClient(), []);
   const router = useRouter();
-  const { selectedProjectId, selectedProject, loading: projectLoading } = useProject();
-  const [source, setSource] = useState<ReadinessSource | null>(null);
+  const { selectedProjectId, selectedProject, setSelectedProjectId, loading: projectLoading } = useProject();
+  // Deep link from the QS bid approval / award: ?project=<id>&source=tender|contract
+  const params = useSearchParams();
+  const linkedProject = params.get("project");
+  const linkedSource = params.get("source");
+  useEffect(() => {
+    if (linkedProject && linkedProject !== selectedProjectId) setSelectedProjectId(linkedProject);
+    // only when the link changes, so the user can still switch project afterwards
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedProject]);
+  const [source, setSource] = useState<ReadinessSource | null>(linkedSource === "tender" || linkedSource === "contract" ? linkedSource : null);
   const effectiveSource: ReadinessSource = source ?? defaultReadinessSource(selectedProject?.project_status);
   const [state, setState] = useState<{ key: string; data: ProjectReadiness | null; error: string | null } | null>(null);
   const [tick, setTick] = useState(0);

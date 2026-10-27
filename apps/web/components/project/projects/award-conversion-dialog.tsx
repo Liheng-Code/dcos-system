@@ -17,6 +17,8 @@ import {
   createContractSnapshot,
 } from "@/lib/qs/public";
 import { activateBaseline, listBaselines, setBaseline } from "@/lib/planning/baseline-service";
+import { commitBoqProgramme, previewBoqProgramme } from "@/lib/planning/boq-programme/boq-programme-service";
+import { createClient } from "@/lib/supabase/client";
 import { COMMERCIAL_TOPICS, setTenderStage, type TenderStage } from "@/lib/qs/tender-lifecycle";
 
 // Award → Post-Contract, in place (master flow step 16: "Do not create a completely new project").
@@ -41,6 +43,16 @@ interface Counts {
   risks: number;
   bidSummaries: number;
   tasks: number;
+  /** Tender BOQ lines mapped to a BOQ item (dwl_work_item_id): the ones that can drive the programme. */
+  boqMapped: number;
+}
+
+/** What the tender BOQ would do to the programme now (the contract BOQ is the same lines once carried over). */
+interface ProgrammeOutlook {
+  create: number;
+  update: number;
+  kept: number;
+  value: number;
 }
 
 export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onClose, onConvert }: AwardConversionDialogProps) {
@@ -52,6 +64,8 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
   const [copyPriceList, setCopyPriceList] = useState(true);
   const [copyRisks, setCopyRisks] = useState(true);
   const [baselineProgramme, setBaselineProgramme] = useState(true);
+  const [refreshProgramme, setRefreshProgramme] = useState(true);
+  const [outlook, setOutlook] = useState<ProgrammeOutlook | "error" | null>(null);
   const [createContract, setCreateContract] = useState(true);
   const [converting, setConverting] = useState(false);
   const [log, setLog] = useState<string[]>([]);
@@ -81,7 +95,8 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
       countTenderRiskItemsByTenderId(tenderId),
       countTenderBidSummariesByTenderId(tenderId),
       countWbsTasksByProjectId(project.id),
-    ]).then(([boq, pre, pl, risk, bs, tasks]) => {
+      createClient().from("tender_boq_items").select("id", { count: "exact", head: true }).eq("tender_id", tenderId).not("dwl_work_item_id", "is", null),
+    ]).then(([boq, pre, pl, risk, bs, tasks, mapped]) => {
       if (cancelled) return;
       setCounts({
         boqItems: boq.count ?? 0,
@@ -90,7 +105,18 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
         risks: risk.count ?? 0,
         bidSummaries: bs.count ?? 0,
         tasks: tasks.count ?? 0,
+        boqMapped: mapped.count ?? 0,
       });
+      // Preview first: show what the BOQ would do to the programme before the user awards (nothing is written).
+      if ((mapped.count ?? 0) > 0) {
+        previewBoqProgramme(createClient(), project.id, { source: "tender" })
+          .then((p) => {
+            if (cancelled) return;
+            const c = p.totals.counts;
+            setOutlook({ create: c.create, update: c.update + c.unchanged, kept: c.skip_started + c.skip_locked, value: p.totals.valueDriven });
+          })
+          .catch(() => { if (!cancelled) setOutlook("error"); });
+      }
     });
     return () => { cancelled = true; };
   }, [project.id, tenderId]);
@@ -185,7 +211,26 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
         await createHeadContract();
         add(`Created head contract ${contractNo.trim()} (draft) with the commercial terms`);
       }],
-      [baselineProgramme && c.tasks > 0, "Programme baseline", async () => {
+      // Before the baseline, so it captures BOQ-based quantities, budgets and hours (doc 24 phase 4). Needs the
+      // contract BOQ, so it only runs when the BOQ was carried over. Started and locked activities are never changed.
+      [refreshProgramme && copyBoq && carried.boqItemCount > 0 && c.boqMapped > 0, "Programme from contract BOQ", async () => {
+        const db = createClient();
+        const preview = await previewBoqProgramme(db, project.id, { source: "contract" });
+        if (preview.tasks.length === 0) {
+          add("Contract BOQ gave no activities to refresh");
+          return;
+        }
+        const r = await commitBoqProgramme(db, project.id, preview);
+        const kept = r.commit.skippedStarted + r.commit.skippedLocked;
+        add(`Programme refreshed from the contract BOQ: ${r.commit.created} activities added, ${r.commit.updated} updated${kept ? `, ${kept} started or locked kept as they were` : ""}`);
+        add(r.schedule.ran ? `Dates calculated: ${r.schedule.start} to ${r.schedule.finish}` : r.schedule.note);
+      }],
+      [baselineProgramme && (c.tasks > 0 || (refreshProgramme && c.boqMapped > 0)), "Programme baseline", async () => {
+        // A project with no programme at the start only has one if the BOQ refresh above created it.
+        if (c.tasks === 0 && ((await countWbsTasksByProjectId(project.id)).count ?? 0) === 0) {
+          add("No programme activities to baseline");
+          return;
+        }
         const existing = await listBaselines(project.id);
         const n = existing.length ? Math.max(...existing.map((b) => b.baseline_number)) + 1 : 0;
         if (n > 10) throw new Error("No free baseline slot (0–10)");
@@ -267,7 +312,12 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
                   "Price list", `${counts.priceList} rates`)}
                 {counts.risks > 0 && option(copyRisks, setCopyRisks, <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />,
                   "Risk register", `${counts.risks} risks & opportunities`)}
-                {counts.tasks > 0 && option(baselineProgramme, setBaselineProgramme, <GanttChartSquare className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />,
+                {counts.boqMapped > 0 && copyBoq && option(refreshProgramme, setRefreshProgramme, <GanttChartSquare className="h-4 w-4 mt-0.5 shrink-0 text-indigo-600" />,
+                  "Refresh programme from contract BOQ",
+                  outlook === null ? `${counts.boqMapped} mapped BOQ lines · checking what changes…`
+                    : outlook === "error" ? `${counts.boqMapped} mapped BOQ lines · preview not available, open Planning › Generate from BOQ to check`
+                    : `${outlook.create} activities added, ${outlook.update} updated${outlook.kept ? `, ${outlook.kept} started kept` : ""} · budget ${project.currency ?? "USD"} ${Math.round(outlook.value).toLocaleString()} · before the baseline`)}
+                {(counts.tasks > 0 || (refreshProgramme && copyBoq && counts.boqMapped > 0)) && option(baselineProgramme, setBaselineProgramme, <GanttChartSquare className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />,
                   "Tender programme → contract baseline", `${counts.tasks} activities`)}
                 {option(createContract, setCreateContract, <FileSignature className="h-4 w-4 mt-0.5 shrink-0 text-purple-600" />,
                   "Head contract in the contract register", "Draft, with the commercial review terms")}
