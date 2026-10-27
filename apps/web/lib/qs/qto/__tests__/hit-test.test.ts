@@ -27,4 +27,15 @@ describe("hitTest", () => {
     expect(hitTest([per], { x: 5, y: 5 }, 1)).toBeNull();
     expect(hitTest([per], { x: 10.5, y: 5 }, 1)?.id).toBe("p");
   });
+  it("selects a dimension along its annotation line", () => {
+    const dimension: HitShape = {
+      id: "dimension",
+      itemId: "item-dimension",
+      measureType: "length",
+      points: [],
+      segments: [[{ x: 10, y: 20 }, { x: 90, y: 20 }]],
+    };
+    expect(hitTest([dimension], { x: 50, y: 21 }, 2)?.id).toBe("dimension");
+    expect(hitTest([dimension], { x: 50, y: 30 }, 2)).toBeNull();
+  });
 });

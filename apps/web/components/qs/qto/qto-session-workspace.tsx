@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, Eye, EyeOff, Maximize2, Minimize2, GitBranch, History, ListChecks, Loader2,
+  AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, Eye, EyeOff, Maximize2, Minimize2, GitBranch, History, ListChecks, Loader2, Trash2,
   Plus, Search, Send, ShieldCheck, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +34,8 @@ import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
 import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
 import { DeleteTakeoffDialog } from "@/components/qs/qto/delete-takeoff-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { decodeDimensionPoints } from "@/lib/qs/qto/dimension-geometry";
 import { fmtQty, isAutoRun, measuredRun, volumeOf, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 import { areaInSquareMetres, lengthInMetres, perimeter, polygonArea, polylineLength, type Pt } from "@/lib/qs/qto/geometry";
 
@@ -110,6 +112,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   /** The shape clicked on the drawing (an item can have several); null when picked from the list. */
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteDimension, setConfirmDeleteDimension] = useState(false);
   const [panelW, setPanelW] = usePanelWidths();
   /** Focus mode: the workspace fills the browser window (over the app bar and module tabs). */
   const [focusMode, setFocusMode] = useState(false);
@@ -186,16 +189,20 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   // Delete key: confirm deleting the selected take-off (not while typing or in a dialog).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" || !selectedItemId || confirmDelete) return;
+      if (e.key !== "Delete" || !selectedItemId || confirmDelete || confirmDeleteDimension) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       e.preventDefault();
       if (!version || !isEditable(version.status)) { toast.error("This version is read-only"); return; }
-      setConfirmDelete(true);
+      const selectedMeasurement = (ws?.measurements ?? []).find((measurement) =>
+        measurement.id === selectedShapeId && !!decodeDimensionPoints(measurement.points),
+      );
+      if (selectedMeasurement) setConfirmDeleteDimension(true);
+      else setConfirmDelete(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedItemId, confirmDelete, version]);
+  }, [selectedItemId, selectedShapeId, ws, confirmDelete, confirmDeleteDimension, version]);
 
   const loadWs = useCallback(async (vId: string) => {
     setWsLoading(true);
@@ -266,6 +273,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     return items.filter((i) => [i.qto_no, i.description, i.work_section, i.item_code, i.building, i.level].some((s) => s?.toLowerCase().includes(q)));
   }, [items, search]);
   const selected = items.find((i) => i.id === selectedItemId) ?? null;
+  const selectedDimension = (ws?.measurements ?? []).find((measurement) =>
+    measurement.id === selectedShapeId && !!decodeDimensionPoints(measurement.points),
+  ) ?? null;
   const runsByItem = useMemo(() => {
     const m = new Map<string, NonNullable<VersionWorkspace["runs"]>[number]>();
     for (const r of ws?.runs ?? []) if (!m.has(r.item_id)) m.set(r.item_id, r);
@@ -549,6 +559,11 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
           <VersionStatusBadge status={version.status} />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {editable && selectedDimension && (
+            <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setConfirmDeleteDimension(true)}>
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete dimension
+            </Button>
+          )}
           {editable && (
             <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => void runValidation()} disabled={validating}>
               {validating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ListChecks className="mr-1 h-3.5 w-3.5" />} Validate
@@ -706,8 +721,12 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
               .filter((m) => m.drawing_revision_id === version.drawing_revision_id && !hiddenItems.has(m.qto_item_id))
               .map((m) => {
                 const owner = items.find((i) => i.id === m.qto_item_id);
+                const dimension = decodeDimensionPoints(m.points ?? []);
                 return {
-                  id: m.id, itemId: m.qto_item_id, page_no: m.page_no, measure_type: m.measure_type, points: m.points ?? [],
+                  id: m.id, itemId: m.qto_item_id, page_no: m.page_no, measure_type: m.measure_type,
+                  points: dimension ? m.points.slice(0, 2) : m.points ?? [],
+                  length: m.length,
+                  dimension,
                   highlighted: m.qto_item_id === selectedItemId,
                   color: owner?.display_color ?? null,
                   opacity: owner?.display_opacity !== null && owner?.display_opacity !== undefined ? Number(owner.display_opacity) : null,
@@ -855,6 +874,29 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
           />
         );
       })()}
+      {confirmDeleteDimension && selectedDimension && version && (
+        <Dialog open onOpenChange={(open) => { if (!open) setConfirmDeleteDimension(false); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete this dimension?</DialogTitle>
+              <DialogDescription>
+                This removes only the selected dimension measurement. The take-off item and any other measurements will remain.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDeleteDimension(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={() => void guard(async () => {
+                await deleteMeasurement(selectedDimension.id);
+                await syncMeasuredQuantities(version.id, [selectedDimension.qto_item_id]);
+                setSelectedShapeId(null);
+                setConfirmDeleteDimension(false);
+              }, "Dimension deleted")}>
+                <Trash2 className="mr-1 h-4 w-4" /> Delete dimension
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       {pendingCal && revision && (
         <CalibrationDialog pageUnits={pendingCal.pageUnits} onCancel={() => setPendingCal(null)} onSave={async (known, unit) => {
           await guard(async () => {

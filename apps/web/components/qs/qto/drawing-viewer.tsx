@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import {
-  AreaIcon, CountIcon, LengthIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
+  AreaIcon, CountIcon, DimensionIcon, LengthIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
 } from "@/components/qs/qto/takeoff-icons";
 import {
   TOOL_META, TakeoffStartPanel, type DrawMode, type TakeoffConfig, type TakeoffTarget, type TakeoffTool,
@@ -32,6 +32,13 @@ import {
   polygonArea,
   polylineLength,
 } from "@/lib/qs/qto/geometry";
+import {
+  decodeDimensionPoints,
+  dimensionGeometry,
+  encodeDimensionPoints,
+  type DimensionAnnotation,
+  type DimensionMode,
+} from "@/lib/qs/qto/dimension-geometry";
 import {
   SnapIndex,
   drawingScaleFromCalibration,
@@ -60,7 +67,7 @@ const SHEET_KEY = "dcos.qto.sheet";
 /** Common drawing scales offered as presets (1:N). */
 export const DRAWING_SCALES = [1, 2, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500, 1000, 1250, 2500];
 
-export type ViewerTool = QtoMeasureType | "pan" | "calibrate";
+export type ViewerTool = QtoMeasureType | "pan" | "calibrate" | "dimension";
 
 export interface ActiveCalibration {
   id: string;
@@ -82,6 +89,8 @@ export interface EmittedMeasurement {
   page_no: number;
 }
 
+type DimensionEndpointPair = [Pt, Pt];
+
 export interface SavedShape {
   id: string;
   /** Take-off item the measurement belongs to (clicking the shape selects it). */
@@ -89,6 +98,8 @@ export interface SavedShape {
   page_no: number | null;
   measure_type: string;
   points: Pt[];
+  length?: number | null;
+  dimension?: DimensionAnnotation | null;
   highlighted?: boolean;
   /** Item display colour and fill opacity. */
   color?: string | null;
@@ -126,6 +137,7 @@ const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: (p: { size?: number 
   { key: "calibrate", label: "Scale", icon: ScaleIcon, hint: "Click both ends of a known dimension (snaps to the dimension line)" },
   { key: "area", label: "Area", icon: AreaIcon, hint: "Click the corners, double-click or Enter to close" },
   { key: "length", label: "Linear", icon: LengthIcon, hint: "Click two points" },
+  { key: "dimension", label: "Dimension", icon: DimensionIcon, hint: "Click the first and second extension points, then click to place the dimension" },
   { key: "polyline", label: "Segment", icon: PolylineIcon, hint: "Click points, double-click or Enter to finish" },
   { key: "perimeter", label: "Perimeter", icon: PerimeterIcon, hint: "Click the corners, double-click or Enter to close" },
   { key: "count", label: "Count", icon: CountIcon, hint: "Click each element, Enter to finish" },
@@ -147,6 +159,95 @@ const SNAP_LABEL: Record<Snap["kind"], string> = {
 };
 
 const fmt = (n: number, dp = 3) => n.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: 0 });
+const dimensionLabel = (metres: number) => `${fmt(metres * 1000, 0)} mm`;
+
+function DimensionDrawing({
+  points,
+  annotation,
+  value,
+  color,
+  zoom,
+  darkSheet,
+}: {
+  points: DimensionEndpointPair;
+  annotation: DimensionAnnotation;
+  value: string;
+  color: string;
+  zoom: number;
+  darkSheet: boolean;
+}) {
+  const geometry = dimensionGeometry(points[0], points[1], annotation.location, annotation.mode);
+  const dx = geometry.end.x - geometry.start.x;
+  const dy = geometry.end.y - geometry.start.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return null;
+  const tickSize = 7 / zoom;
+
+  const extension = (anchor: Pt, end: Pt) => {
+    const ex = end.x - anchor.x;
+    const ey = end.y - anchor.y;
+    const extensionLength = Math.hypot(ex, ey);
+    if (extensionLength === 0) return null;
+    const gap = 3 / zoom;
+    const overshoot = tickSize;
+    return {
+      x1: anchor.x + (ex / extensionLength) * gap,
+      y1: anchor.y + (ey / extensionLength) * gap,
+      x2: end.x + (ex / extensionLength) * overshoot,
+      y2: end.y + (ey / extensionLength) * overshoot,
+    };
+  };
+  const firstExtension = extension(points[0], geometry.start);
+  const secondExtension = extension(points[1], geometry.end);
+  const midpoint = { x: (geometry.start.x + geometry.end.x) / 2, y: (geometry.start.y + geometry.end.y) / 2 };
+  const angle = geometry.orientation === "aligned"
+    ? Math.atan2(dy, dx) * 180 / Math.PI
+    : geometry.orientation === "vertical" ? -90 : 0;
+  const normalizedAngle = angle > 90 ? angle - 180 : angle < -90 ? angle + 180 : angle;
+  const textOffset = 12 / zoom;
+  const textPosition = geometry.orientation === "horizontal"
+    ? { x: midpoint.x, y: midpoint.y - textOffset }
+    : geometry.orientation === "vertical"
+      ? { x: midpoint.x - textOffset, y: midpoint.y }
+      : (() => {
+        let nx = -dy / length;
+        let ny = dx / length;
+        if (ny > 0 || (Math.abs(ny) < 0.1 && nx > 0)) {
+          nx = -nx;
+          ny = -ny;
+        }
+        return { x: midpoint.x + nx * textOffset, y: midpoint.y + ny * textOffset };
+      })();
+  const textColor = darkSheet ? "#fff" : "#0f172a";
+
+  return (
+    <g pointerEvents="none">
+      {firstExtension && <line {...firstExtension} stroke={color} strokeWidth={1.8} vectorEffect="non-scaling-stroke" />}
+      {secondExtension && <line {...secondExtension} stroke={color} strokeWidth={1.8} vectorEffect="non-scaling-stroke" />}
+      <line x1={geometry.start.x} y1={geometry.start.y} x2={geometry.end.x} y2={geometry.end.y}
+        stroke={color} strokeWidth={2.4} vectorEffect="non-scaling-stroke" />
+      <path
+        d={`M${geometry.start.x - tickSize},${geometry.start.y + tickSize}L${geometry.start.x + tickSize},${geometry.start.y - tickSize}M${geometry.end.x - tickSize},${geometry.end.y + tickSize}L${geometry.end.x + tickSize},${geometry.end.y - tickSize}`}
+        fill="none"
+        stroke={color}
+        strokeWidth={2.4}
+        vectorEffect="non-scaling-stroke"
+      />
+      <text
+        x={textPosition.x}
+        y={textPosition.y}
+        transform={`rotate(${normalizedAngle} ${textPosition.x} ${textPosition.y})`}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={14 / zoom}
+        fontWeight={600}
+        fill={textColor}
+      >
+        {value}
+      </text>
+    </g>
+  );
+}
 
 export function DrawingViewer({
   url,
@@ -184,6 +285,7 @@ export function DrawingViewer({
   /** Zoom (screen px per page unit) and pan (screen px). */
   const [view, setView] = useState({ zoom: 0.6, x: 0, y: 0 });
   const [tool, setTool] = useState<ViewerTool>("pan");
+  const [dimensionMode, setDimensionMode] = useState<DimensionMode>("linear");
   const [snapOn, setSnapOn] = useState(true);
   const [orthoOn, setOrthoOn] = useState(false);
   // Black sheet (CAD style) by default: the PDF is colour-inverted, so white paper becomes black and
@@ -335,7 +437,8 @@ export function DrawingViewer({
       if (snap) pt = snap.point;
     }
     const anchor = anchorOverride ?? draftPts[draftPts.length - 1];
-    if ((orthoOn || e.shiftKey) && anchor && (anchorOverride || (tool !== "count" && tool !== "point" && !boxMode))) {
+    const placingDimension = tool === "dimension" && draftPts.length >= 2 && !anchorOverride;
+    if ((orthoOn || e.shiftKey) && anchor && !placingDimension && (anchorOverride || (tool !== "count" && tool !== "point" && !boxMode))) {
       const o = orthogonal(anchor, pt);
       if (o.x !== pt.x || o.y !== pt.y) snap = null;
       pt = o;
@@ -361,8 +464,25 @@ export function DrawingViewer({
     }
   }, [onMeasure, calibration, currentPage]);
 
+  const emitDimension = useCallback((points: DimensionEndpointPair, location: Pt) => {
+    if (!onMeasure) return;
+    const geometry = dimensionGeometry(points[0], points[1], location, dimensionMode);
+    if (geometry.measuredPageUnits === 0) return;
+    const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
+    onMeasure({
+      measure_type: "length",
+      points: encodeDimensionPoints(points, { mode: dimensionMode, location }),
+      length: cal ? lengthInMetres(geometry.measuredPageUnits, cal) : null,
+      area: null,
+      count: null,
+      unit: cal ? "m" : null,
+      page_no: currentPage,
+    });
+  }, [onMeasure, dimensionMode, calibration, currentPage]);
+
   const finish = useCallback(() => {
     const pts = draftPts;
+    if (tool === "dimension") return;
     if (tool === "count" && pts.length > 0) emit("count", pts);
     else if ((tool === "polyline") && pts.length >= 2) emit("polyline", pts);
     else if ((tool === "area" || tool === "perimeter") && pts.length >= 3) emit(tool, pts);
@@ -430,6 +550,16 @@ export function DrawingViewer({
       if (draftPts.length === 0) setDraftPts([pt]);
       else {
         emit("length", [draftPts[0], pt]);
+        cancelDraft();
+      }
+      return;
+    }
+    if (tool === "dimension") {
+      if (draftPts.length < 2) {
+        if (draftPts.length === 1 && distance(draftPts[0], pt) === 0) return;
+        setDraftPts((points) => [...points, pt]);
+      } else {
+        emitDimension([draftPts[0], draftPts[1]], pt);
         cancelDraft();
       }
       return;
@@ -505,6 +635,11 @@ export function DrawingViewer({
     else if (!cal) liveText = "Not calibrated — set the scale first for real units";
     else if (tool === "area") liveText = `Area: ${fmt(areaInSquareMetres(polygonArea(live), cal))} m²`;
     else if (tool === "perimeter") liveText = `Perimeter: ${fmt(lengthInMetres(perimeter(live), cal))} m`;
+    else if (tool === "dimension" && draftPts.length >= 2 && cursor) {
+      const dimension = dimensionGeometry(draftPts[0], draftPts[1], cursor, dimensionMode);
+      liveText = `${dimensionMode === "aligned" ? "Aligned" : "Linear"} dimension: ${dimensionLabel(lengthInMetres(dimension.measuredPageUnits, cal))}`;
+    }
+    else if (tool === "dimension") liveText = `Dimension ${dimensionMode}: select the first and second extension points, then place the dimension`;
     else liveText = `Length: ${fmt(lengthInMetres(polylineLength(live), cal))} m`;
   }
   const tools = readOnly ? [] : TOOL_OPTIONS;
@@ -512,9 +647,33 @@ export function DrawingViewer({
   const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
+    : tool === "dimension"
+      ? draftPts.length === 0
+        ? "Click the first extension point"
+        : draftPts.length === 1
+          ? "Click the second extension point"
+          : "Move the cursor to position the dimension, then click to place"
     : activeTool?.hint ?? "No tool: click a shape to select · drag to move · wheel to zoom";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
+  const dimensionPreview: {
+    points: DimensionEndpointPair;
+    annotation: DimensionAnnotation;
+    value: string;
+  } | null = tool === "dimension" && draftPts.length > 0 && cursor
+    ? (() => {
+    const points: DimensionEndpointPair = draftPts.length === 1
+      ? [draftPts[0], cursor]
+      : [draftPts[0], draftPts[1]];
+    const location = cursor;
+    const geometry = dimensionGeometry(points[0], points[1], location, dimensionMode);
+      return {
+        points,
+        annotation: { mode: dimensionMode, location },
+        value: cal ? dimensionLabel(lengthInMetres(geometry.measuredPageUnits, cal)) : `${fmt(geometry.measuredPageUnits, 1)} u`,
+      };
+    })()
+    : null;
 
   if (!url) {
     return (
@@ -554,6 +713,28 @@ export function DrawingViewer({
             </button>
           );
         })}
+        {tool === "dimension" && (
+          <div className="ml-1 flex items-center gap-1 border-l border-border pl-1" role="group" aria-label="Dimension type">
+            <span className="px-1 text-[10px] text-muted-foreground">Type</span>
+            {(["linear", "aligned"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={dimensionMode === mode}
+                onClick={() => {
+                  setDimensionMode(mode);
+                  cancelDraft();
+                }}
+                className={cn(
+                  "rounded px-2 py-1 text-[10px] font-medium",
+                  dimensionMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {mode === "aligned" ? "Align" : "Linear"}
+              </button>
+            ))}
+          </div>
+        )}
         {draftPts.length > 0 && (
           <div className="flex items-center gap-1 border-l border-border pl-1">
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDraftPts((p) => p.slice(0, -1))} title="Undo last point (Backspace)">
@@ -653,7 +834,19 @@ export function DrawingViewer({
           if (!start || !onSelectItem || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
           const shapes = (savedMeasurements ?? [])
             .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
-            .map((m) => ({ id: m.id, itemId: m.itemId, measureType: m.measure_type, points: m.points }));
+            .map((m) => {
+              const dimension = m.dimension ?? decodeDimensionPoints(m.points);
+              const points = dimension && m.points.length >= 2
+                ? dimensionGeometry(m.points[0], m.points[1], dimension.location, dimension.mode)
+                : null;
+              return {
+                id: m.id,
+                itemId: m.itemId,
+                measureType: m.measure_type,
+                points: points ? [points.start, points.end] : m.points,
+                segments: points ? [[points.start, points.end] as [Pt, Pt]] : undefined,
+              };
+            });
           const hit = hitTest(shapes, toPage(e), 6 / view.zoom);
           onSelectItem(hit?.itemId ?? null, hit?.id ?? null);
         }}
@@ -714,6 +907,20 @@ export function DrawingViewer({
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
                   .map((m) => (editPreview?.shapeId === m.id ? { ...m, points: editPreview.points } : m))
                   .map((m) => {
+                    const dimension = m.dimension ?? decodeDimensionPoints(m.points);
+                    if (dimension && m.points.length >= 2) {
+                      return (
+                        <DimensionDrawing
+                          key={m.id}
+                          points={[m.points[0], m.points[1]]}
+                          annotation={dimension}
+                          value={m.length === null || m.length === undefined ? "—" : dimensionLabel(m.length)}
+                          color={m.color ?? "#2563eb"}
+                          zoom={view.zoom}
+                          darkSheet={darkSheet}
+                        />
+                      );
+                    }
                     const closed = m.measure_type === "area" || m.measure_type === "perimeter";
                     const color = m.color ?? (m.highlighted ? "#ea580c" : "#2563eb");
                     const fillOpacity = m.opacity ?? (m.highlighted ? 0.18 : 0.12);
@@ -737,7 +944,7 @@ export function DrawingViewer({
                     );
                   })}
                 {(savedMeasurements ?? [])
-                  .filter((m) => m.highlighted && (m.page_no ?? 1) === currentPage && m.points.length > 0)
+                  .filter((m) => m.highlighted && !m.dimension && !decodeDimensionPoints(m.points) && (m.page_no ?? 1) === currentPage && m.points.length > 0)
                   .map((m) => (editPreview?.shapeId === m.id ? { ...m, points: editPreview.points } : m))
                   .flatMap((m) => {
                     const canEdit = !readOnly && !!onEditShape && !measuring;
@@ -782,6 +989,7 @@ export function DrawingViewer({
                     });
                   })}
                 {draftPts.length > 0 && tool !== "count" && (
+                  tool !== "dimension" &&
                   <polyline
                     points={live.map((p) => `${p.x},${p.y}`).join(" ")}
                     fill={tool === "area" && live.length >= 3 ? "rgba(220,38,38,0.12)" : "none"}
@@ -789,6 +997,16 @@ export function DrawingViewer({
                     strokeWidth={2}
                     vectorEffect="non-scaling-stroke"
                     pointerEvents="none"
+                  />
+                )}
+                {dimensionPreview && (
+                  <DimensionDrawing
+                    points={dimensionPreview.points}
+                    annotation={dimensionPreview.annotation}
+                    value={dimensionPreview.value}
+                    color="#ef4444"
+                    zoom={view.zoom}
+                    darkSheet={darkSheet}
                   />
                 )}
                 {(tool === "area" || tool === "perimeter") && live.length >= 3 && (
@@ -872,7 +1090,7 @@ export function DrawingViewer({
             <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
-        {liveText && (
+        {liveText && tool !== "dimension" && (
           <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/95 px-2 py-1 text-xs shadow">{liveText}</div>
         )}
       </div>

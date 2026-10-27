@@ -44,6 +44,16 @@ export function LengthIcon(p: IconProps) {
   );
 }
 
+export function DimensionIcon(p: IconProps) {
+  const c = "#7c3aed";
+  return (
+    <Svg {...p}>
+      <path d="M5 12h14M5 8v8M19 8v8" stroke={c} strokeWidth={1.8} />
+      <path d="M8 9l-3 3 3 3M16 9l3 3-3 3" stroke={c} strokeWidth={1.8} />
+    </Svg>
+  );
+}
+
 export function PolylineIcon(p: IconProps) {
   const c = "#1d4ed8";
   return (

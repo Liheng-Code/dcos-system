@@ -7,6 +7,7 @@ export interface HitShape {
   itemId: string;
   measureType: string;
   points: Pt[];
+  segments?: [Pt, Pt][];
 }
 
 /** Ray casting; the polygon is closed implicitly. */
@@ -42,12 +43,13 @@ export function hitTest(shapes: HitShape[], p: Pt, tolerance: number): HitShape 
   let interior: HitShape | null = null;
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
-    if (s.points.length === 0) continue;
+    if (s.points.length === 0 && !s.segments?.length) continue;
     const closed = s.measureType === "area" || s.measureType === "perimeter";
     if (s.measureType === "count" || s.measureType === "point") {
       if (s.points.some((q) => Math.hypot(p.x - q.x, p.y - q.y) <= tolerance * 1.5)) return s;
       continue;
     }
+    if (s.segments?.some(([a, b]) => distanceToSegment(p, a, b) <= tolerance)) return s;
     if (distanceToPolyline(p, s.points, closed) <= tolerance) return s;
     if (!interior && s.measureType === "area" && s.points.length >= 3 && pointInPolygon(p, s.points)) interior = s;
   }
