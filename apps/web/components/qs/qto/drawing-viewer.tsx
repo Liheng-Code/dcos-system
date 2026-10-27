@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
   Loader2,
@@ -36,13 +36,13 @@ import {
   SnapIndex,
   drawingScaleFromCalibration,
   extractSegments,
-  findSnap,
   orthogonal,
   type Matrix,
   type OpCodes,
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
 import { hitTest } from "@/lib/qs/qto/hit-test";
+import { bestSnap, gripsOf, moveGrip, shapeSegments, type Grip } from "@/lib/qs/qto/grips";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
@@ -116,6 +116,8 @@ interface DrawingViewerProps {
   takeoffTarget?: (tool: TakeoffTool) => TakeoffTarget & { defaultName: string };
   /** A shape was clicked with no tool selected (null = empty space). */
   onSelectItem?: (itemId: string | null) => void;
+  /** A selected shape was reshaped with its grips (points in page units). */
+  onEditShape?: (shapeId: string, points: Pt[]) => void;
   /** The item being measured into, shown as a chip while a tool is active. */
   activeTakeoff?: { name: string; color: string; total: number; unit: string } | null;
 }
@@ -160,6 +162,7 @@ export function DrawingViewer({
   takeoffTarget,
   activeTakeoff,
   onSelectItem,
+  onEditShape,
 }: DrawingViewerProps) {
   /** Where a no-tool press started; a release close to it is a click (select), otherwise a pan. */
   const pressAt = useRef<{ x: number; y: number } | null>(null);
@@ -199,6 +202,9 @@ export function DrawingViewer({
   /** Resolved (snapped / ortho) pointer position in page units. */
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [hoverSnap, setHoverSnap] = useState<Snap | null>(null);
+  /** Grip being dragged on a selected shape, and the shape's live points while dragging. */
+  const gripDrag = useRef<{ shapeId: string; grip: Grip; start: Pt[]; measureType: string; objects: SnapIndex } | null>(null);
+  const [editPreview, setEditPreview] = useState<{ shapeId: string; points: Pt[]; grip?: Grip } | null>(null);
   /** Cross-hair position in viewport pixels (follows the snapped point while over the sheet). */
   const [screenCursor, setScreenCursor] = useState<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
@@ -301,13 +307,23 @@ export function DrawingViewer({
     return { x: ((e.clientX - rect.left) / rect.width) * pageSize.w, y: ((e.clientY - rect.top) / rect.height) * pageSize.h };
   };
 
+  useEffect(() => {
+    if (!gripDrag.current) setEditPreview(null);
+  }, [savedMeasurements]);
+
+  /** Drawn take-off shapes on this page, as object-snap targets while measuring. */
+  const objectIndex = useMemo(() => {
+    const shapes = (savedMeasurements ?? []).filter((m) => (m.page_no ?? 1) === currentPage);
+    return shapes.length ? new SnapIndex(shapeSegments(shapes)) : null;
+  }, [savedMeasurements, currentPage]);
+
   /** Applies PDF snap (unless Alt is held) and ortho (toggle or Shift) to a pointer position. */
-  const resolve = (e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }): { pt: Pt; snap: Snap | null } => {
+  const resolve = (e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }, objects: SnapIndex | null = objectIndex): { pt: Pt; snap: Snap | null } => {
     const raw = toPage(e);
     let snap: Snap | null = null;
     let pt = raw;
-    if (snapOn && !e.altKey && snapIndexRef.current) {
-      snap = findSnap(snapIndexRef.current, raw, SNAP_PX / view.zoom);
+    if (snapOn && !e.altKey) {
+      snap = bestSnap([snapIndexRef.current, objects], raw, SNAP_PX / view.zoom);
       if (snap) pt = snap.point;
     }
     const anchor = draftPts[draftPts.length - 1];
@@ -394,6 +410,15 @@ export function DrawingViewer({
   const boxMode = drawMode === "box" && (tool === "area" || tool === "perimeter");
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const g = gripDrag.current;
+    if (g) {
+      const { pt, snap } = resolve(e, g.objects);
+      setEditPreview({ shapeId: g.shapeId, points: moveGrip(g.start, g.grip, pt, g.measureType), grip: g.grip });
+      setCursor(pt);
+      setHoverSnap(snap);
+      setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+      return;
+    }
     if (dragging.current && panStart.current) {
       const dx = e.clientX - panStart.current.x;
       const dy = e.clientY - panStart.current.y;
@@ -412,7 +437,8 @@ export function DrawingViewer({
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
       if (draftPts.length > 0) cancelDraft();
-      else { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
+      else if (tool !== "pan") { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
+      else onSelectItem?.(null);
     }
     else if (e.key === "Backspace" && draftPts.length > 0) { e.preventDefault(); setDraftPts((p) => p.slice(0, -1)); }
     else if (e.key.toLowerCase() === "o" && !e.ctrlKey && !e.metaKey) setOrthoOn((o) => !o);
@@ -592,6 +618,16 @@ export function DrawingViewer({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => {
+                  const g = gripDrag.current;
+                  if (g) {
+                    gripDrag.current = null;
+                    const moved = editPreview && editPreview.shapeId === g.shapeId
+                      && editPreview.points.some((q, i) => q.x !== g.start[i].x || q.y !== g.start[i].y);
+                    if (moved) onEditShape?.(g.shapeId, editPreview!.points);
+                    else setEditPreview(null);
+                    setHoverSnap(null);
+                    return;
+                  }
                   dragging.current = false;
                   panStart.current = null;
                   const start = pressAt.current;
@@ -614,6 +650,7 @@ export function DrawingViewer({
               >
                 {(savedMeasurements ?? [])
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
+                  .map((m) => (editPreview?.shapeId === m.id ? { ...m, points: editPreview.points } : m))
                   .map((m) => {
                     const closed = m.measure_type === "area" || m.measure_type === "perimeter";
                     const color = m.color ?? (m.highlighted ? "#ea580c" : "#2563eb");
@@ -638,11 +675,46 @@ export function DrawingViewer({
                     );
                   })}
                 {(savedMeasurements ?? [])
-                  .filter((m) => m.highlighted && (m.page_no ?? 1) === currentPage && m.measure_type !== "count" && m.measure_type !== "point")
-                  .flatMap((m) => m.points.map((pt, i) => (
-                    <rect key={`h-${m.id}-${i}`} x={pt.x - 3.5 / view.zoom} y={pt.y - 3.5 / view.zoom} width={7 / view.zoom} height={7 / view.zoom}
-                      fill="#fff" stroke="#2563eb" strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-                  )))}
+                  .filter((m) => m.highlighted && (m.page_no ?? 1) === currentPage && m.points.length > 0)
+                  .map((m) => (editPreview?.shapeId === m.id ? { ...m, points: editPreview.points } : m))
+                  .flatMap((m) => {
+                    const canEdit = !readOnly && !!onEditShape && !measuring;
+                    const active = editPreview?.shapeId === m.id ? editPreview.grip ?? null : null;
+                    return gripsOf(m.points, m.measure_type).map((g) => {
+                      const hot = active?.kind === g.kind && active.index === g.index;
+                      const size = (g.kind === "vertex" ? 10 : 6) / view.zoom;
+                      const len = 16 / view.zoom;
+                      const start = (ev: React.PointerEvent) => {
+                        if (!canEdit || ev.button !== 0) return;
+                        ev.stopPropagation();
+                        ev.preventDefault();
+                        svgRef.current?.setPointerCapture(ev.pointerId);
+                        // Snap to other shapes and the PDF, never to the shape being edited.
+                        const others = (savedMeasurements ?? []).filter((x) => (x.page_no ?? 1) === currentPage && x.id !== m.id);
+                        gripDrag.current = { shapeId: m.id, grip: g, start: m.points, measureType: m.measure_type, objects: new SnapIndex(shapeSegments(others)) };
+                        setEditPreview({ shapeId: m.id, points: m.points, grip: g });
+                      };
+                      const common = {
+                        fill: hot ? "#ef4444" : "#2563eb",
+                        stroke: "#ffffff",
+                        strokeWidth: 1,
+                        vectorEffect: "non-scaling-stroke" as const,
+                        pointerEvents: canEdit ? ("all" as const) : ("none" as const),
+                        onPointerDown: start,
+                        className: canEdit ? "cursor-move hover:fill-red-500" : undefined,
+                      };
+                      return g.kind === "vertex" ? (
+                        <rect key={`g-${m.id}-v${g.index}`} x={g.at.x - size / 2} y={g.at.y - size / 2} width={size} height={size} {...common}>
+                          <title>Drag to move this point</title>
+                        </rect>
+                      ) : (
+                        <rect key={`g-${m.id}-m${g.index}`} x={g.at.x - len / 2} y={g.at.y - size / 2} width={len} height={size}
+                          transform={`rotate(${g.angle} ${g.at.x} ${g.at.y})`} {...common}>
+                          <title>Drag to move this edge</title>
+                        </rect>
+                      );
+                    });
+                  })}
                 {draftPts.length > 0 && tool !== "count" && (
                   <polyline
                     points={live.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -662,7 +734,7 @@ export function DrawingViewer({
                 ))}
 
                 {/* Snap marker (the cross-hair is drawn across the whole viewport below) */}
-                {cursor && measuring && hoverSnap && (
+                {cursor && (measuring || !!editPreview) && hoverSnap && (
                   <g pointerEvents="none">
                     {hoverSnap?.kind === "endpoint" && (
                       <rect x={cursor.x - marker} y={cursor.y - marker} width={marker * 2} height={marker * 2} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />

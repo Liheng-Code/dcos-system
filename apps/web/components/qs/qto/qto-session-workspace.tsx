@@ -26,7 +26,7 @@ import {
   acknowledgeIssue, addMeasurement, createItem, createVersion, deleteItem, deleteMeasurement, duplicateItem,
   getActiveCalibrations, getAuditHistory, getProfileNames, getSessionBundle, getTender, getVersionWorkspace,
   listRulesets, listTenderBoqLines, listTenderRevisions, listWbsNodesForTender, publishVersion, recordCalculation,
-  saveCalibration, setBoqLink, setFactors, syncIssues, transitionVersion, updateItem,
+  saveCalibration, setBoqLink, setFactors, syncIssues, transitionVersion, updateItem, updateMeasurementGeometry,
   type AuditEntry, type RevisionOption, type RulesetWithVersions, type SessionBundle, type TenderBoqLine, type VersionWorkspace,
 } from "@/lib/qs/qto/session-service";
 import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "@/components/qs/qto/drawing-viewer";
@@ -34,6 +34,7 @@ import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
 import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
 import { fmtQty, isAutoRun, measuredRun, volumeOf, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
+import { areaInSquareMetres, lengthInMetres, perimeter, polygonArea, polylineLength, type Pt } from "@/lib/qs/qto/geometry";
 
 const PANEL_KEY = "dcos.qto.panels";
 const PANELS = { left: { def: 280, min: 200, max: 520 }, right: { def: 360, min: 280, max: 680 } };
@@ -394,6 +395,24 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version?.id, editable, ruleVersion]);
 
+  /** A shape reshaped with its grips: recompute its length / area with the page scale, save, resync the item. */
+  async function onEditShape(shapeId: string, points: Pt[]) {
+    if (!editable || !version) return;
+    const m = ws?.measurements.find((x) => x.id === shapeId);
+    if (!m) return;
+    const c = calibrations.find((x) => x.page_no === (m.page_no ?? 1));
+    const cal = c ? { metresPerUnit: Number(c.metres_per_unit) } : null;
+    let length: number | null = m.length;
+    let area: number | null = m.area;
+    if (m.measure_type === "area") area = cal ? areaInSquareMetres(polygonArea(points), cal) : null;
+    else if (m.measure_type === "perimeter") length = cal ? lengthInMetres(perimeter(points), cal) : null;
+    else if (m.measure_type === "length" || m.measure_type === "polyline") length = cal ? lengthInMetres(polylineLength(points), cal) : null;
+    await guard(async () => {
+      await updateMeasurementGeometry(shapeId, { points, length, area });
+      await syncMeasuredQuantities(version.id, [m.qto_item_id]);
+    }, area !== null && m.measure_type === "area" ? `Area updated: ${fmtQty(area)} m²` : length !== null ? `Length updated: ${fmtQty(length)} m` : "Shape updated");
+  }
+
   async function onMeasure(m: EmittedMeasurement) {
     if (!editable || !version) return;
     if (m.measure_type !== "count" && m.measure_type !== "point" && !activeCal) {
@@ -637,6 +656,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
             }}
             onMeasure={(m) => void onMeasure(m)}
             onSelectItem={(id) => setSelectedItemId(id)}
+            onEditShape={editable ? (id, pts) => void onEditShape(id, pts) : undefined}
             onStartTakeoff={editable ? startTakeoff : undefined}
             takeoffTarget={takeoffTarget}
             activeTakeoff={selected ? {

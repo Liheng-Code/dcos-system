@@ -464,3 +464,8 @@ export async function listTenderRevisions(tenderId: string): Promise<RevisionOpt
     .select("id,drawing_id,revision,status,pdf_path,file_path,scale,created_at,drawing:qto_drawing_register!qto_drawing_revisions_drawing_id_fkey!inner(tender_id)")
     .eq("drawing.tender_id", tenderId).order("created_at")) as RevisionOption[];
 }
+
+/** New geometry for a measurement after its grips were dragged (only while the version is editable). */
+export async function updateMeasurementGeometry(id: string, patch: { points: { x: number; y: number }[]; length: number | null; area: number | null }) {
+  check(await db().from("qto_measurements").update(patch).eq("id", id));
+}
