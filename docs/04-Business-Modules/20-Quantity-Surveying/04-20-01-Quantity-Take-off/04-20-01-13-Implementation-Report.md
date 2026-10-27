@@ -20,6 +20,7 @@
 | Sessions and versions, parent and baseline, concurrency-safe numbering | Done | Row lock + unique key; one open version per session |
 | Project, purpose and exact source revision | Done | TENDER only in the UI; CONSTRUCTION is allowed in the DB and comes in P1 |
 | Manual 2D measurement: length, polyline, area, perimeter, count, point | Done | PDF only (pdf.js); DWG files can be stored but not measured |
+| PDF snap and precision tools | Done | Snaps to endpoints, intersections, midpoints and lines read from the PDF vectors (`lib/qs/qto/pdf-snap.ts`, tested). Also ortho, wheel zoom at the cursor, X/Y readout, 1:N presets. E2E: clicks 2–5 units off target still gave 200 units = 6,000 mm exactly. Scanned PDFs have no vectors to snap to |
 | Calibration | Done | Known distance + unit, per revision and page, history kept, zoom-independent; area uses scale² (V1 bug fixed) |
 | Geometry evidence | Done | Points, page, revision and calibration id per measurement |
 | Classification: trade, WBS, building, level, zone, budget code, BOQ line | Done | Location is free text (DCOS has no location master); one BOQ line per item |

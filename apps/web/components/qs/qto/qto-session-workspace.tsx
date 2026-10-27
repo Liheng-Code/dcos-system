@@ -477,6 +477,15 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
             readOnly={!editable}
             onPageChange={setPage}
             onCalibrationPicked={(c) => setPendingCal(c)}
+            onPresetScale={(n, pageNo) => {
+              if (!revision) return;
+              if (!window.confirm(`Set page ${pageNo} to 1:${n}?\n\nThis is only right if the PDF was exported at true paper size. Check it afterwards by measuring a known dimension, or use Scale on a dimension line instead.`)) return;
+              // 72 PDF units = 1 inch on paper = 25.4 mm × N on site.
+              void guard(async () => {
+                await saveCalibration({ revisionId: revision.id, pageNo, points: [{ x: 0, y: 0 }, { x: 72, y: 0 }], pixelDistance: 72, knownDistance: 25.4 * n, knownUnit: "mm" });
+                setCalibrations(await getActiveCalibrations(revision.id));
+              }, `Scale set to 1:${n}`);
+            }}
             onMeasure={(m) => void onMeasure(m)}
             savedMeasurements={(ws?.measurements ?? [])
               .filter((m) => m.drawing_revision_id === version.drawing_revision_id)

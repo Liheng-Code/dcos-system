@@ -5,6 +5,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import {
   Crosshair,
   Loader2,
+  Magnet,
   Maximize,
   Minus,
   MousePointer2,
@@ -14,6 +15,7 @@ import {
   Route,
   Ruler,
   Square,
+  SquareDashedMousePointer,
   Undo2,
   X,
 } from "lucide-react";
@@ -29,11 +31,30 @@ import {
   polygonArea,
   polylineLength,
 } from "@/lib/qs/qto/geometry";
+import {
+  SnapIndex,
+  drawingScaleFromCalibration,
+  extractSegments,
+  findSnap,
+  orthogonal,
+  type Matrix,
+  type OpCodes,
+  type Snap,
+} from "@/lib/qs/qto/pdf-snap";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
 /** Canvas pixels per PDF page unit. Points are stored in page units, independent of this and the zoom. */
 const RENDER_SCALE = 2;
+/** Snap radius in screen pixels. */
+const SNAP_PX = 10;
+/** Offset of the page inside the viewport (left/top). */
+const PAGE_OFFSET = 16;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 12;
+
+/** Common drawing scales offered as presets (1:N). */
+export const DRAWING_SCALES = [1, 2, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500, 1000, 1250, 2500];
 
 export type ViewerTool = QtoMeasureType | "pan" | "calibrate";
 
@@ -71,6 +92,8 @@ interface DrawingViewerProps {
   calibration?: ActiveCalibration | null;
   /** Two points picked with the Scale tool; the parent asks for the known distance and saves it. */
   onCalibrationPicked?: (c: { points: Pt[]; pageUnits: number; page_no: number }) => void;
+  /** A drawing scale chosen from the presets (1:N), for the current page. */
+  onPresetScale?: (scale: number, page_no: number) => void;
   onMeasure?: (m: EmittedMeasurement) => void;
   onPageChange?: (page: number) => void;
   savedMeasurements?: SavedShape[];
@@ -78,15 +101,22 @@ interface DrawingViewerProps {
 }
 
 const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: typeof Ruler; hint: string }[] = [
-  { key: "pan", label: "Pan", icon: MousePointer2, hint: "Drag to move the drawing" },
+  { key: "pan", label: "Pan", icon: MousePointer2, hint: "Drag to move the drawing; the wheel zooms" },
   { key: "length", label: "Length", icon: Ruler, hint: "Click two points" },
   { key: "polyline", label: "Polyline", icon: Route, hint: "Click points, double-click or Enter to finish" },
   { key: "area", label: "Area", icon: Square, hint: "Click the corners, double-click or Enter to close" },
   { key: "perimeter", label: "Perimeter", icon: RotateCcw, hint: "Click the corners, double-click or Enter to close" },
   { key: "count", label: "Count", icon: Plus, hint: "Click each element, Enter to finish" },
   { key: "point", label: "Point", icon: Crosshair, hint: "Click a location" },
-  { key: "calibrate", label: "Scale", icon: MoveRight, hint: "Click both ends of a known dimension" },
+  { key: "calibrate", label: "Scale", icon: MoveRight, hint: "Click both ends of a known dimension (snaps to the dimension line)" },
 ];
+
+const SNAP_LABEL: Record<Snap["kind"], string> = {
+  endpoint: "Endpoint",
+  intersection: "Intersection",
+  midpoint: "Midpoint",
+  "on-line": "On line",
+};
 
 const fmt = (n: number, dp = 3) => n.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
@@ -95,6 +125,7 @@ export function DrawingViewer({
   pageNo,
   calibration,
   onCalibrationPicked,
+  onPresetScale,
   onMeasure,
   onPageChange,
   savedMeasurements,
@@ -102,7 +133,9 @@ export function DrawingViewer({
 }: DrawingViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const snapIndexRef = useRef<SnapIndex | null>(null);
 
   const [loading, setLoading] = useState(!!url);
   const [error, setError] = useState<string | null>(null);
@@ -110,12 +143,17 @@ export function DrawingViewer({
   const [currentPage, setCurrentPage] = useState(pageNo ?? 1);
   /** Page size in PDF page units. */
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(0.6);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  /** Zoom (screen px per page unit) and pan (screen px). */
+  const [view, setView] = useState({ zoom: 0.6, x: 0, y: 0 });
   const [tool, setTool] = useState<ViewerTool>(readOnly ? "pan" : "length");
+  const [snapOn, setSnapOn] = useState(true);
+  const [orthoOn, setOrthoOn] = useState(false);
+  const [vectorCount, setVectorCount] = useState<number | null>(null);
 
   const [draftPts, setDraftPts] = useState<Pt[]>([]);
+  /** Resolved (snapped / ortho) pointer position in page units. */
   const [cursor, setCursor] = useState<Pt | null>(null);
+  const [hoverSnap, setHoverSnap] = useState<Snap | null>(null);
   const dragging = useRef(false);
   const panStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -135,6 +173,18 @@ export function DrawingViewer({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     await page.render({ canvasContext: ctx, viewport }).promise;
+
+    // Vector geometry for snapping (scanned PDFs have none; snapping then simply does nothing).
+    snapIndexRef.current = null;
+    setVectorCount(null);
+    try {
+      const ops = await page.getOperatorList();
+      const segments = extractSegments(ops.fnArray, ops.argsArray, pdfjsLib.OPS as unknown as OpCodes, unit.transform as Matrix);
+      snapIndexRef.current = new SnapIndex(segments);
+      setVectorCount(segments.length);
+    } catch {
+      setVectorCount(0);
+    }
   }, []);
 
   useEffect(() => {
@@ -176,11 +226,50 @@ export function DrawingViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageNo]);
 
-  /** Pointer position → PDF page units. */
+  // Wheel zooms around the cursor. Registered by hand: React's wheel listener is passive.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const sx = e.clientX - rect.left - PAGE_OFFSET;
+      const sy = e.clientY - rect.top - PAGE_OFFSET;
+      setView((v) => {
+        const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom * Math.exp(-e.deltaY * 0.0015)));
+        // Keep the page point under the cursor fixed.
+        const cx = (sx - v.x) / v.zoom;
+        const cy = (sy - v.y) / v.zoom;
+        return { zoom, x: sx - cx * zoom, y: sy - cy * zoom };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [url]);
+
+  /** Pointer position → PDF page units (raw, before snapping). */
   const toPage = (e: { clientX: number; clientY: number }): Pt => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !pageSize) return { x: 0, y: 0 };
     return { x: ((e.clientX - rect.left) / rect.width) * pageSize.w, y: ((e.clientY - rect.top) / rect.height) * pageSize.h };
+  };
+
+  /** Applies PDF snap (unless Alt is held) and ortho (toggle or Shift) to a pointer position. */
+  const resolve = (e: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }): { pt: Pt; snap: Snap | null } => {
+    const raw = toPage(e);
+    let snap: Snap | null = null;
+    let pt = raw;
+    if (snapOn && !e.altKey && snapIndexRef.current) {
+      snap = findSnap(snapIndexRef.current, raw, SNAP_PX / view.zoom);
+      if (snap) pt = snap.point;
+    }
+    const anchor = draftPts[draftPts.length - 1];
+    if ((orthoOn || e.shiftKey) && anchor && tool !== "count" && tool !== "point") {
+      const o = orthogonal(anchor, pt);
+      if (o.x !== pt.x || o.y !== pt.y) snap = null;
+      pt = o;
+    }
+    return { pt, snap };
   };
 
   const cancelDraft = () => {
@@ -211,12 +300,15 @@ export function DrawingViewer({
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.focus();
-    if (tool === "pan" || readOnly) {
+    // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
+    if (tool === "pan" || readOnly || e.button === 1) {
+      e.preventDefault();
       dragging.current = true;
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
-    const pt = toPage(e);
+    if (e.button !== 0) return;
+    const { pt } = resolve(e);
     if (tool === "calibrate") {
       const next = draftPts.length >= 2 ? [pt] : [...draftPts, pt];
       setDraftPts(next);
@@ -245,17 +337,21 @@ export function DrawingViewer({
     if (dragging.current && panStart.current) {
       const dx = e.clientX - panStart.current.x;
       const dy = e.clientY - panStart.current.y;
-      setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
-    if (draftPts.length > 0) setCursor(toPage(e));
+    const { pt, snap } = tool === "pan" || readOnly ? { pt: toPage(e), snap: null } : resolve(e);
+    setCursor(pt);
+    setHoverSnap(snap);
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); finish(); }
     else if (e.key === "Escape") cancelDraft();
     else if (e.key === "Backspace" && draftPts.length > 0) { e.preventDefault(); setDraftPts((p) => p.slice(0, -1)); }
+    else if (e.key.toLowerCase() === "o" && !e.ctrlKey && !e.metaKey) setOrthoOn((o) => !o);
+    else if (e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey) setSnapOn((s) => !s);
   };
 
   const goPage = (p: number) => {
@@ -266,11 +362,13 @@ export function DrawingViewer({
     onPageChange?.(target);
   };
 
+  const zoomBy = (factor: number) => setView((v) => ({ ...v, zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom * factor)) }));
+
   const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
-  const live = [...draftPts, ...(cursor ? [cursor] : [])];
+  const live = draftPts.length > 0 ? [...draftPts, ...(cursor ? [cursor] : [])] : [];
   let liveText: string | null = null;
   if (draftPts.length > 0) {
-    if (tool === "calibrate") liveText = `Reference: ${fmt(polylineLength(live), 1)} page units`;
+    if (tool === "calibrate") liveText = `Reference: ${fmt(polylineLength(live), 2)} page units${cal ? ` (now reads ${fmt(lengthInMetres(polylineLength(live), cal) * 1000, 0)} mm)` : ""}`;
     else if (tool === "count") liveText = `Count: ${draftPts.length}`;
     else if (!cal) liveText = "Not calibrated — set the scale first for real units";
     else if (tool === "area") liveText = `Area: ${fmt(areaInSquareMetres(polygonArea(live), cal))} m²`;
@@ -279,6 +377,8 @@ export function DrawingViewer({
   }
   const tools = readOnly ? TOOL_OPTIONS.filter((t) => t.key === "pan") : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
+  const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
+  const marker = 6 / view.zoom;
 
   if (!url) {
     return (
@@ -324,14 +424,14 @@ export function DrawingViewer({
           </div>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.max(0.1, z / 1.2))} title="Zoom out">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => zoomBy(1 / 1.25)} title="Zoom out (or mouse wheel)">
             <Minus className="h-3.5 w-3.5" />
           </Button>
-          <span className="w-10 text-center text-xs tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setZoom((z) => Math.min(8, z * 1.2))} title="Zoom in">
+          <span className="w-12 text-center text-xs tabular-nums text-muted-foreground">{Math.round(view.zoom * 100)}%</span>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => zoomBy(1.25)} title="Zoom in (or mouse wheel)">
             <Plus className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setZoom(0.6); setPan({ x: 0, y: 0 }); }} title="Reset view">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setView({ zoom: 0.6, x: 0, y: 0 })} title="Reset view">
             <Maximize className="h-3.5 w-3.5" />
           </Button>
           {numPages > 1 && (
@@ -344,15 +444,27 @@ export function DrawingViewer({
         </div>
       </div>
 
-      <div className={cn("flex items-center gap-2 border-b border-border px-2 py-1 text-xs",
+      <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs",
         calibration ? "bg-muted/40 text-muted-foreground" : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200")}>
         {calibration
-          ? <>Scale (page {currentPage}): 1 page unit = {fmt(calibration.metresPerUnit * 1000, 4)} mm · set from a {fmt(calibration.knownDistance)} {calibration.knownUnit} dimension</>
-          : <>Page {currentPage} is not calibrated. Use <b>Scale</b> on a known dimension before measuring lengths or areas.</>}
-        {activeTool && !readOnly && <span className="ml-auto hidden md:inline">{activeTool.hint}</span>}
+          ? <>Scale (page {currentPage}): {drawingScale && drawingScale >= 1 ? <b>≈ 1:{fmt(drawingScale, drawingScale < 10 ? 2 : 0)}</b> : null} · 1 page unit = {fmt(calibration.metresPerUnit * 1000, 4)} mm · from a {fmt(calibration.knownDistance)} {calibration.knownUnit} reference</>
+          : <>Page {currentPage} is not calibrated. Pick a drawing scale, or use <b>Scale</b> on a known dimension.</>}
+        {!readOnly && onPresetScale && (
+          <select
+            className="h-6 rounded border border-input bg-background px-1 text-xs text-foreground"
+            value=""
+            aria-label="Set drawing scale"
+            title="Sets the scale from the drawing scale. Correct only if the PDF is at true paper size; check a known dimension afterwards."
+            onChange={(e) => { if (e.target.value) onPresetScale(Number(e.target.value), currentPage); }}
+          >
+            <option value="">Drawing scale…</option>
+            {DRAWING_SCALES.map((n) => <option key={n} value={n}>1:{n}</option>)}
+          </select>
+        )}
+        {activeTool && !readOnly && <span className="ml-auto hidden lg:inline">{activeTool.hint}</span>}
       </div>
 
-      <div className="relative flex-1 overflow-hidden bg-muted/30">
+      <div ref={viewportRef} className="relative flex-1 overflow-hidden bg-muted/30">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -368,10 +480,10 @@ export function DrawingViewer({
         <div
           className="absolute"
           style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
             transformOrigin: "0 0",
-            left: 16,
-            top: 16,
+            left: PAGE_OFFSET,
+            top: PAGE_OFFSET,
           }}
         >
           <div className="relative bg-white shadow-lg">
@@ -386,12 +498,14 @@ export function DrawingViewer({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={() => { dragging.current = false; panStart.current = null; }}
+                onPointerLeave={() => { setHoverSnap(null); }}
                 onDoubleClick={finish}
                 onKeyDown={handleKey}
+                onContextMenu={(e) => e.preventDefault()}
                 tabIndex={0}
                 role="application"
                 aria-label="Drawing measurement surface"
-                style={{ cursor: tool === "pan" || readOnly ? "grab" : "crosshair" }}
+                style={{ cursor: tool === "pan" || readOnly ? "grab" : "none" }}
               >
                 {(savedMeasurements ?? [])
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
@@ -400,7 +514,7 @@ export function DrawingViewer({
                     const color = m.highlighted ? "#ea580c" : "#2563eb";
                     if (m.measure_type === "count" || m.measure_type === "point") {
                       return m.points.map((p, i) => (
-                        <circle key={`${m.id}-${i}`} cx={p.x} cy={p.y} r={4 / zoom} fill={color} fillOpacity={0.7} pointerEvents="none" />
+                        <circle key={`${m.id}-${i}`} cx={p.x} cy={p.y} r={4 / view.zoom} fill={color} fillOpacity={0.7} pointerEvents="none" />
                       ));
                     }
                     return (
@@ -431,14 +545,61 @@ export function DrawingViewer({
                     stroke="#dc2626" strokeWidth={1.5} strokeDasharray="6 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
                 )}
                 {draftPts.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={3.5 / zoom} fill={tool === "calibrate" ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  <circle key={i} cx={p.x} cy={p.y} r={3.5 / view.zoom} fill={tool === "calibrate" ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                 ))}
+
+                {/* Cross-hair cursor and snap marker */}
+                {cursor && tool !== "pan" && !readOnly && (
+                  <g pointerEvents="none">
+                    <line x1={cursor.x - 14 / view.zoom} y1={cursor.y} x2={cursor.x + 14 / view.zoom} y2={cursor.y} stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    <line x1={cursor.x} y1={cursor.y - 14 / view.zoom} x2={cursor.x} y2={cursor.y + 14 / view.zoom} stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    {hoverSnap?.kind === "endpoint" && (
+                      <rect x={cursor.x - marker} y={cursor.y - marker} width={marker * 2} height={marker * 2} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    )}
+                    {hoverSnap?.kind === "intersection" && (
+                      <path d={`M${cursor.x - marker},${cursor.y - marker}L${cursor.x + marker},${cursor.y + marker}M${cursor.x + marker},${cursor.y - marker}L${cursor.x - marker},${cursor.y + marker}`} stroke="#16a34a" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+                    )}
+                    {hoverSnap?.kind === "midpoint" && (
+                      <path d={`M${cursor.x},${cursor.y - marker}L${cursor.x + marker},${cursor.y + marker}L${cursor.x - marker},${cursor.y + marker}Z`} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    )}
+                    {hoverSnap?.kind === "on-line" && (
+                      <circle cx={cursor.x} cy={cursor.y} r={marker * 0.8} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    )}
+                  </g>
+                )}
               </svg>
             )}
           </div>
         </div>
         {liveText && (
           <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/95 px-2 py-1 text-xs shadow">{liveText}</div>
+        )}
+      </div>
+
+      {/* Status bar: coordinates, snap and ortho */}
+      <div className="flex flex-wrap items-center gap-3 border-t border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+        <span className="tabular-nums">
+          {cursor
+            ? cal
+              ? `X ${fmt(lengthInMetres(cursor.x, cal), 3)} m · Y ${fmt(lengthInMetres(cursor.y, cal), 3)} m`
+              : `X ${fmt(cursor.x, 1)} · Y ${fmt(cursor.y, 1)} (page units)`
+            : "X — · Y —"}
+        </span>
+        {hoverSnap && <span className="font-medium text-emerald-700 dark:text-emerald-400">{SNAP_LABEL[hoverSnap.kind]}</span>}
+        {!readOnly && (
+          <div className="ml-auto flex items-center gap-1">
+            <button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((s) => !s)}
+              title={vectorCount === 0 ? "This page has no vector lines (scanned PDF?), so there is nothing to snap to" : "Snap to lines in the PDF (S). Hold Alt to place a point freely."}
+              className={cn("flex items-center gap-1 rounded px-2 py-0.5", snapOn ? "bg-primary/10 text-primary" : "hover:bg-muted")}>
+              <Magnet className="h-3 w-3" /> PDF Snap: {snapOn ? "On" : "Off"}
+              {snapOn && vectorCount !== null && <span className="text-muted-foreground">({vectorCount === 0 ? "no vectors" : `${fmt(vectorCount, 0)} lines`})</span>}
+            </button>
+            <button type="button" aria-pressed={orthoOn} onClick={() => setOrthoOn((o) => !o)}
+              title="Keep segments horizontal or vertical (O). Hold Shift for one segment."
+              className={cn("flex items-center gap-1 rounded px-2 py-0.5", orthoOn ? "bg-primary/10 text-primary" : "hover:bg-muted")}>
+              <SquareDashedMousePointer className="h-3 w-3" /> Ortho: {orthoOn ? "On" : "Off"}
+            </button>
+          </div>
         )}
       </div>
     </div>
