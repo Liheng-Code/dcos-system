@@ -33,7 +33,7 @@ import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "
 import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs/qto/takeoff-start-panel";
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
 import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
-import { fmtQty, isAutoRun, measuredRun } from "@/lib/qs/qto/measured-quantity";
+import { fmtQty, isAutoRun, measuredRun, volumeOf, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 
 const PANEL_KEY = "dcos.qto.panels";
 const PANELS = { left: { def: 280, min: 200, max: 520 }, right: { def: 360, min: 280, max: 680 } };
@@ -313,24 +313,31 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   /** The "New …" panel measures into the selected item when its unit fits, otherwise into a new item. */
   function takeoffTarget(tool: TakeoffTool) {
     const meta = TOOL_META[tool];
-    const fits = selected && selected.unit === meta.unit && editable;
+    // A selected volume item takes measurements of its own kind (areas for area × depth, lengths for L × W × D).
+    const vol = selected ? volumeOf(runsByItem.get(selected.id)) : null;
+    const fits = !!selected && editable && (selected.unit === meta.unit || (selected.unit === "m3" && !!vol && vol.mode === meta.volume));
     const sameUnit = items.filter((i) => i.unit === meta.unit).length;
     return {
       defaultName: `${meta.title} ${sameUnit + 1}`,
       existingName: fits ? selected!.description : null,
-      total: fits ? measuredTotal(selected!.id, meta.unit) : 0,
+      total: fits ? (selected!.unit === "m3" ? Number(selected!.quantity) : measuredTotal(selected!.id, meta.unit)) : 0,
       color: fits ? selected!.display_color : null,
       opacity: fits && selected!.display_opacity !== null ? Number(selected!.display_opacity) : null,
+      volume: fits ? vol : null,
     };
   }
 
   async function startTakeoff(cfg: TakeoffConfig) {
     if (!version || !bundle) return;
     try {
-      if (selected && selected.unit === cfg.unit) {
+      const selVol = selected ? volumeOf(runsByItem.get(selected.id)) : null;
+      if (selected && selected.unit === cfg.unit && (cfg.unit !== "m3" || selVol?.mode === cfg.volume?.mode)) {
         if (selected.display_color !== cfg.color || Number(selected.display_opacity) !== cfg.opacity) {
           await updateItem(selected.id, { display_color: cfg.color, display_opacity: cfg.opacity });
           await loadWs(version.id);
+        }
+        if (cfg.volume && JSON.stringify(cfg.volume) !== JSON.stringify(selVol)) {
+          await syncMeasuredQuantities(version.id, [selected.id], { [selected.id]: cfg.volume });
         }
         return;
       }
@@ -338,7 +345,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         description: cfg.name, unit: cfg.unit, building: bundle.session.building, discipline: bundle.session.trade,
         page_no: page, display_color: cfg.color, display_opacity: cfg.opacity,
       });
-      await loadWs(version.id);
+      // A volume item records its dimensions straight away (quantity 0 until measured).
+      if (cfg.volume) await syncMeasuredQuantities(version.id, [it.id], { [it.id]: cfg.volume });
+      else await loadWs(version.id);
       setSelectedItemId(it.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start the take-off");
@@ -351,7 +360,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
    * get a fresh "sum of measurements" run. A hand-built calculation is never overwritten, and items
    * carried forward unverified are left for the user to remeasure or confirm.
    */
-  async function syncMeasuredQuantities(vId: string, onlyItemIds?: string[]) {
+  async function syncMeasuredQuantities(vId: string, onlyItemIds?: string[], volumes?: Record<string, VolumeSpec>) {
     const fresh = await getVersionWorkspace(vId);
     const latest = new Map<string, (typeof fresh.runs)[number]>();
     for (const r of fresh.runs) if (!latest.has(r.item_id)) latest.set(r.item_id, r);
@@ -362,12 +371,15 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
       if (last && !isAutoRun(last)) continue;
       const ms = fresh.measurements.filter((m) => m.qto_item_id === item.id);
       if (!onlyItemIds && (last || ms.length === 0 || item.carry_status === "UNVERIFIED")) continue;
+      const override = volumes?.[item.id];
+      const volume = override ?? volumeOf(last);
       const run = measuredRun({
-        unit: item.unit, measurements: ms, ruleset: ruleVersion?.definition ?? null,
+        unit: item.unit, measurements: ms, ruleset: ruleVersion?.definition ?? null, volume,
         factors: fresh.factors.filter((f) => f.item_id === item.id).map((f) => ({ name: f.factor_name, value: String(f.factor_value) })),
       });
-      if (!run?.valid || (last && Number(last.result) === Number(run.result) && Number(item.quantity) === Number(run.result))) continue;
-      await recordCalculation(item.id, run, { auto: true });
+      if (!run?.valid) continue;
+      if (!override && last && Number(last.result) === Number(run.result) && Number(item.quantity) === Number(run.result)) continue;
+      await recordCalculation(item.id, run, volume ? { auto: true, volume } : { auto: true });
       changed = true;
     }
     setWs(changed ? await getVersionWorkspace(vId) : fresh);
@@ -630,8 +642,8 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
             activeTakeoff={selected ? {
               name: `${selected.qto_no} · ${selected.description}`,
               color: selected.display_color ?? "#2563eb",
-              total: measuredTotal(selected.id, selected.unit),
-              unit: selected.unit === "m2" ? "m²" : selected.unit,
+              total: selected.unit === "m3" ? Number(selected.quantity) : measuredTotal(selected.id, selected.unit),
+              unit: selected.unit === "m2" ? "m²" : selected.unit === "m3" ? "m³" : selected.unit,
             } : null}
             savedMeasurements={(ws?.measurements ?? [])
               .filter((m) => m.drawing_revision_id === version.drawing_revision_id && !hiddenItems.has(m.qto_item_id))
@@ -673,7 +685,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
                   await loadWs(version.id);
                 }}
                 onSetBoqLink={(boqId) => guard(async () => { await setBoqLink(selected.id, boqId, Number(selected.quantity)); await loadWs(version.id); })}
-                onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await syncMeasuredQuantities(version.id, [selected.id]); })}
+                volume={volumeOf(runsByItem.get(selected.id))}
+              onSetVolume={(v) => guard(() => syncMeasuredQuantities(version.id, [selected.id], { [selected.id]: v }), "Volume dimensions updated")}
+              onDeleteMeasurement={(id) => guard(async () => { await deleteMeasurement(id); await syncMeasuredQuantities(version.id, [selected.id]); })}
                 onDuplicate={() => guard(async () => { const c = await duplicateItem(version, selected); await loadWs(version.id); setSelectedItemId(c.id); }, "Item duplicated")}
                 onDelete={() => guard(async () => {
                   if (!window.confirm(`Remove ${selected.qto_no} from this version? It stays in the audit history.`)) return;

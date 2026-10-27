@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtQty, isAutoRun, measuredRun, measuredValues } from "../measured-quantity";
+import { fmtQty, isAutoRun, measuredRun, measuredValues, volumeOf } from "../measured-quantity";
 import type { RulesetDefinition } from "../types";
 
 const ruleset: RulesetDefinition = {
@@ -34,5 +34,30 @@ describe("measured quantity", () => {
     expect(isAutoRun({ inputs: { auto: true } })).toBe(true);
     expect(isAutoRun({ inputs: { values: [] } })).toBe(false);
     expect(fmtQty("17.717")).toBe((17.72).toLocaleString(undefined, { minimumFractionDigits: 2 }));
+  });
+});
+
+describe("volume take-off", () => {
+  const len = (l: number) => ({ measure_type: "length", area: null, length: l, count: null });
+  it("drop panel: Σ areas × depth (7.34 m2 × 0.30 m = 2.202 m3)", () => {
+    const run = measuredRun({ unit: "m3", measurements: [area(4), area(3.34)], ruleset, volume: { mode: "area_depth", depth: "0.30" } });
+    expect(run?.valid).toBe(true);
+    expect(run?.rule_code).toBe("VOL-AT");
+    expect(run?.expression).toBe("(A1 + A2) * T");
+    expect(run?.result).toBe("2.202");
+  });
+  it("band beam: Σ lengths × width × depth (35.434 m × 0.5 × 0.6 = 10.63 m3)", () => {
+    const run = measuredRun({ unit: "m3", measurements: [len(20), len(15.434)], ruleset, volume: { mode: "length_width_depth", width: "0.5", depth: "0.6" } });
+    expect(run?.rule_code).toBe("VOL-LWD");
+    expect(run?.result).toBe("10.63");
+  });
+  it("needs valid dimensions and ignores the other measurement type", () => {
+    expect(measuredRun({ unit: "m3", measurements: [area(5)], ruleset, volume: { mode: "area_depth", depth: "0" } })).toBeNull();
+    expect(measuredRun({ unit: "m3", measurements: [area(5)], ruleset })).toBeNull();
+    expect(measuredRun({ unit: "m3", measurements: [area(5), len(9)], ruleset, volume: { mode: "area_depth", depth: "0.2" } })?.result).toBe("1");
+  });
+  it("reads the dimensions back from an automatic run", () => {
+    expect(volumeOf({ inputs: { auto: true, volume: { mode: "area_depth", depth: "0.3" } } })).toEqual({ mode: "area_depth", depth: "0.3" });
+    expect(volumeOf({ inputs: { volume: { mode: "area_depth", depth: "0.3" } } })).toBeNull();
   });
 });

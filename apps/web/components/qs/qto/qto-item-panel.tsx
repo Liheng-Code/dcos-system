@@ -12,7 +12,7 @@ import { ITEM_UNITS } from "@/lib/qs/qto/units";
 import { QUANTITY_STATUSES, QUANTITY_STATUS_INFO, type QuantityStatus } from "@/lib/qs/qto/workflow";
 import type { QtoCalculationRunRow, QtoItemFactor, RulesetDefinition, TakeoffItem } from "@/lib/qs/qto/types";
 import type { ItemFields, MeasurementRow, TenderBoqLine } from "@/lib/qs/qto/session-service";
-import { fmtQty, isAutoRun } from "@/lib/qs/qto/measured-quantity";
+import { VOLUME_LABEL, fmtQty, isAutoRun, validVolume, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 
 const fieldCls = "h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-60";
 const labelCls = "text-[11px] font-medium text-muted-foreground";
@@ -39,6 +39,9 @@ export interface ItemPanelProps {
   onSaveCalculation: (args: { run: ReturnType<typeof calculate>; factors: Factor[]; ruleCode: string | null }) => Promise<void>;
   onSetBoqLink: (boqItemId: string | null) => Promise<void>;
   onDeleteMeasurement: (id: string) => Promise<void>;
+  /** Volume dimensions when the item's quantity is a volume built from its measurements. */
+  volume?: VolumeSpec | null;
+  onSetVolume?: (v: VolumeSpec) => Promise<void>;
   onDuplicate: () => Promise<void>;
   onDelete: () => Promise<void>;
 }
@@ -99,6 +102,7 @@ export function QtoItemPanel(props: ItemPanelProps) {
           </p>
           <p className="text-[11px] text-muted-foreground">
             {!latestRun ? (["m2", "m", "No."].includes(item.unit) ? "Quantity will follow the drawing measurements." : "Record a calculation to set the quantity.")
+              : isAutoRun(latestRun) && props.volume ? `Quantity = ${props.volume.mode === "area_depth" ? "Σ areas × depth" : "Σ lengths × width × depth"} (updates automatically).`
               : isAutoRun(latestRun) ? "Quantity = sum of the drawing measurements (updates automatically)."
               : "Custom calculation: new measurements do not change it."}
           </p>
@@ -115,6 +119,10 @@ export function QtoItemPanel(props: ItemPanelProps) {
           </div>
         )}
       </div>
+
+      {props.volume && isAutoRun(latestRun) && (
+        <VolumeEditor key={JSON.stringify(props.volume)} volume={props.volume} editable={editable} onApply={props.onSetVolume} />
+      )}
 
       {item.carry_status === "UNVERIFIED" && editable && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -422,6 +430,41 @@ function CalculationBuilder({
           </p>
         )}
       </div>
+    </fieldset>
+  );
+}
+
+// ── Volume dimensions ───────────────────────────────────────────────────────
+
+function VolumeEditor({ volume, editable, onApply }: { volume: VolumeSpec; editable: boolean; onApply?: (v: VolumeSpec) => Promise<void> }) {
+  const [width, setWidth] = useState(volume.mode === "length_width_depth" ? volume.width : "");
+  const [depth, setDepth] = useState(volume.depth);
+  const [busy, setBusy] = useState(false);
+  const next: VolumeSpec = volume.mode === "area_depth" ? { mode: "area_depth", depth: depth.trim() } : { mode: "length_width_depth", width: width.trim(), depth: depth.trim() };
+  const changed = JSON.stringify(next) !== JSON.stringify(volume);
+  return (
+    <fieldset disabled={!editable} className="rounded-md border border-border p-3">
+      <legend className="px-1 text-xs font-semibold">{VOLUME_LABEL[volume.mode]}</legend>
+      <div className="grid grid-cols-2 gap-2">
+        {volume.mode === "length_width_depth" && (
+          <label className="flex flex-col gap-1">
+            <span className={labelCls}>Width (m)</span>
+            <Input className="h-8" inputMode="decimal" value={width} onChange={(e) => setWidth(e.target.value)} />
+          </label>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>{volume.mode === "area_depth" ? "Depth / thickness (m)" : "Depth (m)"}</span>
+          <Input className="h-8" inputMode="decimal" value={depth} onChange={(e) => setDepth(e.target.value)} />
+        </label>
+      </div>
+      {editable && changed && (
+        <Button size="sm" className="mt-2" disabled={busy || !validVolume(next)} onClick={async () => {
+          setBusy(true);
+          try { await onApply?.(next); } finally { setBusy(false); }
+        }}>
+          {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Apply dimensions
+        </Button>
+      )}
     </fieldset>
   );
 }

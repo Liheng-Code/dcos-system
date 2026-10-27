@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { BoxModeIcon, PointModeIcon } from "@/components/qs/qto/takeoff-icons";
+import { VOLUME_LABEL, validVolume, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 
 export type DrawMode = "points" | "box";
 export type TakeoffTool = "length" | "polyline" | "area" | "perimeter" | "count";
@@ -17,6 +18,8 @@ export interface TakeoffConfig {
   opacity: number;
   unit: string;
   mode: DrawMode;
+  /** Set when the item is a volume (unit m3) built from these measurements. */
+  volume: VolumeSpec | null;
 }
 
 export interface TakeoffTarget {
@@ -26,13 +29,15 @@ export interface TakeoffTarget {
   total: number;
   color: string | null;
   opacity: number | null;
+  /** Volume dimensions of the existing item, when it is a volume. */
+  volume?: VolumeSpec | null;
 }
 
-export const TOOL_META: Record<TakeoffTool, { title: string; types: string[]; unit: string; unitLabel: string; measure: string; boxMode: boolean; color: string }> = {
-  area: { title: "Area", types: ["Flat area"], unit: "m2", unitLabel: "m²", measure: "Area", boxMode: true, color: "#22c55e" },
+export const TOOL_META: Record<TakeoffTool, { title: string; types: string[]; unit: string; unitLabel: string; measure: string; boxMode: boolean; color: string; volume?: VolumeSpec["mode"] }> = {
+  area: { title: "Area", types: ["Flat area"], unit: "m2", unitLabel: "m²", measure: "Area", boxMode: true, color: "#22c55e", volume: "area_depth" },
   perimeter: { title: "Perimeter", types: ["Closed perimeter"], unit: "m", unitLabel: "m", measure: "Length", boxMode: true, color: "#0d9488" },
-  length: { title: "Linear", types: ["Straight length"], unit: "m", unitLabel: "m", measure: "Length", boxMode: false, color: "#2563eb" },
-  polyline: { title: "Segment", types: ["Polyline length"], unit: "m", unitLabel: "m", measure: "Length", boxMode: false, color: "#2563eb" },
+  length: { title: "Linear", types: ["Straight length"], unit: "m", unitLabel: "m", measure: "Length", boxMode: false, color: "#2563eb", volume: "length_width_depth" },
+  polyline: { title: "Segment", types: ["Polyline length"], unit: "m", unitLabel: "m", measure: "Length", boxMode: false, color: "#2563eb", volume: "length_width_depth" },
   count: { title: "Count", types: ["Each"], unit: "No.", unitLabel: "No.", measure: "Count", boxMode: false, color: "#ea580c" },
 };
 
@@ -51,11 +56,23 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
   const [opacity, setOpacity] = useState(target.opacity ?? 0.35);
   const [mode, setMode] = useState<DrawMode>("points");
   const [busy, setBusy] = useState(false);
+  // Measurement type: the tool's own unit, or a volume built from its measurements.
+  const [isVolume, setIsVolume] = useState(!!target.volume);
+  const [depth, setDepth] = useState(target.volume?.depth ?? "");
+  const [width, setWidth] = useState(target.volume?.mode === "length_width_depth" ? target.volume.width : "");
+  const volume: VolumeSpec | null = !isVolume || !meta.volume ? null
+    : meta.volume === "area_depth" ? { mode: "area_depth", depth: depth.trim() }
+    : { mode: "length_width_depth", width: width.trim(), depth: depth.trim() };
+  const volumeOk = !isVolume || validVolume(volume);
 
   async function start() {
+    if (!volumeOk) return;
     setBusy(true);
     try {
-      await onStart({ tool, name: name.trim() || defaultName, color, opacity, unit: meta.unit, mode: meta.boxMode ? mode : "points" });
+      await onStart({
+        tool, name: name.trim() || defaultName, color, opacity, unit: isVolume ? "m3" : meta.unit,
+        mode: meta.boxMode ? mode : "points", volume,
+      });
     } finally {
       setBusy(false);
     }
@@ -86,8 +103,11 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
         <div className="grid grid-cols-[1fr_auto] items-end gap-3">
           <label className="grid gap-1">
             <span className="text-xs font-semibold">Measurement type</span>
-            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" defaultValue={meta.types[0]}>
-              {meta.types.map((t) => <option key={t}>{t}</option>)}
+            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" value={isVolume ? "volume" : "base"}
+              disabled={!!target.existingName} aria-label="Measurement type"
+              onChange={(e) => setIsVolume(e.target.value === "volume")}>
+              <option value="base">{meta.types[0]}</option>
+              {meta.volume && <option value="volume">{VOLUME_LABEL[meta.volume]}</option>}
             </select>
           </label>
           <div className="grid gap-1">
@@ -111,15 +131,33 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
           </label>
         )}
 
+        {isVolume && meta.volume && (
+          <div className="grid grid-cols-2 gap-3">
+            {meta.volume === "length_width_depth" && (
+              <label className="grid gap-1">
+                <span className="text-xs font-semibold">Width (m) *</span>
+                <Input inputMode="decimal" value={width} placeholder="e.g. 0.50" onChange={(e) => setWidth(e.target.value)} />
+              </label>
+            )}
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold">{meta.volume === "area_depth" ? "Depth / thickness (m) *" : "Depth (m) *"}</span>
+              <Input inputMode="decimal" value={depth} placeholder="e.g. 0.30" onChange={(e) => setDepth(e.target.value)} />
+            </label>
+            <p className="col-span-2 -mt-1 text-[11px] text-muted-foreground">
+              {meta.volume === "area_depth" ? "Quantity = Σ measured areas × depth (rule VOL-AT)." : "Quantity = Σ measured lengths × width × depth (rule VOL-LWD)."}
+            </p>
+          </div>
+        )}
+
         <div className="rounded-md bg-muted/60 px-2 py-1 text-xs font-semibold">Measurements</div>
         <div className="grid grid-cols-[1fr_96px] items-end gap-3">
           <div className="grid gap-1">
             <span className="flex justify-between text-xs font-semibold">Measurement 1 <span className="font-normal tabular-nums text-primary">{target.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
-            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{meta.measure}</option></select>
+            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{isVolume ? "Volume" : meta.measure}</option></select>
           </div>
           <label className="grid gap-1">
             <span className="text-xs font-semibold">Units 1</span>
-            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{meta.unitLabel}</option></select>
+            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{isVolume ? "m³" : meta.unitLabel}</option></select>
           </label>
         </div>
         <p className="-mt-1 text-[11px] text-muted-foreground">
@@ -139,7 +177,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
           ) : <span />}
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-            <Button size="sm" onClick={() => void start()} disabled={busy}>
+            <Button size="sm" onClick={() => void start()} disabled={busy || !volumeOk} title={volumeOk ? undefined : "Enter the volume dimensions"}>
               {busy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />} Start Takeoff
             </Button>
           </div>
