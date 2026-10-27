@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, Eye, EyeOff, GitBranch, History, ListChecks, Loader2,
+  AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, Eye, EyeOff, Maximize2, Minimize2, GitBranch, History, ListChecks, Loader2,
   Plus, Search, Send, ShieldCheck, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -107,13 +107,27 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   /** Items hidden on the drawing (eye toggle in the Takeoffs panel); view only. */
   const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
   const [panelW, setPanelW] = usePanelWidths();
+  /** Focus mode: the workspace fills the browser window (over the app bar and module tabs). */
+  const [focusMode, setFocusMode] = useState(false);
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Esc leaves focus mode unless the drawing or a dialog is using it.
+      const t = e.target as HTMLElement | null;
+      if (e.key !== "Escape" || t?.closest('[role="application"], [role="dialog"], input, textarea, select')) return;
+      setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [drawingUrl, setDrawingUrl] = useState<string | null>(null);
   const [calibrations, setCalibrations] = useState<QtoCalibration[]>([]);
   const [pendingCal, setPendingCal] = useState<{ points: { x: number; y: number }[]; pageUnits: number; page_no: number } | null>(null);
 
-  const [bottomOpen, setBottomOpen] = useState(true);
+  // Collapsed by default to leave room for the drawing; Validate opens it.
+  const [bottomOpen, setBottomOpen] = useState(false);
   const [bottomTab, setBottomTab] = useState<BottomTab>("issues");
   const [baselineWs, setBaselineWs] = useState<VersionWorkspace | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
@@ -490,25 +504,25 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const isLatest = session.current_version_id === version.id;
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[640px] flex-col gap-2">
-      {/* Top bar: session, version, status, actions */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Back to sessions" onClick={() => router.push(`/dashboard/qto?tender=${session.tender_id}`)}>
+    <div className={focusMode
+      ? "fixed inset-0 z-50 flex flex-col gap-1.5 bg-background p-1.5"
+      : "flex h-[calc(100vh-7rem)] min-h-[640px] flex-col gap-1.5"}>
+      {/* Top bar: session, version, status, actions (one compact row) */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-2 py-1">
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Back to sessions" onClick={() => router.push(`/dashboard/qto?tender=${session.tender_id}`)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-muted-foreground">{session.session_code}</span>
-            <h1 className="truncate text-base font-semibold">{session.name}</h1>
-            <Badge variant="outline">{session.purpose === "TENDER" ? "Tender" : "Construction"}</Badge>
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="font-mono text-[11px] text-muted-foreground">{session.session_code}</span>
+          <h1 className="truncate text-sm font-semibold">{session.name}</h1>
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">{session.purpose === "TENDER" ? "Tender" : "Construction"}</Badge>
+          <p className="hidden truncate text-[11px] text-muted-foreground xl:block">
             {tender ? `${tender.tender_no} · ` : ""}{drawing ? `${drawing.drawing_no} Rev ${revision?.revision}` : "No source"} · rules {rulesetLabel}
             {revision && revision.status !== "current" && <span className="ml-1 text-amber-700 dark:text-amber-300">({revision.status} revision)</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select className="h-8 rounded-md border border-input bg-transparent px-2 text-sm" value={version.id}
+          <select className="h-7 rounded-md border border-input bg-transparent px-2 text-xs" value={version.id}
             onChange={(e) => { setVersionId(e.target.value); setSelectedItemId(null); }} aria-label="Version">
             {bundle.versions.map((v) => (
               <option key={v.id} value={v.id}>v{v.version_no} · {VERSION_STATUS_LABEL[v.status]}{v.id === session.current_version_id ? " (current)" : ""}</option>
@@ -518,12 +532,12 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {editable && (
-            <Button size="sm" variant="outline" onClick={() => void runValidation()} disabled={validating}>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => void runValidation()} disabled={validating}>
               {validating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ListChecks className="mr-1 h-3.5 w-3.5" />} Validate
             </Button>
           )}
           {nextActions.map((to) => (
-            <Button key={to} size="sm" variant={to === "CANCELLED" || to === "CHANGES_REQUESTED" ? "outline" : "default"}
+            <Button key={to} size="sm" className="h-7 px-2 text-xs" variant={to === "CANCELLED" || to === "CHANGES_REQUESTED" ? "outline" : "default"}
               onClick={() => setDialog({ kind: "transition", to, commentRequired: TRANSITION_NEEDS[to].comment === "required" })}>
               {to === "SUBMITTED_FOR_REVIEW" && <Send className="mr-1 h-3.5 w-3.5" />}
               {to === "APPROVED" && <ShieldCheck className="mr-1 h-3.5 w-3.5" />}
@@ -531,21 +545,26 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
             </Button>
           ))}
           {version.status === "APPROVED" && can("qto_publish", "approve") && (
-            <Button size="sm" onClick={() => setDialog({ kind: "publish" })}><Upload className="mr-1 h-3.5 w-3.5" /> Publish</Button>
+            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => setDialog({ kind: "publish" })}><Upload className="mr-1 h-3.5 w-3.5" /> Publish</Button>
           )}
           {publication && can("qto_transfer", "submit") && (
-            <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "transfer", publicationId: publication.id })}>Transfer to BOQ</Button>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setDialog({ kind: "transfer", publicationId: publication.id })}>Transfer to BOQ</Button>
           )}
           {publication && can("qto_export", "export") && (
             <>
-              <Button size="sm" variant="outline" title="Export the published snapshot to Excel"
+              <Button size="sm" className="h-7 px-2 text-xs" variant="outline" title="Export the published snapshot to Excel"
                 onClick={() => void guard(() => exportPublication(publication, "xlsx", lookups(wbsNodes, budgetCodes)))}><Download className="mr-1 h-3.5 w-3.5" /> Excel</Button>
-              <Button size="sm" variant="ghost" onClick={() => void guard(() => exportPublication(publication, "csv", lookups(wbsNodes, budgetCodes)))}>CSV</Button>
+              <Button size="sm" className="h-7 px-2 text-xs" variant="ghost" onClick={() => void guard(() => exportPublication(publication, "csv", lookups(wbsNodes, budgetCodes)))}>CSV</Button>
             </>
           )}
           {isLatest && canStartNewVersion(version.status) && can("qto_sessions", "can_create") && (
-            <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "newVersion" })}><GitBranch className="mr-1 h-3.5 w-3.5" /> New version</Button>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setDialog({ kind: "newVersion" })}><GitBranch className="mr-1 h-3.5 w-3.5" /> New version</Button>
           )}
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-pressed={focusMode}
+            title={focusMode ? "Exit focus mode (Esc)" : "Focus mode: use the whole window for the drawing"}
+            onClick={() => setFocusMode((f) => !f)}>
+            {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
 

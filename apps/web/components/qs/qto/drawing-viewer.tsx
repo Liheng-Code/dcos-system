@@ -539,11 +539,11 @@ export function DrawingViewer({
                 setTool(opt.key);
               }}
               className={cn(
-                "flex w-[60px] flex-col items-center gap-0.5 rounded-md border px-1 py-1 text-[11px] font-medium transition-colors",
+                "flex w-[54px] flex-col items-center rounded-md border px-1 py-0.5 text-[10px] font-medium leading-tight transition-colors",
                 active ? "border-primary/40 bg-primary/10 text-foreground" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              <Icon size={22} />
+              <Icon size={18} />
               <span className="leading-none">{opt.label}</span>
             </button>
           );
@@ -562,6 +562,27 @@ export function DrawingViewer({
           </div>
         )}
         <div className="ml-auto flex items-center gap-1">
+          <span
+            className={cn("mr-1 hidden max-w-[16rem] truncate rounded px-1.5 py-0.5 text-[11px] md:inline",
+              calibration ? "bg-muted text-muted-foreground" : "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200")}
+            title={calibration
+              ? `Scale (page ${currentPage}): 1 page unit = ${fmt(calibration.metresPerUnit * 1000, 4)} mm, from a ${fmt(calibration.knownDistance)} ${calibration.knownUnit} reference`
+              : `Page ${currentPage} is not calibrated. Pick a drawing scale, or use Scale on a known dimension.`}
+          >
+            {calibration ? <>Scale {drawingScale && drawingScale >= 1 ? <b>≈ 1:{fmt(drawingScale, drawingScale < 10 ? 2 : 0)}</b> : null} · p.{currentPage}</> : <>Not calibrated · p.{currentPage}</>}
+          </span>
+          {!readOnly && onPresetScale && (
+            <select
+              className="mr-1 h-7 rounded border border-input bg-background px-1 text-xs text-foreground"
+              value=""
+              aria-label="Set drawing scale"
+              title="Sets the scale from the drawing scale. Correct only if the PDF is at true paper size; check a known dimension afterwards."
+              onChange={(e) => { if (e.target.value) onPresetScale(Number(e.target.value), currentPage); }}
+            >
+              <option value="">Drawing scale…</option>
+              {DRAWING_SCALES.map((n) => <option key={n} value={n}>1:{n}</option>)}
+            </select>
+          )}
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => zoomBy(1 / 1.25)} title="Zoom out (or mouse wheel)">
             <Minus className="h-3.5 w-3.5" />
           </Button>
@@ -586,25 +607,6 @@ export function DrawingViewer({
         </div>
       </div>
 
-      <div className={cn("flex flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs",
-        calibration ? "bg-muted/40 text-muted-foreground" : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200")}>
-        {calibration
-          ? <>Scale (page {currentPage}): {drawingScale && drawingScale >= 1 ? <b>≈ 1:{fmt(drawingScale, drawingScale < 10 ? 2 : 0)}</b> : null} · 1 page unit = {fmt(calibration.metresPerUnit * 1000, 4)} mm · from a {fmt(calibration.knownDistance)} {calibration.knownUnit} reference</>
-          : <>Page {currentPage} is not calibrated. Pick a drawing scale, or use <b>Scale</b> on a known dimension.</>}
-        {!readOnly && onPresetScale && (
-          <select
-            className="h-6 rounded border border-input bg-background px-1 text-xs text-foreground"
-            value=""
-            aria-label="Set drawing scale"
-            title="Sets the scale from the drawing scale. Correct only if the PDF is at true paper size; check a known dimension afterwards."
-            onChange={(e) => { if (e.target.value) onPresetScale(Number(e.target.value), currentPage); }}
-          >
-            <option value="">Drawing scale…</option>
-            {DRAWING_SCALES.map((n) => <option key={n} value={n}>1:{n}</option>)}
-          </select>
-        )}
-        {activeHint && !readOnly && <span className="ml-auto hidden lg:inline">{activeHint}</span>}
-      </div>
 
       <div
         ref={viewportRef}
@@ -847,7 +849,7 @@ export function DrawingViewer({
       </div>
 
       {/* Status bar: coordinates, snap and ortho */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
         <span className="tabular-nums">
           {cursor
             ? cal
@@ -856,6 +858,7 @@ export function DrawingViewer({
             : "X — · Y —"}
         </span>
         {measuring && hoverSnap && <span className="font-medium text-emerald-700 dark:text-emerald-400">{SNAP_LABEL[hoverSnap.kind]}</span>}
+        {activeHint && !readOnly && <span className="hidden min-w-0 flex-1 truncate lg:inline">{activeHint}</span>}
         {!readOnly && (
           <div className="ml-auto flex items-center gap-1">
             <button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((s) => !s)}
