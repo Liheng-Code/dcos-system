@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { useQtoPermissions } from "@/hooks/use-qto-permissions";
 import { getBudgetCodes } from "@/lib/qs/public-tender";
 import { getDrawingUrl, listDrawings, type QtoDrawing, type QtoDrawingRevision } from "@/lib/qs/qto-service";
@@ -75,6 +76,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const [wbsNodes, setWbsNodes] = useState<{ id: string; wbs_code: string | null; wbs_name: string | null }[]>([]);
   const [budgetCodes, setBudgetCodes] = useState<{ id: string; code: string; description: string | null }[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(searchParams.get("item"));
   const [search, setSearch] = useState("");
@@ -97,7 +99,8 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   // ── Loading ─────────────────────────────────────────────────────────────
   const loadBundle = useCallback(async () => {
     try {
-      const b = await getSessionBundle(sessionId);
+      const [b, { data: { user } }] = await Promise.all([getSessionBundle(sessionId), createClient().auth.getUser()]);
+      setUserId(user?.id ?? null);
       setBundle(b);
       setLoadError(null);
       return b;
@@ -339,7 +342,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const { session } = bundle;
   const nextActions = (["IN_PROGRESS", "SUBMITTED_FOR_REVIEW", "APPROVED", "CHANGES_REQUESTED", "CANCELLED"] as const)
     .filter((to) => canTransitionVersion(version.status, to))
-    .filter((to) => can(TRANSITION_NEEDS[to].action, TRANSITION_NEEDS[to].field as "edit"));
+    .filter((to) => can(TRANSITION_NEEDS[to].action, TRANSITION_NEEDS[to].field as "edit"))
+    // The submitter may not decide on their own submission (the server rejects it too).
+    .filter((to) => !((to === "APPROVED" || to === "CHANGES_REQUESTED") && version.submitted_by === userId));
   const isLatest = session.current_version_id === version.id;
 
   return (

@@ -679,7 +679,7 @@ begin
 
   -- Copy the chosen items with their factors, calculations, lines, measurements and BOQ links.
   create temp table if not exists qto_carry_map (old_id uuid primary key, new_id uuid not null) on commit drop;
-  delete from qto_carry_map;
+  delete from qto_carry_map where true;  -- pg_safeupdate (PostgREST) rejects a bare DELETE
   insert into qto_carry_map (old_id, new_id)
   select x.id, gen_random_uuid() from unnest(coalesce(p_carry_item_ids, '{}')) x(id);
 
@@ -702,7 +702,7 @@ begin
   from public.qto_item_factors f join qto_carry_map m on m.old_id = f.item_id;
 
   create temp table if not exists qto_carry_meas (old_id uuid primary key, new_id uuid not null) on commit drop;
-  delete from qto_carry_meas;
+  delete from qto_carry_meas where true;  -- pg_safeupdate (PostgREST) rejects a bare DELETE
   insert into qto_carry_meas (old_id, new_id)
   select ms.id, gen_random_uuid() from public.qto_measurements ms join qto_carry_map m on m.old_id = ms.qto_item_id;
   insert into public.qto_measurements (id, qto_item_id, drawing_revision_id, drawing_id, page_no, measure_type, points,
@@ -713,7 +713,7 @@ begin
   join qto_carry_meas mm on mm.old_id = ms.id;
 
   create temp table if not exists qto_carry_calc (old_id uuid primary key, new_id uuid not null) on commit drop;
-  delete from qto_carry_calc;
+  delete from qto_carry_calc where true;  -- pg_safeupdate (PostgREST) rejects a bare DELETE
   insert into qto_carry_calc (old_id, new_id)
   select c.id, gen_random_uuid() from public.qto_calculations c join qto_carry_map m on m.old_id = c.qto_item_id;
   insert into public.qto_calculations (id, qto_item_id, formula, display_text, result, method, created_by, tenant_id)
@@ -979,7 +979,7 @@ begin
       item_id uuid, boq_item_id uuid, grp text, section text, item_code text, description text, unit text,
       quantity numeric, building text, level text, discipline text, wbs_node_id uuid, budget_code_id uuid
     ) on commit drop;
-    delete from qto_xfer_items;
+    delete from qto_xfer_items where true;  -- pg_safeupdate (PostgREST) rejects a bare DELETE
 
     insert into qto_xfer_items
     -- Target line: the BOQ line mapped before publication, else the line an earlier transfer created.
@@ -1008,7 +1008,7 @@ begin
     end if;
 
     update qto_xfer_items set grp = case when boq_item_id is not null then 'L:' || boq_item_id::text
-      else 'N:' || md5(section || '|' || item_code || '|' || coalesce(description, '') || '|' || unit) end;
+      else 'N:' || md5(section || '|' || item_code || '|' || coalesce(description, '') || '|' || unit) end where true;
 
     -- Overwrite protection for existing lines.
     for g in select boq_item_id, sum(quantity) as qty from qto_xfer_items where boq_item_id is not null group by 1 loop
