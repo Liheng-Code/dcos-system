@@ -331,7 +331,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     if (!version || !bundle) return;
     try {
       const selVol = selected ? volumeOf(runsByItem.get(selected.id)) : null;
-      if (selected && selected.unit === cfg.unit && (cfg.unit !== "m3" || selVol?.mode === cfg.volume?.mode)) {
+      if (!cfg.newItem && selected && selected.unit === cfg.unit && (cfg.unit !== "m3" || selVol?.mode === cfg.volume?.mode)) {
         if (selected.display_color !== cfg.color || Number(selected.display_opacity) !== cfg.opacity) {
           await updateItem(selected.id, { display_color: cfg.color, display_opacity: cfg.opacity });
           await loadWs(version.id);

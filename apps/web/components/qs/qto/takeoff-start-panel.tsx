@@ -20,6 +20,8 @@ export interface TakeoffConfig {
   mode: DrawMode;
   /** Set when the item is a volume (unit m3) built from these measurements. */
   volume: VolumeSpec | null;
+  /** Create a new take-off item even though one is selected. */
+  newItem: boolean;
 }
 
 export interface TakeoffTarget {
@@ -51,13 +53,17 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
   onCancel: () => void;
 }) {
   const meta = TOOL_META[tool];
-  const [name, setName] = useState(target.existingName ?? defaultName);
+  // With an item selected, the panel can add to it or start a new take-off (which unlocks the type).
+  const [addToExisting, setAddToExisting] = useState(!!target.existingName);
+  const [name, setName] = useState(defaultName);
+  const shownName = addToExisting ? target.existingName ?? "" : name;
   const [color, setColor] = useState(target.color ?? meta.color);
   const [opacity, setOpacity] = useState(target.opacity ?? 0.35);
   const [mode, setMode] = useState<DrawMode>("points");
   const [busy, setBusy] = useState(false);
   // Measurement type: the tool's own unit, or a volume built from its measurements.
   const [isVolume, setIsVolume] = useState(!!target.volume);
+  const locked = addToExisting;
   const [depth, setDepth] = useState(target.volume?.depth ?? "");
   const [width, setWidth] = useState(target.volume?.mode === "length_width_depth" ? target.volume.width : "");
   const volume: VolumeSpec | null = !isVolume || !meta.volume ? null
@@ -71,7 +77,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
     try {
       await onStart({
         tool, name: name.trim() || defaultName, color, opacity, unit: isVolume ? "m3" : meta.unit,
-        mode: meta.boxMode ? mode : "points", volume,
+        mode: meta.boxMode ? mode : "points", volume, newItem: !addToExisting,
       });
     } finally {
       setBusy(false);
@@ -82,7 +88,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
     <div
       role="dialog"
       aria-label={`New ${meta.title}`}
-      className="absolute left-3 top-3 z-30 w-[22rem] rounded-lg border border-border bg-background text-sm shadow-xl"
+      className="absolute left-3 top-3 z-30 max-h-[calc(100%-1.5rem)] w-[22rem] overflow-y-auto rounded-lg border border-border bg-background text-sm shadow-xl"
       onKeyDown={(e) => {
         if (e.key === "Escape") onCancel();
         if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); void start(); }
@@ -90,21 +96,33 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
     >
       <div className="flex items-center gap-2 rounded-t-lg border-b border-border bg-muted/60 px-3 py-1.5">
         <span className="h-3 w-3 rounded-sm" style={{ background: color }} />
-        <span className="font-semibold">{target.existingName ? `Add to ${meta.title}` : `New ${meta.title}`}</span>
+        <span className="font-semibold">{addToExisting ? `Add to ${meta.title}` : `New ${meta.title}`}</span>
         <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={onCancel} aria-label="Close"><X className="h-4 w-4" /></button>
       </div>
 
       <div className="grid gap-3 p-3">
+        {target.existingName && (
+          <div className="grid grid-cols-2 gap-1 rounded-md border border-input p-0.5 text-xs" role="radiogroup" aria-label="Take-off target">
+            {([[true, "Add to selected item"], [false, "New takeoff"]] as const).map(([v, label]) => (
+              <button key={label} type="button" role="radio" aria-checked={addToExisting === v}
+                onClick={() => { setAddToExisting(v); if (v) setIsVolume(!!target.volume); }}
+                className={cn("rounded px-2 py-1", addToExisting === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="grid gap-1">
           <span className="text-xs font-semibold">Name</span>
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.currentTarget.select()} disabled={!!target.existingName} />
+          <Input autoFocus value={shownName} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.currentTarget.select()} disabled={locked} />
         </label>
 
         <div className="grid grid-cols-[1fr_auto] items-end gap-3">
           <label className="grid gap-1">
             <span className="text-xs font-semibold">Measurement type</span>
             <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" value={isVolume ? "volume" : "base"}
-              disabled={!!target.existingName} aria-label="Measurement type"
+              disabled={locked} aria-label="Measurement type"
+              title={locked ? "Choose “New takeoff” to pick another measurement type" : undefined}
               onChange={(e) => setIsVolume(e.target.value === "volume")}>
               <option value="base">{meta.types[0]}</option>
               {meta.volume && <option value="volume">{VOLUME_LABEL[meta.volume]}</option>}
@@ -152,7 +170,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
         <div className="rounded-md bg-muted/60 px-2 py-1 text-xs font-semibold">Measurements</div>
         <div className="grid grid-cols-[1fr_96px] items-end gap-3">
           <div className="grid gap-1">
-            <span className="flex justify-between text-xs font-semibold">Measurement 1 <span className="font-normal tabular-nums text-primary">{target.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+            <span className="flex justify-between text-xs font-semibold">Measurement 1 <span className="font-normal tabular-nums text-primary">{(addToExisting ? target.total : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
             <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" disabled><option>{isVolume ? "Volume" : meta.measure}</option></select>
           </div>
           <label className="grid gap-1">
@@ -161,7 +179,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
           </label>
         </div>
         <p className="-mt-1 text-[11px] text-muted-foreground">
-          Measurements are saved to the {target.existingName ? "selected" : "new"} take-off item as evidence; the quantity is set by its calculation.
+          Measurements are saved to the {addToExisting ? "selected" : "new"} take-off item as evidence; the quantity is set by its calculation.
         </p>
 
         <div className="flex items-center justify-between gap-2 pt-1">
