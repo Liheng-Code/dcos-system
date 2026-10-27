@@ -6,6 +6,8 @@ import {
   Crosshair,
   Loader2,
   Magnet,
+  Moon,
+  Sun,
   Maximize,
   Minus,
   MousePointer2,
@@ -52,6 +54,8 @@ const SNAP_PX = 10;
 const PAGE_OFFSET = 16;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 12;
+
+const SHEET_KEY = "dcos.qto.sheet";
 
 /** Common drawing scales offered as presets (1:N). */
 export const DRAWING_SCALES = [1, 2, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500, 1000, 1250, 2500];
@@ -148,6 +152,16 @@ export function DrawingViewer({
   const [tool, setTool] = useState<ViewerTool>(readOnly ? "pan" : "length");
   const [snapOn, setSnapOn] = useState(true);
   const [orthoOn, setOrthoOn] = useState(false);
+  // Black sheet (CAD style) by default: the PDF is colour-inverted, so white paper becomes black and
+  // black linework white, while coloured lines keep their hue. Remembered per browser.
+  const [darkSheet, setDarkSheet] = useState(() => {
+    try { return typeof window === "undefined" || window.localStorage.getItem(SHEET_KEY) !== "light"; } catch { return true; }
+  });
+  const toggleSheet = () => setDarkSheet((d) => {
+    try { window.localStorage.setItem(SHEET_KEY, d ? "light" : "dark"); } catch { /* storage unavailable */ }
+    return !d;
+  });
+  const ink = darkSheet ? "#ffffff" : "#0f172a";
   const [vectorCount, setVectorCount] = useState<number | null>(null);
 
   const [draftPts, setDraftPts] = useState<Pt[]>([]);
@@ -431,6 +445,10 @@ export function DrawingViewer({
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => zoomBy(1.25)} title="Zoom in (or mouse wheel)">
             <Plus className="h-3.5 w-3.5" />
           </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={toggleSheet} aria-pressed={darkSheet}
+            title={darkSheet ? "Show the drawing on a white sheet" : "Show the drawing on a black sheet"}>
+            {darkSheet ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </Button>
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setView({ zoom: 0.6, x: 0, y: 0 })} title="Reset view">
             <Maximize className="h-3.5 w-3.5" />
           </Button>
@@ -464,7 +482,7 @@ export function DrawingViewer({
         {activeTool && !readOnly && <span className="ml-auto hidden lg:inline">{activeTool.hint}</span>}
       </div>
 
-      <div ref={viewportRef} className="relative flex-1 overflow-hidden bg-muted/30">
+      <div ref={viewportRef} className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -486,8 +504,8 @@ export function DrawingViewer({
             top: PAGE_OFFSET,
           }}
         >
-          <div className="relative bg-white shadow-lg">
-            <canvas ref={canvasRef} className="block" />
+          <div className={cn("relative shadow-lg", darkSheet ? "bg-black" : "bg-white")}>
+            <canvas ref={canvasRef} className="block" style={darkSheet ? { filter: "invert(1) hue-rotate(180deg)" } : undefined} />
             {pageSize && (
               <svg
                 ref={svgRef}
@@ -551,8 +569,8 @@ export function DrawingViewer({
                 {/* Cross-hair cursor and snap marker */}
                 {cursor && tool !== "pan" && !readOnly && (
                   <g pointerEvents="none">
-                    <line x1={cursor.x - 14 / view.zoom} y1={cursor.y} x2={cursor.x + 14 / view.zoom} y2={cursor.y} stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-                    <line x1={cursor.x} y1={cursor.y - 14 / view.zoom} x2={cursor.x} y2={cursor.y + 14 / view.zoom} stroke="#0f172a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    <line x1={cursor.x - 14 / view.zoom} y1={cursor.y} x2={cursor.x + 14 / view.zoom} y2={cursor.y} stroke={ink} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                    <line x1={cursor.x} y1={cursor.y - 14 / view.zoom} x2={cursor.x} y2={cursor.y + 14 / view.zoom} stroke={ink} strokeWidth={1} vectorEffect="non-scaling-stroke" />
                     {hoverSnap?.kind === "endpoint" && (
                       <rect x={cursor.x - marker} y={cursor.y - marker} width={marker * 2} height={marker * 2} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />
                     )}
