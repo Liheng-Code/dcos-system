@@ -30,6 +30,7 @@ import {
   type AuditEntry, type RevisionOption, type RulesetWithVersions, type SessionBundle, type TenderBoqLine, type VersionWorkspace,
 } from "@/lib/qs/qto/session-service";
 import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "@/components/qs/qto/drawing-viewer";
+import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs/qto/takeoff-start-panel";
 import { QtoItemPanel } from "@/components/qs/qto/qto-item-panel";
 import {
   CalibrationDialog, NewVersionDialog, PublishDialog, TransferDialog, TransitionDialog, exportPublication,
@@ -271,6 +272,54 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
     }
   }
 
+  /** Sum of an item's measurements in the unit of its tool (m2 areas, m lengths, No. counts). */
+  function measuredTotal(itemId: string, unit: string) {
+    let t = 0;
+    for (const m of ws?.measurements ?? []) {
+      if (m.qto_item_id !== itemId) continue;
+      if (unit === "m2" && m.measure_type === "area") t += Number(m.area ?? 0);
+      else if (unit === "m" && m.measure_type !== "area" && m.measure_type !== "count") t += Number(m.length ?? 0);
+      else if (unit === "No." && m.measure_type === "count") t += Number(m.count ?? 0);
+    }
+    return t;
+  }
+
+  /** The "New …" panel measures into the selected item when its unit fits, otherwise into a new item. */
+  function takeoffTarget(tool: TakeoffTool) {
+    const meta = TOOL_META[tool];
+    const fits = selected && selected.unit === meta.unit && editable;
+    const sameUnit = items.filter((i) => i.unit === meta.unit).length;
+    return {
+      defaultName: `${meta.title} ${sameUnit + 1}`,
+      existingName: fits ? selected!.description : null,
+      total: fits ? measuredTotal(selected!.id, meta.unit) : 0,
+      color: fits ? selected!.display_color : null,
+      opacity: fits && selected!.display_opacity !== null ? Number(selected!.display_opacity) : null,
+    };
+  }
+
+  async function startTakeoff(cfg: TakeoffConfig) {
+    if (!version || !bundle) return;
+    try {
+      if (selected && selected.unit === cfg.unit) {
+        if (selected.display_color !== cfg.color || Number(selected.display_opacity) !== cfg.opacity) {
+          await updateItem(selected.id, { display_color: cfg.color, display_opacity: cfg.opacity });
+          await loadWs(version.id);
+        }
+        return;
+      }
+      const it = await createItem(version, bundle.session.tender_id, {
+        description: cfg.name, unit: cfg.unit, building: bundle.session.building, discipline: bundle.session.trade,
+        page_no: page, display_color: cfg.color, display_opacity: cfg.opacity,
+      });
+      await loadWs(version.id);
+      setSelectedItemId(it.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not start the take-off");
+      throw e;
+    }
+  }
+
   async function onMeasure(m: EmittedMeasurement) {
     if (!editable || !version) return;
     if (m.measure_type !== "count" && m.measure_type !== "point" && !activeCal) {
@@ -487,9 +536,25 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
               }, `Scale set to 1:${n}`);
             }}
             onMeasure={(m) => void onMeasure(m)}
+            onStartTakeoff={editable ? startTakeoff : undefined}
+            takeoffTarget={takeoffTarget}
+            activeTakeoff={selected ? {
+              name: `${selected.qto_no} · ${selected.description}`,
+              color: selected.display_color ?? "#2563eb",
+              total: measuredTotal(selected.id, selected.unit),
+              unit: selected.unit === "m2" ? "m²" : selected.unit,
+            } : null}
             savedMeasurements={(ws?.measurements ?? [])
               .filter((m) => m.drawing_revision_id === version.drawing_revision_id)
-              .map((m) => ({ id: m.id, page_no: m.page_no, measure_type: m.measure_type, points: m.points ?? [], highlighted: m.qto_item_id === selectedItemId }))}
+              .map((m) => {
+                const owner = items.find((i) => i.id === m.qto_item_id);
+                return {
+                  id: m.id, page_no: m.page_no, measure_type: m.measure_type, points: m.points ?? [],
+                  highlighted: m.qto_item_id === selectedItemId,
+                  color: owner?.display_color ?? null,
+                  opacity: owner?.display_opacity !== null && owner?.display_opacity !== undefined ? Number(owner.display_opacity) : null,
+                };
+              })}
           />
         </div>
 

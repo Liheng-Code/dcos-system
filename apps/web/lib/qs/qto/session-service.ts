@@ -192,7 +192,8 @@ export async function getVersionWorkspace(versionId: string): Promise<VersionWor
 export type ItemFields = Partial<Pick<TakeoffItem,
   "item_code" | "description" | "unit" | "quantity" | "quantity_status" | "exclusion_reason" | "provisional_assumption" |
   "building" | "level" | "zone" | "discipline" | "work_section" | "element" | "wbs_node_id" | "budget_code_id" |
-  "rule_code" | "drawing_id" | "drawing_revision_id" | "page_no" | "grid_location" | "carry_status" | "remarks">>;
+  "rule_code" | "drawing_id" | "drawing_revision_id" | "page_no" | "grid_location" | "carry_status" | "remarks" |
+  "display_color" | "display_opacity">>;
 
 export async function createItem(version: QtoSessionVersion, tenderId: string, fields: ItemFields): Promise<TakeoffItem> {
   const client = db();

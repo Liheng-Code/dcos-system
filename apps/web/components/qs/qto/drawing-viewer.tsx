@@ -3,24 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
-  Crosshair,
   Loader2,
   Magnet,
   Moon,
   Sun,
   Maximize,
   Minus,
-  MousePointer2,
-  MoveRight,
   Plus,
-  RotateCcw,
-  Route,
-  Ruler,
-  Square,
   SquareDashedMousePointer,
   Undo2,
   X,
 } from "lucide-react";
+import {
+  AreaIcon, CountIcon, LengthIcon, PanIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
+} from "@/components/qs/qto/takeoff-icons";
+import {
+  TOOL_META, TakeoffStartPanel, type DrawMode, type TakeoffConfig, type TakeoffTarget, type TakeoffTool,
+} from "@/components/qs/qto/takeoff-start-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { QtoMeasureType } from "@/lib/qs/qto-service";
@@ -88,6 +87,9 @@ export interface SavedShape {
   measure_type: string;
   points: Pt[];
   highlighted?: boolean;
+  /** Item display colour and fill opacity. */
+  color?: string | null;
+  opacity?: number | null;
 }
 
 interface DrawingViewerProps {
@@ -102,18 +104,34 @@ interface DrawingViewerProps {
   onPageChange?: (page: number) => void;
   savedMeasurements?: SavedShape[];
   readOnly?: boolean;
+  /**
+   * Called from the "New Area / New Linear…" panel of a measuring tool. The parent creates or
+   * selects the take-off item; measuring starts once it resolves.
+   */
+  onStartTakeoff?: (cfg: TakeoffConfig) => Promise<void>;
+  /** Default name and target item for the panel, per tool. */
+  takeoffTarget?: (tool: TakeoffTool) => TakeoffTarget & { defaultName: string };
+  /** The item being measured into, shown as a chip while a tool is active. */
+  activeTakeoff?: { name: string; color: string; total: number; unit: string } | null;
 }
 
-const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: typeof Ruler; hint: string }[] = [
-  { key: "pan", label: "Pan", icon: MousePointer2, hint: "Drag to move the drawing; the wheel zooms" },
-  { key: "length", label: "Length", icon: Ruler, hint: "Click two points" },
-  { key: "polyline", label: "Polyline", icon: Route, hint: "Click points, double-click or Enter to finish" },
-  { key: "area", label: "Area", icon: Square, hint: "Click the corners, double-click or Enter to close" },
-  { key: "perimeter", label: "Perimeter", icon: RotateCcw, hint: "Click the corners, double-click or Enter to close" },
-  { key: "count", label: "Count", icon: Plus, hint: "Click each element, Enter to finish" },
-  { key: "point", label: "Point", icon: Crosshair, hint: "Click a location" },
-  { key: "calibrate", label: "Scale", icon: MoveRight, hint: "Click both ends of a known dimension (snaps to the dimension line)" },
+const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: (p: { size?: number }) => React.ReactElement; hint: string }[] = [
+  { key: "pan", label: "Pan", icon: PanIcon, hint: "Drag to move the drawing; the wheel zooms" },
+  { key: "calibrate", label: "Scale", icon: ScaleIcon, hint: "Click both ends of a known dimension (snaps to the dimension line)" },
+  { key: "area", label: "Area", icon: AreaIcon, hint: "Click the corners, double-click or Enter to close" },
+  { key: "length", label: "Linear", icon: LengthIcon, hint: "Click two points" },
+  { key: "polyline", label: "Segment", icon: PolylineIcon, hint: "Click points, double-click or Enter to finish" },
+  { key: "perimeter", label: "Perimeter", icon: PerimeterIcon, hint: "Click the corners, double-click or Enter to close" },
+  { key: "count", label: "Count", icon: CountIcon, hint: "Click each element, Enter to finish" },
+  { key: "point", label: "Point", icon: PointIcon, hint: "Click a location" },
 ];
+
+const BOX_HINT = "Box mode: click two opposite corners";
+
+/** The four corners of the axis-aligned rectangle spanned by two opposite corners. */
+function boxCorners(a: Pt, b: Pt): Pt[] {
+  return [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+}
 
 const SNAP_LABEL: Record<Snap["kind"], string> = {
   endpoint: "Endpoint",
@@ -134,7 +152,13 @@ export function DrawingViewer({
   onPageChange,
   savedMeasurements,
   readOnly,
+  onStartTakeoff,
+  takeoffTarget,
+  activeTakeoff,
 }: DrawingViewerProps) {
+  /** Tool whose "New …" panel is open. */
+  const [panelTool, setPanelTool] = useState<TakeoffTool | null>(null);
+  const [drawMode, setDrawMode] = useState<DrawMode>("points");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -280,7 +304,7 @@ export function DrawingViewer({
       if (snap) pt = snap.point;
     }
     const anchor = draftPts[draftPts.length - 1];
-    if ((orthoOn || e.shiftKey) && anchor && tool !== "count" && tool !== "point") {
+    if ((orthoOn || e.shiftKey) && anchor && tool !== "count" && tool !== "point" && !boxMode) {
       const o = orthogonal(anchor, pt);
       if (o.x !== pt.x || o.y !== pt.y) snap = null;
       pt = o;
@@ -346,11 +370,20 @@ export function DrawingViewer({
       emit("point", [pt]);
       return;
     }
+    if (boxMode) {
+      if (draftPts.length === 0) setDraftPts([pt]);
+      else {
+        emit(tool as QtoMeasureType, boxCorners(draftPts[0], pt));
+        cancelDraft();
+      }
+      return;
+    }
     setDraftPts((p) => [...p, pt]);
   };
 
   /** A measuring tool is active: only then do snap, ortho and the cross-hair apply. */
   const measuring = tool !== "pan" && !readOnly;
+  const boxMode = drawMode === "box" && (tool === "area" || tool === "perimeter");
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (dragging.current && panStart.current) {
@@ -389,7 +422,9 @@ export function DrawingViewer({
   const zoomBy = (factor: number) => setView((v) => ({ ...v, zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom * factor)) }));
 
   const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
-  const live = draftPts.length > 0 ? [...draftPts, ...(cursor ? [cursor] : [])] : [];
+  const live = draftPts.length === 0 ? []
+    : boxMode ? (cursor ? boxCorners(draftPts[0], cursor) : draftPts)
+    : [...draftPts, ...(cursor ? [cursor] : [])];
   let liveText: string | null = null;
   if (draftPts.length > 0) {
     if (tool === "calibrate") liveText = `Reference: ${fmt(polylineLength(live), 2)} page units${cal ? ` (now reads ${fmt(lengthInMetres(polylineLength(live), cal) * 1000, 0)} mm)` : ""}`;
@@ -401,6 +436,7 @@ export function DrawingViewer({
   }
   const tools = readOnly ? TOOL_OPTIONS.filter((t) => t.key === "pan") : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
+  const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff" : boxMode ? BOX_HINT : activeTool?.hint;
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
 
@@ -414,23 +450,30 @@ export function DrawingViewer({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex flex-wrap items-center gap-1 border-b border-border bg-background px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-background px-1.5 py-1">
         {tools.map((opt) => {
           const Icon = opt.icon;
+          const active = panelTool ? panelTool === opt.key : tool === opt.key;
           return (
             <button
               key={opt.key}
               type="button"
               title={`${opt.label}: ${opt.hint}`}
-              aria-pressed={tool === opt.key}
-              onClick={() => { setTool(opt.key); cancelDraft(); }}
+              aria-pressed={active}
+              onClick={() => {
+                cancelDraft();
+                if (onStartTakeoff && opt.key in TOOL_META) { setPanelTool(opt.key as TakeoffTool); return; }
+                setPanelTool(null);
+                setDrawMode("points");
+                setTool(opt.key);
+              }}
               className={cn(
-                "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                tool === opt.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                "flex w-[60px] flex-col items-center gap-0.5 rounded-md border px-1 py-1 text-[11px] font-medium transition-colors",
+                active ? "border-primary/40 bg-primary/10 text-foreground" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              <Icon className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline">{opt.label}</span>
+              <Icon size={22} />
+              <span className="leading-none">{opt.label}</span>
             </button>
           );
         })}
@@ -489,7 +532,7 @@ export function DrawingViewer({
             {DRAWING_SCALES.map((n) => <option key={n} value={n}>1:{n}</option>)}
           </select>
         )}
-        {activeTool && !readOnly && <span className="ml-auto hidden lg:inline">{activeTool.hint}</span>}
+        {activeHint && !readOnly && <span className="ml-auto hidden lg:inline">{activeHint}</span>}
       </div>
 
       <div
@@ -551,7 +594,8 @@ export function DrawingViewer({
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
                   .map((m) => {
                     const closed = m.measure_type === "area" || m.measure_type === "perimeter";
-                    const color = m.highlighted ? "#ea580c" : "#2563eb";
+                    const color = m.color ?? (m.highlighted ? "#ea580c" : "#2563eb");
+                    const fillOpacity = m.opacity ?? (m.highlighted ? 0.18 : 0.12);
                     if (m.measure_type === "count" || m.measure_type === "point") {
                       return m.points.map((p, i) => (
                         <circle key={`${m.id}-${i}`} cx={p.x} cy={p.y} r={4 / view.zoom} fill={color} fillOpacity={0.7} pointerEvents="none" />
@@ -561,7 +605,8 @@ export function DrawingViewer({
                       <polyline
                         key={m.id}
                         points={(closed ? [...m.points, m.points[0]] : m.points).map((p) => `${p.x},${p.y}`).join(" ")}
-                        fill={m.measure_type === "area" ? (m.highlighted ? "rgba(234,88,12,0.18)" : "rgba(37,99,235,0.12)") : "none"}
+                        fill={m.measure_type === "area" ? color : "none"}
+                        fillOpacity={fillOpacity}
                         stroke={color}
                         strokeWidth={m.highlighted ? 3 : 2}
                         vectorEffect="non-scaling-stroke"
@@ -609,11 +654,39 @@ export function DrawingViewer({
             )}
           </div>
         </div>
-        {measuring && screenCursor && (
+        {measuring && screenCursor && !panelTool && (
           <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
             <div className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
             <div className="absolute inset-y-0" style={{ left: screenCursor.x, width: 1, background: ink }} />
             <div className="absolute rounded-full" style={{ left: screenCursor.x - 12, top: screenCursor.y - 12, width: 25, height: 25, border: `1.5px solid ${hoverSnap ? "#16a34a" : ink}` }} />
+          </div>
+        )}
+        {panelTool && takeoffTarget && onStartTakeoff && (() => {
+          const t = takeoffTarget(panelTool);
+          return (
+            <TakeoffStartPanel
+              key={panelTool}
+              tool={panelTool}
+              defaultName={t.defaultName}
+              target={t}
+              onCancel={() => setPanelTool(null)}
+              onStart={async (cfg) => {
+                await onStartTakeoff(cfg);
+                setPanelTool(null);
+                setDrawMode(cfg.mode);
+                setTool(cfg.tool);
+                svgRef.current?.focus();
+              }}
+            />
+          );
+        })()}
+        {measuring && activeTakeoff && tool !== "calibrate" && tool !== "point" && !panelTool && (
+          <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow">
+            <span className="h-3 w-3 rounded-sm" style={{ background: activeTakeoff.color }} />
+            <span className="max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
+            <span className="tabular-nums text-primary">{fmt(activeTakeoff.total)} {activeTakeoff.unit}</span>
+            {boxMode && <span className="text-muted-foreground">· box</span>}
+            <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
         {liveText && (

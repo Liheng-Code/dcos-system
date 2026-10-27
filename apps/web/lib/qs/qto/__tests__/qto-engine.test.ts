@@ -195,7 +195,7 @@ const baseItem = (o: Partial<TakeoffItem>): TakeoffItem => ({
   exclusion_reason: null, provisional_assumption: null, building: "BA", level: null, zone: null, discipline: "STR",
   work_section: "Concrete", element: null, wbs_node_id: null, budget_code_id: "bc", rule_code: null, drawing_id: null,
   drawing_revision_id: "r", page_no: 1, grid_location: null, carried_from_item_id: null, carry_status: null,
-  remarks: null, is_deleted: false, prepared_by: null, created_at: "", updated_at: "", ...o,
+  remarks: null, display_color: null, display_opacity: null, is_deleted: false, prepared_by: null, created_at: "", updated_at: "", ...o,
 });
 
 describe("validation", () => {

@@ -78,6 +78,9 @@ export interface TakeoffItem {
   carried_from_item_id: string | null;
   carry_status: "REMEASURED" | "REVALIDATED" | "UNVERIFIED" | null;
   remarks: string | null;
+  /** How the item is drawn on the sheet (viewer only). */
+  display_color: string | null;
+  display_opacity: number | string | null;
   is_deleted: boolean;
   prepared_by: string | null;
   created_at: string;
