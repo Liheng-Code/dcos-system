@@ -149,7 +149,7 @@ export function DrawingViewer({
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
   /** Zoom (screen px per page unit) and pan (screen px). */
   const [view, setView] = useState({ zoom: 0.6, x: 0, y: 0 });
-  const [tool, setTool] = useState<ViewerTool>(readOnly ? "pan" : "length");
+  const [tool, setTool] = useState<ViewerTool>("pan");
   const [snapOn, setSnapOn] = useState(true);
   const [orthoOn, setOrthoOn] = useState(false);
   // Black sheet (CAD style) by default: the PDF is colour-inverted, so white paper becomes black and
@@ -168,6 +168,8 @@ export function DrawingViewer({
   /** Resolved (snapped / ortho) pointer position in page units. */
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [hoverSnap, setHoverSnap] = useState<Snap | null>(null);
+  /** Cross-hair position in viewport pixels (follows the snapped point while over the sheet). */
+  const [screenCursor, setScreenCursor] = useState<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
   const panStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -347,6 +349,9 @@ export function DrawingViewer({
     setDraftPts((p) => [...p, pt]);
   };
 
+  /** A measuring tool is active: only then do snap, ortho and the cross-hair apply. */
+  const measuring = tool !== "pan" && !readOnly;
+
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (dragging.current && panStart.current) {
       const dx = e.clientX - panStart.current.x;
@@ -355,14 +360,19 @@ export function DrawingViewer({
       panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
-    const { pt, snap } = tool === "pan" || readOnly ? { pt: toPage(e), snap: null } : resolve(e);
+    const { pt, snap } = measuring ? resolve(e) : { pt: toPage(e), snap: null };
     setCursor(pt);
     setHoverSnap(snap);
+    if (measuring) setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); finish(); }
-    else if (e.key === "Escape") cancelDraft();
+    else if (e.key === "Escape") {
+      // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
+      if (draftPts.length > 0) cancelDraft();
+      else { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
+    }
     else if (e.key === "Backspace" && draftPts.length > 0) { e.preventDefault(); setDraftPts((p) => p.slice(0, -1)); }
     else if (e.key.toLowerCase() === "o" && !e.ctrlKey && !e.metaKey) setOrthoOn((o) => !o);
     else if (e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey) setSnapOn((s) => !s);
@@ -482,7 +492,19 @@ export function DrawingViewer({
         {activeTool && !readOnly && <span className="ml-auto hidden lg:inline">{activeTool.hint}</span>}
       </div>
 
-      <div ref={viewportRef} className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}>
+      <div
+        ref={viewportRef}
+        className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}
+        style={{ cursor: measuring ? "none" : undefined }}
+        onPointerMove={(e) => {
+          // Off the sheet the cross-hair follows the mouse unsnapped (the sheet sets its own position).
+          if (!measuring || svgRef.current?.contains(e.target as Node)) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          setScreenCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
+          setHoverSnap(null);
+        }}
+        onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}
+      >
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -516,14 +538,14 @@ export function DrawingViewer({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={() => { dragging.current = false; panStart.current = null; }}
-                onPointerLeave={() => { setHoverSnap(null); }}
+                onPointerLeave={() => setHoverSnap(null)}
                 onDoubleClick={finish}
                 onKeyDown={handleKey}
                 onContextMenu={(e) => e.preventDefault()}
                 tabIndex={0}
                 role="application"
                 aria-label="Drawing measurement surface"
-                style={{ cursor: tool === "pan" || readOnly ? "grab" : "none" }}
+                style={{ cursor: measuring ? "none" : "grab" }}
               >
                 {(savedMeasurements ?? [])
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
@@ -566,11 +588,9 @@ export function DrawingViewer({
                   <circle key={i} cx={p.x} cy={p.y} r={3.5 / view.zoom} fill={tool === "calibrate" ? "#16a34a" : "#dc2626"} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                 ))}
 
-                {/* Cross-hair cursor and snap marker */}
-                {cursor && tool !== "pan" && !readOnly && (
+                {/* Snap marker (the cross-hair is drawn across the whole viewport below) */}
+                {cursor && measuring && hoverSnap && (
                   <g pointerEvents="none">
-                    <line x1={cursor.x - 14 / view.zoom} y1={cursor.y} x2={cursor.x + 14 / view.zoom} y2={cursor.y} stroke={ink} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-                    <line x1={cursor.x} y1={cursor.y - 14 / view.zoom} x2={cursor.x} y2={cursor.y + 14 / view.zoom} stroke={ink} strokeWidth={1} vectorEffect="non-scaling-stroke" />
                     {hoverSnap?.kind === "endpoint" && (
                       <rect x={cursor.x - marker} y={cursor.y - marker} width={marker * 2} height={marker * 2} fill="none" stroke="#16a34a" strokeWidth={2} vectorEffect="non-scaling-stroke" />
                     )}
@@ -589,6 +609,13 @@ export function DrawingViewer({
             )}
           </div>
         </div>
+        {measuring && screenCursor && (
+          <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
+            <div className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
+            <div className="absolute inset-y-0" style={{ left: screenCursor.x, width: 1, background: ink }} />
+            <div className="absolute rounded-full" style={{ left: screenCursor.x - 12, top: screenCursor.y - 12, width: 25, height: 25, border: `1.5px solid ${hoverSnap ? "#16a34a" : ink}` }} />
+          </div>
+        )}
         {liveText && (
           <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/95 px-2 py-1 text-xs shadow">{liveText}</div>
         )}
@@ -603,13 +630,13 @@ export function DrawingViewer({
               : `X ${fmt(cursor.x, 1)} · Y ${fmt(cursor.y, 1)} (page units)`
             : "X — · Y —"}
         </span>
-        {hoverSnap && <span className="font-medium text-emerald-700 dark:text-emerald-400">{SNAP_LABEL[hoverSnap.kind]}</span>}
+        {measuring && hoverSnap && <span className="font-medium text-emerald-700 dark:text-emerald-400">{SNAP_LABEL[hoverSnap.kind]}</span>}
         {!readOnly && (
           <div className="ml-auto flex items-center gap-1">
             <button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((s) => !s)}
               title={vectorCount === 0 ? "This page has no vector lines (scanned PDF?), so there is nothing to snap to" : "Snap to lines in the PDF (S). Hold Alt to place a point freely."}
               className={cn("flex items-center gap-1 rounded px-2 py-0.5", snapOn ? "bg-primary/10 text-primary" : "hover:bg-muted")}>
-              <Magnet className="h-3 w-3" /> PDF Snap: {snapOn ? "On" : "Off"}
+              <Magnet className="h-3 w-3" /> PDF Snap: {snapOn ? "On" : "Off"}{!measuring && snapOn && <span className="text-muted-foreground"> (pick a tool)</span>}
               {snapOn && vectorCount !== null && <span className="text-muted-foreground">({vectorCount === 0 ? "no vectors" : `${fmt(vectorCount, 0)} lines`})</span>}
             </button>
             <button type="button" aria-pressed={orthoOn} onClick={() => setOrthoOn((o) => !o)}
