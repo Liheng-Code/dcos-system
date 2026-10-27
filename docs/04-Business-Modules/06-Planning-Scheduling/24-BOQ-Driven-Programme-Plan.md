@@ -107,6 +107,23 @@ The planner reviews it and commits.
   - Feed `ManpowerHistogramCard` (`planning-resource-charts.tsx`) and the resource loading page (`plan-resource-loading.tsx`), using BOQ-based hours when present and the existing allocation % otherwise.
 - **Margin check (secondary):** man-hours × labour rates (`plan_resolve_labor_rate`) as a second line against BOQ value, shown only where rates exist.
 
+**Status (2026-10-27): built.**
+- **Migration `20261027081636_boq_programme_phase3.sql`** (read-only, SECURITY INVOKER) adds:
+  - `plan_project_workdays` (the default calendar plus exceptions; Mon–Sat when the project has none);
+  - `plan_period_start` and `plan_trade_label`;
+  - `plan_cost_loading(project, period, basis 'current'|'baseline')`. It returns `periods` with value and cumulative, `divisions`, `cells` (period × division), the budget left out because it has no dates, and `margin` (labour hours × daily rate ÷ calendar hours/day);
+  - `plan_manpower_histogram(project, period, group, basis)`. It returns `periods` with hours, average headcount (hours ÷ (hours/day × working days in the period)) and daily peak per kind, plus `series` and `cells` per group.
+- **How it spreads:** each task's value is split evenly over its working days. A task with no working day in its span is booked on its start date.
+- **Code:**
+  - `lib/planning/boq-programme/loading-service.ts` holds the RPC wrappers;
+  - `loading-view.ts` is the pure chart shaping (top 8 groups plus Other, cumulative %, margin) and has tests;
+  - `components/planning/boq-programme/loading-charts.tsx` holds `CostLoadingCard`, `BoqManpowerHistogramCard` and `useHasBoqHours`.
+- **Where it shows:**
+  - **S-Curve & EVM:** cost loading;
+  - **Schedule Reports:** both charts;
+  - **Resource Loading:** the BOQ histogram, when the project has BOQ hours;
+  - **Planning dashboard:** `ManpowerHistogramCard` uses BOQ hours when present, and otherwise the allocation-% chart as before.
+
 ## Phase 4: Hook into approval and award
 - **Approval:** when management approval completes (`lib/qs/tender-approval.ts` `decideApprovalStep` → bid `final`), QS shows a "Generate tender programme from BOQ" call-to-action. It opens the Phase 2 page with the readiness panel.
 - **Award:** the award dialog (`components/project/projects/award-conversion-dialog.tsx`) gets a step "Refresh programme from contract BOQ" before `setBaseline`. It re-runs the generator in diff mode against the contract BOQ (`qs_boq_items`, which now carries the mapping), so the baseline includes BOQ-based quantities, cost and hours.

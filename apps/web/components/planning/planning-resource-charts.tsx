@@ -23,6 +23,7 @@ import {
   DAY, LEGEND_STYLE, TICK, TOOLTIP_STYLE, fromUtc, toUtc, weekStart,
 } from "@/components/planning/planning-dashboard-charts";
 import { useCachedFetch } from "@/hooks/use-cached-fetch";
+import { BoqManpowerHistogramCard, useHasBoqHours } from "@/components/planning/boq-programme/loading-charts";
 
 const TYPE_LABEL: Record<string, string> = {
   labor: "Manpower",
@@ -133,7 +134,14 @@ interface ManpowerData {
   resources: PlanResource[];
 }
 
-export function ManpowerHistogramCard({ projectId, asOf, range, className, refreshToken = 0 }: CommonProps) {
+/** BOQ man-hours when the project has them (doc 24 phase 3), otherwise the allocation-% demand from Resource Loading. */
+export function ManpowerHistogramCard(props: CommonProps) {
+  const hasBoqHours = useHasBoqHours(props.projectId || null);
+  if (hasBoqHours) return <BoqManpowerHistogramCard key={`${props.projectId}:${props.refreshToken ?? 0}`} projectId={props.projectId} className={props.className} />;
+  return <AllocationHistogramCard {...props} />;
+}
+
+function AllocationHistogramCard({ projectId, asOf, range, className, refreshToken = 0 }: CommonProps) {
   const [retry, setRetry] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const { data, loading, error } = useCachedFetch<ManpowerData>(

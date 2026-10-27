@@ -26,6 +26,7 @@ import {
 import { generateResourceLoadingFromNorms } from "@/lib/planning/resource-generation-service";
 import { PlanResourceDialog } from "./plan-resource-dialog";
 import { PlanLevellingPanel } from "./plan-levelling-panel";
+import { BoqManpowerHistogramCard, useHasBoqHours } from "./boq-programme/loading-charts";
 
 interface ResourceTask {
   id: string; task_code: string; task_name: string; owner_name: string | null;
@@ -62,6 +63,8 @@ export function PlanResourceLoading() {
   const [generating, setGenerating] = useState(false);
   const [dialogResource, setDialogResource] = useState<PlanResource | null | undefined>(undefined);
   const canGenerate = can("resources", "edit") && can("resources", "delete");
+  // Projects generated from the BOQ also get the man-hour histogram (doc 24 phase 3) above the allocation view.
+  const hasBoqHours = useHasBoqHours(selectedProjectId || null);
 
   function load() {
     if (!selectedProjectId) {
@@ -402,6 +405,7 @@ export function PlanResourceLoading() {
 
   return (
     <div className="space-y-6">
+      {hasBoqHours && <BoqManpowerHistogramCard projectId={selectedProjectId} />}
       <div className="flex items-center justify-between">
         <div className="grid flex-1 grid-cols-3 gap-4 sm:max-w-2xl">
           <Card><CardContent className="p-4 text-center">
