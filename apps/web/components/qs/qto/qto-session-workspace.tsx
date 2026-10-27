@@ -32,6 +32,27 @@ import {
 import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "@/components/qs/qto/drawing-viewer";
 import { TOOL_META, type TakeoffConfig, type TakeoffTool } from "@/components/qs/qto/takeoff-start-panel";
 import { AreaIcon, CountIcon, LengthIcon } from "@/components/qs/qto/takeoff-icons";
+import { PanelSplitter } from "@/components/qs/qto/panel-splitter";
+
+const PANEL_KEY = "dcos.qto.panels";
+const PANELS = { left: { def: 280, min: 200, max: 520 }, right: { def: 360, min: 280, max: 680 } };
+
+/** Column widths of the session workspace, remembered per browser. */
+function usePanelWidths() {
+  const [w, setW] = useState(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(PANEL_KEY) ?? "null") as { left: number; right: number } | null;
+      if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.right)) return saved;
+    } catch { /* storage unavailable */ }
+    return { left: PANELS.left.def, right: PANELS.right.def };
+  });
+  const update = (patch: Partial<{ left: number; right: number }>) => setW((cur) => {
+    const next = { ...cur, ...patch };
+    try { window.localStorage.setItem(PANEL_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+    return next;
+  });
+  return [w, update] as const;
+}
 import { QtoItemPanel } from "@/components/qs/qto/qto-item-panel";
 import {
   CalibrationDialog, NewVersionDialog, PublishDialog, TransferDialog, TransitionDialog, exportPublication,
@@ -83,6 +104,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(searchParams.get("item"));
   /** Items hidden on the drawing (eye toggle in the Takeoffs panel); view only. */
   const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
+  const [panelW, setPanelW] = usePanelWidths();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [drawingUrl, setDrawingUrl] = useState<string | null>(null);
@@ -474,7 +496,10 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
       )}
 
       {/* Main: takeoffs | drawing | properties */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[280px_minmax(0,1fr)_360px]">
+      <div
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:gap-0 lg:[grid-template-columns:var(--qto-cols)]"
+        style={{ "--qto-cols": `${panelW.left}px 8px minmax(0,1fr) 8px ${panelW.right}px` } as React.CSSProperties}
+      >
         {/* Takeoffs: one row per item, eye toggles it on the sheet */}
         <section className="flex min-h-[240px] flex-col rounded-lg border border-border lg:min-h-0" aria-label="Takeoffs">
           <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
@@ -543,6 +568,8 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
           </div>
         </section>
 
+        <PanelSplitter side="left" label="Resize the Takeoffs panel" width={panelW.left} min={PANELS.left.min} max={PANELS.left.max}
+          defaultWidth={PANELS.left.def} onChange={(left) => setPanelW({ left })} />
         <div className="min-h-[420px] overflow-hidden rounded-lg border border-border">
           <DrawingViewer
             url={drawingUrl}
@@ -584,6 +611,8 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         </div>
 
         {/* Properties of the selected takeoff */}
+        <PanelSplitter side="right" label="Resize the Properties panel" width={panelW.right} min={PANELS.right.min} max={PANELS.right.max}
+          defaultWidth={PANELS.right.def} onChange={(right) => setPanelW({ right })} />
         <section className="min-h-0 overflow-y-auto rounded-lg border border-border" aria-label="Properties">
           <h2 className="sticky top-0 z-10 border-b border-border bg-background px-3 py-1.5 text-sm font-semibold">Properties</h2>
           <div className="p-3">
