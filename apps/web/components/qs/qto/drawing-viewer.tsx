@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import {
-  AreaIcon, CountIcon, LengthIcon, PanIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
+  AreaIcon, CountIcon, LengthIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
 } from "@/components/qs/qto/takeoff-icons";
 import {
   TOOL_META, TakeoffStartPanel, type DrawMode, type TakeoffConfig, type TakeoffTarget, type TakeoffTool,
@@ -116,7 +116,6 @@ interface DrawingViewerProps {
 }
 
 const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: (p: { size?: number }) => React.ReactElement; hint: string }[] = [
-  { key: "pan", label: "Pan", icon: PanIcon, hint: "Drag to move the drawing; the wheel zooms" },
   { key: "calibrate", label: "Scale", icon: ScaleIcon, hint: "Click both ends of a known dimension (snaps to the dimension line)" },
   { key: "area", label: "Area", icon: AreaIcon, hint: "Click the corners, double-click or Enter to close" },
   { key: "length", label: "Linear", icon: LengthIcon, hint: "Click two points" },
@@ -396,7 +395,7 @@ export function DrawingViewer({
     const { pt, snap } = measuring ? resolve(e) : { pt: toPage(e), snap: null };
     setCursor(pt);
     setHoverSnap(snap);
-    if (measuring) setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+    if (!readOnly) setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
@@ -434,9 +433,11 @@ export function DrawingViewer({
     else if (tool === "perimeter") liveText = `Perimeter: ${fmt(lengthInMetres(perimeter(live), cal))} m`;
     else liveText = `Length: ${fmt(lengthInMetres(polylineLength(live), cal))} m`;
   }
-  const tools = readOnly ? TOOL_OPTIONS.filter((t) => t.key === "pan") : TOOL_OPTIONS;
+  const tools = readOnly ? [] : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
-  const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff" : boxMode ? BOX_HINT : activeTool?.hint;
+  const activeHint = panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
+    : boxMode ? BOX_HINT
+    : activeTool?.hint ?? "No tool: drag to move the drawing, wheel to zoom. Click a tool to measure; click it again to put it down.";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
 
@@ -462,6 +463,7 @@ export function DrawingViewer({
               aria-pressed={active}
               onClick={() => {
                 cancelDraft();
+                if (active) { setPanelTool(null); setDrawMode("points"); setTool("pan"); setHoverSnap(null); return; }
                 if (onStartTakeoff && opt.key in TOOL_META) { setPanelTool(opt.key as TakeoffTool); return; }
                 setPanelTool(null);
                 setDrawMode("points");
@@ -538,10 +540,10 @@ export function DrawingViewer({
       <div
         ref={viewportRef}
         className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}
-        style={{ cursor: measuring ? "none" : undefined }}
+        style={{ cursor: readOnly ? undefined : "none" }}
         onPointerMove={(e) => {
           // Off the sheet the cross-hair follows the mouse unsnapped (the sheet sets its own position).
-          if (!measuring || svgRef.current?.contains(e.target as Node)) return;
+          if (readOnly || svgRef.current?.contains(e.target as Node)) return;
           const r = e.currentTarget.getBoundingClientRect();
           setScreenCursor({ x: e.clientX - r.left, y: e.clientY - r.top });
           setHoverSnap(null);
@@ -588,7 +590,7 @@ export function DrawingViewer({
                 tabIndex={0}
                 role="application"
                 aria-label="Drawing measurement surface"
-                style={{ cursor: measuring ? "none" : "grab" }}
+                style={{ cursor: readOnly ? "grab" : "none" }}
               >
                 {(savedMeasurements ?? [])
                   .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points) && m.points.length > 0)
@@ -654,7 +656,7 @@ export function DrawingViewer({
             )}
           </div>
         </div>
-        {measuring && screenCursor && !panelTool && (
+        {!readOnly && screenCursor && !panelTool && (
           <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
             <div className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
             <div className="absolute inset-y-0" style={{ left: screenCursor.x, width: 1, background: ink }} />
