@@ -333,7 +333,11 @@ export function DrawingViewer({
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
   const cadCanvasRef = useRef<HTMLCanvasElement>(null);
   /** The CAD sheet last fitted to the viewport (a new sheet is fitted once the viewport has its size). */
-  const fittedCad = useRef<CadSheet | null>(null);
+  const fittedCad = useRef<CadSheet | string | null>(null);
+  /** Time of the last middle-button press (a double press zooms to fit, as in AutoCAD). */
+  const lastMiddle = useRef(0);
+  /** Two Scale points waiting for the click to finish before the known-distance prompt opens. */
+  const pendingCalibration = useRef<{ points: Pt[]; pageUnits: number; page_no: number } | null>(null);
   const [vpSize, setVpSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const maxZoom = cad ? 400 : MAX_ZOOM;
   const minZoom = cad ? 0.02 : MIN_ZOOM;
@@ -439,12 +443,6 @@ export function DrawingViewer({
     setLoading(false);
     setError(null);
   }, [cad]);
-  useEffect(() => {
-    if (!cad || fittedCad.current === cad || !vpSize.w || !vpSize.h) return;
-    fittedCad.current = cad;
-    const zoom = Math.min((vpSize.w - 2 * PAGE_OFFSET) / cad.size.w, (vpSize.h - 2 * PAGE_OFFSET) / cad.size.h) * 0.95;
-    setView({ zoom, x: ((vpSize.w - 2 * PAGE_OFFSET) - cad.size.w * zoom) / 2, y: ((vpSize.h - 2 * PAGE_OFFSET) - cad.size.h * zoom) / 2 });
-  }, [cad, vpSize]);
 
   useEffect(() => {
     if (!cad) return;
@@ -460,11 +458,11 @@ export function DrawingViewer({
   // CAD is drawn on a viewport-sized canvas at every view change (crisp at any zoom).
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el || !cad) return;
+    if (!el) return;
     const ro = new ResizeObserver(() => setVpSize({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [cad]);
+  }, [cad, url]);
   useEffect(() => {
     const canvas = cadCanvasRef.current;
     if (!cad || !canvas || !vpSize.w) return;
@@ -510,6 +508,43 @@ export function DrawingViewer({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [url, cad, maxZoom, minZoom]);
+
+  /**
+   * The view that fits the content in a W × H viewport, centred with a small margin. For CAD the
+   * content is what is drawn within the drawing's extents (stray far-away objects are left out).
+   */
+  const fitFor = (w: number, h: number) => {
+    let box = pageSize ? { minX: 0, minY: 0, maxX: pageSize.w, maxY: pageSize.h } : { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    if (cad && pageSize) {
+      const pad = 0.02 * Math.max(pageSize.w, pageSize.h);
+      const b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+      for (const p of cad.prims) {
+        if (hiddenLayers.has(p.layer)) continue;
+        const q = p.box;
+        if (q.maxX < -pad || q.minX > pageSize.w + pad || q.maxY < -pad || q.minY > pageSize.h + pad) continue;
+        b.minX = Math.min(b.minX, Math.max(q.minX, -pad)); b.minY = Math.min(b.minY, Math.max(q.minY, -pad));
+        b.maxX = Math.max(b.maxX, Math.min(q.maxX, pageSize.w + pad)); b.maxY = Math.max(b.maxY, Math.min(q.maxY, pageSize.h + pad));
+      }
+      if (Number.isFinite(b.minX) && b.maxX > b.minX && b.maxY > b.minY) box = b;
+    }
+    const margin = 24;
+    const bw = Math.max(box.maxX - box.minX, 1e-6), bh = Math.max(box.maxY - box.minY, 1e-6);
+    const zoom = Math.min(maxZoom, Math.max(minZoom, Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh)));
+    return {
+      zoom,
+      x: (w - bw * zoom) / 2 - PAGE_OFFSET - box.minX * zoom,
+      y: (h - bh * zoom) / 2 - PAGE_OFFSET - box.minY * zoom,
+    };
+  };
+
+  // A newly opened drawing (or PDF page) starts fitted to the window, like Zoom Extents.
+  useEffect(() => {
+    const key = cad ?? (url && pageSize ? `${url}#${currentPage}` : null);
+    if (!key || !pageSize || fittedCad.current === key || !vpSize.w || !vpSize.h) return;
+    fittedCad.current = key;
+    setView(fitFor(vpSize.w, vpSize.h));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cad, url, pageSize, currentPage, vpSize]);
 
   /** Pointer position → PDF page units (raw, before snapping). */
   const toPage = (e: { clientX: number; clientY: number }): Pt => {
@@ -657,6 +692,7 @@ export function DrawingViewer({
       else if (e.button === 0) placeGrip(e);
       return;
     }
+    if (middleDouble(e)) { e.stopPropagation(); return; }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
     if (tool === "pan" || readOnly || e.button === 1) {
       e.stopPropagation();
@@ -669,8 +705,9 @@ export function DrawingViewer({
       const next = draftPts.length >= 2 ? [pt] : [...draftPts, pt];
       setDraftPts(next);
       if (next.length === 2) {
-        onCalibrationPicked?.({ points: next, pageUnits: distance(next[0], next[1]), page_no: currentPage });
-        setTimeout(cancelDraft, 0);
+        // Ask for the known distance once this click has finished: a dialog opened on pointer-down
+        // would see the rest of the click (pointer-up / click on the drawing) as a click outside and close.
+        pendingCalibration.current = { points: next, pageUnits: distance(next[0], next[1]), page_no: currentPage };
       }
       return;
     }
@@ -878,12 +915,23 @@ export function DrawingViewer({
   };
 
   const zoomBy = (factor: number) => setView((v) => ({ ...v, zoom: Math.min(maxZoom, Math.max(minZoom, v.zoom * factor)) }));
-  /** Fits the whole sheet in the viewport (CAD), or the default PDF view. */
+  /** Zoom to fit: the drawing's content (CAD) or the page (PDF), centred in the window. */
   const resetView = () => {
-    const r = viewportRef.current?.getBoundingClientRect();
-    if (!cad || !r || !pageSize) { setView({ zoom: 0.6, x: 0, y: 0 }); return; }
-    const zoom = Math.min((r.width - 2 * PAGE_OFFSET) / pageSize.w, (r.height - 2 * PAGE_OFFSET) / pageSize.h) * 0.95;
-    setView({ zoom, x: ((r.width - 2 * PAGE_OFFSET) - pageSize.w * zoom) / 2, y: ((r.height - 2 * PAGE_OFFSET) - pageSize.h * zoom) / 2 });
+    const el = viewportRef.current;
+    if (el) setView(fitFor(el.clientWidth, el.clientHeight));
+  };
+  /** A middle-button double press zooms to fit (AutoCAD). Returns true when it did. */
+  const middleDouble = (e: React.PointerEvent) => {
+    if (e.button !== 1) return false;
+    const now = performance.now();
+    if (now - lastMiddle.current < 350) {
+      lastMiddle.current = 0;
+      e.preventDefault();
+      resetView();
+      return true;
+    }
+    lastMiddle.current = now;
+    return false;
   };
 
   const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
@@ -1066,7 +1114,7 @@ export function DrawingViewer({
             title={darkSheet ? "Show the drawing on a white sheet" : "Show the drawing on a black sheet"}>
             {darkSheet ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={resetView} title={cad ? "Zoom to the whole drawing" : "Reset view"}>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={resetView} title={cad ? "Zoom to the whole drawing (or double-click the middle mouse button)" : "Zoom to fit the page (or double-click the middle mouse button)"}>
             <Maximize className="h-3.5 w-3.5" />
           </Button>
           {numPages > 1 && (
@@ -1089,6 +1137,7 @@ export function DrawingViewer({
           if (svgRef.current?.contains(e.target as Node) || gripDrag.current) return;
           // Never pan from controls floating over the drawing (tool panel, chip, buttons).
           if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
+          if (middleDouble(e)) return;
           if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly))) startPan(e);
         }}
         onPointerMove={(e) => {
@@ -1173,6 +1222,11 @@ export function DrawingViewer({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => {
+                  const picked = pendingCalibration.current;
+                  if (picked) {
+                    pendingCalibration.current = null;
+                    setTimeout(() => { onCalibrationPicked?.(picked); cancelDraft(); }, 0);
+                  }
                   const g = gripDrag.current;
                   if (g) {
                     const press = g.pressedAt;
