@@ -1430,6 +1430,11 @@ export function DrawingViewer({
                       stroke={cadPending || o === traceShape ? "#16a34a" : "#f59e0b"} strokeWidth={cadKind === "area" ? 2 : 3} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                   )
                 ))}
+                {/* Openings deducted from the held area: red, so they stand apart from the green area. */}
+                {cadMode && traceDraft?.holes.map((h) => (
+                  <path key={`hole-${holeKey(h)}`} d={h.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + "Z").join(" ")}
+                    fill="rgba(239,68,68,0.4)" stroke="#dc2626" strokeWidth={2} strokeDasharray="6 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                ))}
                 {pickMode && pickPreview?.map((shape, i) => (
                   <polygon key={`pick-${i}`} points={shape.map((q) => `${q.x},${q.y}`).join(" ")}
                     fill={tool === "area" ? "rgba(34,197,94,0.22)" : "none"} stroke="#16a34a" strokeWidth={2}
@@ -1571,6 +1576,10 @@ export function DrawingViewer({
                 {traceDraft.holes.length
                   ? `${fmt(cadQty(traceDraft.base), 3)} less ${traceDraft.holes.length} opening${traceDraft.holes.length === 1 ? "" : "s"} (${fmt(deducted, 3)} ${cadUnit})`
                   : "Click an opening's line to deduct it (any layer); click it again to put it back."}
+              </p>
+              <p className="mt-1 flex items-center gap-3 text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-green-600 bg-green-500/40" />Area kept</span>
+                <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-red-600 bg-red-500/50" />Deducted</span>
               </p>
               <div className="mt-2 flex flex-wrap justify-end gap-2">
                 {rest.length > 0 && (
