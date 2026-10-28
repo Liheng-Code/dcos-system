@@ -53,7 +53,7 @@ import {
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
 import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
-import { traceLayer, traceableLayers } from "@/lib/qs/qto/cad/cad-trace";
+import { traceLayer } from "@/lib/qs/qto/cad/cad-trace";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
@@ -788,12 +788,10 @@ export function DrawingViewer({
   const cadObjectAt = (pt: Pt) => cad
     ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, drawMode === "trace" ? "length" : cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
     : null;
-  const traceLayers = useMemo(() => (cad ? traceableLayers(cad) : []), [cad]);
   const [traceIslands, setTraceIslands] = useState(true);
   /** Traced shapes per layer, cached for the event handlers (hovering a line previews its whole layer). */
   const traceCache = useRef<{ cad: CadSheet | null; map: Map<string, SheetObject[]> }>({ cad: null, map: new Map() });
   const [traceHover, setTraceHover] = useState<SheetObject[] | null>(null);
-  const [traceRequest, setTraceRequest] = useState<string | null>(null);
   const traced = (layer: string, kind: CadPickKind, islands: boolean): SheetObject[] => {
     if (!cad) return [];
     if (traceCache.current.cad !== cad) traceCache.current = { cad, map: new Map() };
@@ -872,14 +870,6 @@ export function DrawingViewer({
     setTraceHover(null);
     setCadPending(null);
   }, [cadMode]);
-
-  useEffect(() => {
-    if (!traceRequest || !cadMode || drawMode !== "trace") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTraceRequest(null);
-    startTrace(traceRequest, cadKind, traceIslands);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [traceRequest, cadMode, drawMode]);
 
   // Leaving Smart pick clears its preview.
   useEffect(() => {
@@ -1022,7 +1012,7 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity"
-      : drawMode === "trace" ? "Trace layer: click a line (or choose the layer above) to draw every closed boundary on it, then confirm · Esc cancels"
+      : drawMode === "trace" ? "Trace layer: pick a line of the layer on the drawing to draw every closed boundary on it, then confirm · Esc cancels"
       : "Click an object to select every one like it, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
@@ -1476,7 +1466,6 @@ export function DrawingViewer({
               key={panelTool}
               tool={panelTool}
               cad={!!cad}
-              layers={traceLayers}
               defaultName={t.defaultName}
               target={t}
               onCancel={() => setPanelTool(null)}
@@ -1485,8 +1474,6 @@ export function DrawingViewer({
                 setPanelTool(null);
                 setDrawMode(cfg.mode);
                 setTool(cfg.tool);
-                // A layer chosen in the panel is traced once the tool is active.
-                if (cfg.mode === "trace" && cfg.layer) setTraceRequest(cfg.layer);
                 svgRef.current?.focus();
               }}
             />
@@ -1513,14 +1500,6 @@ export function DrawingViewer({
                 </div>
               );
             })()}
-            {cadMode && drawMode === "trace" && (
-              <select className="h-7 max-w-[11rem] rounded-md border border-input bg-transparent px-1 text-xs" aria-label="Layer to trace"
-                value={cadPending?.by === "trace" ? cadPending.ref.layer : ""}
-                onChange={(e) => { if (e.target.value) startTrace(e.target.value, cadKind, traceIslands); svgRef.current?.focus(); }}>
-                <option value="">Choose a layer…</option>
-                {traceLayers.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            )}
             <button className="whitespace-nowrap rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}

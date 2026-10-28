@@ -31,7 +31,7 @@ export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
     return [
       ["object", "Pick object: click a closed polyline, circle or hatch (exact CAD geometry)", PickObjectIcon],
       ["layer", "All on layer: every object of that type on the layer you click", LayerSelectIcon],
-      ["trace", "Trace layer: choose a layer, every closed boundary drawn on it becomes an area (closed polylines, or lines that meet)", TraceLayerIcon],
+      ["trace", "Trace layer: pick a line on the drawing, every closed boundary on its layer becomes an area (closed polylines, or lines that meet)", TraceLayerIcon],
       ["hatch", "Same hatch: every hatch with the same pattern on the same layer", SameHatchIcon],
       ...areaPdf.slice(0, 3),
     ];
@@ -40,7 +40,7 @@ export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
     return [
       ["object", "Pick object: click a line, polyline or arc (exact length)", PickObjectIcon],
       ["layer", "All on layer: total length of that type on the layer you click", LayerSelectIcon],
-      ["trace", "Trace layer: choose a layer, every line drawn on it is measured", TraceLayerIcon],
+      ["trace", "Trace layer: pick a line on the drawing, every line on its layer is measured", TraceLayerIcon],
       ["points", "Point to point", PointModeIcon],
     ];
   }
@@ -62,8 +62,6 @@ export interface TakeoffConfig {
   volume: VolumeSpec | null;
   /** Create a new take-off item even though one is selected. */
   newItem: boolean;
-  /** Trace layer mode: the layer to trace (null: click a line on the drawing to choose). */
-  layer?: string | null;
 }
 
 export interface TakeoffTarget {
@@ -87,12 +85,10 @@ export const TOOL_META: Record<TakeoffTool, { title: string; types: string[]; un
 
 const SWATCHES = ["#22c55e", "#eab308", "#f97316", "#ef4444", "#ec4899", "#a855f7", "#3b82f6", "#06b6d4", "#14b8a6", "#64748b"];
 
-export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel, cad = false, layers = [] }: {
+export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel, cad = false }: {
   tool: TakeoffTool;
   /** Measuring a CAD drawing: offers the CAD selection modes first. */
   cad?: boolean;
-  /** CAD layers with linework, for the Trace layer mode. */
-  layers?: string[];
   defaultName: string;
   target: TakeoffTarget;
   onStart: (cfg: TakeoffConfig) => Promise<void>;
@@ -108,7 +104,6 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
   const modes = drawModesFor(tool, cad);
   const [mode, setMode] = useState<DrawMode>(modes[0]?.[0] ?? "points");
   const [busy, setBusy] = useState(false);
-  const [layer, setLayer] = useState("");
   // Measurement type: the tool's own unit, or a volume built from its measurements.
   const [isVolume, setIsVolume] = useState(!!target.volume);
   const locked = addToExisting;
@@ -126,7 +121,6 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
       await onStart({
         tool, name: name.trim() || defaultName, color, opacity, unit: isVolume ? "m3" : meta.unit,
         mode: modes.length ? mode : "points", volume, newItem: !addToExisting,
-        layer: mode === "trace" ? layer || null : null,
       });
     } finally {
       setBusy(false);
@@ -231,18 +225,11 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
           Measurements are saved to the {addToExisting ? "selected" : "new"} take-off item as evidence; the quantity is set by its calculation.
         </p>
 
-        {mode === "trace" && layers.length > 0 && (
-          <label className="grid gap-1">
-            <span className="text-xs font-semibold">Layer to trace</span>
-            <select className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" value={layer} aria-label="Layer to trace"
-              onChange={(e) => setLayer(e.target.value)}>
-              <option value="">Click a line on the drawing to choose</option>
-              {layers.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-            <span className="text-[11px] text-muted-foreground">
-              {tool === "length" || tool === "polyline" ? "Every line, polyline and arc on the layer is measured." : "Closed polylines and circles are taken as drawn; loose lines that meet are joined into areas; boundaries inside an area are openings."}
-            </span>
-          </label>
+        {mode === "trace" && (
+          <p className="text-[11px] text-muted-foreground">
+            After Start, pick a line on the drawing: its whole layer is traced (hover to preview).{" "}
+            {tool === "length" || tool === "polyline" ? "Every line, polyline and arc on the layer is measured." : "Closed polylines and circles are taken as drawn; loose lines that meet are joined into areas; boundaries inside an area are openings."}
+          </p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
