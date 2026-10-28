@@ -40,6 +40,24 @@
 | Auto-save | Done | 30 s after the last edit; Ctrl+S |
 | Automated tests | Done | 39 Vitest + 53-assertion SQL suite + browser E2E (below) |
 
+## CAD drawings (DXF), 2026-10-28
+Plan: DXF read by DCOS's own code now, DWG through a self-hosted converter later (ODA File Converter, gated on its licence). Phases C0–C3 are done; C4 (DWG) is not started.
+
+| Part | Status | Notes |
+|---|---|---|
+| DXF reader (`lib/qs/qto/cad/dxf-parse.ts`) | Done | ASCII DXF, no dependency. LINE, LWPOLYLINE/POLYLINE (bulges), ARC, CIRCLE, ELLIPSE, SPLINE, INSERT (nested, arrays, attributes), HATCH (loops, pattern lines), TEXT/MTEXT (alignment), DIMENSION (block at group 12), MULTILEADER, SOLID, POINT; OCS mirroring. Unknown types counted, binary DXF refused. Runs in a Web Worker |
+| Exact geometry (`cad-geometry.ts`) | Done | True arcs kept; areas by Green's theorem, hatch areas by AutoCAD's even-odd fill |
+| CAD viewer | Done | Viewport canvas redrawn per view (crisp at any zoom), AutoCAD colours, hatch patterns, text; layers panel; true scale from units; existing tools, snap, grips, Smart pick work on CAD lines |
+| CAD take-off (`cad-select.ts`) | Done | Pick object, All on layer, Same hatch (pattern + layer), Same block; confirmation with count and total; evidence handles on each measurement |
+| Upload | Done | DXF accepted and read at upload; units asked when missing; DWG stored with "save as DXF" guidance |
+| DWG conversion (C4) | Not started | Needs the ODA licence check and a core request (converter service) |
+
+**Checked against AutoCAD 2018 on a real drawing** (19F–22F PT slab, DWG converted with AutoCAD's own console):
+- All 175 hatches, polylines and circles: DCOS area and perimeter = AutoCAD within 1e-6. For three hatches with "text box" loops, AutoCAD's LIST area counts only the first loop; AutoCAD's own recreated boundaries (`-HATCHEDIT`) equal DCOS.
+- In the browser: scale 0.1 m per sheet unit set automatically; Pick object on beam 1F46AC = 1.92 m² (AutoCAD 1.9200); Same hatch picked all 31 `ANSI33` beam hatches = 71.899 m² (AutoCAD 71.899) × 0.60 m = 43.139 m³.
+- Read in about 20 ms (225 objects, 527 primitives).
+- Found while testing: dimension geometry inside a block was misplaced (group 12 insert point not applied) — fixed; three blocks in that drawing lie hundreds of metres outside the plan, also in AutoCAD.
+
 ## P1 / P2 (not started)
 - IFC as a session source: reuse Design/BIM `bim_models` and `bim_element_takeoff`, which already parse IFC in the browser.
 - CONSTRUCTION purpose: remeasurement and transfer to `qs_boq_items` (post-contract BOQ) and Cost Control.
@@ -61,6 +79,7 @@
 - **Bugs found by the E2E and fixed:** temp-table `DELETE` and `UPDATE` statements in the RPCs had no `WHERE`. PostgREST's `pg_safeupdate` rejects these, but psql as postgres does not, so the SQL suite could not catch them. The submitter was also shown the Approve button.
 
 ## Known limitations
+- CAD: model space only (no paper-space layouts or xrefs); WIPEOUT and ATTDEF are not drawn; MTEXT formatting is reduced to plain text; DWG cannot be measured until converted to DXF.
 - Smart pick only reads vector PDFs, does not deduct islands inside an area, and treats any run of 4+ evenly spaced parallel lines (e.g. stair treads) as hatch.
 - The calculation is computed in the browser and recorded by the RPC, which checks gross − deductions = net, the unit, and finite non-negative values. It does not re-evaluate the formula on the server.
 - An item maps to at most one BOQ line; splitting one measurement across lines is not supported.

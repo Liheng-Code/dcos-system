@@ -49,6 +49,9 @@ import {
   type Segment,
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
+import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
+import { insertBoxes, mainLoop, objectAt, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
+import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
 import { bestSnap, gripsOf, moveGrip, shapeSegments, type Grip } from "@/lib/qs/qto/grips";
@@ -89,6 +92,8 @@ export interface EmittedMeasurement {
   count: number | null;
   unit: string | null;
   page_no: number;
+  /** CAD evidence: the drawing objects measured and how they were selected. */
+  source?: { format: "dxf"; handles: string[]; layer: string | null; block: string | null; selection: Record<string, unknown> };
 }
 
 type DimensionEndpointPair = [Pt, Pt];
@@ -135,6 +140,10 @@ interface DrawingViewerProps {
   onEditShape?: (shapeId: string, points: Pt[]) => void;
   /** The item being measured into, shown as a chip while a tool is active. */
   activeTakeoff?: { name: string; color: string; total: number; unit: string } | null;
+  /** A CAD drawing (DXF) to measure instead of a PDF; `url` is then null. */
+  cad?: CadSheet | null;
+  /** Remembers hidden CAD layers per drawing (e.g. the revision id). */
+  cadKey?: string | null;
 }
 
 const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: (p: { size?: number }) => React.ReactElement; hint: string }[] = [
@@ -271,6 +280,8 @@ export function DrawingViewer({
   activeTakeoff,
   onSelectItem,
   onEditShape,
+  cad,
+  cadKey,
 }: DrawingViewerProps) {
   /** Where a no-tool press started; a release close to it is a click (select), otherwise a pan. */
   const pressAt = useRef<{ x: number; y: number } | null>(null);
@@ -313,6 +324,15 @@ export function DrawingViewer({
   });
   const ink = darkSheet ? "#ffffff" : "#0f172a";
   const [vectorCount, setVectorCount] = useState<number | null>(null);
+  /** CAD: layers hidden in the view (and in snapping), remembered per drawing. */
+  const layersKey = cadKey ? `dcos.qto.cadlayers:${cadKey}` : null;
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const cadCanvasRef = useRef<HTMLCanvasElement>(null);
+  /** The CAD sheet last fitted to the viewport (a new sheet is fitted once the viewport has its size). */
+  const fittedCad = useRef<CadSheet | null>(null);
+  const [vpSize, setVpSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const maxZoom = cad ? 400 : MAX_ZOOM;
+  const minZoom = cad ? 0.02 : MIN_ZOOM;
 
   const [draftPts, setDraftPts] = useState<Pt[]>([]);
   /** Resolved (snapped / ortho) pointer position in page units. */
@@ -395,6 +415,70 @@ export function DrawingViewer({
   }, [url]);
 
   useEffect(() => {
+    if (!layersKey) return;
+    let saved: string[] = [];
+    try { saved = JSON.parse(window.localStorage.getItem(layersKey) ?? "[]"); } catch { /* storage unavailable */ }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHiddenLayers(new Set(Array.isArray(saved) ? saved : []));
+  }, [layersKey]);
+  const setHidden = (next: Set<string>) => {
+    setHiddenLayers(next);
+    try { if (layersKey) window.localStorage.setItem(layersKey, JSON.stringify([...next])); } catch { /* storage unavailable */ }
+  };
+
+  useEffect(() => {
+    if (!cad) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPageSize(cad.size);
+    setNumPages(1);
+    setCurrentPage(1);
+    setLoading(false);
+    setError(null);
+  }, [cad]);
+  useEffect(() => {
+    if (!cad || fittedCad.current === cad || !vpSize.w || !vpSize.h) return;
+    fittedCad.current = cad;
+    const zoom = Math.min((vpSize.w - 2 * PAGE_OFFSET) / cad.size.w, (vpSize.h - 2 * PAGE_OFFSET) / cad.size.h) * 0.95;
+    setView({ zoom, x: ((vpSize.w - 2 * PAGE_OFFSET) - cad.size.w * zoom) / 2, y: ((vpSize.h - 2 * PAGE_OFFSET) - cad.size.h * zoom) / 2 });
+  }, [cad, vpSize]);
+
+  useEffect(() => {
+    if (!cad) return;
+    const segs = cad.segments.filter((_, i) => !hiddenLayers.has(cad.segmentLayers[i]));
+    snapIndexRef.current = new SnapIndex(segs);
+    areaSegsRef.current = segs;
+    // CAD hatches are entities, not line patterns: no line-pattern detection.
+    hatchRef.current = detectHatches([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVectorCount(segs.length);
+  }, [cad, hiddenLayers]);
+
+  // CAD is drawn on a viewport-sized canvas at every view change (crisp at any zoom).
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || !cad) return;
+    const ro = new ResizeObserver(() => setVpSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [cad]);
+  useEffect(() => {
+    const canvas = cadCanvasRef.current;
+    if (!cad || !canvas || !vpSize.w) return;
+    const frame = requestAnimationFrame(() => {
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(vpSize.w * dpr) || canvas.height !== Math.round(vpSize.h * dpr)) {
+        canvas.width = Math.round(vpSize.w * dpr);
+        canvas.height = Math.round(vpSize.h * dpr);
+        canvas.style.width = `${vpSize.w}px`;
+        canvas.style.height = `${vpSize.h}px`;
+      }
+      const ctx = canvas.getContext("2d");
+      if (ctx) drawSheet(ctx, cad, { ...view, offset: PAGE_OFFSET }, { width: vpSize.w, height: vpSize.h, dpr, ink: ink, hidden: hiddenLayers });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cad, view, vpSize, ink, hiddenLayers]);
+
+  useEffect(() => {
     if (pageNo && pageNo !== currentPage && pdfRef.current) {
       setCurrentPage(pageNo);
       void renderPage(pageNo);
@@ -412,7 +496,7 @@ export function DrawingViewer({
       const sx = e.clientX - rect.left - PAGE_OFFSET;
       const sy = e.clientY - rect.top - PAGE_OFFSET;
       setView((v) => {
-        const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom * Math.exp(-e.deltaY * 0.0015)));
+        const zoom = Math.min(maxZoom, Math.max(minZoom, v.zoom * Math.exp(-e.deltaY * 0.0015)));
         // Keep the page point under the cursor fixed.
         const cx = (sx - v.x) / v.zoom;
         const cy = (sy - v.y) / v.zoom;
@@ -421,7 +505,7 @@ export function DrawingViewer({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [url]);
+  }, [url, cad, maxZoom, minZoom]);
 
   /** Pointer position → PDF page units (raw, before snapping). */
   const toPage = (e: { clientX: number; clientY: number }): Pt => {
@@ -608,6 +692,19 @@ export function DrawingViewer({
       emit("point", [pt]);
       return;
     }
+    if (cadMode && cad) {
+      const o = cadObjectAt(toPage(e));
+      if (!o) {
+        setPickMsg(cadKind === "count" ? "No block here. Click on a block (e.g. a door or a column symbol)."
+          : cadKind === "length" ? "No line here. Click on a line, polyline or arc." : drawMode === "hatch" ? "No hatch here. Click inside a hatched area." : "No closed object here. Click inside a closed polyline, circle or hatch.");
+        return;
+      }
+      setPickMsg(null);
+      if (drawMode === "object") { emitCad([o], o, "object"); return; }
+      const by: CadSimilar = drawMode === "block" ? "block" : drawMode === "hatch" ? "hatch" : "layer";
+      setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
+      return;
+    }
     if (pickMode) {
       const all = drawMode === "hatch" || e.ctrlKey || e.metaKey;
       const shapes = runPick(toPage(e), all);
@@ -635,7 +732,57 @@ export function DrawingViewer({
   /** A measuring tool is active: only then do snap, ortho and the cross-hair apply. */
   const measuring = tool !== "pan" && !readOnly;
   const boxMode = drawMode === "box" && (tool === "area" || tool === "perimeter");
-  const pickMode = (drawMode === "pick" || drawMode === "hatch") && (tool === "area" || tool === "perimeter") && !readOnly;
+  const pickMode = (drawMode === "pick" || (drawMode === "hatch" && !cad)) && (tool === "area" || tool === "perimeter") && !readOnly;
+  /** CAD-native take-off: pick an object, or select similar (layer, hatch pattern, block). */
+  const cadKind: CadPickKind = tool === "count" ? "count" : tool === "length" || tool === "polyline" ? "length" : "area";
+  const cadMode = !!cad && !readOnly && tool !== "pan" && tool !== "calibrate" && tool !== "dimension" && tool !== "point"
+    && (drawMode === "object" || drawMode === "layer" || drawMode === "block" || (drawMode === "hatch" && cadKind === "area"));
+  const cadBoxes = useMemo(() => (cad ? insertBoxes(cad) : new Map()), [cad]);
+  const [cadHover, setCadHover] = useState<SheetObject | null>(null);
+  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar } | null>(null);
+  const cadObjectAt = (pt: Pt) => cad
+    ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
+    : null;
+  /** Metres per model unit (from the page scale, so a corrected scale applies too). */
+  const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
+  const cadQty = (o: SheetObject) => (cadKind === "count" ? 1
+    : !modelMetres ? 0
+    : cadKind === "area" && tool !== "perimeter" ? (o.area ?? 0) * modelMetres * modelMetres
+    : (o.length ?? 0) * modelMetres);
+  const cadUnit = cadKind === "count" ? "No." : cadKind === "area" && tool !== "perimeter" ? "m²" : "m";
+  const describe = (o: SheetObject) => (o.type === "INSERT" ? `block ${o.block}` : o.type === "HATCH" ? `hatch ${o.pattern}` : o.type.toLowerCase()) + ` · ${o.layer}`;
+
+  /** Saves CAD objects as measurements with their handles and how they were selected. */
+  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "object") => {
+    if (!cad || !objs.length) return;
+    const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), scope: "model" };
+    const source = (list: SheetObject[]) => ({ format: "dxf" as const, handles: list.map((o) => o.handle), layer: ref.layer, block: ref.block ?? null, selection });
+    if (cadKind === "count") {
+      const pts = objs.map((o) => o.at ?? mainLoop(o)[0]);
+      const m = toMeasurement("count", pts);
+      (onMeasureMany ? (ms: EmittedMeasurement[]) => onMeasureMany(ms) : (ms: EmittedMeasurement[]) => ms.forEach((x) => onMeasure?.(x)))([{ ...m, source: source(objs) }]);
+      return;
+    }
+    const ms = objs.map((o) => {
+      const pts = cadKind === "area" ? mainLoop(o) : o.outline[0];
+      const type: QtoMeasureType = cadKind === "area" ? (tool === "perimeter" ? "perimeter" : "area") : pts.length === 2 ? "length" : "polyline";
+      const base = toMeasurement(type, pts);
+      // Exact quantities from the CAD geometry (arcs, hatch islands), not the drawn outline.
+      const exact = modelMetres === null ? base
+        : type === "area" ? { ...base, area: (o.area ?? 0) * modelMetres * modelMetres }
+        : { ...base, length: (o.length ?? 0) * modelMetres };
+      return { ...exact, source: source([o]) };
+    });
+    if (onMeasureMany) onMeasureMany(ms); else ms.forEach((x) => onMeasure?.(x));
+  };
+
+  // Leaving the CAD modes clears their preview and pending selection.
+  useEffect(() => {
+    if (cadMode) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCadHover(null);
+    setCadPending(null);
+  }, [cadMode]);
 
   // Leaving Smart pick clears its preview.
   useEffect(() => {
@@ -654,6 +801,16 @@ export function DrawingViewer({
       setCursor(pt);
       setHoverSnap(snap);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+      return;
+    }
+    if (cadMode) {
+      const pt = toPage(e);
+      setCursor(pt);
+      setHoverSnap(null);
+      setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+      const o = cadObjectAt(pt);
+      setCadHover(o);
+      if (o) setPickMsg(null);
       return;
     }
     if (pickMode) {
@@ -683,7 +840,8 @@ export function DrawingViewer({
     else if ((e.key === "Delete" || e.key === "Backspace") && (gripDrag.current || draftPts.length > 0)) { e.stopPropagation(); }
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
-      if (draftPts.length > 0) cancelDraft();
+      if (cadPending) setCadPending(null);
+      else if (draftPts.length > 0) cancelDraft();
       else if (tool !== "pan") { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
       else onSelectItem?.(null);
     }
@@ -700,7 +858,14 @@ export function DrawingViewer({
     onPageChange?.(target);
   };
 
-  const zoomBy = (factor: number) => setView((v) => ({ ...v, zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom * factor)) }));
+  const zoomBy = (factor: number) => setView((v) => ({ ...v, zoom: Math.min(maxZoom, Math.max(minZoom, v.zoom * factor)) }));
+  /** Fits the whole sheet in the viewport (CAD), or the default PDF view. */
+  const resetView = () => {
+    const r = viewportRef.current?.getBoundingClientRect();
+    if (!cad || !r || !pageSize) { setView({ zoom: 0.6, x: 0, y: 0 }); return; }
+    const zoom = Math.min((r.width - 2 * PAGE_OFFSET) / pageSize.w, (r.height - 2 * PAGE_OFFSET) / pageSize.h) * 0.95;
+    setView({ zoom, x: ((r.width - 2 * PAGE_OFFSET) - pageSize.w * zoom) / 2, y: ((r.height - 2 * PAGE_OFFSET) - pageSize.h * zoom) / 2 });
+  };
 
   const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
   const live = draftPts.length === 0 ? []
@@ -720,6 +885,12 @@ export function DrawingViewer({
     else if (tool === "dimension") liveText = `Dimension ${dimensionMode}: select the first and second extension points, then place the dimension`;
     else liveText = `Length: ${fmt(lengthInMetres(polylineLength(live), cal))} m`;
   }
+  if (cadMode) {
+    liveText = pickMsg
+      ?? (cadPending ? `${cadPending.objs.length} objects selected: confirm below`
+      : cadHover ? `${describe(cadHover)}: ${fmt(cadQty(cadHover), cadKind === "count" ? 0 : 3)} ${cadUnit}${drawMode === "object" ? " · click to add" : " · click to select all like it"}`
+      : drawMode === "block" ? "Same block: hover over a block" : drawMode === "layer" ? "All on layer: hover over an object" : drawMode === "hatch" ? "Same hatch: hover over a hatch" : "Pick object: hover over a CAD object");
+  }
   if (pickMode && draftPts.length === 0) {
     const shape = pickPreview?.[0];
     liveText = pickMsg
@@ -733,6 +904,7 @@ export function DrawingViewer({
   const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity" : "Click an object to select every one like it, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
@@ -762,7 +934,7 @@ export function DrawingViewer({
     })()
     : null;
 
-  if (!url) {
+  if (!url && !cad) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
         No PDF is attached to this drawing revision.
@@ -843,9 +1015,11 @@ export function DrawingViewer({
               ? `Scale (page ${currentPage}): 1 page unit = ${fmt(calibration.metresPerUnit * 1000, 4)} mm, from a ${fmt(calibration.knownDistance)} ${calibration.knownUnit} reference`
               : `Page ${currentPage} is not calibrated. Pick a drawing scale, or use Scale on a known dimension.`}
           >
-            {calibration ? <>Scale {drawingScale && drawingScale >= 1 ? <b>≈ 1:{fmt(drawingScale, drawingScale < 10 ? 2 : 0)}</b> : null} · p.{currentPage}</> : <>Not calibrated · p.{currentPage}</>}
+            {cad ? (calibration ? <>CAD · <b>true scale</b>{cad.model.insUnits ? "" : " (units set at upload)"}</> : <>CAD · no units: set the scale</>)
+              : calibration ? <>Scale {drawingScale && drawingScale >= 1 ? <b>≈ 1:{fmt(drawingScale, drawingScale < 10 ? 2 : 0)}</b> : null} · p.{currentPage}</> : <>Not calibrated · p.{currentPage}</>}
           </span>
-          {!readOnly && onPresetScale && (
+          {cad && <CadLayersButton layers={cad.model.layers} hidden={hiddenLayers} onChange={setHidden} />}
+          {!readOnly && onPresetScale && !cad && (
             <select
               className="mr-1 h-7 rounded border border-input bg-background px-1 text-xs text-foreground"
               value=""
@@ -868,7 +1042,7 @@ export function DrawingViewer({
             title={darkSheet ? "Show the drawing on a white sheet" : "Show the drawing on a black sheet"}>
             {darkSheet ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setView({ zoom: 0.6, x: 0, y: 0 })} title="Reset view">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={resetView} title={cad ? "Zoom to the whole drawing" : "Reset view"}>
             <Maximize className="h-3.5 w-3.5" />
           </Button>
           {numPages > 1 && (
@@ -884,7 +1058,7 @@ export function DrawingViewer({
 
       <div
         ref={viewportRef}
-        className={cn("relative flex-1 overflow-hidden", darkSheet ? "bg-neutral-900" : "bg-muted/30")}
+        className={cn("relative flex-1 overflow-hidden", cad ? (darkSheet ? "bg-black" : "bg-white") : darkSheet ? "bg-neutral-900" : "bg-muted/30")}
         style={{ cursor: readOnly ? undefined : "none" }}
         onPointerDown={(e) => {
           // Off the sheet: middle button pans in any tool; with no tool the left button pans (and a click unselects).
@@ -940,6 +1114,7 @@ export function DrawingViewer({
         onAuxClick={(e) => e.preventDefault()}
         onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}
       >
+        {cad && <canvas ref={cadCanvasRef} className="pointer-events-none absolute left-0 top-0" aria-hidden />}
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -961,8 +1136,9 @@ export function DrawingViewer({
             top: PAGE_OFFSET,
           }}
         >
-          <div className={cn("relative shadow-lg", darkSheet ? "bg-black" : "bg-white")}>
-            <canvas ref={canvasRef} className="block" style={darkSheet ? { filter: "invert(1) hue-rotate(180deg)" } : undefined} />
+          <div className={cn("relative", !cad && "shadow-lg", !cad && (darkSheet ? "bg-black" : "bg-white"))}
+            style={cad && pageSize ? { width: pageSize.w, height: pageSize.h } : undefined}>
+            <canvas ref={canvasRef} className={cad ? "hidden" : "block"} style={darkSheet ? { filter: "invert(1) hue-rotate(180deg)" } : undefined} />
             {pageSize && (
               <svg
                 ref={svgRef}
@@ -1075,6 +1251,15 @@ export function DrawingViewer({
                       );
                     });
                   })}
+                {cadMode && (cadPending?.objs ?? (cadHover ? [cadHover] : [])).map((o) => (
+                  cadKind === "count" ? (
+                    <circle key={`cad-${o.handle}`} cx={o.at?.x ?? 0} cy={o.at?.y ?? 0} r={7 / view.zoom} fill="rgba(234,88,12,0.35)" stroke="#ea580c" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  ) : (
+                    <path key={`cad-${o.handle}`} d={o.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + (cadKind === "area" ? "Z" : "")).join(" ")}
+                      fillRule="evenodd" fill={cadKind === "area" ? (cadPending ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.25)") : "none"}
+                      stroke={cadPending ? "#16a34a" : "#f59e0b"} strokeWidth={cadKind === "area" ? 2 : 3} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  )
+                ))}
                 {pickMode && pickPreview?.map((shape, i) => (
                   <polygon key={`pick-${i}`} points={shape.map((q) => `${q.x},${q.y}`).join(" ")}
                     fill={tool === "area" ? "rgba(34,197,94,0.22)" : "none"} stroke="#16a34a" strokeWidth={2}
@@ -1160,6 +1345,7 @@ export function DrawingViewer({
             <TakeoffStartPanel
               key={panelTool}
               tool={panelTool}
+              cad={!!cad}
               defaultName={t.defaultName}
               target={t}
               onCancel={() => setPanelTool(null)}
@@ -1180,7 +1366,25 @@ export function DrawingViewer({
             <span className="tabular-nums text-primary">{activeTakeoff.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeTakeoff.unit}</span>
             {boxMode && <span className="text-muted-foreground">· box</span>}
             {pickMode && <span className="text-muted-foreground">· {drawMode === "hatch" ? "same hatch" : "smart pick"}</span>}
+            {cadMode && <span className="text-muted-foreground">· {drawMode === "object" ? "pick object" : drawMode === "block" ? "same block" : drawMode === "hatch" ? "same hatch" : "all on layer"}</span>}
             <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
+          </div>
+        )}
+        {cadPending && (
+          <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
+            <p className="font-semibold">
+              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `hatches ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
+            </p>
+            <p className="mt-0.5 text-muted-foreground">
+              Total {fmt(cadPending.objs.reduce((t, o) => t + cadQty(o), 0), cadKind === "count" ? 0 : 3)} {cadUnit}
+              {cadKind === "count" ? "" : ` in ${cadPending.objs.length} measurement${cadPending.objs.length === 1 ? "" : "s"}`} · whole drawing, visible layers only
+            </p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadPending(null)}>Cancel</Button>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by); setCadPending(null); }}>
+                Add {cadPending.objs.length}
+              </Button>
+            </div>
           </div>
         )}
         {liveText && tool !== "dimension" && (
@@ -1191,7 +1395,9 @@ export function DrawingViewer({
       {/* Status bar: coordinates, snap and ortho */}
       <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
         <span className="tabular-nums">
-          {cursor
+          {cursor && cad
+            ? (() => { const m = toModel(cad.frame, cursor); return `X ${fmt(m.x, 1)} · Y ${fmt(m.y, 1)}${cad.model.insUnits === 4 ? " mm" : ""}`; })()
+            : cursor
             ? cal
               ? `X ${fmt(lengthInMetres(cursor.x, cal), 3)} m · Y ${fmt(lengthInMetres(cursor.y, cal), 3)} m`
               : `X ${fmt(cursor.x, 1)} · Y ${fmt(cursor.y, 1)} (page units)`
@@ -1204,7 +1410,7 @@ export function DrawingViewer({
             <button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((s) => !s)}
               title={vectorCount === 0 ? "This page has no vector lines (scanned PDF?), so there is nothing to snap to" : "Snap to lines in the PDF (S). Hold Alt to place a point freely."}
               className={cn("flex items-center gap-1 rounded px-2 py-0.5", snapOn ? "bg-primary/10 text-primary" : "hover:bg-muted")}>
-              <Magnet className="h-3 w-3" /> PDF Snap: {snapOn ? "On" : "Off"}{!measuring && snapOn && <span className="text-muted-foreground"> (pick a tool)</span>}
+              <Magnet className="h-3 w-3" /> {cad ? "Snap" : "PDF Snap"}: {snapOn ? "On" : "Off"}{!measuring && snapOn && <span className="text-muted-foreground"> (pick a tool)</span>}
               {snapOn && vectorCount !== null && <span className="text-muted-foreground">({vectorCount === 0 ? "no vectors" : `${fmt(vectorCount, 0)} lines`})</span>}
             </button>
             <button type="button" aria-pressed={orthoOn} onClick={() => setOrthoOn((o) => !o)}

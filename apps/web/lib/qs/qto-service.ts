@@ -75,6 +75,34 @@ export interface QtoDrawingRevision {
   supersedes_revision_id: string | null;
   remarks: string | null;
   created_at: string;
+  /** pdf | dxf | dwg (null on old rows without a file). */
+  source_format?: "pdf" | "dxf" | "dwg" | null;
+  /** The DXF to read (the upload, or the DXF converted from a DWG). */
+  cad_path?: string | null;
+  /** Units chosen at upload for a DXF without units. */
+  cad_units?: "mm" | "cm" | "m" | "in" | "ft" | null;
+  cad_meta?: CadRevisionMeta | null;
+  conversion_status?: "not_needed" | "pending" | "processing" | "done" | "failed" | null;
+  conversion_error?: string | null;
+}
+
+/** Summary of a DXF read at upload; `frame` keeps saved points in place. */
+export interface CadRevisionMeta {
+  version: string | null;
+  insUnits: number;
+  frame: { ox: number; oy: number; k: number };
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  view?: { minX: number; minY: number; maxX: number; maxY: number };
+  layers: number;
+  objects: number;
+  skipped: Record<string, number>;
+}
+
+/** The revision's DXF can be measured (a DXF upload, or a converted DWG). */
+export function cadReadable(r: Pick<QtoDrawingRevision, "source_format" | "cad_path" | "file_path" | "pdf_path"> | null | undefined): boolean {
+  if (!r) return false;
+  if (r.source_format === "dxf" || r.source_format === "dwg") return !!r.cad_path;
+  return !r.pdf_path && !!r.file_path?.toLowerCase().endsWith(".dxf");
 }
 
 export interface QtoPackage {
@@ -392,6 +420,14 @@ export async function getRevisionById(revisionId: string): Promise<QtoDrawingRev
   const supabase = createClient();
   const { data } = await supabase.from("qto_drawing_revisions").select("*").eq("id", revisionId).single();
   return (data as QtoDrawingRevision) ?? null;
+}
+
+/** Short-lived signed URL for a revision's DXF. */
+export async function getCadUrl(revision: Pick<QtoDrawingRevision, "cad_path" | "file_path"> | null | undefined): Promise<string | null> {
+  const path = revision?.cad_path ?? revision?.file_path;
+  if (!path) return null;
+  const { data } = await createClient().storage.from("qto-files").createSignedUrl(path, 60 * 60);
+  return data?.signedUrl ?? null;
 }
 
 /** Short-lived signed URL for a revision's PDF (the qto-files bucket is private). */

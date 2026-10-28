@@ -260,6 +260,8 @@ export async function addMeasurement(itemId: string, m: {
   drawing_revision_id: string | null; drawing_id: string | null; page_no: number; measure_type: string;
   points: { x: number; y: number }[]; length: number | null; area: number | null; count: number | null;
   unit: string | null; label: string | null; calibration_id: string | null;
+  source_format?: "pdf" | "dxf" | "dwg" | null; source_entity_handles?: string[] | null; source_layer?: string | null;
+  source_block?: string | null; source_selection?: Record<string, unknown> | null;
 }): Promise<MeasurementRow> {
   return check(await db().from("qto_measurements").insert({ qto_item_id: itemId, ...m }).select("*").single()) as MeasurementRow;
 }
@@ -320,6 +322,16 @@ export async function saveCalibration(i: {
     p_drawing_revision_id: i.revisionId, p_page_no: i.pageNo, p_points: i.points, p_pixel_distance: i.pixelDistance,
     p_known_distance: i.knownDistance, p_known_unit: i.knownUnit,
   })) as string;
+}
+
+/** Scale of a CAD revision from its drawing units (metres per sheet unit), recorded as method cad_units. */
+export async function saveCadCalibration(revisionId: string, metresPerUnit: number): Promise<string> {
+  return check(await db().rpc("qto_save_cad_calibration", { p_drawing_revision_id: revisionId, p_metres_per_unit: metresPerUnit })) as string;
+}
+
+/** Stores the CAD summary (and its frame) on a revision the first time it is opened. */
+export async function saveCadMeta(revisionId: string, meta: Record<string, unknown>): Promise<void> {
+  check(await db().from("qto_drawing_revisions").update({ cad_meta: meta }).eq("id", revisionId).is("cad_meta", null).select("id"));
 }
 
 // ── Rulesets ────────────────────────────────────────────────────────────────
@@ -456,12 +468,17 @@ export interface RevisionOption {
   file_path: string | null;
   scale: string | null;
   created_at: string;
+  source_format: "pdf" | "dxf" | "dwg" | null;
+  cad_path: string | null;
+  cad_units: "mm" | "cm" | "m" | "in" | "ft" | null;
+  cad_meta: Record<string, unknown> | null;
+  conversion_status: string | null;
 }
 
 /** Every revision of every drawing of a tender, oldest first. */
 export async function listTenderRevisions(tenderId: string): Promise<RevisionOption[]> {
   return check(await db().from("qto_drawing_revisions")
-    .select("id,drawing_id,revision,status,pdf_path,file_path,scale,created_at,drawing:qto_drawing_register!qto_drawing_revisions_drawing_id_fkey!inner(tender_id)")
+    .select("id,drawing_id,revision,status,pdf_path,file_path,scale,created_at,source_format,cad_path,cad_units,cad_meta,conversion_status,drawing:qto_drawing_register!qto_drawing_revisions_drawing_id_fkey!inner(tender_id)")
     .eq("drawing.tender_id", tenderId).order("created_at")) as RevisionOption[];
 }
 

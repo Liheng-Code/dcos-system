@@ -104,15 +104,45 @@ describe("DXF reader", () => {
   it("skips paper space, counts unknown entities and reads text", () => {
     const ents = [
       ...rect("PS", "0", 0, 0, 10, 10).slice(0, 6), 67, 1, ...rect("PS", "0", 0, 0, 10, 10).slice(6),
-      0, "MULTILEADER", 5, "ML", 8, "0",
+      0, "ACAD_PROXY_ENTITY", 5, "PX", 8, "0",
       0, "MTEXT", 5, "T1", 8, "0", 10, 0, 20, 0, 40, 250, 1, "{\\fArial|b1;SLAB}\\PL19",
     ];
     const doc = parseDxf(dxf(MM, ents));
-    expect(doc.skipped.MULTILEADER).toBe(1);
+    expect(doc.skipped.ACAD_PROXY_ENTITY).toBe(1);
     const m = buildModel(doc);
     expect(m.objects.find((o) => o.handle === "PS")).toBeUndefined();
     expect(m.prims.find((p) => p.kind === "text")?.text?.value).toBe("SLAB\nL19");
     expect(plainMText("\\H2.5;A\\~B")).toBe("A B");
+  });
+
+  it("draws a dimension's block at its insertion point (group 12), inside a block insert", () => {
+    const blocks = [
+      0, "BLOCK", 2, "*D1", 10, 0, 20, 0, 0, "LINE", 5, "DL", 8, "DIM", 10, 1000, 20, 1000, 11, 2000, 21, 1000, 0, "ENDBLK",
+      0, "BLOCK", 2, "GRID", 10, 0, 20, 0, 0, "DIMENSION", 5, "DM", 8, "DIM", 2, "*D1", 12, -500, 22, 300, 0, "ENDBLK",
+    ];
+    const m = buildModel(parseDxf(dxf(MM, [0, "INSERT", 5, "G1", 8, "0", 2, "GRID", 10, 10000, 20, 20000], blocks)));
+    const line = m.prims.find((p) => p.layer === "DIM")!;
+    expect(line.pts[0]).toEqual({ x: 10500, y: 21300 });
+  });
+
+  it("frames the view on AutoCAD's extents when they hold most of the drawing", () => {
+    const far = rect("FAR", "0", 900000, 900000, 10, 10);
+    const ents = [...rect("A", "0", 0, 0, 100, 100), ...rect("B", "0", 200, 0, 100, 100), ...rect("C", "0", 400, 0, 100, 100), ...rect("D", "0", 600, 0, 100, 100), ...rect("E", "0", 800, 0, 100, 100), ...far];
+    const m = buildModel(parseDxf(dxf([...MM, 9, "$EXTMIN", 10, 0, 20, 0, 9, "$EXTMAX", 10, 900, 20, 100], ents)));
+    expect(m.view).toEqual({ minX: 0, minY: 0, maxX: 900, maxY: 100 });
+    expect(m.bounds.maxX).toBe(900010);
+  });
+
+  it("draws multileader labels and leader lines", () => {
+    const ml = [0, "MULTILEADER", 5, "ML", 8, "NOTE", 300, "CONTEXT_DATA{", 40, 1, 10, 0, 20, 0, 41, 300, 304, "RB3 (200x300)", 12, 1000, 22, 2000,
+      302, "LEADER{", 10, 900, 20, 2000, 11, 1, 21, 0, 40, 75, 304, "LEADER_LINE{", 10, 900, 20, 500, 305, "}", 303, "}", 301, "}"];
+    const m = buildModel(parseDxf(dxf(MM, ml)));
+    const t = m.prims.find((p) => p.kind === "text")!;
+    expect(t.text).toMatchObject({ value: "RB3 (200x300)", height: 300, align: { h: "left", v: "top" } });
+    expect(t.pts[0]).toEqual({ x: 1000, y: 2000 });
+    const paths = m.prims.filter((p) => p.kind === "path").map((p) => p.pts);
+    expect(paths).toContainEqual([{ x: 900, y: 500 }, { x: 900, y: 2000 }]);
+    expect(paths).toContainEqual([{ x: 900, y: 2000 }, { x: 975, y: 2000 }]);
   });
 
   it("rejects binary DXF and non-DXF text", () => {

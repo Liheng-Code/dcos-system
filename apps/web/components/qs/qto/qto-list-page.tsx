@@ -38,6 +38,9 @@ import {
   type QtoDrawingRevision,
 } from "@/lib/qs/qto-service";
 import { listTenderRegister, updateQtoDrawingRevisionById } from "@/lib/qs/qs-queries";
+import { loadCadModel } from "@/lib/qs/qto/cad/load-cad";
+import { frameFor } from "@/lib/qs/qto/cad/cad-sheet";
+import { unitLabel } from "@/lib/qs/qto/cad/cad-units";
 
 /** Suggestions for the drawing register; any value can be typed. */
 const QTO_BUILDINGS = ["BA", "BB", "BX", "GENERAL"];
@@ -172,6 +175,8 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
   const [uploadRevision, setUploadRevision] = useState("");
   const [uploadScale, setUploadScale] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  /** DXF: units chosen by the user ("" = from the file). */
+  const [uploadUnits, setUploadUnits] = useState<"" | "mm" | "cm" | "m" | "in" | "ft">("");
   const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
@@ -222,8 +227,31 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
 
     const supabase = createClient();
     const ext = uploadFile.name.split(".").pop()?.toLowerCase() ?? "bin";
+    // A DXF is read in the browser first: unreadable files are refused, and its summary is kept.
+    let cadMeta: Record<string, unknown> | null = null;
+    if (ext === "dxf") {
+      try {
+        const model = await loadCadModel(await uploadFile.arrayBuffer());
+        if (!model.metresPerUnit && !uploadUnits) {
+          setUploading(false);
+          toast.error("This DXF has no drawing units. Choose its units (usually millimetres) and upload again.");
+          return;
+        }
+        cadMeta = {
+          version: model.version, insUnits: model.insUnits, frame: frameFor(model.view), bounds: model.bounds, view: model.view,
+          layers: model.layers.filter((l) => l.count > 0).length, objects: model.objects.length, skipped: model.skipped,
+        };
+        const skipped = Object.entries(model.skipped).map(([t, n]) => `${n} ${t}`).join(", ");
+        toast.info(`DXF read: ${cadMeta.layers} layers, ${model.objects.length} objects, units ${uploadUnits || unitLabel(model.insUnits) || "—"}${skipped ? ` (not shown: ${skipped})` : ""}`);
+      } catch (e) {
+        setUploading(false);
+        toast.error(e instanceof Error ? e.message : "The DXF could not be read");
+        return;
+      }
+    }
     const path = `${tenderId}/${uploadFor.id}/rev-${uploadRevision.trim()}-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("qto-files").upload(path, uploadFile, { contentType: uploadFile.type || "application/octet-stream" });
+    const contentType = ext === "dxf" || ext === "dwg" ? "application/octet-stream" : uploadFile.type || "application/octet-stream";
+    const { error: upErr } = await supabase.storage.from("qto-files").upload(path, uploadFile, { contentType });
     if (upErr) {
       setUploading(false);
       toast.error(upErr.message);
@@ -237,6 +265,11 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
       units: "mm",
       file_path: path,
       pdf_path: isPdf ? path : null,
+      source_format: isPdf ? "pdf" : ext === "dxf" ? "dxf" : ext === "dwg" ? "dwg" : null,
+      cad_path: ext === "dxf" ? path : null,
+      cad_units: ext === "dxf" && uploadUnits ? uploadUnits : null,
+      cad_meta: cadMeta as QtoDrawingRevision["cad_meta"],
+      conversion_status: ext === "dwg" ? "pending" : isPdf || ext === "dxf" ? "not_needed" : null,
       revision_date: new Date().toISOString().slice(0, 10),
     });
     setUploading(false);
@@ -247,6 +280,8 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
       setUploadRevision("");
       setUploadScale("");
       setUploadFile(null);
+      setUploadUnits("");
+      if (ext === "dwg") toast.info("DWG stored. To measure it now, save it as DXF in AutoCAD and upload the DXF; automatic DWG conversion is coming.");
       void load();
     }
   }
@@ -347,7 +382,7 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
                         }}
                         className={cn("text-[11px] underline", !r.pdf_path && !r.file_path && "pointer-events-none text-muted-foreground no-underline")}
                       >
-                        {r.pdf_path ? "Open PDF" : r.file_path ? "File (no PDF)" : "No file"}
+                        {r.pdf_path ? "Open PDF" : r.source_format === "dxf" ? "DXF (CAD)" : r.source_format === "dwg" ? "DWG (convert to DXF to measure)" : r.file_path ? "File (no PDF)" : "No file"}
                       </button>
                       {r.status === "superseded" && canCreate && (
                         <button
@@ -400,9 +435,26 @@ function DrawingsTab({ tenderId, canCreate, canDelete }: { tenderId: string; can
               <div><label className="text-xs font-medium text-muted-foreground">Revision *</label><input className={inputCls} value={uploadRevision} onChange={(e) => setUploadRevision(e.target.value)} placeholder="P01" /></div>
               <div><label className="text-xs font-medium text-muted-foreground">Scale</label><input className={inputCls} value={uploadScale} onChange={(e) => setUploadScale(e.target.value)} placeholder="1:100" /></div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">File (PDF preferred for measuring)</label>
-                <input type="file" accept=".pdf,.dwg,.png,.jpg,.jpeg,.tif,.tiff" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+                <label className="text-xs font-medium text-muted-foreground">File: PDF, or CAD drawing (DXF)</label>
+                <input type="file" accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg,.tif,.tiff" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+                {uploadFile?.name.toLowerCase().endsWith(".dwg") && (
+                  <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">DWG files are stored but cannot be measured yet. In AutoCAD use Save As → DXF and upload the DXF.</p>
+                )}
               </div>
+              {uploadFile?.name.toLowerCase().endsWith(".dxf") && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground" htmlFor="qto-upload-units">Drawing units</label>
+                  <select id="qto-upload-units" className={inputCls} value={uploadUnits} onChange={(e) => setUploadUnits(e.target.value as typeof uploadUnits)}>
+                    <option value="">From the file</option>
+                    <option value="mm">Millimetres</option>
+                    <option value="cm">Centimetres</option>
+                    <option value="m">Metres</option>
+                    <option value="in">Inches</option>
+                    <option value="ft">Feet</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">The drawing is measured at true scale from its units; no calibration needed.</p>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setUploadFor(null)}>Cancel</Button>

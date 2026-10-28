@@ -117,6 +117,14 @@ Definition shape:
 - **`lines` jsonb:** one entry per BOQ line, with `boq_item_id`, `action`, `previous_qty`, `new_qty` and `item_ids`.
 - **Idempotency:** partial UNIQUE (idempotency_key) WHERE status = succeeded.
 
+### CAD drawings (migration `20261028090015_qs_qto_cad`)
+- **qto_drawing_revisions:** `source_format` (pdf / dxf / dwg), `cad_path` (DXF to read: the upload, or a DXF converted from a DWG), `cad_units` (chosen at upload when the DXF has none: mm / cm / m / in / ft), `cad_meta` jsonb (version, units, bounds, view, `frame {ox, oy, k}`, layer and object counts, skipped entity types), `conversion_status` (not_needed / pending / processing / done / failed), `conversion_error`. Backfilled from `file_path` / `pdf_path`.
+- **Points on CAD drawings** are stored in sheet units: `sheet = ((x − ox)·k, (oy − y)·k)` with the revision's `frame` (k a power of ten), so they never move and model coordinates are recoverable.
+- **qto_drawing_calibrations.method:** manual / preset / cad_units. `qto_save_cad_calibration(revision, metres_per_unit)` saves the scale from the drawing units.
+- **qto_session_versions.source_format:** the file a version is measured on.
+- **qto_measurements:** `source_format`, `source_entity_handles text[]`, `source_layer`, `source_block`, `source_selection jsonb` (e.g. `{"by":"hatch","pattern":"ANSI33","layer":"Cam-PT Beam","scope":"model"}`).
+- **qto_require_revision(revision):** both calibration RPCs now reject a revision of another company (found by the SQL suite: before this, a user of another company could save a scale on someone else's revision).
+
 ## Triggers
 | Trigger | On | Effect |
 |---|---|---|

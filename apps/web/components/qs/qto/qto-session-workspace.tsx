@@ -15,7 +15,10 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useQtoPermissions } from "@/hooks/use-qto-permissions";
 import { getBudgetCodes } from "@/lib/qs/public-tender";
-import { getDrawingUrl, listDrawings, type QtoDrawing, type QtoDrawingRevision } from "@/lib/qs/qto-service";
+import { cadReadable, getCadUrl, getDrawingUrl, listDrawings, type QtoDrawing, type QtoDrawingRevision } from "@/lib/qs/qto-service";
+import { loadCadModel } from "@/lib/qs/qto/cad/load-cad";
+import { buildSheet, frameFor, type CadFrame, type CadSheet } from "@/lib/qs/qto/cad/cad-sheet";
+import { metresPerUnit as cadMetres } from "@/lib/qs/qto/cad/cad-units";
 import { compareItems, summarizeChanges, CHANGE_LABEL, type ChangeRow } from "@/lib/qs/qto/compare";
 import { validateVersion } from "@/lib/qs/qto/validation";
 import {
@@ -26,7 +29,7 @@ import {
   acknowledgeIssue, addMeasurement, createItem, createVersion, deleteItem, deleteMeasurement, duplicateItem,
   getActiveCalibrations, getAuditHistory, getProfileNames, getSessionBundle, getTender, getVersionWorkspace,
   listRulesets, listTenderBoqLines, listTenderRevisions, listWbsNodesForTender, publishVersion, recordCalculation,
-  saveCalibration, setBoqLink, setFactors, syncIssues, transitionVersion, updateItem, updateMeasurementGeometry,
+  saveCadCalibration, saveCadMeta, saveCalibration, setBoqLink, setFactors, syncIssues, transitionVersion, updateItem, updateMeasurementGeometry,
   type AuditEntry, type RevisionOption, type RulesetWithVersions, type SessionBundle, type TenderBoqLine, type VersionWorkspace,
 } from "@/lib/qs/qto/session-service";
 import { DrawingViewer, type ActiveCalibration, type EmittedMeasurement } from "@/components/qs/qto/drawing-viewer";
@@ -130,6 +133,9 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [drawingUrl, setDrawingUrl] = useState<string | null>(null);
+  /** CAD revision: the loaded sheet, or the load state. */
+  const [cadSheet, setCadSheet] = useState<CadSheet | null>(null);
+  const [cadState, setCadState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
   const [calibrations, setCalibrations] = useState<QtoCalibration[]>([]);
   const [pendingCal, setPendingCal] = useState<{ points: { x: number; y: number }[]; pageUnits: number; page_no: number } | null>(null);
 
@@ -225,10 +231,50 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!revision) { setDrawingUrl(null); setCalibrations([]); return; }
-    void getDrawingUrl(revision).then(setDrawingUrl);
+    if (!revision) { setDrawingUrl(null); setCalibrations([]); setCadSheet(null); return; }
     void getActiveCalibrations(revision.id).then(setCalibrations).catch(() => setCalibrations([]));
+    if (!cadReadable(revision)) { setCadSheet(null); void getDrawingUrl(revision).then(setDrawingUrl); return; }
+    // CAD: read the DXF in a worker; keep the frame stored with the revision so points never move.
+    setDrawingUrl(null);
+    setCadState({ loading: true, error: null });
+    let cancelled = false;
+    void (async () => {
+      try {
+        const url = await getCadUrl(revision);
+        if (!url) throw new Error("The DXF file could not be found");
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("The DXF file could not be loaded");
+        const model = await loadCadModel(await res.arrayBuffer());
+        if (cancelled) return;
+        if (revision.cad_units) model.metresPerUnit = cadMetres({ mm: 4, cm: 5, m: 6, in: 1, ft: 2 }[revision.cad_units]);
+        const stored = (revision.cad_meta as { frame?: CadFrame } | null)?.frame;
+        const frame = stored ?? frameFor(model.view);
+        if (!stored) {
+          void saveCadMeta(revision.id, {
+            version: model.version, insUnits: model.insUnits, frame, bounds: model.bounds, view: model.view,
+            layers: model.layers.filter((l) => l.count > 0).length, objects: model.objects.length, skipped: model.skipped,
+          }).catch(() => undefined);
+        }
+        setCadSheet(buildSheet(model, frame));
+        setCadState({ loading: false, error: null });
+      } catch (e) {
+        if (!cancelled) setCadState({ loading: false, error: e instanceof Error ? e.message : "The DXF could not be read" });
+      }
+    })();
+    return () => { cancelled = true; };
   }, [revision]);
+
+  // A CAD drawing with units gets its scale automatically (true scale, method cad_units).
+  useEffect(() => {
+    if (!cadSheet?.metresPerUnit || !revision || !editable) return;
+    const current = calibrations.find((c) => c.page_no === 1);
+    if (current && Math.abs(Number(current.metres_per_unit) - cadSheet.metresPerUnit) < 1e-12) return;
+    if (current) return; // a scale set by hand is kept
+    void saveCadCalibration(revision.id, cadSheet.metresPerUnit)
+      .then(() => getActiveCalibrations(revision.id).then(setCalibrations))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cadSheet, calibrations]);
 
   const ruleVersion: QtoRuleVersion | null = useMemo(() => {
     for (const s of rulesets) {
@@ -479,6 +525,10 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
           drawing_revision_id: version.drawing_revision_id, drawing_id: revision?.drawing_id ?? null, page_no: x.page_no,
           measure_type: x.measure_type, points: x.points, length: x.length, area: x.area, count: x.count, unit: x.unit,
           label: null, calibration_id: activeCal?.id ?? null,
+          ...(x.source ? {
+            source_format: x.source.format, source_entity_handles: x.source.handles, source_layer: x.source.layer,
+            source_block: x.source.block, source_selection: x.source.selection,
+          } : {}),
         });
       }
       await syncMeasuredQuantities(version.id, [target!.id]);
@@ -699,7 +749,14 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
         <PanelSplitter side="left" label="Resize the Takeoffs panel" width={panelW.left} min={PANELS.left.min} max={PANELS.left.max}
           defaultWidth={PANELS.left.def} onChange={(left) => setPanelW({ left })} />
         <div className="min-h-[420px] overflow-hidden rounded-lg border border-border">
+          {cadState.loading || cadState.error ? (
+            <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+              {cadState.loading ? "Reading the DXF drawing…" : <span className="text-destructive">{cadState.error}</span>}
+            </div>
+          ) : (
           <DrawingViewer
+            cad={cadSheet}
+            cadKey={revision?.id ?? null}
             url={drawingUrl}
             calibration={activeCal}
             readOnly={!editable}
@@ -742,6 +799,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
                 };
               })}
           />
+          )}
         </div>
 
         {/* Properties of the selected takeoff */}

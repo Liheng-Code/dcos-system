@@ -1,7 +1,7 @@
 // Places parsed DXF entities in the world (model space, y up): blocks are expanded through their
 // nested INSERT transforms, layers and colours resolved, and every curve kept as true line / arc
 // segments so areas and lengths are exact. Flattened copies are made only for drawing and snapping.
-import type { DxfDoc, DxfEntity, HatchEdge, HatchPatternLine, PolyVertex, XY } from "./dxf-parse";
+import type { DxfDoc, DxfEntity, HatchEdge, HatchPatternLine, PolyVertex, TextAlign, XY } from "./dxf-parse";
 import { metresPerUnit } from "./cad-units";
 
 export type Pt = XY;
@@ -216,7 +216,7 @@ export interface CadPrim {
   loops?: Pt[][];
   pattern?: HatchPatternLine[];
   solid?: boolean;
-  text?: { value: string; height: number; rotation: number };
+  text?: { value: string; height: number; rotation: number; align?: TextAlign };
 }
 
 /** A top-level entity that can be measured (exact quantities in drawing units). */
@@ -244,7 +244,10 @@ export interface CadLayerInfo { name: string; color: string; off: boolean; froze
 export interface CadModel {
   insUnits: number;
   metresPerUnit: number | null;
+  /** Everything drawn. */
   bounds: Bounds;
+  /** The extents to frame the view on: AutoCAD's own ($EXTMIN/$EXTMAX) when they hold most of the drawing, else `bounds`. */
+  view: Bounds;
   prims: CadPrim[];
   objects: CadObject[];
   layers: CadLayerInfo[];
@@ -403,7 +406,7 @@ export function buildModel(doc: DxfDoc, opts: { tol?: number } = {}): CadModel {
       if (e.type === "INSERT" || e.type === "DIMENSION") {
         if (depth >= MAX_DEPTH) continue;
         const block = doc.blocks.get(e.type === "INSERT" ? e.name : e.block);
-        if (e.type === "DIMENSION") { if (block) walk(block.entities, em, layer, color, handle, depth + 1); continue; }
+        if (e.type === "DIMENSION") { if (block) walk(block.entities, mul([1, 0, 0, 1, e.at.x, e.at.y], em), layer, color, handle, depth + 1); continue; }
         const rot = e.rotation * Math.PI / 180;
         const cos = Math.cos(rot), sin = Math.sin(rot);
         const at: Pt[] = [];
@@ -430,7 +433,22 @@ export function buildModel(doc: DxfDoc, opts: { tol?: number } = {}): CadModel {
         const dir = { x: Math.cos(e.rotation * Math.PI / 180), y: Math.sin(e.rotation * Math.PI / 180) };
         const wd = { x: em[0] * dir.x + em[2] * dir.y, y: em[1] * dir.x + em[3] * dir.y };
         prims.push({ handle, layer, color, kind: "text", pts: [apply(em, e.at)], closed: false,
-          text: { value: e.text, height: e.height * Math.sqrt(Math.abs(det(em))), rotation: Math.atan2(wd.y, wd.x) * 180 / Math.PI } });
+          text: { value: e.text, height: e.height * Math.sqrt(Math.abs(det(em))), rotation: Math.atan2(wd.y, wd.x) * 180 / Math.PI, align: e.align } });
+        continue;
+      }
+      if (e.type === "MULTILEADER") {
+        const scale = Math.sqrt(Math.abs(det(em)));
+        if (e.at && e.text) prims.push({ handle, layer, color, kind: "text", pts: [apply(em, e.at)], closed: false, text: { value: e.text, height: e.height * scale, rotation: 0, align: { h: "left", v: "top" } } });
+        for (const l of e.leaders) {
+          for (const line of l.lines) {
+            const pts = [...line, ...(l.connection ? [l.connection] : [])].map((p) => apply(em, p));
+            if (pts.length > 1) prims.push({ handle, layer, color, kind: "path", pts, closed: false });
+          }
+          if (l.connection && l.dogleg && l.dogleg.length > 0) {
+            const end = { x: l.connection.x + l.dogleg.dir.x * l.dogleg.length, y: l.connection.y + l.dogleg.dir.y * l.dogleg.length };
+            prims.push({ handle, layer, color, kind: "path", pts: [apply(em, l.connection), apply(em, end)], closed: false });
+          }
+        }
         continue;
       }
       if (e.type === "POINT") { prims.push({ handle, layer, color, kind: "point", pts: [apply(em, e.at)], closed: false }); continue; }
@@ -465,9 +483,19 @@ export function buildModel(doc: DxfDoc, opts: { tol?: number } = {}): CadModel {
 
   const all = boundsOf(prims.flatMap((p) => (p.loops ? p.loops : [p.pts])));
   const bounds = Number.isFinite(all.minX) ? all : { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+  let view = bounds;
+  if (doc.extMin && doc.extMax && doc.extMax.x > doc.extMin.x && doc.extMax.y > doc.extMin.y && Math.abs(doc.extMax.x) < 1e15) {
+    const e = { minX: doc.extMin.x, minY: doc.extMin.y, maxX: doc.extMax.x, maxY: doc.extMax.y };
+    const pad = 0.01 * Math.max(e.maxX - e.minX, e.maxY - e.minY);
+    const inside = prims.filter((p) => {
+      const q = p.loops?.[0]?.[0] ?? p.pts[0];
+      return q && q.x >= e.minX - pad && q.x <= e.maxX + pad && q.y >= e.minY - pad && q.y <= e.maxY + pad;
+    }).length;
+    if (prims.length && inside / prims.length >= 0.8) view = e;
+  }
   const layers: CadLayerInfo[] = [...new Set([...doc.layers.keys(), ...layerCount.keys()])].map((name) => {
     const l = doc.layers.get(name);
     return { name, color: layerColor(name), off: l?.off ?? false, frozen: l?.frozen ?? false, count: layerCount.get(name) ?? 0 };
   }).sort((a, b) => a.name.localeCompare(b.name));
-  return { insUnits: doc.insUnits, metresPerUnit: metresPerUnit(doc.insUnits), bounds, prims, objects, layers, skipped: doc.skipped, version: doc.version };
+  return { insUnits: doc.insUnits, metresPerUnit: metresPerUnit(doc.insUnits), bounds, view, prims, objects, layers, skipped: doc.skipped, version: doc.version };
 }

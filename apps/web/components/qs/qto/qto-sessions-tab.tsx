@@ -236,7 +236,8 @@ function CreateSessionDialog({ tenderId, onClose, onCreated }: { tenderId: strin
                 </div>
               )}
               {rev && rev.status !== "current" && <p className="text-xs text-amber-700 dark:text-amber-300">Rev {rev.revision} is {rev.status}; the latest revision is not substituted automatically.</p>}
-              {rev && !rev.pdf_path && !rev.file_path?.toLowerCase().endsWith(".pdf") && <p className="text-xs text-amber-700 dark:text-amber-300">This revision has no PDF; on-screen measurement needs one.</p>}
+              {rev && !rev.pdf_path && !rev.file_path?.toLowerCase().endsWith(".pdf") && !(rev.cad_path || rev.file_path?.toLowerCase().endsWith(".dxf")) && <p className="text-xs text-amber-700 dark:text-amber-300">This revision has no PDF or DXF; on-screen measurement needs one{rev.source_format === "dwg" ? " (save the DWG as DXF and upload it)" : ""}.</p>}
+              {rev && (rev.cad_path || rev.file_path?.toLowerCase().endsWith(".dxf")) && !rev.pdf_path && <p className="text-xs text-muted-foreground">CAD drawing (DXF): measured at true scale from its units.</p>}
             </section>
             <section className="grid gap-2">
               <p className="text-xs font-semibold">3 · Ruleset</p>

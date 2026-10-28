@@ -20,6 +20,17 @@ interface Base {
 
 export interface PolyVertex extends XY { bulge: number }
 
+/** Text alignment: horizontal and vertical anchor of the insertion point. */
+export interface TextAlign { h: "left" | "center" | "right"; v: "top" | "middle" | "baseline" | "bottom" }
+
+export interface MLeaderLeader {
+  /** Where the leader lines meet the landing. */
+  connection: XY | null;
+  dogleg: { dir: XY; length: number } | null;
+  /** Each leader line's vertices, from the arrow end. */
+  lines: XY[][];
+}
+
 export type HatchEdge =
   | { kind: "line"; a: XY; b: XY }
   | { kind: "arc"; c: XY; r: number; start: number; end: number; ccw: boolean }
@@ -44,10 +55,13 @@ export type DxfEntity = Base & (
   | { type: "SPLINE"; degree: number; closed: boolean; knots: number[]; control: XY[]; weights: number[] | null; fit: XY[] }
   | { type: "POINT"; at: XY }
   | { type: "SOLID"; corners: XY[] }
-  | { type: "TEXT"; at: XY; height: number; rotation: number; text: string }
-  | { type: "MTEXT"; at: XY; height: number; rotation: number; text: string; width: number }
+  | { type: "TEXT"; at: XY; height: number; rotation: number; text: string; align: TextAlign }
+  | { type: "MTEXT"; at: XY; height: number; rotation: number; text: string; width: number; align: TextAlign }
+  /** A multileader: its label (plain text) and leader lines. */
+  | { type: "MULTILEADER"; text: string; at: XY | null; height: number; leaders: MLeaderLeader[] }
   | { type: "INSERT"; name: string; at: XY; scale: XY; rotation: number; cols: number; rows: number; colSpacing: number; rowSpacing: number; attribs: { at: XY; height: number; rotation: number; text: string }[] }
-  | { type: "DIMENSION"; block: string }
+  /** The dimension's drawn geometry is its anonymous block, placed at `at` (group 12). */
+  | { type: "DIMENSION"; block: string; at: XY }
   | { type: "HATCH"; pattern: string; solid: boolean; angle: number; scale: number; loops: HatchLoop[]; patternLines: HatchPatternLine[] }
 );
 
@@ -187,27 +201,75 @@ function readEntity(pairs: Pair[], i: number, skipped: Record<string, number>): 
       break;
     }
     case "TEXT": {
-      const aligned = num(g(72)) !== 0 || num(g(73)) !== 0;
-      entity = { ...base, type, at: aligned && g(11) !== undefined ? xy(11) : xy(10), height: num(g(40), 1), rotation: num(g(50)), text: unicode(g(1) ?? "") };
+      const h72 = num(g(72)), v73 = num(g(73));
+      const aligned = h72 !== 0 || v73 !== 0;
+      const align: TextAlign = {
+        h: h72 === 1 || h72 === 4 ? "center" : h72 === 2 ? "right" : "left",
+        v: h72 === 4 ? "middle" : v73 === 3 ? "top" : v73 === 2 ? "middle" : v73 === 1 ? "bottom" : "baseline",
+      };
+      entity = { ...base, type, at: aligned && g(11) !== undefined ? xy(11) : xy(10), height: num(g(40), 1), rotation: num(g(50)), text: unicode(g(1) ?? ""), align };
       break;
     }
     case "MTEXT": {
       const text = body.filter((p) => p[0] === 3 || p[0] === 1).map((p) => p[1]).join("");
       const dir = g(11) !== undefined ? Math.atan2(num(g(21)), num(g(11))) * 180 / Math.PI : num(g(50));
-      entity = { ...base, type, at: xy(10), height: num(g(40), 1), rotation: dir, text: plainMText(unicode(text)), width: num(g(41)) };
+      entity = { ...base, type, at: xy(10), height: num(g(40), 1), rotation: dir, text: plainMText(unicode(text)), width: num(g(41)), align: mtextAlign(num(g(71), 1)) };
       break;
     }
+    case "MULTILEADER": entity = { ...base, ...readMLeader(body) }; break;
     case "INSERT":
       entity = {
         ...base, type, name: (g(2) ?? "").trim(), at: xy(10), scale: { x: num(g(41), 1), y: num(g(42), 1) }, rotation: num(g(50)),
         cols: Math.max(1, num(g(70), 1)), rows: Math.max(1, num(g(71), 1)), colSpacing: num(g(44)), rowSpacing: num(g(45)), attribs,
       };
       break;
-    case "DIMENSION": entity = { ...base, type, block: (g(2) ?? "").trim() }; break;
+    case "DIMENSION": entity = { ...base, type, block: (g(2) ?? "").trim(), at: xy(12) }; break;
     case "HATCH": entity = { ...base, ...readHatch(body) }; break;
     default: skipped[type] = (skipped[type] ?? 0) + 1;
   }
   return { entity, next: j };
+}
+
+/** MTEXT attachment point (1 top-left … 9 bottom-right) as an alignment. */
+function mtextAlign(a: number): TextAlign {
+  const col = (a - 1) % 3, row = Math.floor((a - 1) / 3);
+  return { h: col === 1 ? "center" : col === 2 ? "right" : "left", v: row === 0 ? "top" : row === 1 ? "middle" : "bottom" };
+}
+
+/** MULTILEADER context data: label text, its position and height, and the leaders. */
+function readMLeader(body: Pair[]): { type: "MULTILEADER"; text: string; at: XY | null; height: number; leaders: MLeaderLeader[] } {
+  let text: string | null = null, at: XY | null = null, height = 0;
+  let inContext = false, leader: MLeaderLeader | null = null, line: XY[] | null = null;
+  const leaders: MLeaderLeader[] = [];
+  let doglegDir: XY | null = null;
+  for (const [c, raw] of body) {
+    const v = raw.trim();
+    if (c === 300 && v.startsWith("CONTEXT_DATA")) { inContext = true; continue; }
+    if (c === 301) { inContext = false; continue; }
+    if (!inContext) continue;
+    if (c === 302 && v.startsWith("LEADER")) { leader = { connection: null, dogleg: null, lines: [] }; doglegDir = null; continue; }
+    if (c === 303 && leader) { leaders.push(leader); leader = null; continue; }
+    if (c === 304 && v.startsWith("LEADER_LINE")) { line = []; continue; }
+    if (c === 305 && leader && line) { leader.lines.push(line); line = null; continue; }
+    if (line) {
+      if (c === 10) line.push({ x: num(v), y: 0 });
+      else if (c === 20 && line.length) line[line.length - 1].y = num(v);
+      continue;
+    }
+    if (leader) {
+      if (c === 10) leader.connection = { x: num(v), y: 0 };
+      else if (c === 20 && leader.connection) leader.connection.y = num(v);
+      else if (c === 11) doglegDir = { x: num(v), y: 0 };
+      else if (c === 21 && doglegDir) doglegDir.y = num(v);
+      else if (c === 40 && doglegDir) leader.dogleg = { dir: doglegDir, length: num(v) };
+      continue;
+    }
+    if (c === 41 && !height) height = num(v);
+    else if (c === 304 && text === null) text = plainMText(unicode(raw));
+    else if (c === 12 && text !== null && !at) at = { x: num(v), y: 0 };
+    else if (c === 22 && at && at.y === 0) at.y = num(v);
+  }
+  return { type: "MULTILEADER", text: text ?? "", at, height: height || 1, leaders };
 }
 
 /** HATCH boundary loops are a sequence; read them with a cursor. */

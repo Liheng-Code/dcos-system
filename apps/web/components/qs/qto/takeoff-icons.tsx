@@ -150,3 +150,35 @@ export function SameHatchIcon(p: IconProps) {
     </Svg>
   );
 }
+
+/** CAD: pick one drawn object. */
+export function PickObjectIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <rect x={3} y={4} width={14} height={10} rx={1} stroke="currentColor" strokeWidth={2} />
+      <path d="M13 11l8 3-3.3 1.2L16.5 19z" fill="currentColor" stroke="currentColor" strokeWidth={1.2} />
+    </Svg>
+  );
+}
+
+/** CAD: every object on the layer. */
+export function LayerSelectIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <path d="M12 4l9 4.5-9 4.5-9-4.5z" stroke="currentColor" strokeWidth={1.6} />
+      <path d="M3 12.5l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5" stroke="currentColor" strokeWidth={1.6} />
+    </Svg>
+  );
+}
+
+/** CAD: every insert of a block. */
+export function SameBlockIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <rect x={3} y={3} width={7} height={7} stroke="currentColor" strokeWidth={1.6} />
+      <rect x={14} y={3} width={7} height={7} stroke="currentColor" strokeWidth={1.6} />
+      <rect x={3} y={14} width={7} height={7} stroke="currentColor" strokeWidth={1.6} />
+      <rect x={14} y={14} width={7} height={7} stroke="currentColor" strokeWidth={1.6} />
+    </Svg>
+  );
+}

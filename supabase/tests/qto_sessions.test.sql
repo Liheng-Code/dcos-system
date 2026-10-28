@@ -300,5 +300,20 @@ select pg_temp.ok((select count(*) >= 4 from public.qto_audit_log a join public.
                     where a.table_name = 'qto_transfers' and t.publication_id = pg_temp.ctx('pub1')),
   '36. transfers are audited');
 
+-- ── CAD (DXF) drawings ───────────────────────────────────────────────────
+select pg_temp.put('cadcal', pg_temp.as_user(pg_temp.ctx('qs'), pg_temp.q(
+  $q$select public.qto_save_cad_calibration(%L, 0.1)::text$q$, pg_temp.ctx('r2')::text))::uuid);
+select pg_temp.ok((select method = 'cad_units' and metres_per_unit = 0.1 and is_active from public.qto_drawing_calibrations where id = pg_temp.ctx('cadcal')),
+  'CAD. the scale from drawing units is saved as method cad_units');
+select pg_temp.ok(pg_temp.as_user(pg_temp.ctx('outsider'), pg_temp.q(
+  $q$select public.qto_save_cad_calibration(%L, 0.1)::text$q$, pg_temp.ctx('r2')::text)) like 'ERR:%',
+  'CAD. another company cannot set the scale');
+select pg_temp.ok(pg_temp.as_user(pg_temp.ctx('qs'), pg_temp.q(
+  $q$select public.qto_save_cad_calibration(%L, 0)::text$q$, pg_temp.ctx('r2')::text)) like 'ERR: QTO_VALIDATION%',
+  'CAD. a zero scale is rejected');
+select pg_temp.ok(pg_temp.as_user(pg_temp.ctx('qs'), pg_temp.q(
+  $q$update public.qto_drawing_revisions set source_format = 'svg' where id = %L returning 1$q$, pg_temp.ctx('r2')::text)) like 'ERR:%',
+  'CAD. source_format only allows pdf, dxf or dwg');
+
 do $$ begin raise notice 'ALL QTO SESSION TESTS PASSED'; end $$;
 rollback;

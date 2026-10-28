@@ -5,11 +5,47 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { BoxModeIcon, PointModeIcon, SameHatchIcon, SmartPickIcon } from "@/components/qs/qto/takeoff-icons";
+import { BoxModeIcon, LayerSelectIcon, PickObjectIcon, PointModeIcon, SameBlockIcon, SameHatchIcon, SmartPickIcon } from "@/components/qs/qto/takeoff-icons";
 import { VOLUME_LABEL, validVolume, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 
-/** points / box draw by hand; pick traces the closed area around a click; hatch picks every area with one hatch. */
-export type DrawMode = "points" | "box" | "pick" | "hatch";
+/**
+ * points / box draw by hand; pick traces the closed area around a click; hatch picks every area with
+ * one hatch. CAD drawings add object (one drawn object, exact), layer (every object of that type on
+ * its layer) and block (every insert of a block, for counts); there "hatch" matches the HATCH pattern name.
+ */
+export type DrawMode = "points" | "box" | "pick" | "hatch" | "object" | "layer" | "block";
+
+type ModeOption = readonly [DrawMode, string, (p: { size?: number }) => React.ReactElement];
+
+/** Draw modes offered for a tool, on a PDF or a CAD drawing. */
+export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
+  const areaPdf: ModeOption[] = [
+    ["points", "Point to point", PointModeIcon],
+    ["box", "Box mode", BoxModeIcon],
+    ["pick", "Smart pick: click inside a closed area", SmartPickIcon],
+    ["hatch", "Same hatch: every area with the hatch you click", SameHatchIcon],
+  ];
+  if (!cad) return TOOL_META[tool].boxMode ? areaPdf : [];
+  if (tool === "area" || tool === "perimeter") {
+    return [
+      ["object", "Pick object: click a closed polyline, circle or hatch (exact CAD geometry)", PickObjectIcon],
+      ["layer", "All on layer: every object of that type on the layer you click", LayerSelectIcon],
+      ["hatch", "Same hatch: every hatch with the same pattern on the same layer", SameHatchIcon],
+      ...areaPdf.slice(0, 3),
+    ];
+  }
+  if (tool === "length" || tool === "polyline") {
+    return [
+      ["object", "Pick object: click a line, polyline or arc (exact length)", PickObjectIcon],
+      ["layer", "All on layer: total length of that type on the layer you click", LayerSelectIcon],
+      ["points", "Point to point", PointModeIcon],
+    ];
+  }
+  return [
+    ["block", "Same block: click a block to count every insert of it", SameBlockIcon],
+    ["points", "Click each element", PointModeIcon],
+  ];
+}
 export type TakeoffTool = "length" | "polyline" | "area" | "perimeter" | "count";
 
 export interface TakeoffConfig {
@@ -46,8 +82,10 @@ export const TOOL_META: Record<TakeoffTool, { title: string; types: string[]; un
 
 const SWATCHES = ["#22c55e", "#eab308", "#f97316", "#ef4444", "#ec4899", "#a855f7", "#3b82f6", "#06b6d4", "#14b8a6", "#64748b"];
 
-export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel }: {
+export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel, cad = false }: {
   tool: TakeoffTool;
+  /** Measuring a CAD drawing: offers the CAD selection modes first. */
+  cad?: boolean;
   defaultName: string;
   target: TakeoffTarget;
   onStart: (cfg: TakeoffConfig) => Promise<void>;
@@ -60,7 +98,8 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
   const shownName = addToExisting ? target.existingName ?? "" : name;
   const [color, setColor] = useState(target.color ?? meta.color);
   const [opacity, setOpacity] = useState(target.opacity ?? 0.35);
-  const [mode, setMode] = useState<DrawMode>("points");
+  const modes = drawModesFor(tool, cad);
+  const [mode, setMode] = useState<DrawMode>(modes[0]?.[0] ?? "points");
   const [busy, setBusy] = useState(false);
   // Measurement type: the tool's own unit, or a volume built from its measurements.
   const [isVolume, setIsVolume] = useState(!!target.volume);
@@ -78,7 +117,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
     try {
       await onStart({
         tool, name: name.trim() || defaultName, color, opacity, unit: isVolume ? "m3" : meta.unit,
-        mode: meta.boxMode ? mode : "points", volume, newItem: !addToExisting,
+        mode: modes.length ? mode : "points", volume, newItem: !addToExisting,
       });
     } finally {
       setBusy(false);
@@ -184,14 +223,9 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
         </p>
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          {meta.boxMode ? (
+          {modes.length ? (
             <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
-              {([
-                ["points", "Point to point", PointModeIcon],
-                ["box", "Box mode", BoxModeIcon],
-                ["pick", "Smart pick: click inside a closed area", SmartPickIcon],
-                ["hatch", "Same hatch: every area with the hatch you click", SameHatchIcon],
-              ] as const).map(([m, label, Icon]) => (
+              {modes.map(([m, label, Icon]) => (
                 <button key={m} type="button" role="radio" aria-checked={mode === m} aria-label={label} title={label} onClick={() => setMode(m)}
                   className={cn("flex h-7 w-8 items-center justify-center rounded", mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
                   <Icon />
