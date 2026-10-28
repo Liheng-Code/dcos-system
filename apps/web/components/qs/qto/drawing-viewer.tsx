@@ -6,6 +6,8 @@ import {
   Loader2,
   Magnet,
   Moon,
+  FileImage,
+  FileX2,
   Sun,
   Maximize,
   Minus,
@@ -315,6 +317,8 @@ export function DrawingViewer({
   const [orthoOn, setOrthoOn] = useState(false);
   // Black sheet (CAD style) by default: the PDF is colour-inverted, so white paper becomes black and
   // black linework white, while coloured lines keep their hue. Remembered per browser.
+  /** Hides the PDF / DXF underneath so only the take-off shapes show (view only; snapping still works). */
+  const [sourceHidden, setSourceHidden] = useState(false);
   const [darkSheet, setDarkSheet] = useState(() => {
     try { return typeof window === "undefined" || window.localStorage.getItem(SHEET_KEY) !== "light"; } catch { return true; }
   });
@@ -848,6 +852,7 @@ export function DrawingViewer({
     else if (e.key === "Backspace" && draftPts.length > 0) { e.preventDefault(); setDraftPts((p) => p.slice(0, -1)); }
     else if (e.key.toLowerCase() === "o" && !e.ctrlKey && !e.metaKey) setOrthoOn((o) => !o);
     else if (e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey) setSnapOn((s) => !s);
+    else if (e.key.toLowerCase() === "h" && !e.ctrlKey && !e.metaKey) setSourceHidden((h) => !h);
   };
 
   const goPage = (p: number) => {
@@ -1038,6 +1043,11 @@ export function DrawingViewer({
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => zoomBy(1.25)} title="Zoom in (or mouse wheel)">
             <Plus className="h-3.5 w-3.5" />
           </Button>
+          <Button variant="ghost" size="sm" className={cn("h-7 gap-1 px-2 text-xs", sourceHidden && "bg-primary/10 text-primary")} aria-pressed={sourceHidden}
+            title={sourceHidden ? `Show the ${cad ? "DXF" : "PDF"} drawing (H)` : `Hide the ${cad ? "DXF" : "PDF"} drawing: show only the take-offs (H)`}
+            onClick={() => setSourceHidden((h) => !h)}>
+            {sourceHidden ? <FileX2 className="h-3.5 w-3.5" /> : <FileImage className="h-3.5 w-3.5" />} {cad ? "DXF" : "PDF"}
+          </Button>
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={toggleSheet} aria-pressed={darkSheet}
             title={darkSheet ? "Show the drawing on a white sheet" : "Show the drawing on a black sheet"}>
             {darkSheet ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
@@ -1114,7 +1124,7 @@ export function DrawingViewer({
         onAuxClick={(e) => e.preventDefault()}
         onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}
       >
-        {cad && <canvas ref={cadCanvasRef} className="pointer-events-none absolute left-0 top-0" aria-hidden />}
+        {cad && <canvas ref={cadCanvasRef} className={cn("pointer-events-none absolute left-0 top-0", sourceHidden && "invisible")} aria-hidden />}
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1138,7 +1148,7 @@ export function DrawingViewer({
         >
           <div className={cn("relative", !cad && "shadow-lg", !cad && (darkSheet ? "bg-black" : "bg-white"))}
             style={cad && pageSize ? { width: pageSize.w, height: pageSize.h } : undefined}>
-            <canvas ref={canvasRef} className={cad ? "hidden" : "block"} style={darkSheet ? { filter: "invert(1) hue-rotate(180deg)" } : undefined} />
+            <canvas ref={canvasRef} className={cad ? "hidden" : cn("block", sourceHidden && "invisible")} style={darkSheet ? { filter: "invert(1) hue-rotate(180deg)" } : undefined} />
             {pageSize && (
               <svg
                 ref={svgRef}
