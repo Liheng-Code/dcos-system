@@ -511,7 +511,7 @@ export function DrawingViewer({
 
   /**
    * The view that fits the content in a W × H viewport, centred with a small margin. For CAD the
-   * content is what is drawn within the drawing's extents (stray far-away objects are left out).
+   * content is the linework and hatches within the drawing's extents (stray far-away objects are left out).
    */
   const fitFor = (w: number, h: number) => {
     let box = pageSize ? { minX: 0, minY: 0, maxX: pageSize.w, maxY: pageSize.h } : { minX: 0, minY: 0, maxX: 1, maxY: 1 };
@@ -519,7 +519,8 @@ export function DrawingViewer({
       const pad = 0.02 * Math.max(pageSize.w, pageSize.h);
       const b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
       for (const p of cad.prims) {
-        if (hiddenLayers.has(p.layer)) continue;
+        // Linework and hatches only: a stray text or point (e.g. one at the extents corner) would off-centre the plan.
+        if (hiddenLayers.has(p.layer) || p.kind === "text" || p.kind === "point") continue;
         const q = p.box;
         if (q.maxX < -pad || q.minX > pageSize.w + pad || q.maxY < -pad || q.minY > pageSize.h + pad) continue;
         b.minX = Math.min(b.minX, Math.max(q.minX, -pad)); b.minY = Math.min(b.minY, Math.max(q.minY, -pad));
