@@ -53,7 +53,7 @@ import {
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
 import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
-import { pickTraced, traceLayer, type TracedObject } from "@/lib/qs/qto/cad/cad-trace";
+import { deduct, openingsIn, pickTraced, traceLayer, traceOpenings, type TracedObject } from "@/lib/qs/qto/cad/cad-trace";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
@@ -744,9 +744,19 @@ export function DrawingViewer({
       }
       setPickMsg(null);
       if (drawMode === "trace") {
+        if (cadKind === "area" && traceDraft) {
+          // Deduct the opening that line draws, or put it back when it is deducted already.
+          const op = openingAt(o, toPage(e));
+          if (!op) { setPickMsg("That line draws no closed boundary inside the picked area. Click an opening's line, or press Enter to add the area."); return; }
+          const k = holeKey(op);
+          const holes = traceDraft.holes.some((h) => holeKey(h) === k) ? traceDraft.holes.filter((h) => holeKey(h) !== k) : [...traceDraft.holes, op];
+          setTraceDraft({ ...traceDraft, holes, layer: op.layer, layerOpenings: openingsIn(openingsOf(op.layer), traceDraft.base, traceTol()) });
+          return;
+        }
         const objs = tracedAt(o, toPage(e));
         if (!objs.length) setPickMsg(`This line closes no boundary on layer ${o.layer}. Pick a line of a closed outline.`);
-        else emitCad(objs, objs[0], "trace", cadKind === "area" ? traceIslands : undefined);
+        else if (cadKind === "area") { setTraceDraft({ base: objs[0], holes: [], layer: null, layerOpenings: [] }); setTraceHover(null); }
+        else emitCad(objs, objs[0], "trace");
         return;
       }
       if (drawMode === "object") { emitCad([o], o, "object"); return; }
@@ -811,6 +821,36 @@ export function DrawingViewer({
     }
     return pickTraced(all, o, pt, cadKind, traceTol());
   };
+  /**
+   * Trace (areas): the picked area is held while openings are deducted from it, on any layer (e.g. an
+   * OPENING layer over the slab), then added with Enter or Add.
+   */
+  const [traceDraft, setTraceDraft] = useState<{ base: TracedObject; holes: SheetObject[]; layer: string | null; layerOpenings: SheetObject[] } | null>(null);
+  const traceShape = traceDraft ? deduct(traceDraft.base, traceDraft.holes) : null;
+  const holeKey = (o: SheetObject) => (o.handles ?? [o.handle]).join("|");
+  /** Candidate openings on a layer, cached for the event handlers. */
+  const openingsOf = (layer: string): SheetObject[] => {
+    if (!cad) return [];
+    if (traceCache.current.cad !== cad) traceCache.current = { cad, map: new Map() };
+    const key = `openings|${layer}`;
+    let out = traceCache.current.map.get(key);
+    if (!out) {
+      out = traceOpenings(cad, layer, { tol: traceTol() });
+      traceCache.current.map.set(key, out);
+    }
+    return out;
+  };
+  /** The opening the line `o` draws inside the held area (deducted or not), or null. */
+  const openingAt = (o: SheetObject, pt: Pt): SheetObject | null =>
+    traceDraft ? openingsIn(openingsOf(o.layer), traceDraft.base, traceTol(), { handle: o.handle, p: pt })[0] ?? null : null;
+  const addTraceDraft = () => {
+    if (!traceDraft || !traceShape) return;
+    const layers = [...new Set(traceDraft.holes.map((h) => h.layer))];
+    emitCad([traceShape], traceDraft.base, "trace", traceIslands,
+      traceDraft.holes.length ? { deducted: traceDraft.holes.length, deduct_layers: layers } : undefined);
+    setTraceDraft(null);
+    setTraceHover(null);
+  };
   /** Metres per model unit (from the page scale, so a corrected scale applies too). */
   const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
   const cadQty = (o: SheetObject) => (cadKind === "count" ? 1
@@ -821,9 +861,9 @@ export function DrawingViewer({
   const describe = (o: SheetObject) => (o.type === "INSERT" ? `block ${o.block}` : o.type === "HATCH" ? `hatch ${o.pattern}` : o.type.toLowerCase()) + ` · ${o.layer}`;
 
   /** Saves CAD objects as measurements with their handles and how they were selected. */
-  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "trace" | "object", islands?: boolean) => {
+  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "trace" | "object", islands?: boolean, extra?: Record<string, unknown>) => {
     if (!cad || !objs.length) return;
-    const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), ...(islands !== undefined ? { islands } : {}), scope: "model" };
+    const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), ...(islands !== undefined ? { islands } : {}), ...extra, scope: "model" };
     const source = (list: SheetObject[]) => ({ format: "dxf" as const, handles: list.flatMap((o) => o.handles ?? [o.handle]), layer: ref.layer, block: ref.block ?? null, selection });
     if (cadKind === "count") {
       const pts = objs.map((o) => o.at ?? mainLoop(o)[0]);
@@ -865,6 +905,7 @@ export function DrawingViewer({
     setCadHover(null);
     setTraceHover(null);
     setCadPending(null);
+    setTraceDraft(null);
   }, [cadMode]);
 
   // Leaving Smart pick clears its preview.
@@ -893,7 +934,9 @@ export function DrawingViewer({
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
       const o = cadObjectAt(pt);
       setCadHover(o);
-      setTraceHover(drawMode === "trace" && o ? tracedAt(o, pt) : null);
+      setTraceHover(drawMode !== "trace" || !o ? null
+        : cadKind === "area" && traceDraft ? (() => { const op = openingAt(o, pt); return op ? [op] : []; })()
+        : tracedAt(o, pt));
       if (o) setPickMsg(null);
       return;
     }
@@ -919,12 +962,14 @@ export function DrawingViewer({
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); finish(); }
+    if (e.key === "Enter" && traceDraft) { e.preventDefault(); addTraceDraft(); }
+    else if (e.key === "Enter") { e.preventDefault(); finish(); }
     else if (e.key === "Escape" && gripDrag.current) cancelGrip();
     else if ((e.key === "Delete" || e.key === "Backspace") && (gripDrag.current || draftPts.length > 0)) { e.stopPropagation(); }
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
       if (cadPending) setCadPending(null);
+      else if (traceDraft) { setTraceDraft(null); setTraceHover(null); }
       else if (draftPts.length > 0) cancelDraft();
       else if (tool !== "pan") { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
       else onSelectItem?.(null);
@@ -952,7 +997,7 @@ export function DrawingViewer({
   /** A middle-button double press zooms to fit (AutoCAD). Returns true when it did. */
   const middleDouble = (e: React.PointerEvent) => {
     if (e.button !== 1) return false;
-    const now = performance.now();
+    const now = e.timeStamp;
     if (now - lastMiddle.current < 350) {
       lastMiddle.current = 0;
       e.preventDefault();
@@ -984,11 +1029,18 @@ export function DrawingViewer({
   if (cadMode) {
     liveText = pickMsg
       ?? (cadPending ? `${cadPending.objs.length} objects selected: confirm below`
+      : traceDraft && cadHover && traceHover ? (() => {
+        const op = traceHover[0];
+        if (!op) return `${describe(cadHover)}: not an opening inside the picked area`;
+        const back = traceDraft.holes.some((h) => holeKey(h) === holeKey(op));
+        return `Opening on ${op.layer}: ${fmt(cadQty(op), 3)} ${cadUnit} · click to ${back ? "put it back" : "deduct"}`;
+      })()
+      : traceDraft && traceShape ? `Area held: ${fmt(cadQty(traceShape), 3)} ${cadUnit} · click an opening's line to deduct it · Enter adds`
       : cadHover && drawMode === "trace" && traceHover ? (() => {
         const t = traceHover;
         if (!t.length) return `${describe(cadHover)}: closes no boundary`;
         const what = cadKind === "length" ? `${t.length} joined line${t.length === 1 ? "" : "s"}` : t[0].outline.length > 1 ? "Closed area less openings" : "Closed area";
-        return `${what} on ${cadHover.layer}: ${fmt(t.reduce((x, o) => x + cadQty(o), 0), 3)} ${cadUnit} · click to add`;
+        return `${what} on ${cadHover.layer}: ${fmt(t.reduce((x, o) => x + cadQty(o), 0), 3)} ${cadUnit} · click to ${cadKind === "length" ? "add" : "pick, then deduct openings"}`;
       })()
       : cadHover ? `${describe(cadHover)}: ${fmt(cadQty(cadHover), cadKind === "count" ? 0 : 3)} ${cadUnit}${drawMode === "object" ? " · click to add" : " · click to select all like it"}`
       : drawMode === "trace" ? "Trace: hover over a line of the boundary"
@@ -1010,7 +1062,7 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity"
-      : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : "Trace: click a line of a closed boundary to add the area it encloses · Esc cancels")
+      : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : (traceDraft ? "Click an opening's line (any layer) to deduct it, again to put it back · Enter adds · Esc cancels" : "Trace: click a line of a closed boundary, then deduct its openings · Esc cancels"))
       : "Click an object to select every one like it, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
@@ -1369,13 +1421,13 @@ export function DrawingViewer({
                       );
                     });
                   })}
-                {cadMode && (cadPending?.objs ?? (cadHover ? (drawMode === "trace" ? traceHover ?? [] : [cadHover]) : [])).map((o) => (
+                {cadMode && (cadPending?.objs ?? (traceShape ? [traceShape, ...(traceHover ?? [])] : cadHover ? (drawMode === "trace" ? traceHover ?? [] : [cadHover]) : [])).map((o) => (
                   cadKind === "count" ? (
                     <circle key={`cad-${o.handle}`} cx={o.at?.x ?? 0} cy={o.at?.y ?? 0} r={7 / view.zoom} fill="rgba(234,88,12,0.35)" stroke="#ea580c" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                   ) : (
                     <path key={`cad-${o.handle}`} d={o.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + (cadKind === "area" ? "Z" : "")).join(" ")}
-                      fillRule="evenodd" fill={cadKind === "area" ? (cadPending ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.25)") : "none"}
-                      stroke={cadPending ? "#16a34a" : "#f59e0b"} strokeWidth={cadKind === "area" ? 2 : 3} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      fillRule="evenodd" fill={cadKind === "area" ? (cadPending || o === traceShape ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.25)") : "none"}
+                      stroke={cadPending || o === traceShape ? "#16a34a" : "#f59e0b"} strokeWidth={cadKind === "area" ? 2 : 3} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                   )
                 ))}
                 {pickMode && pickPreview?.map((shape, i) => (
@@ -1490,7 +1542,7 @@ export function DrawingViewer({
                 <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
                   {modes.map(([m, label, Icon]) => (
                     <button key={m} type="button" role="radio" aria-checked={drawMode === m} aria-label={label} title={label}
-                      onClick={() => { cancelDraft(); setPickMsg(null); setPickPreview(null); setCadPending(null); setDrawMode(m); svgRef.current?.focus(); }}
+                      onClick={() => { cancelDraft(); setPickMsg(null); setPickPreview(null); setCadPending(null); setTraceDraft(null); setDrawMode(m); svgRef.current?.focus(); }}
                       className={cn("flex h-6 w-7 items-center justify-center rounded", drawMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
                       <Icon size={14} />
                     </button>
@@ -1508,6 +1560,31 @@ export function DrawingViewer({
             <button className="whitespace-nowrap rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
+        {traceDraft && traceShape && (() => {
+          const keys = new Set(traceDraft.holes.map(holeKey));
+          const rest = traceDraft.layerOpenings.filter((h) => !keys.has(holeKey(h)));
+          const deducted = traceDraft.holes.reduce((t, h) => t + cadQty(h), 0);
+          return (
+            <div role="dialog" aria-label="Traced area" className="absolute bottom-3 left-1/2 z-30 w-[min(30rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
+              <p className="font-semibold">Area on {traceDraft.base.layer}: {fmt(cadQty(traceShape), 3)} {cadUnit}</p>
+              <p className="mt-0.5 text-muted-foreground">
+                {traceDraft.holes.length
+                  ? `${fmt(cadQty(traceDraft.base), 3)} less ${traceDraft.holes.length} opening${traceDraft.holes.length === 1 ? "" : "s"} (${fmt(deducted, 3)} ${cadUnit})`
+                  : "Click an opening's line to deduct it (any layer); click it again to put it back."}
+              </p>
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
+                {rest.length > 0 && (
+                  <Button variant="outline" size="sm" className="mr-auto h-7 px-2 text-xs"
+                    onClick={() => { setTraceDraft({ ...traceDraft, holes: [...traceDraft.holes, ...rest] }); svgRef.current?.focus(); }}>
+                    Deduct all {rest.length} more on {traceDraft.layer}
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => { setTraceDraft(null); setTraceHover(null); svgRef.current?.focus(); }}>Cancel</Button>
+                <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { addTraceDraft(); svgRef.current?.focus(); }}>Add (Enter)</Button>
+              </div>
+            </div>
+          );
+        })()}
         {cadPending && (
           <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
             <p className="font-semibold">

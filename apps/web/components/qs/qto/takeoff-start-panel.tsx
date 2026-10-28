@@ -31,7 +31,7 @@ export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
     return [
       ["object", "Pick object: click a closed polyline, circle or hatch (exact CAD geometry)", PickObjectIcon],
       ["layer", "All on layer: every object of that type on the layer you click", LayerSelectIcon],
-      ["trace", "Trace: pick a line on the drawing, the closed boundary it draws becomes an area (a closed polyline, or lines that meet)", TraceLayerIcon],
+      ["trace", "Trace: pick a line on the drawing, the closed boundary it draws becomes an area; then click openings (any layer) to deduct them", TraceLayerIcon],
       ["hatch", "Same hatch: every hatch with the same pattern on the same layer", SameHatchIcon],
       ...areaPdf.slice(0, 3),
     ];
@@ -227,8 +227,9 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
 
         {mode === "trace" && (
           <p className="text-[11px] text-muted-foreground">
-            After Start, pick a line on the drawing (hover to preview); only what that line draws is added, and each pick adds one.{" "}
-            {tool === "length" || tool === "polyline" ? "The line is measured with every line on its layer joined end to end with it." : "A closed polyline or circle is taken as drawn; loose lines that meet are joined into the area the line encloses; boundaries inside it are openings."}
+            {tool === "length" || tool === "polyline"
+              ? "After Start, pick a line on the drawing (hover to preview): it is added with every line on its layer joined end to end with it."
+              : "After Start, pick a line of the boundary (hover to preview), then click the lines of openings inside it on any layer to deduct them, or deduct all on that layer at once; Enter adds the area."}
           </p>
         )}
 
