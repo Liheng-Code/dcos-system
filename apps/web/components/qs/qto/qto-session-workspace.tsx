@@ -456,7 +456,13 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
   }
 
   async function onMeasure(m: EmittedMeasurement) {
-    if (!editable || !version) return;
+    await onMeasureMany([m]);
+  }
+
+  /** Saves measurements to the selected item (one quantity update for all, e.g. a Same hatch pick). */
+  async function onMeasureMany(ms: EmittedMeasurement[]) {
+    const m = ms[0];
+    if (!m || !editable || !version) return;
     if (m.measure_type !== "count" && m.measure_type !== "point" && !activeCal) {
       toast.error("Set the scale on this page before measuring lengths or areas");
       return;
@@ -468,13 +474,15 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
       if (!target) return;
     }
     await guard(async () => {
-      await addMeasurement(target!.id, {
-        drawing_revision_id: version.drawing_revision_id, drawing_id: revision?.drawing_id ?? null, page_no: m.page_no,
-        measure_type: m.measure_type, points: m.points, length: m.length, area: m.area, count: m.count, unit: m.unit,
-        label: null, calibration_id: activeCal?.id ?? null,
-      });
+      for (const x of ms) {
+        await addMeasurement(target!.id, {
+          drawing_revision_id: version.drawing_revision_id, drawing_id: revision?.drawing_id ?? null, page_no: x.page_no,
+          measure_type: x.measure_type, points: x.points, length: x.length, area: x.area, count: x.count, unit: x.unit,
+          label: null, calibration_id: activeCal?.id ?? null,
+        });
+      }
       await syncMeasuredQuantities(version.id, [target!.id]);
-    }, "Measurement saved to " + target.qto_no);
+    }, ms.length > 1 ? `${ms.length} measurements saved to ${target.qto_no}` : "Measurement saved to " + target.qto_no);
   }
 
   async function runValidation() {
@@ -707,6 +715,7 @@ export function QtoSessionWorkspace({ sessionId }: { sessionId: string }) {
               }, `Scale set to 1:${n}`);
             }}
             onMeasure={(m) => void onMeasure(m)}
+            onMeasureMany={(ms) => void onMeasureMany(ms)}
             onSelectItem={(id, shapeId) => { setSelectedItemId(id); setSelectedShapeId(shapeId ?? null); }}
             onEditShape={editable ? (id, pts) => void onEditShape(id, pts) : undefined}
             onStartTakeoff={editable ? startTakeoff : undefined}

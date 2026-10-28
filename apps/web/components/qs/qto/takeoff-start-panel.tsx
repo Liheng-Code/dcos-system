@@ -5,10 +5,11 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { BoxModeIcon, PointModeIcon } from "@/components/qs/qto/takeoff-icons";
+import { BoxModeIcon, PointModeIcon, SameHatchIcon, SmartPickIcon } from "@/components/qs/qto/takeoff-icons";
 import { VOLUME_LABEL, validVolume, type VolumeSpec } from "@/lib/qs/qto/measured-quantity";
 
-export type DrawMode = "points" | "box";
+/** points / box draw by hand; pick traces the closed area around a click; hatch picks every area with one hatch. */
+export type DrawMode = "points" | "box" | "pick" | "hatch";
 export type TakeoffTool = "length" | "polyline" | "area" | "perimeter" | "count";
 
 export interface TakeoffConfig {
@@ -185,7 +186,12 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
         <div className="flex items-center justify-between gap-2 pt-1">
           {meta.boxMode ? (
             <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
-              {([["points", "Point to point", PointModeIcon], ["box", "Box mode", BoxModeIcon]] as const).map(([m, label, Icon]) => (
+              {([
+                ["points", "Point to point", PointModeIcon],
+                ["box", "Box mode", BoxModeIcon],
+                ["pick", "Smart pick: click inside a closed area", SmartPickIcon],
+                ["hatch", "Same hatch: every area with the hatch you click", SameHatchIcon],
+              ] as const).map(([m, label, Icon]) => (
                 <button key={m} type="button" role="radio" aria-checked={mode === m} aria-label={label} title={label} onClick={() => setMode(m)}
                   className={cn("flex h-7 w-8 items-center justify-center rounded", mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
                   <Icon />

@@ -46,8 +46,10 @@ import {
   orthogonal,
   type Matrix,
   type OpCodes,
+  type Segment,
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
+import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
 import { bestSnap, gripsOf, moveGrip, shapeSegments, type Grip } from "@/lib/qs/qto/grips";
 
@@ -115,6 +117,8 @@ interface DrawingViewerProps {
   /** A drawing scale chosen from the presets (1:N), for the current page. */
   onPresetScale?: (scale: number, page_no: number) => void;
   onMeasure?: (m: EmittedMeasurement) => void;
+  /** Several measurements at once (Same hatch picks); falls back to onMeasure per measurement. */
+  onMeasureMany?: (ms: EmittedMeasurement[]) => void;
   onPageChange?: (page: number) => void;
   savedMeasurements?: SavedShape[];
   readOnly?: boolean;
@@ -145,6 +149,8 @@ const TOOL_OPTIONS: { key: ViewerTool; label: string; icon: (p: { size?: number 
 ];
 
 const BOX_HINT = "Box mode: click two opposite corners";
+const PICK_HINT = "Smart pick: click inside a closed area (hatch lines are ignored) · Ctrl+click picks every area with the same hatch";
+const HATCH_HINT = "Same hatch: click a hatched area to pick every area on this page with the same hatch pattern";
 
 /** The four corners of the axis-aligned rectangle spanned by two opposite corners. */
 function boxCorners(a: Pt, b: Pt): Pt[] {
@@ -256,6 +262,7 @@ export function DrawingViewer({
   onCalibrationPicked,
   onPresetScale,
   onMeasure,
+  onMeasureMany,
   onPageChange,
   savedMeasurements,
   readOnly,
@@ -275,6 +282,13 @@ export function DrawingViewer({
   const viewportRef = useRef<HTMLDivElement>(null);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
+  /** Page lines with curves flattened, for Smart pick; hatch detection is built on the first pick. */
+  const areaSegsRef = useRef<Segment[] | null>(null);
+  const hatchRef = useRef<HatchInfo | null>(null);
+  /** Smart pick: the area(s) under the cursor, and a message when nothing closed was found. */
+  const [pickPreview, setPickPreview] = useState<Pt[][] | null>(null);
+  const [pickMsg, setPickMsg] = useState<string | null>(null);
+  const pickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState(!!url);
   const [error, setError] = useState<string | null>(null);
@@ -335,11 +349,14 @@ export function DrawingViewer({
 
     // Vector geometry for snapping (scanned PDFs have none; snapping then simply does nothing).
     snapIndexRef.current = null;
+    areaSegsRef.current = null;
+    hatchRef.current = null;
     setVectorCount(null);
     try {
       const ops = await page.getOperatorList();
       const segments = extractSegments(ops.fnArray, ops.argsArray, pdfjsLib.OPS as unknown as OpCodes, unit.transform as Matrix);
       snapIndexRef.current = new SnapIndex(segments);
+      areaSegsRef.current = extractSegments(ops.fnArray, ops.argsArray, pdfjsLib.OPS as unknown as OpCodes, unit.transform as Matrix, 0.01, 8);
       setVectorCount(segments.length);
     } catch {
       setVectorCount(0);
@@ -451,18 +468,41 @@ export function DrawingViewer({
     setCursor(null);
   };
 
-  const emit = useCallback((type: QtoMeasureType, pts: Pt[]) => {
-    if (!onMeasure) return;
+  const toMeasurement = useCallback((type: QtoMeasureType, pts: Pt[]): EmittedMeasurement => {
     const cal = calibration ? { metresPerUnit: calibration.metresPerUnit } : null;
     const base = { measure_type: type, points: pts, length: null, area: null, count: null, unit: null, page_no: currentPage };
-    if (type === "count") onMeasure({ ...base, count: pts.length, unit: "No." });
-    else if (type === "point") onMeasure(base);
-    else if (type === "area") onMeasure({ ...base, area: cal ? areaInSquareMetres(polygonArea(pts), cal) : null, unit: cal ? "m2" : null });
-    else {
-      const units = type === "perimeter" ? perimeter(pts) : polylineLength(pts);
-      onMeasure({ ...base, length: cal ? lengthInMetres(units, cal) : null, unit: cal ? "m" : null });
-    }
-  }, [onMeasure, calibration, currentPage]);
+    if (type === "count") return { ...base, count: pts.length, unit: "No." };
+    if (type === "point") return base;
+    if (type === "area") return { ...base, area: cal ? areaInSquareMetres(polygonArea(pts), cal) : null, unit: cal ? "m2" : null };
+    const units = type === "perimeter" ? perimeter(pts) : polylineLength(pts);
+    return { ...base, length: cal ? lengthInMetres(units, cal) : null, unit: cal ? "m" : null };
+  }, [calibration, currentPage]);
+
+  const emit = useCallback((type: QtoMeasureType, pts: Pt[]) => {
+    onMeasure?.(toMeasurement(type, pts));
+  }, [onMeasure, toMeasurement]);
+
+  const emitMany = (type: QtoMeasureType, shapes: Pt[][]) => {
+    if (onMeasureMany) onMeasureMany(shapes.map((pts) => toMeasurement(type, pts)));
+    else shapes.forEach((pts) => emit(type, pts));
+  };
+
+  /**
+   * Smart pick at p: the closed area around it, or (all) every area with the same hatch pattern as
+   * the hatch under or inside it. Gaps up to about 2 screen pixels are closed.
+   */
+  const runPick = (p: Pt, all: boolean): Pt[][] => {
+    const segs = areaSegsRef.current;
+    if (!segs?.length) return [];
+    hatchRef.current ??= detectHatches(segs);
+    const hatches = hatchRef.current;
+    const gap = Math.min(3, Math.max(0.25, 2 / view.zoom));
+    const one = pickRegion(segs, p, { gap, hatches });
+    if (!all) return one ? [one] : [];
+    const cluster = hatchAt(segs, hatches, p, 6 / view.zoom) ?? (one ? hatchInside(segs, hatches, one) : null);
+    if (cluster === null) return [];
+    return sameHatchRegions(segs, hatches, cluster, { gap });
+  };
 
   const emitDimension = useCallback((points: DimensionEndpointPair, location: Pt) => {
     if (!onMeasure) return;
@@ -568,6 +608,19 @@ export function DrawingViewer({
       emit("point", [pt]);
       return;
     }
+    if (pickMode) {
+      const all = drawMode === "hatch" || e.ctrlKey || e.metaKey;
+      const shapes = runPick(toPage(e), all);
+      if (!shapes.length) {
+        setPickMsg(!areaSegsRef.current?.length ? "This page has no vector lines (scanned PDF?), so Smart pick cannot find areas"
+          : all ? "No hatch pattern found here. Click inside a hatched area." : "No closed boundary around this point. Zoom in or draw it point to point.");
+        return;
+      }
+      emitMany(tool as QtoMeasureType, shapes);
+      setPickPreview(null);
+      setPickMsg(shapes.length > 1 ? `${shapes.length} areas with the same hatch picked` : null);
+      return;
+    }
     if (boxMode) {
       if (draftPts.length === 0) setDraftPts([pt]);
       else {
@@ -582,6 +635,16 @@ export function DrawingViewer({
   /** A measuring tool is active: only then do snap, ortho and the cross-hair apply. */
   const measuring = tool !== "pan" && !readOnly;
   const boxMode = drawMode === "box" && (tool === "area" || tool === "perimeter");
+  const pickMode = (drawMode === "pick" || drawMode === "hatch") && (tool === "area" || tool === "perimeter") && !readOnly;
+
+  // Leaving Smart pick clears its preview.
+  useEffect(() => {
+    if (pickMode) return;
+    if (pickTimer.current) clearTimeout(pickTimer.current);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPickPreview(null);
+    setPickMsg(null);
+  }, [pickMode]);
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const g = gripDrag.current;
@@ -591,6 +654,21 @@ export function DrawingViewer({
       setCursor(pt);
       setHoverSnap(snap);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+      return;
+    }
+    if (pickMode) {
+      // Smart pick needs no snap; the area under the cursor is previewed once the mouse rests.
+      const pt = toPage(e);
+      setCursor(pt);
+      setHoverSnap(null);
+      setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+      if (pickTimer.current) clearTimeout(pickTimer.current);
+      pickTimer.current = setTimeout(() => {
+        const shapes = runPick(pt, false);
+        setPickPreview(shapes.length ? shapes : null);
+        // A "nothing found" message stays until the cursor finds an area.
+        if (shapes.length) setPickMsg(null);
+      }, 120);
       return;
     }
     const { pt, snap } = measuring ? resolve(e) : { pt: toPage(e), snap: null };
@@ -642,11 +720,20 @@ export function DrawingViewer({
     else if (tool === "dimension") liveText = `Dimension ${dimensionMode}: select the first and second extension points, then place the dimension`;
     else liveText = `Length: ${fmt(lengthInMetres(polylineLength(live), cal))} m`;
   }
+  if (pickMode && draftPts.length === 0) {
+    const shape = pickPreview?.[0];
+    liveText = pickMsg
+      ?? (!shape ? (drawMode === "hatch" ? "Same hatch: hover inside a hatched area" : "Smart pick: hover inside a closed area")
+      : !cal ? "Not calibrated — set the scale first for real units"
+      : tool === "perimeter" ? `Perimeter: ${fmt(lengthInMetres(perimeter(shape), cal))} m · click to add`
+      : `Area: ${fmt(areaInSquareMetres(polygonArea(shape), cal))} m² · click to add${drawMode === "hatch" ? " every area with this hatch" : ""}`);
+  }
   const tools = readOnly ? [] : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
   const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
+    : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
         ? "Click the first extension point"
@@ -988,6 +1075,11 @@ export function DrawingViewer({
                       );
                     });
                   })}
+                {pickMode && pickPreview?.map((shape, i) => (
+                  <polygon key={`pick-${i}`} points={shape.map((q) => `${q.x},${q.y}`).join(" ")}
+                    fill={tool === "area" ? "rgba(34,197,94,0.22)" : "none"} stroke="#16a34a" strokeWidth={2}
+                    strokeDasharray="6 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                ))}
                 {draftPts.length > 0 && tool !== "count" && (
                   tool !== "dimension" &&
                   <polyline
@@ -1087,11 +1179,12 @@ export function DrawingViewer({
             <span className="max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
             <span className="tabular-nums text-primary">{activeTakeoff.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeTakeoff.unit}</span>
             {boxMode && <span className="text-muted-foreground">· box</span>}
+            {pickMode && <span className="text-muted-foreground">· {drawMode === "hatch" ? "same hatch" : "smart pick"}</span>}
             <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
         {liveText && tool !== "dimension" && (
-          <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/95 px-2 py-1 text-xs shadow">{liveText}</div>
+          <div className="pointer-events-none absolute left-3 top-3 max-w-[42%] truncate rounded-md bg-background/95 px-2 py-1 text-xs shadow" title={liveText}>{liveText}</div>
         )}
       </div>
 

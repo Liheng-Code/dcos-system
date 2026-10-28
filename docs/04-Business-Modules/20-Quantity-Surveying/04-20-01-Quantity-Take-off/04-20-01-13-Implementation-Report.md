@@ -21,6 +21,7 @@
 | Project, purpose and exact source revision | Done | TENDER only in the UI; CONSTRUCTION is allowed in the DB and comes in P1 |
 | Manual 2D measurement: length, polyline, area, perimeter, count, point | Done | PDF only (pdf.js); DWG files can be stored but not measured |
 | PDF snap and precision tools | Done | Snaps to endpoints, intersections, midpoints and lines read from the PDF vectors (`lib/qs/qto/pdf-snap.ts`, tested). Also ortho, wheel zoom at the cursor, X/Y readout, 1:N presets. E2E: clicks 2–5 units off target still gave 200 units = 6,000 mm exactly. Scanned PDFs have no vectors to snap to |
+| Smart pick and Same hatch (area from the PDF lines) | Done | `lib/qs/qto/smart-pick.ts` (tested): lines noded into a planar graph, gaps closed, dead ends pruned, face around the click traced; hatch = 4+ evenly spaced parallel lines, ignored when picking and matched by angle + spacing for Same hatch. Curves flattened. Works with area volumes. Islands (columns, text) are not deducted. E2E: 16.2 m² from loose split lines, 17.28 m² inside a hatch, Same hatch volume 2 areas × 0.20 m = 7.92 m³ |
 | Calibration | Done | Known distance + unit, per revision and page, history kept, zoom-independent; area uses scale² (V1 bug fixed) |
 | Geometry evidence | Done | Points, page, revision and calibration id per measurement |
 | Classification: trade, WBS, building, level, zone, budget code, BOQ line | Done | Location is free text (DCOS has no location master); one BOQ line per item |
@@ -60,6 +61,7 @@
 - **Bugs found by the E2E and fixed:** temp-table `DELETE` and `UPDATE` statements in the RPCs had no `WHERE`. PostgREST's `pg_safeupdate` rejects these, but psql as postgres does not, so the SQL suite could not catch them. The submitter was also shown the Approve button.
 
 ## Known limitations
+- Smart pick only reads vector PDFs, does not deduct islands inside an area, and treats any run of 4+ evenly spaced parallel lines (e.g. stair treads) as hatch.
 - The calculation is computed in the browser and recorded by the RPC, which checks gross − deductions = net, the unit, and finite non-negative values. It does not re-evaluate the formula on the server.
 - An item maps to at most one BOQ line; splitting one measurement across lines is not supported.
 - Legacy V1 tables `qto_packages`, `qto_assumptions`, `qto_clarifications`, `qto_reviews`, `qto_revisions` still have open RLS and no UI.

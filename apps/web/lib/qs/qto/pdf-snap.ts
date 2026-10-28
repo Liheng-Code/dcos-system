@@ -38,10 +38,11 @@ const MAX_SEGMENTS = 80_000;
 
 /**
  * Line segments of a page in page units. `viewport` is page.getViewport({ scale: 1 }).transform.
- * Very short segments (hatching dots, text-like strokes) are dropped.
+ * Very short segments (hatching dots, text-like strokes) are dropped. Curves are kept as their
+ * chord unless `curveSteps` > 1 splits them into that many pieces (for area picking).
  */
 export function extractSegments(
-  fnArray: number[], argsArray: unknown[], ops: OpCodes, viewport: Matrix, minLength = 0.5,
+  fnArray: number[], argsArray: unknown[], ops: OpCodes, viewport: Matrix, minLength = 0.5, curveSteps = 1,
 ): Segment[] {
   const out: Segment[] = [];
   const stack: Matrix[] = [];
@@ -67,6 +68,25 @@ export function extractSegments(
       const toPage = (x: number, y: number) => apply(m, x, y);
       let j = 0;
       let cur: Pt | null = null;
+      /** Cubic Bézier from cur through control points c1, c2 to p (all in PDF space). */
+      const curve = (c1: [number, number], c2: [number, number], p: [number, number]) => {
+        const end = toPage(p[0], p[1]);
+        if (!cur || curveSteps <= 1) { if (cur) push(cur, end); cur = end; return; }
+        const p0 = cur, q1 = toPage(c1[0], c1[1]), q2 = toPage(c2[0], c2[1]);
+        let prev = p0;
+        for (let k = 1; k <= curveSteps; k++) {
+          const t = k / curveSteps, mt = 1 - t;
+          const q = k === curveSteps ? end : {
+            x: mt * mt * mt * p0.x + 3 * mt * mt * t * q1.x + 3 * mt * t * t * q2.x + t * t * t * end.x,
+            y: mt * mt * mt * p0.y + 3 * mt * mt * t * q1.y + 3 * mt * t * t * q2.y + t * t * t * end.y,
+          };
+          push(prev, q);
+          prev = q;
+        }
+        cur = end;
+      };
+      /** The current point back in PDF space (for curveTo2, whose first control point is it). */
+      let curRaw: [number, number] = [0, 0];
       let start: Pt | null = null;
       for (const op of pathOps) {
         if (op === ops.rectangle) {
@@ -75,24 +95,34 @@ export function extractSegments(
           const c = [toPage(x, y), toPage(x + w, y), toPage(x + w, y + h), toPage(x, y + h)];
           for (let k = 0; k < 4; k++) push(c[k], c[(k + 1) % 4]);
           cur = start = c[0];
+          curRaw = [x, y];
         } else if (op === ops.moveTo) {
           cur = start = toPage(coords[j], coords[j + 1]);
+          curRaw = [coords[j], coords[j + 1]];
           j += 2;
         } else if (op === ops.lineTo) {
           const p = toPage(coords[j], coords[j + 1]);
+          curRaw = [coords[j], coords[j + 1]];
           j += 2;
           if (cur) push(cur, p);
           cur = p;
         } else if (op === ops.curveTo) {
-          const p = toPage(coords[j + 4], coords[j + 5]);
+          const c = coords.slice(j, j + 6);
           j += 6;
-          if (cur) push(cur, p);
-          cur = p;
-        } else if (op === ops.curveTo2 || op === ops.curveTo3) {
-          const p = toPage(coords[j + 2], coords[j + 3]);
+          curve([c[0], c[1]], [c[2], c[3]], [c[4], c[5]]);
+          curRaw = [c[4], c[5]];
+        } else if (op === ops.curveTo2) {
+          // PDF "v": the first control point is the current point.
+          const c = coords.slice(j, j + 4);
           j += 4;
-          if (cur) push(cur, p);
-          cur = p;
+          curve(curRaw, [c[0], c[1]], [c[2], c[3]]);
+          curRaw = [c[2], c[3]];
+        } else if (op === ops.curveTo3) {
+          // PDF "y": the second control point is the end point.
+          const c = coords.slice(j, j + 4);
+          j += 4;
+          curve([c[0], c[1]], [c[2], c[3]], [c[2], c[3]]);
+          curRaw = [c[2], c[3]];
         } else if (op === ops.closePath) {
           if (cur && start) push(cur, start);
           cur = start;

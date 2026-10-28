@@ -129,3 +129,24 @@ export function PointModeIcon(p: IconProps) {
     </Svg>
   );
 }
+
+/** Smart pick: a closed outline with a pointer clicking inside it. */
+export function SmartPickIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <path d="M3 5h13v6M3 5v13h7" stroke="currentColor" strokeWidth={1.8} />
+      <path d="M12 11l8 3-3.3 1.2L15.5 19z" fill="currentColor" stroke="currentColor" strokeWidth={1.2} />
+    </Svg>
+  );
+}
+
+/** Same hatch: two hatched boxes. */
+export function SameHatchIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <rect x={2.5} y={3.5} width={8.5} height={8.5} stroke="currentColor" strokeWidth={1.6} />
+      <rect x={13} y={12} width={8.5} height={8.5} stroke="currentColor" strokeWidth={1.6} />
+      <path d="M2.5 8l4.5-4.5M5.5 12L11 6.5M13 16.5l4.5-4.5M16 20.5l5.5-5.5" stroke="currentColor" strokeWidth={1.2} />
+    </Svg>
+  );
+}
