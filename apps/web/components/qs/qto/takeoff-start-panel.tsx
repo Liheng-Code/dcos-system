@@ -128,7 +128,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
     <div
       role="dialog"
       aria-label={`New ${meta.title}`}
-      className="absolute left-3 top-3 z-30 max-h-[calc(100%-1.5rem)] w-[22rem] overflow-y-auto rounded-lg border border-border bg-background text-sm shadow-xl"
+      className="absolute left-3 top-3 z-30 max-h-[calc(100%-1.5rem)] w-[26rem] max-w-[calc(100%-1.5rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-background text-sm shadow-xl"
       onKeyDown={(e) => {
         if (e.key === "Escape") onCancel();
         if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); void start(); }
@@ -222,7 +222,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
           Measurements are saved to the {addToExisting ? "selected" : "new"} take-off item as evidence; the quantity is set by its calculation.
         </p>
 
-        <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           {modes.length ? (
             <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
               {modes.map(([m, label, Icon]) => (
@@ -233,7 +233,7 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
               ))}
             </div>
           ) : <span />}
-          <div className="flex gap-2">
+          <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
             <Button size="sm" onClick={() => void start()} disabled={busy || !volumeOk} title={volumeOk ? undefined : "Enter the volume dimensions"}>
               {busy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />} Start Takeoff
