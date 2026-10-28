@@ -191,30 +191,31 @@ function drawHatch(ctx: CanvasRenderingContext2D, p: SheetPrim, color: string, z
   for (const pl of p.pattern) {
     const u = { x: Math.cos(pl.angle), y: Math.sin(pl.angle) };
     const n = { x: -u.y, y: u.x };
-    const spacing = Math.abs(pl.step.x * n.x + pl.step.y * n.y);
-    // Too dense to see: a light tint instead of thousands of lines.
-    if (spacing * zoom < 2.5) {
-      ctx.globalAlpha = 0.25; ctx.fillStyle = color; ctx.fill(clip, "evenodd"); ctx.globalAlpha = 1;
+    // Line j of the family passes through base + j·step (step = offset to the next line).
+    const pn = pl.step.x * n.x + pl.step.y * n.y;
+    const spacing = Math.abs(pn);
+    if (!(spacing > 0)) continue;
+    // Too dense to draw line by line: a tint of the hatch colour instead.
+    if (spacing * zoom < 1.2) {
+      ctx.globalAlpha = 0.45; ctx.fillStyle = color; ctx.fill(clip, "evenodd"); ctx.globalAlpha = 1;
       continue;
     }
-    const shift = pl.step.x * u.x + pl.step.y * u.y;
     const corners = [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY }, { x: b.minX, y: b.maxY }, { x: b.maxX, y: b.maxY }];
-    const offs = corners.map((c) => (c.x - pl.base.x) * n.x + (c.y - pl.base.y) * n.y);
-    const along = corners.map((c) => (c.x - pl.base.x) * u.x + (c.y - pl.base.y) * u.y);
-    const sgn = Math.sign(pl.step.x * n.x + pl.step.y * n.y) || 1;
-    const k0 = Math.floor(Math.min(...offs) / spacing) - 1, k1 = Math.ceil(Math.max(...offs) / spacing) + 1;
-    const a0 = Math.min(...along) - spacing, a1 = Math.max(...along) + spacing;
+    const js = corners.map((c) => ((c.x - pl.base.x) * n.x + (c.y - pl.base.y) * n.y) / pn);
+    const j0 = Math.floor(Math.min(...js)) - 1, j1 = Math.ceil(Math.max(...js)) + 1;
     const dashes = pl.dashes.length ? pl.dashes.map((d) => Math.max(Math.abs(d), 0.6 / zoom)) : [];
     const period = dashes.reduce((t, d) => t + d, 0);
     ctx.setLineDash(dashes);
     const path = new Path2D();
-    for (let k = k0; k <= k1 && k - k0 < 4000; k++) {
-      const o = sgn * k * spacing;
-      const origin = { x: pl.base.x + n.x * o + u.x * shift * k * sgn, y: pl.base.y + n.y * o + u.y * shift * k * sgn };
-      // Start each line at a whole dash period before the box so dashes stay in phase.
-      const startAlong = period > 0 ? a0 - (((a0 - (shift * k * sgn)) % period) + period) % period : a0;
-      path.moveTo(origin.x + u.x * (startAlong - shift * k * sgn), origin.y + u.y * (startAlong - shift * k * sgn));
-      path.lineTo(origin.x + u.x * (a1 - shift * k * sgn), origin.y + u.y * (a1 - shift * k * sgn));
+    for (let j = j0; j <= j1 && j - j0 < 6000; j++) {
+      const o = { x: pl.base.x + pl.step.x * j, y: pl.base.y + pl.step.y * j };
+      const along = corners.map((c) => (c.x - o.x) * u.x + (c.y - o.y) * u.y);
+      // Start a whole number of dash periods from the line's own origin, so dashes stay in phase.
+      let a0 = Math.min(...along) - spacing;
+      if (period > 0) a0 = Math.floor(a0 / period) * period;
+      const a1 = Math.max(...along) + spacing;
+      path.moveTo(o.x + u.x * a0, o.y + u.y * a0);
+      path.lineTo(o.x + u.x * a1, o.y + u.y * a1);
     }
     ctx.stroke(path);
     ctx.setLineDash([]);

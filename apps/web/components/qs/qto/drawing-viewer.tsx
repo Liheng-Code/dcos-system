@@ -18,7 +18,7 @@ import {
   AreaIcon, CountIcon, DimensionIcon, LengthIcon, PerimeterIcon, PointIcon, PolylineIcon, ScaleIcon,
 } from "@/components/qs/qto/takeoff-icons";
 import {
-  TOOL_META, TakeoffStartPanel, type DrawMode, type TakeoffConfig, type TakeoffTarget, type TakeoffTool,
+  TOOL_META, TakeoffStartPanel, drawModesFor, type DrawMode, type TakeoffConfig, type TakeoffTarget, type TakeoffTool,
 } from "@/components/qs/qto/takeoff-start-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -1364,9 +1364,22 @@ export function DrawingViewer({
             <span className="h-3 w-3 rounded-sm" style={{ background: activeTakeoff.color }} />
             <span className="max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
             <span className="tabular-nums text-primary">{activeTakeoff.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeTakeoff.unit}</span>
-            {boxMode && <span className="text-muted-foreground">· box</span>}
-            {pickMode && <span className="text-muted-foreground">· {drawMode === "hatch" ? "same hatch" : "smart pick"}</span>}
-            {cadMode && <span className="text-muted-foreground">· {drawMode === "object" ? "pick object" : drawMode === "block" ? "same block" : drawMode === "hatch" ? "same hatch" : "all on layer"}</span>}
+            {(() => {
+              // Switch the draw mode without reopening the tool (a half-drawn shape is dropped).
+              const modes = tool in TOOL_META ? drawModesFor(tool as TakeoffTool, !!cad) : [];
+              if (modes.length < 2) return null;
+              return (
+                <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
+                  {modes.map(([m, label, Icon]) => (
+                    <button key={m} type="button" role="radio" aria-checked={drawMode === m} aria-label={label} title={label}
+                      onClick={() => { cancelDraft(); setPickMsg(null); setPickPreview(null); setCadPending(null); setDrawMode(m); svgRef.current?.focus(); }}
+                      className={cn("flex h-6 w-7 items-center justify-center rounded", drawMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+                      <Icon size={14} />
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
