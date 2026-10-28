@@ -76,6 +76,10 @@ describe("CAD selection", () => {
     expect(parts).toHaveLength(3);
     expect(parts.reduce((t, p) => t + (p.area ?? 0), 0)).toBeCloseTo(o.area!, 6);
     expect(parts.map((p) => Math.round(p.area!)).sort((a, b) => a - b)).toEqual([640000, 640000, 960000]);
-    expect(parts.every((p) => p.pts.length === 4)).toBe(true);
+    // The column with an island keeps it open: one outline joined by a bridge, whose own area is the net area.
+    const shoelace = (l: { x: number; y: number }[]) => Math.abs(l.reduce((a, p, i) => a + p.x * l[(i + 1) % l.length].y - l[(i + 1) % l.length].x * p.y, 0)) / 2;
+    expect(parts.map((p) => p.pts.length).sort((a, b) => a - b)).toEqual([4, 4, 10]);
+    const k2 = sh.frame.k ** 2;
+    expect(parts.map((p) => Math.round(shoelace(p.pts) / k2)).sort((a, b) => a - b)).toEqual([640000, 640000, 960000]);
   });
 });

@@ -125,13 +125,41 @@ function pointIn(p: Pt, poly: Pt[]): boolean {
   return inside;
 }
 
+const openLoop = (l: Pt[]) => (l.length > 2 && l[0].x === l[l.length - 1].x && l[0].y === l[l.length - 1].y ? l.slice(0, -1) : l);
+
+/**
+ * One outline for an area with openings: each opening is joined to the boundary by a zero-width
+ * bridge and runs the other way round, so the outline's own area is the net area and it draws
+ * with the holes open.
+ */
+export function keyhole(outer: Pt[], holes: Pt[][]): Pt[] {
+  const sign = (l: Pt[]) => Math.sign(l.reduce((a, p, i) => a + p.x * l[(i + 1) % l.length].y - l[(i + 1) % l.length].x * p.y, 0));
+  let ring = openLoop(outer);
+  const s = sign(ring);
+  for (const h0 of holes) {
+    let h = openLoop(h0);
+    if (h.length < 3) continue;
+    if (sign(h) === s) h = [...h].reverse();
+    // Bridge between the closest pair of vertices.
+    let bi = 0, bj = 0, best = Infinity;
+    for (let i = 0; i < ring.length; i++) for (let j = 0; j < h.length; j++) {
+      const d = (ring[i].x - h[j].x) ** 2 + (ring[i].y - h[j].y) ** 2;
+      if (d < best) { best = d; bi = i; bj = j; }
+    }
+    ring = [...ring.slice(0, bi + 1), ...h.slice(bj), ...h.slice(0, bj + 1), ...ring.slice(bi)];
+  }
+  return ring;
+}
+
 /**
  * The separate areas of an object, each with its share of the exact area. A hatch can hold many
  * boundaries (e.g. every column in one SOLID hatch): each outer loop becomes its own shape, minus
  * the islands inside it. The shares are scaled so they add up to the object's exact area.
+ * A traced area with openings is one shape whose outline keeps the openings (see `keyhole`).
  */
 export function regionsOf(o: SheetObject): { pts: Pt[]; area: number | null; length: number | null }[] {
   const loops = o.outline.filter((l) => l.length > 2);
+  if (o.handles && loops.length > 1) return [{ pts: keyhole(loops[0], loops.slice(1)), area: o.area, length: o.length }];
   if (o.type !== "HATCH" || loops.length < 2) return [{ pts: mainLoop(o), area: o.area, length: o.length }];
   const depth = loops.map((l, i) => loops.reduce((d, other, j) => (j !== i && pointIn(l[0], other) ? d + 1 : d), 0));
   const regions = loops.map((l, i) => ({ l, i })).filter(({ i }) => depth[i] % 2 === 0).map(({ l, i }) => {
@@ -142,10 +170,8 @@ export function regionsOf(o: SheetObject): { pts: Pt[]; area: number | null; len
   const perimeterOf = (ls: Pt[][]) => ls.reduce((t, l) => t + l.reduce((s, p, k) => s + Math.hypot(l[(k + 1) % l.length].x - p.x, l[(k + 1) % l.length].y - p.y), 0), 0);
   const perimSum = regions.reduce((t, r) => t + perimeterOf(r.perim), 0);
   return regions.map((r) => {
-    const n = r.l.length;
-    const pts = n > 2 && r.l[0].x === r.l[n - 1].x && r.l[0].y === r.l[n - 1].y ? r.l.slice(0, -1) : r.l;
     return {
-      pts,
+      pts: keyhole(r.l, r.perim.slice(1)),
       area: o.area === null ? null : sum > 0 ? (o.area * r.net) / sum : o.area / regions.length,
       length: o.length === null ? null : perimSum > 0 ? (o.length * perimeterOf(r.perim)) / perimSum : o.length / regions.length,
     };

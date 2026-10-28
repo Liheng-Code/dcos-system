@@ -31,6 +31,8 @@ export interface SheetObject extends Omit<CadObject, "outline" | "at" | "bounds"
   outline: Pt[][];
   at?: Pt;
   box: Bounds;
+  /** The entities a traced shape was built from (a traced area can join many lines). */
+  handles?: string[];
 }
 
 export interface CadSheet {

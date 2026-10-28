@@ -53,6 +53,7 @@ import {
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
 import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
+import { traceLayer, traceableLayers } from "@/lib/qs/qto/cad/cad-trace";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
@@ -738,10 +739,11 @@ export function DrawingViewer({
       const o = cadObjectAt(toPage(e));
       if (!o) {
         setPickMsg(cadKind === "count" ? "No block here. Click on a block (e.g. a door or a column symbol)."
-          : cadKind === "length" ? "No line here. Click on a line, polyline or arc." : drawMode === "hatch" ? "No hatch here. Click inside a hatched area." : "No closed object here. Click inside a closed polyline, circle or hatch.");
+          : cadKind === "length" || drawMode === "trace" ? "No line here. Click on a line, polyline or arc." : drawMode === "hatch" ? "No hatch here. Click inside a hatched area." : "No closed object here. Click inside a closed polyline, circle or hatch.");
         return;
       }
       setPickMsg(null);
+      if (drawMode === "trace") { startTrace(o.layer, cadKind, traceIslands); return; }
       if (drawMode === "object") { emitCad([o], o, "object"); return; }
       const by: CadSimilar = drawMode === "block" ? "block" : drawMode === "hatch" ? "hatch" : "layer";
       setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
@@ -778,13 +780,43 @@ export function DrawingViewer({
   /** CAD-native take-off: pick an object, or select similar (layer, hatch pattern, block). */
   const cadKind: CadPickKind = tool === "count" ? "count" : tool === "length" || tool === "polyline" ? "length" : "area";
   const cadMode = !!cad && !readOnly && tool !== "pan" && tool !== "calibrate" && tool !== "dimension" && tool !== "point"
-    && (drawMode === "object" || drawMode === "layer" || drawMode === "block" || (drawMode === "hatch" && cadKind === "area"));
+    && (drawMode === "object" || drawMode === "layer" || drawMode === "trace" || drawMode === "block" || (drawMode === "hatch" && cadKind === "area"));
   const cadBoxes = useMemo(() => (cad ? insertBoxes(cad) : new Map()), [cad]);
   const [cadHover, setCadHover] = useState<SheetObject | null>(null);
-  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar } | null>(null);
+  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar | "trace"; islands?: boolean } | null>(null);
+  // Trace layer: any line picks its layer (hatches and blocks are not lines).
   const cadObjectAt = (pt: Pt) => cad
-    ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
+    ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, drawMode === "trace" ? "length" : cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
     : null;
+  const traceLayers = useMemo(() => (cad ? traceableLayers(cad) : []), [cad]);
+  const [traceIslands, setTraceIslands] = useState(true);
+  /** Traced shapes per layer, cached for the event handlers (hovering a line previews its whole layer). */
+  const traceCache = useRef<{ cad: CadSheet | null; map: Map<string, SheetObject[]> }>({ cad: null, map: new Map() });
+  const [traceHover, setTraceHover] = useState<SheetObject[] | null>(null);
+  const [traceRequest, setTraceRequest] = useState<string | null>(null);
+  const traced = (layer: string, kind: CadPickKind, islands: boolean): SheetObject[] => {
+    if (!cad) return [];
+    if (traceCache.current.cad !== cad) traceCache.current = { cad, map: new Map() };
+    const key = `${kind}|${islands}|${layer}`;
+    let out = traceCache.current.map.get(key);
+    if (!out) {
+      // Ends within 3 mm meet (drawing units known), else a small share of the sheet.
+      const tol = cad.model.metresPerUnit ? (0.003 / cad.model.metresPerUnit) * cad.frame.k : 1.5e-5 * Math.max(cad.size.w, cad.size.h);
+      out = traceLayer(cad, layer, kind, { tol, islands });
+      traceCache.current.map.set(key, out);
+    }
+    return out;
+  };
+  const startTrace = (layer: string, kind: CadPickKind, islands: boolean) => {
+    const objs = traced(layer, kind, islands);
+    if (!objs.length) {
+      setCadPending(null);
+      setPickMsg(`Nothing to trace on layer ${layer}: ${kind === "length" ? "it has no lines" : "no closed boundary found"}.`);
+      return;
+    }
+    setPickMsg(null);
+    setCadPending({ objs, ref: objs[0], by: "trace", islands });
+  };
   /** Metres per model unit (from the page scale, so a corrected scale applies too). */
   const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
   const cadQty = (o: SheetObject) => (cadKind === "count" ? 1
@@ -795,10 +827,10 @@ export function DrawingViewer({
   const describe = (o: SheetObject) => (o.type === "INSERT" ? `block ${o.block}` : o.type === "HATCH" ? `hatch ${o.pattern}` : o.type.toLowerCase()) + ` · ${o.layer}`;
 
   /** Saves CAD objects as measurements with their handles and how they were selected. */
-  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "object") => {
+  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "trace" | "object", islands?: boolean) => {
     if (!cad || !objs.length) return;
-    const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), scope: "model" };
-    const source = (list: SheetObject[]) => ({ format: "dxf" as const, handles: list.map((o) => o.handle), layer: ref.layer, block: ref.block ?? null, selection });
+    const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), ...(islands !== undefined ? { islands } : {}), scope: "model" };
+    const source = (list: SheetObject[]) => ({ format: "dxf" as const, handles: list.flatMap((o) => o.handles ?? [o.handle]), layer: ref.layer, block: ref.block ?? null, selection });
     if (cadKind === "count") {
       const pts = objs.map((o) => o.at ?? mainLoop(o)[0]);
       const m = toMeasurement("count", pts);
@@ -837,8 +869,17 @@ export function DrawingViewer({
     if (cadMode) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCadHover(null);
+    setTraceHover(null);
     setCadPending(null);
   }, [cadMode]);
+
+  useEffect(() => {
+    if (!traceRequest || !cadMode || drawMode !== "trace") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTraceRequest(null);
+    startTrace(traceRequest, cadKind, traceIslands);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traceRequest, cadMode, drawMode]);
 
   // Leaving Smart pick clears its preview.
   useEffect(() => {
@@ -866,6 +907,7 @@ export function DrawingViewer({
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
       const o = cadObjectAt(pt);
       setCadHover(o);
+      setTraceHover(drawMode === "trace" && o ? traced(o.layer, cadKind, traceIslands) : null);
       if (o) setPickMsg(null);
       return;
     }
@@ -956,7 +998,12 @@ export function DrawingViewer({
   if (cadMode) {
     liveText = pickMsg
       ?? (cadPending ? `${cadPending.objs.length} objects selected: confirm below`
+      : cadHover && drawMode === "trace" && traceHover ? (() => {
+        const t = traceHover;
+        return `Layer ${cadHover.layer}: ${t.length} ${cadKind === "length" ? "line" : "area"}${t.length === 1 ? "" : "s"} · ${fmt(t.reduce((x, o) => x + cadQty(o), 0), 3)} ${cadUnit} · click to trace`;
+      })()
       : cadHover ? `${describe(cadHover)}: ${fmt(cadQty(cadHover), cadKind === "count" ? 0 : 3)} ${cadUnit}${drawMode === "object" ? " · click to add" : " · click to select all like it"}`
+      : drawMode === "trace" ? "Trace layer: hover over a line of the layer to trace"
       : drawMode === "block" ? "Same block: hover over a block" : drawMode === "layer" ? "All on layer: hover over an object" : drawMode === "hatch" ? "Same hatch: hover over a hatch" : "Pick object: hover over a CAD object");
   }
   if (pickMode && draftPts.length === 0) {
@@ -967,12 +1014,16 @@ export function DrawingViewer({
       : tool === "perimeter" ? `Perimeter: ${fmt(lengthInMetres(perimeter(shape), cal))} m · click to add`
       : `Area: ${fmt(areaInSquareMetres(polygonArea(shape), cal))} m² · click to add${drawMode === "hatch" ? " every area with this hatch" : ""}`);
   }
+  /** The take-off chip (top right) is showing: the live readout moves below it. */
+  const takeoffChip = measuring && !!activeTakeoff && tool !== "calibrate" && tool !== "point" && !panelTool;
   const tools = readOnly ? [] : TOOL_OPTIONS;
   const activeTool = TOOL_OPTIONS.find((t) => t.key === tool);
   const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
-    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity" : "Click an object to select every one like it, then confirm · Esc cancels")
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity"
+      : drawMode === "trace" ? "Trace layer: click a line (or choose the layer above) to draw every closed boundary on it, then confirm · Esc cancels"
+      : "Click an object to select every one like it, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
@@ -1330,7 +1381,7 @@ export function DrawingViewer({
                       );
                     });
                   })}
-                {cadMode && (cadPending?.objs ?? (cadHover ? [cadHover] : [])).map((o) => (
+                {cadMode && (cadPending?.objs ?? (cadHover ? (drawMode === "trace" ? traceHover ?? [] : [cadHover]) : [])).map((o) => (
                   cadKind === "count" ? (
                     <circle key={`cad-${o.handle}`} cx={o.at?.x ?? 0} cy={o.at?.y ?? 0} r={7 / view.zoom} fill="rgba(234,88,12,0.35)" stroke="#ea580c" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                   ) : (
@@ -1425,6 +1476,7 @@ export function DrawingViewer({
               key={panelTool}
               tool={panelTool}
               cad={!!cad}
+              layers={traceLayers}
               defaultName={t.defaultName}
               target={t}
               onCancel={() => setPanelTool(null)}
@@ -1433,15 +1485,17 @@ export function DrawingViewer({
                 setPanelTool(null);
                 setDrawMode(cfg.mode);
                 setTool(cfg.tool);
+                // A layer chosen in the panel is traced once the tool is active.
+                if (cfg.mode === "trace" && cfg.layer) setTraceRequest(cfg.layer);
                 svgRef.current?.focus();
               }}
             />
           );
         })()}
-        {measuring && activeTakeoff && tool !== "calibrate" && tool !== "point" && !panelTool && (
-          <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow">
-            <span className="h-3 w-3 rounded-sm" style={{ background: activeTakeoff.color }} />
-            <span className="max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
+        {takeoffChip && activeTakeoff && (
+          <div className="absolute right-3 top-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-md border border-border bg-background/95 px-2 py-1 text-xs shadow">
+            <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: activeTakeoff.color }} />
+            <span className="min-w-0 max-w-[14rem] truncate font-medium">{activeTakeoff.name}</span>
             <span className="tabular-nums text-primary">{activeTakeoff.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeTakeoff.unit}</span>
             {(() => {
               // Switch the draw mode without reopening the tool (a half-drawn shape is dropped).
@@ -1459,28 +1513,43 @@ export function DrawingViewer({
                 </div>
               );
             })()}
-            <button className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
+            {cadMode && drawMode === "trace" && (
+              <select className="h-7 max-w-[11rem] rounded-md border border-input bg-transparent px-1 text-xs" aria-label="Layer to trace"
+                value={cadPending?.by === "trace" ? cadPending.ref.layer : ""}
+                onChange={(e) => { if (e.target.value) startTrace(e.target.value, cadKind, traceIslands); svgRef.current?.focus(); }}>
+                <option value="">Choose a layer…</option>
+                {traceLayers.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+            <button className="whitespace-nowrap rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
         {cadPending && (
           <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
             <p className="font-semibold">
-              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
+              {cadPending.by === "trace" ? `${cadPending.objs.length} ${cadKind === "length" ? "line" : "closed area"}${cadPending.objs.length === 1 ? "" : "s"} traced` : <>{cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`}</>} on {cadPending.ref.layer}
             </p>
             <p className="mt-0.5 text-muted-foreground">
               Total {fmt(cadPending.objs.reduce((t, o) => t + cadQty(o), 0), cadKind === "count" ? 0 : 3)} {cadUnit}
-              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing, visible layers only
+              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing{cadPending.by === "trace" ? "" : ", visible layers only"}
             </p>
+            {cadPending.by === "trace" && cadKind === "area" && (
+              <label className="mt-1.5 flex items-center gap-1.5">
+                <input type="checkbox" className="accent-primary" checked={cadPending.islands ?? true}
+                  onChange={(e) => { setTraceIslands(e.target.checked); startTrace(cadPending.ref.layer, cadKind, e.target.checked); }} />
+                Subtract openings (boundaries lying inside an area)
+              </label>
+            )}
             <div className="mt-2 flex justify-end gap-2">
               <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadPending(null)}>Cancel</Button>
-              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by); setCadPending(null); }}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by, cadPending.by === "trace" && cadKind === "area" ? cadPending.islands : undefined); setCadPending(null); }}>
                 Add {cadPending.objs.length}
               </Button>
             </div>
           </div>
         )}
         {liveText && tool !== "dimension" && (
-          <div className="pointer-events-none absolute left-3 top-3 max-w-[42%] truncate rounded-md bg-background/95 px-2 py-1 text-xs shadow" title={liveText}>{liveText}</div>
+          <div className={cn("pointer-events-none absolute left-3 max-w-[42%] truncate rounded-md bg-background/95 px-2 py-1 text-xs shadow", takeoffChip ? "top-14" : "top-3")} title={liveText}>{liveText}</div>
         )}
       </div>
 

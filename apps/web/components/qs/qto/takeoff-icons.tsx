@@ -171,6 +171,17 @@ export function LayerSelectIcon(p: IconProps) {
   );
 }
 
+/** CAD: trace every closed boundary on a chosen layer. */
+export function TraceLayerIcon(p: IconProps) {
+  return (
+    <Svg size={16} {...p}>
+      <path d="M3 8l9-4.5L21 8" stroke="currentColor" strokeWidth={1.6} strokeDasharray="2 2" />
+      <path d="M4 11h16v9H4z" stroke="currentColor" strokeWidth={1.6} fill="currentColor" fillOpacity={0.25} />
+      <path d="M12 11v9" stroke="currentColor" strokeWidth={1.6} />
+    </Svg>
+  );
+}
+
 /** CAD: every insert of a block. */
 export function SameBlockIcon(p: IconProps) {
   return (

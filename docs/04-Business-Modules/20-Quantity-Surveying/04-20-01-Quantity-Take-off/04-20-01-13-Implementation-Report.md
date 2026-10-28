@@ -49,12 +49,14 @@ Plan: DXF read by DCOS's own code now, DWG through a self-hosted converter later
 | Exact geometry (`cad-geometry.ts`) | Done | True arcs kept; areas by Green's theorem, hatch areas by AutoCAD's even-odd fill |
 | CAD viewer | Done | Viewport canvas redrawn per view (crisp at any zoom), AutoCAD colours, hatch patterns, text; layers panel; true scale from units; existing tools, snap, grips, Smart pick work on CAD lines |
 | CAD take-off (`cad-select.ts`) | Done | Pick object, All on layer, Same hatch (pattern + layer), Same block; confirmation with count and total; evidence handles on each measurement |
+| Trace layer (`cad-trace.ts`) | Done | Every closed boundary on a chosen layer (panel list or click a line). Closed polylines/circles exact as drawn; loose linework split at crossings and touches, ends joined within 3 mm, dangling lines dropped, bounded faces of the planar graph = areas. Even-odd openings (wholly inside a larger area; touching the boundary counts as inside), switchable. A deducted area is stored as one outline with a zero-width bridge to each opening (`keyhole`), so it draws open and its own area is the net area; hatch islands use the same outline |
 | Upload | Done | DXF accepted and read at upload; units asked when missing; DWG stored with "save as DXF" guidance |
 | DWG conversion (C4) | Not started | Needs the ODA licence check and a core request (converter service) |
 
 **Checked against AutoCAD 2018 on a real drawing** (19F–22F PT slab, DWG converted with AutoCAD's own console):
 - All 175 hatches, polylines and circles: DCOS area and perimeter = AutoCAD within 1e-6. For three hatches with "text box" loops, AutoCAD's LIST area counts only the first loop; AutoCAD's own recreated boundaries (`-HATCHEDIT`) equal DCOS.
 - In the browser: scale 0.1 m per sheet unit set automatically; Pick object on beam 1F46AC = 1.92 m² (AutoCAD 1.9200); Same hatch picked all 31 `ANSI33` beam hatches = 71.899 m² (AutoCAD 71.899) × 0.60 m = 43.139 m³.
+- Trace layer on the same drawing: Cam-PT Beam 40 areas = 80.299 m² (AutoCAD 40 polylines 80.299); Cam-PT Wall with openings 10 areas = 33.231 m² (AutoCAD's two wall hatches 19.950 + 13.281), without 11 = 409.531 m²; Column 8.800, Drop Panel 128.920, Band beam 137.886 m², all equal to AutoCAD. Each layer traces in under 3 ms.
 - Read in about 20 ms (225 objects, 527 primitives).
 - Found while testing: dimension geometry inside a block was misplaced (group 12 insert point not applied) — fixed; three blocks in that drawing lie hundreds of metres outside the plan, also in AutoCAD.
 
