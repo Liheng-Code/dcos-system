@@ -73,8 +73,11 @@ export function objectAt(sheet: CadSheet, p: Pt, kind: CadPickKind, tol: number,
     if (kind === "area") {
       const near = Math.min(...o.outline.map((l) => distToPolyline(p, l)));
       if (!inLoops(p, o.outline) && near > tol) continue;
-      // Smallest area wins; a boundary right under the cursor wins over one around it.
-      const score = (o.area ?? 0) * (near <= tol ? 0.5 : 1);
+      // Smallest area under the cursor wins (for a hatch with many boundaries, the one around p, not
+      // the whole hatch); a boundary right under the cursor wins over one around it.
+      const around = o.outline.filter((l) => l.length > 2 && pointIn(p, l)).map(shoelace);
+      const size = around.length ? Math.min(...around) : Math.min(...o.outline.filter((l) => l.length > 2).map(shoelace));
+      const score = size * (near <= tol ? 0.5 : 1);
       if (score < bestScore) { bestScore = score; best = o; }
     } else {
       const d = Math.min(...o.outline.map((l) => distToPolyline(p, l)));
@@ -105,4 +108,46 @@ export function mainLoop(o: SheetObject): Pt[] {
   // Drop the repeated closing point of closed outlines.
   const n = best.length;
   return n > 2 && best[0].x === best[n - 1].x && best[0].y === best[n - 1].y ? best.slice(0, -1) : best;
+}
+
+function shoelace(l: Pt[]): number {
+  let a = 0;
+  for (let i = 0; i < l.length; i++) { const p = l[i], q = l[(i + 1) % l.length]; a += p.x * q.y - q.x * p.y; }
+  return Math.abs(a) / 2;
+}
+
+function pointIn(p: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * The separate areas of an object, each with its share of the exact area. A hatch can hold many
+ * boundaries (e.g. every column in one SOLID hatch): each outer loop becomes its own shape, minus
+ * the islands inside it. The shares are scaled so they add up to the object's exact area.
+ */
+export function regionsOf(o: SheetObject): { pts: Pt[]; area: number | null; length: number | null }[] {
+  const loops = o.outline.filter((l) => l.length > 2);
+  if (o.type !== "HATCH" || loops.length < 2) return [{ pts: mainLoop(o), area: o.area, length: o.length }];
+  const depth = loops.map((l, i) => loops.reduce((d, other, j) => (j !== i && pointIn(l[0], other) ? d + 1 : d), 0));
+  const regions = loops.map((l, i) => ({ l, i })).filter(({ i }) => depth[i] % 2 === 0).map(({ l, i }) => {
+    const holes = loops.filter((h, j) => depth[j] === depth[i] + 1 && pointIn(h[0], l));
+    return { l, net: Math.max(0, shoelace(l) - holes.reduce((t, h) => t + shoelace(h), 0)), perim: [l, ...holes] };
+  });
+  const sum = regions.reduce((t, r) => t + r.net, 0);
+  const perimeterOf = (ls: Pt[][]) => ls.reduce((t, l) => t + l.reduce((s, p, k) => s + Math.hypot(l[(k + 1) % l.length].x - p.x, l[(k + 1) % l.length].y - p.y), 0), 0);
+  const perimSum = regions.reduce((t, r) => t + perimeterOf(r.perim), 0);
+  return regions.map((r) => {
+    const n = r.l.length;
+    const pts = n > 2 && r.l[0].x === r.l[n - 1].x && r.l[0].y === r.l[n - 1].y ? r.l.slice(0, -1) : r.l;
+    return {
+      pts,
+      area: o.area === null ? null : sum > 0 ? (o.area * r.net) / sum : o.area / regions.length,
+      length: o.length === null ? null : perimSum > 0 ? (o.length * perimeterOf(r.perim)) / perimSum : o.length / regions.length,
+    };
+  });
 }

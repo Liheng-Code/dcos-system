@@ -52,7 +52,7 @@ import {
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
-import { insertBoxes, mainLoop, objectAt, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
+import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
@@ -767,15 +767,29 @@ export function DrawingViewer({
       (onMeasureMany ? (ms: EmittedMeasurement[]) => onMeasureMany(ms) : (ms: EmittedMeasurement[]) => ms.forEach((x) => onMeasure?.(x)))([{ ...m, source: source(objs) }]);
       return;
     }
-    const ms = objs.map((o) => {
-      const pts = cadKind === "area" ? mainLoop(o) : o.outline[0];
-      const type: QtoMeasureType = cadKind === "area" ? (tool === "perimeter" ? "perimeter" : "area") : pts.length === 2 ? "length" : "polyline";
-      const base = toMeasurement(type, pts);
-      // Exact quantities from the CAD geometry (arcs, hatch islands), not the drawn outline.
-      const exact = modelMetres === null ? base
-        : type === "area" ? { ...base, area: (o.area ?? 0) * modelMetres * modelMetres }
-        : { ...base, length: (o.length ?? 0) * modelMetres };
-      return { ...exact, source: source([o]) };
+    // One shape per separate area (a hatch can hold many boundaries, e.g. every column), all in
+    // the same take-off item; quantities are the exact CAD values (arcs, islands), shared per area.
+    const ms = objs.flatMap((o) => {
+      const parts = cadKind === "area" ? regionsOf(o) : [{ pts: o.outline[0], area: o.area, length: o.length }];
+      // Quantities are stored to 3 decimals: share the rounding so the parts add up to the object's total.
+      const key = tool === "perimeter" || cadKind === "length" ? "length" : "area";
+      const unitScale = modelMetres === null ? 1 : key === "area" ? modelMetres * modelMetres : modelMetres;
+      const exactParts = parts.map((pt) => (pt[key] ?? 0) * unitScale * 1000);
+      const target = Math.round(exactParts.reduce((t, v) => t + v, 0));
+      const floors = exactParts.map(Math.floor);
+      let left = target - floors.reduce((t, v) => t + v, 0);
+      exactParts.map((v, i) => ({ i, r: v - floors[i] })).sort((x, y) => y.r - x.r).forEach(({ i }) => { if (left > 0) { floors[i] += 1; left -= 1; } });
+      const rounded = floors.map((v) => v / 1000 / unitScale);
+      parts.forEach((pt, i) => { pt[key] = parts.length > 1 ? rounded[i] : pt[key]; });
+      return parts.map((part, i) => {
+        const type: QtoMeasureType = cadKind === "area" ? (tool === "perimeter" ? "perimeter" : "area") : part.pts.length === 2 ? "length" : "polyline";
+        const base = toMeasurement(type, part.pts);
+        const exact = modelMetres === null ? base
+          : type === "area" ? { ...base, area: (part.area ?? 0) * modelMetres * modelMetres }
+          : { ...base, length: (part.length ?? 0) * modelMetres };
+        const src = source([o]);
+        return { ...exact, source: parts.length > 1 ? { ...src, selection: { ...src.selection, part: i + 1, parts: parts.length } } : src };
+      });
     });
     if (onMeasureMany) onMeasureMany(ms); else ms.forEach((x) => onMeasure?.(x));
   };
@@ -1396,11 +1410,11 @@ export function DrawingViewer({
         {cadPending && (
           <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
             <p className="font-semibold">
-              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `hatches ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
+              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
             </p>
             <p className="mt-0.5 text-muted-foreground">
               Total {fmt(cadPending.objs.reduce((t, o) => t + cadQty(o), 0), cadKind === "count" ? 0 : 3)} {cadUnit}
-              {cadKind === "count" ? "" : ` in ${cadPending.objs.length} measurement${cadPending.objs.length === 1 ? "" : "s"}`} · whole drawing, visible layers only
+              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing, visible layers only
             </p>
             <div className="mt-2 flex justify-end gap-2">
               <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadPending(null)}>Cancel</Button>

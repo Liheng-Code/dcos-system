@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseDxf } from "../cad/dxf-parse";
 import { buildModel } from "../cad/cad-geometry";
 import { buildSheet, toSheet } from "../cad/cad-sheet";
-import { mainLoop, objectAt, similarTo } from "../cad/cad-select";
+import { mainLoop, objectAt, regionsOf, similarTo } from "../cad/cad-select";
 
 const dxf = (entities: (string | number)[], blocks: (string | number)[] = []) =>
   [0, "SECTION", 2, "HEADER", 9, "$INSUNITS", 70, 4, 0, "ENDSEC", 0, "SECTION", 2, "BLOCKS", ...blocks, 0, "ENDSEC",
@@ -61,5 +61,21 @@ describe("CAD selection", () => {
 
   it("ignores hidden layers", () => {
     expect(objectAt(sheet, at(2000, 8000), "length", tol, new Set(["A-WALL"]))).toBeNull();
+  });
+
+  it("splits a hatch with many boundaries into one shape per area, adding up to the exact area", () => {
+    const loop = (x: number, y: number, w: number, h: number) => [92, 3, 72, 0, 73, 1, 93, 4, 10, x, 20, y, 10, x + w, 20, y, 10, x + w, 20, y + h, 10, x, 20, y + h, 97, 0];
+    const cols = [0, "HATCH", 5, "COLS", 8, "S-COL", 2, "SOLID", 70, 1, 91, 4,
+      ...loop(0, 0, 800, 800), ...loop(5000, 0, 800, 800), ...loop(10000, 0, 1000, 1000),
+      ...loop(10200, 200, 200, 200), // island inside the third column
+      75, 0, 76, 1, 98, 0];
+    const sh = buildSheet(buildModel(parseDxf(dxf(cols))));
+    const o = sh.objects.find((x) => x.handle === "COLS")!;
+    expect(o.area).toBeCloseTo(640000 * 2 + 1000000 - 40000, 6);
+    const parts = regionsOf(o);
+    expect(parts).toHaveLength(3);
+    expect(parts.reduce((t, p) => t + (p.area ?? 0), 0)).toBeCloseTo(o.area!, 6);
+    expect(parts.map((p) => Math.round(p.area!)).sort((a, b) => a - b)).toEqual([640000, 640000, 960000]);
+    expect(parts.every((p) => p.pts.length === 4)).toBe(true);
   });
 });
