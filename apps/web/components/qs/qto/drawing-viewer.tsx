@@ -53,7 +53,7 @@ import {
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
 import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
-import { traceLayer } from "@/lib/qs/qto/cad/cad-trace";
+import { pickTraced, traceLayer, type TracedObject } from "@/lib/qs/qto/cad/cad-trace";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
 import { hitTest } from "@/lib/qs/qto/hit-test";
@@ -743,7 +743,12 @@ export function DrawingViewer({
         return;
       }
       setPickMsg(null);
-      if (drawMode === "trace") { startTrace(o.layer, cadKind, traceIslands); return; }
+      if (drawMode === "trace") {
+        const objs = tracedAt(o, toPage(e));
+        if (!objs.length) setPickMsg(`This line closes no boundary on layer ${o.layer}. Pick a line of a closed outline.`);
+        else emitCad(objs, objs[0], "trace", cadKind === "area" ? traceIslands : undefined);
+        return;
+      }
       if (drawMode === "object") { emitCad([o], o, "object"); return; }
       const by: CadSimilar = drawMode === "block" ? "block" : drawMode === "hatch" ? "hatch" : "layer";
       setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
@@ -783,37 +788,28 @@ export function DrawingViewer({
     && (drawMode === "object" || drawMode === "layer" || drawMode === "trace" || drawMode === "block" || (drawMode === "hatch" && cadKind === "area"));
   const cadBoxes = useMemo(() => (cad ? insertBoxes(cad) : new Map()), [cad]);
   const [cadHover, setCadHover] = useState<SheetObject | null>(null);
-  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar | "trace"; islands?: boolean } | null>(null);
-  // Trace layer: any line picks its layer (hatches and blocks are not lines).
+  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar } | null>(null);
+  // Trace layer: the picked line gives the boundary it draws (hatches and blocks are not lines).
   const cadObjectAt = (pt: Pt) => cad
     ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, drawMode === "trace" ? "length" : cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
     : null;
   const [traceIslands, setTraceIslands] = useState(true);
-  /** Traced shapes per layer, cached for the event handlers (hovering a line previews its whole layer). */
-  const traceCache = useRef<{ cad: CadSheet | null; map: Map<string, SheetObject[]> }>({ cad: null, map: new Map() });
+  /** Traced shapes per layer, cached for the event handlers (hovering a line previews its boundary). */
+  const traceCache = useRef<{ cad: CadSheet | null; map: Map<string, TracedObject[]> }>({ cad: null, map: new Map() });
   const [traceHover, setTraceHover] = useState<SheetObject[] | null>(null);
-  const traced = (layer: string, kind: CadPickKind, islands: boolean): SheetObject[] => {
+  // Ends within 3 mm meet (drawing units known), else a small share of the sheet.
+  const traceTol = () => (!cad ? 0 : cad.model.metresPerUnit ? (0.003 / cad.model.metresPerUnit) * cad.frame.k : 1.5e-5 * Math.max(cad.size.w, cad.size.h));
+  /** The boundary (areas) or chain of lines (lengths) the line `o` draws on its layer. */
+  const tracedAt = (o: SheetObject, pt: Pt): TracedObject[] => {
     if (!cad) return [];
     if (traceCache.current.cad !== cad) traceCache.current = { cad, map: new Map() };
-    const key = `${kind}|${islands}|${layer}`;
-    let out = traceCache.current.map.get(key);
-    if (!out) {
-      // Ends within 3 mm meet (drawing units known), else a small share of the sheet.
-      const tol = cad.model.metresPerUnit ? (0.003 / cad.model.metresPerUnit) * cad.frame.k : 1.5e-5 * Math.max(cad.size.w, cad.size.h);
-      out = traceLayer(cad, layer, kind, { tol, islands });
-      traceCache.current.map.set(key, out);
+    const key = `${cadKind}|${traceIslands}|${o.layer}`;
+    let all = traceCache.current.map.get(key);
+    if (!all) {
+      all = traceLayer(cad, o.layer, cadKind, { tol: traceTol(), islands: traceIslands });
+      traceCache.current.map.set(key, all);
     }
-    return out;
-  };
-  const startTrace = (layer: string, kind: CadPickKind, islands: boolean) => {
-    const objs = traced(layer, kind, islands);
-    if (!objs.length) {
-      setCadPending(null);
-      setPickMsg(`Nothing to trace on layer ${layer}: ${kind === "length" ? "it has no lines" : "no closed boundary found"}.`);
-      return;
-    }
-    setPickMsg(null);
-    setCadPending({ objs, ref: objs[0], by: "trace", islands });
+    return pickTraced(all, o, pt, cadKind, traceTol());
   };
   /** Metres per model unit (from the page scale, so a corrected scale applies too). */
   const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
@@ -897,7 +893,7 @@ export function DrawingViewer({
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
       const o = cadObjectAt(pt);
       setCadHover(o);
-      setTraceHover(drawMode === "trace" && o ? traced(o.layer, cadKind, traceIslands) : null);
+      setTraceHover(drawMode === "trace" && o ? tracedAt(o, pt) : null);
       if (o) setPickMsg(null);
       return;
     }
@@ -990,10 +986,12 @@ export function DrawingViewer({
       ?? (cadPending ? `${cadPending.objs.length} objects selected: confirm below`
       : cadHover && drawMode === "trace" && traceHover ? (() => {
         const t = traceHover;
-        return `Layer ${cadHover.layer}: ${t.length} ${cadKind === "length" ? "line" : "area"}${t.length === 1 ? "" : "s"} · ${fmt(t.reduce((x, o) => x + cadQty(o), 0), 3)} ${cadUnit} · click to trace`;
+        if (!t.length) return `${describe(cadHover)}: closes no boundary`;
+        const what = cadKind === "length" ? `${t.length} joined line${t.length === 1 ? "" : "s"}` : t[0].outline.length > 1 ? "Closed area less openings" : "Closed area";
+        return `${what} on ${cadHover.layer}: ${fmt(t.reduce((x, o) => x + cadQty(o), 0), 3)} ${cadUnit} · click to add`;
       })()
       : cadHover ? `${describe(cadHover)}: ${fmt(cadQty(cadHover), cadKind === "count" ? 0 : 3)} ${cadUnit}${drawMode === "object" ? " · click to add" : " · click to select all like it"}`
-      : drawMode === "trace" ? "Trace layer: hover over a line of the layer to trace"
+      : drawMode === "trace" ? "Trace: hover over a line of the boundary"
       : drawMode === "block" ? "Same block: hover over a block" : drawMode === "layer" ? "All on layer: hover over an object" : drawMode === "hatch" ? "Same hatch: hover over a hatch" : "Pick object: hover over a CAD object");
   }
   if (pickMode && draftPts.length === 0) {
@@ -1012,7 +1010,7 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity"
-      : drawMode === "trace" ? "Trace layer: pick a line of the layer on the drawing to draw every closed boundary on it, then confirm · Esc cancels"
+      : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : "Trace: click a line of a closed boundary to add the area it encloses · Esc cancels")
       : "Click an object to select every one like it, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
@@ -1500,28 +1498,28 @@ export function DrawingViewer({
                 </div>
               );
             })()}
+            {cadMode && drawMode === "trace" && cadKind === "area" && (
+              <label className="flex items-center gap-1 whitespace-nowrap" title="Deduct the boundaries lying inside the area you pick">
+                <input type="checkbox" className="accent-primary" checked={traceIslands}
+                  onChange={(e) => { setTraceIslands(e.target.checked); setTraceHover(null); svgRef.current?.focus(); }} />
+                Subtract openings
+              </label>
+            )}
             <button className="whitespace-nowrap rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
         {cadPending && (
           <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
             <p className="font-semibold">
-              {cadPending.by === "trace" ? `${cadPending.objs.length} ${cadKind === "length" ? "line" : "closed area"}${cadPending.objs.length === 1 ? "" : "s"} traced` : <>{cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`}</>} on {cadPending.ref.layer}
+              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
             </p>
             <p className="mt-0.5 text-muted-foreground">
               Total {fmt(cadPending.objs.reduce((t, o) => t + cadQty(o), 0), cadKind === "count" ? 0 : 3)} {cadUnit}
-              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing{cadPending.by === "trace" ? "" : ", visible layers only"}
+              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing, visible layers only
             </p>
-            {cadPending.by === "trace" && cadKind === "area" && (
-              <label className="mt-1.5 flex items-center gap-1.5">
-                <input type="checkbox" className="accent-primary" checked={cadPending.islands ?? true}
-                  onChange={(e) => { setTraceIslands(e.target.checked); startTrace(cadPending.ref.layer, cadKind, e.target.checked); }} />
-                Subtract openings (boundaries lying inside an area)
-              </label>
-            )}
             <div className="mt-2 flex justify-end gap-2">
               <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadPending(null)}>Cancel</Button>
-              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by, cadPending.by === "trace" && cadKind === "area" ? cadPending.islands : undefined); setCadPending(null); }}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by); setCadPending(null); }}>
                 Add {cadPending.objs.length}
               </Button>
             </div>

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseDxf } from "../cad/dxf-parse";
 import { buildModel } from "../cad/cad-geometry";
-import { buildSheet } from "../cad/cad-sheet";
-import { traceLayer, traceableLayers } from "../cad/cad-trace";
+import { buildSheet, toSheet } from "../cad/cad-sheet";
+import { pickTraced, traceLayer, traceableLayers } from "../cad/cad-trace";
 import { regionsOf } from "../cad/cad-select";
 
 const dxf = (entities: (string | number)[]) =>
@@ -82,6 +82,39 @@ describe("trace a layer", () => {
     const out = traceLayer(s, "S-COL", "area", { tol: tolOf(s) });
     expect(out).toHaveLength(2);
     expect(out.map((o) => o.area!).sort((a, b) => a - b)[0]).toBeCloseTo(Math.PI * 300 * 300, 6);
+  });
+
+  it("picks only the area the picked line encloses, on the cursor's side", () => {
+    const s = sheetOf([...lines4("L", "A-RM", 0, 0, 20000, 10000), ...line("P", "A-RM", 8000, -300, 8000, 10300), ...rect("R", "A-RM", 30000, 0, 1000, 1000)]);
+    const all = traceLayer(s, "A-RM", "area", { tol: tolOf(s) });
+    const obj = (h: string) => s.objects.find((o) => o.handle === h)!;
+    const at = (x: number, y: number) => toSheet(s.frame, { x, y });
+    const pick = (h: string, x: number, y: number) => pickTraced(all, obj(h), at(x, y), "area", tolOf(s)).map((o) => Math.round(o.area!));
+    expect(pick("L1", 2000, 0)).toEqual([80_000_000]);
+    expect(pick("L1", 15000, 0)).toEqual([120_000_000]);
+    // The partition borders both rooms: the side of the cursor decides.
+    expect(pick("P", 7990, 5000)).toEqual([80_000_000]);
+    expect(pick("P", 8010, 5000)).toEqual([120_000_000]);
+    expect(pick("R", 30000, 500)).toEqual([1_000_000]);
+  });
+
+  it("picking the inner face of a core wall gives the wall less its opening", () => {
+    const s = sheetOf([...rect("OUT", "A-WALL", 0, 0, 20000, 10000), ...rect("IN", "A-WALL", 300, 300, 19400, 9400)]);
+    const p = toSheet(s.frame, { x: 300, y: 5000 });
+    const IN = s.objects.find((o) => o.handle === "IN")!;
+    const net = pickTraced(traceLayer(s, "A-WALL", "area", { tol: tolOf(s) }), IN, p, "area", tolOf(s));
+    expect(net.map((o) => Math.round(o.area!))).toEqual([17_640_000]);
+    const own = pickTraced(traceLayer(s, "A-WALL", "area", { tol: tolOf(s), islands: false }), IN, p, "area", tolOf(s));
+    expect(own.map((o) => Math.round(o.area!))).toEqual([182_360_000]);
+  });
+
+  it("picks a line with every line joined end to end with it, for length tools", () => {
+    const s = sheetOf([...lines4("L", "A-WALL", 0, 0, 4000, 3000), ...rect("R", "A-WALL", 10000, 0, 1000, 1000)]);
+    const lines = traceLayer(s, "A-WALL", "length", { tol: tolOf(s) });
+    const L1 = s.objects.find((o) => o.handle === "L1")!;
+    const chain = pickTraced(lines, L1, toSheet(s.frame, { x: 2000, y: 0 }), "length", tolOf(s));
+    expect(chain.map((o) => o.handle).sort()).toEqual(["L1", "L2", "L3", "L4"]);
+    expect(chain.reduce((t, o) => t + (o.length ?? 0), 0)).toBeCloseTo(14_000, 6);
   });
 
   it("totals every line on the layer for length tools", () => {

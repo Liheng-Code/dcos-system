@@ -31,7 +31,7 @@ export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
     return [
       ["object", "Pick object: click a closed polyline, circle or hatch (exact CAD geometry)", PickObjectIcon],
       ["layer", "All on layer: every object of that type on the layer you click", LayerSelectIcon],
-      ["trace", "Trace layer: pick a line on the drawing, every closed boundary on its layer becomes an area (closed polylines, or lines that meet)", TraceLayerIcon],
+      ["trace", "Trace: pick a line on the drawing, the closed boundary it draws becomes an area (a closed polyline, or lines that meet)", TraceLayerIcon],
       ["hatch", "Same hatch: every hatch with the same pattern on the same layer", SameHatchIcon],
       ...areaPdf.slice(0, 3),
     ];
@@ -40,7 +40,7 @@ export function drawModesFor(tool: TakeoffTool, cad: boolean): ModeOption[] {
     return [
       ["object", "Pick object: click a line, polyline or arc (exact length)", PickObjectIcon],
       ["layer", "All on layer: total length of that type on the layer you click", LayerSelectIcon],
-      ["trace", "Trace layer: pick a line on the drawing, every line on its layer is measured", TraceLayerIcon],
+      ["trace", "Trace: pick a line on the drawing, it is measured with every line joined end to end with it", TraceLayerIcon],
       ["points", "Point to point", PointModeIcon],
     ];
   }
@@ -227,8 +227,8 @@ export function TakeoffStartPanel({ tool, defaultName, target, onStart, onCancel
 
         {mode === "trace" && (
           <p className="text-[11px] text-muted-foreground">
-            After Start, pick a line on the drawing: its whole layer is traced (hover to preview).{" "}
-            {tool === "length" || tool === "polyline" ? "Every line, polyline and arc on the layer is measured." : "Closed polylines and circles are taken as drawn; loose lines that meet are joined into areas; boundaries inside an area are openings."}
+            After Start, pick a line on the drawing (hover to preview); only what that line draws is added, and each pick adds one.{" "}
+            {tool === "length" || tool === "polyline" ? "The line is measured with every line on its layer joined end to end with it." : "A closed polyline or circle is taken as drawn; loose lines that meet are joined into the area the line encloses; boundaries inside it are openings."}
           </p>
         )}
 

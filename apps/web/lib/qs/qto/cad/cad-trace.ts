@@ -1,4 +1,4 @@
-// Trace a layer: every closed boundary drawn on one layer becomes a shape. A closed polyline,
+// Trace a layer: every closed boundary drawn on one layer becomes a shape (`pickTraced` keeps the one a picked line bounds). A closed polyline,
 // circle or ellipse is taken as drawn, with its exact CAD area (overlapping beams each keep their
 // own area, as AutoCAD's AREA gives). Loose lines, arcs and open polylines (exploded outlines, walls
 // drawn line by line) are split where they cross or touch, joined end to end within a tolerance,
@@ -53,13 +53,16 @@ function nearEdge(p: Pt, poly: Pt[], tol: number): boolean {
   return false;
 }
 
-/** One closed area: its boundary (sheet units), exact area and length (drawing units). */
-interface Area { poly: Pt[]; outline: Pt[][]; area: number; length: number }
+/** One closed area: its boundary (sheet units), exact area and length (drawing units), and the entities drawing that boundary. */
+interface Area { poly: Pt[]; outline: Pt[][]; area: number; length: number; own: string[] }
+
+/** A traced shape: `own` lists the entities drawing its boundary (not its openings). */
+export type TracedObject = SheetObject & { own?: string[] };
 /** A closed object, or a group of joined lines: its areas, its outer boundary and its entities. */
 interface Unit { areas: Area[]; outer: Pt[]; handles: string[] }
 
 /** The closed areas drawn on a layer (area tools), or every line on it (length tools). */
-export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, opts: TraceOptions): SheetObject[] {
+export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, opts: TraceOptions): TracedObject[] {
   if (kind === "count") return [];
   if (kind === "length") return sheet.objects.filter((o) => o.layer === layer && LINEWORK.has(o.type) && o.length !== null && o.length > 0);
   const tol = Math.max(opts.tol, 1e-9);
@@ -72,7 +75,7 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
     if (o.layer !== layer || !LINEWORK.has(o.type)) continue;
     const l = o.outline[0];
     if (o.outline.length === 1 && closes(l, o.closed) && o.area) {
-      units.push({ areas: [{ poly: l, outline: o.outline, area: o.area, length: o.length ?? perim(l) / k }], outer: l, handles: [o.handle] });
+      units.push({ areas: [{ poly: l, outline: o.outline, area: o.area, length: o.length ?? perim(l) / k, own: [o.handle] }], outer: l, handles: [o.handle] });
     } else for (const p of o.outline) if (p.length > 1) open.push({ pts: p, handle: o.handle });
   }
   // Linework inside block inserts that is drawn on the layer (e.g. columns drawn as blocks).
@@ -80,7 +83,7 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
   for (const p of sheet.prims) {
     if (p.layer !== layer || p.kind !== "path" || !inserts.has(p.handle) || p.pts.length < 2) continue;
     const a = Math.abs(signed(p.pts));
-    if (closes(p.pts, p.closed) && a > tol * tol) units.push({ areas: [{ poly: p.pts, outline: [p.pts], area: a / k2, length: perim(p.pts) / k }], outer: p.pts, handles: [p.handle] });
+    if (closes(p.pts, p.closed) && a > tol * tol) units.push({ areas: [{ poly: p.pts, outline: [p.pts], area: a / k2, length: perim(p.pts) / k, own: [p.handle] }], outer: p.pts, handles: [p.handle] });
     else open.push({ pts: p.pts, handle: p.handle });
   }
   units.push(...joinLines(open, tol, k));
@@ -96,7 +99,7 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
   };
   const depth = units.map((u, ui) => all.filter((x) => x.ui !== ui && inside(u, x.a, x.box)).length);
   const islands = opts.islands ?? true;
-  const out: SheetObject[] = [];
+  const out: TracedObject[] = [];
   all.forEach(({ ui, a, box }) => {
     const d = depth[ui];
     if (islands && d % 2 === 1) return;
@@ -113,6 +116,7 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
       outline,
       box: boxOf(outline),
       handles: [...new Set([...units[ui].handles, ...holes.flatMap((h) => h.handles)])],
+      own: a.own,
     });
   });
   return out;
@@ -222,15 +226,18 @@ function joinLines(pieces: { pts: Pt[]; handle: string }[], tol: number, k: numb
   const find = (i: number): number => (comp[i] === i ? i : (comp[i] = find(comp[i])));
   for (let n = 0; n < nodes.length; n++) for (const m of adj[n]) comp[find(n)] = find(m);
   const used = new Set<string>();
-  const groups = new Map<number, { bounded: Pt[][]; outer: Pt[] | null; srcs: Set<number> }>();
+  const groups = new Map<number, { bounded: { poly: Pt[]; srcs: Set<number> }[]; outer: Pt[] | null; srcs: Set<number> }>();
+  const edgeKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
   for (let n = 0; n < nodes.length; n++) {
     for (const m of order[n]) {
       if (used.has(`${n}>${m}`)) continue;
       const ids: number[] = [];
+      const srcs = new Set<number>();
       let u = n, v = m;
       while (!used.has(`${u}>${v}`)) {
         used.add(`${u}>${v}`);
         ids.push(u);
+        for (const sr of edges.get(edgeKey(u, v))?.srcs ?? []) srcs.add(sr);
         const around = order[v];
         const w = around[(around.indexOf(u) - 1 + around.length) % around.length];
         u = v; v = w;
@@ -239,15 +246,79 @@ function joinLines(pieces: { pts: Pt[]; handle: string }[], tol: number, k: numb
       const a = signed(poly);
       if (Math.abs(a) <= tol * tol) continue;
       const g = groups.get(find(n)) ?? { bounded: [], outer: null, srcs: new Set<number>() };
-      if (a > 0) g.bounded.push(poly); else g.outer = poly;
+      if (a > 0) g.bounded.push({ poly, srcs }); else g.outer = poly;
       groups.set(find(n), g);
     }
   }
   for (const e of edges.values()) if (adj[e.u].has(e.v)) for (const s of e.srcs) groups.get(find(e.u))?.srcs.add(s);
 
   return [...groups.values()].filter((g) => g.bounded.length).map((g) => ({
-    areas: g.bounded.map((poly) => ({ poly, outline: [poly], area: signed(poly) / k2, length: perim(poly) / k })),
-    outer: g.outer ?? g.bounded[0],
+    areas: g.bounded.map(({ poly, srcs }) => ({ poly, outline: [poly], area: signed(poly) / k2, length: perim(poly) / k, own: [...new Set([...srcs].map((sr) => pieces[sr].handle))] })),
+    outer: g.outer ?? g.bounded[0].poly,
     handles: [...new Set([...g.srcs].map((s) => pieces[s].handle))],
   }));
+}
+
+/**
+ * The traced shape for one picked line (from `traceLayer` of its layer). Areas: the closed area
+ * that line bounds; a line between two areas gives the one on the cursor's side, and a line of an
+ * opening gives the area around it. Lengths: the chain of lines joined end to end with it.
+ */
+export function pickTraced(traced: TracedObject[], picked: SheetObject, p: Pt, kind: CadPickKind, tol: number): TracedObject[] {
+  if (kind === "count") return [];
+  if (kind === "length") return chainOf(traced, picked.handle, Math.max(tol, 1e-9));
+  const own = traced.filter((o) => o.own?.includes(picked.handle));
+  const cands = own.length ? own : traced.filter((o) => o.handles?.includes(picked.handle));
+  if (!cands.length) return [];
+  // The area around the cursor wins, then the one whose boundary is nearest it, then the smaller one.
+  const around = (o: TracedObject) => pointIn(p, o.outline[0]) && !o.outline.slice(1).some((h) => pointIn(p, h));
+  const scored = cands.map((o) => ({ o, in: around(o), d: distTo(p, o.outline[0]) }));
+  const best = scored.reduce((b, x) => {
+    if (x.in !== b.in) return x.in ? x : b;
+    if (Math.abs(x.d - b.d) > tol) return x.d < b.d ? x : b;
+    return (x.o.area ?? 0) < (b.o.area ?? 0) ? x : b;
+  });
+  return [best.o];
+}
+
+/** Distance from p to a closed boundary. */
+function distTo(p: Pt, poly: Pt[]): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)));
+  }
+  return best;
+}
+
+/** The lines joined end to end (ends within `tol`) with the line `handle`. */
+function chainOf(lines: SheetObject[], handle: string, tol: number): SheetObject[] {
+  const start = lines.findIndex((o) => o.handle === handle);
+  if (start < 0) return [];
+  const ends = lines.map((o) => o.outline.filter((l) => l.length).flatMap((l) => [l[0], l[l.length - 1]]));
+  const cellOf = (q: Pt) => [Math.floor(q.x / tol), Math.floor(q.y / tol)];
+  const grid = new Map<string, number[]>();
+  ends.forEach((es, i) => es.forEach((q) => {
+    const [x, y] = cellOf(q);
+    const list = grid.get(`${x},${y}`);
+    if (list) list.push(i); else grid.set(`${x},${y}`, [i]);
+  }));
+  const seen = new Set([start]);
+  const stack = [start];
+  while (stack.length) {
+    const i = stack.pop()!;
+    for (const q of ends[i]) {
+      const [cx, cy] = cellOf(q);
+      for (let x = cx - 1; x <= cx + 1; x++) for (let y = cy - 1; y <= cy + 1; y++) {
+        for (const j of grid.get(`${x},${y}`) ?? []) {
+          if (seen.has(j) || !ends[j].some((r) => Math.hypot(r.x - q.x, r.y - q.y) <= tol)) continue;
+          seen.add(j);
+          stack.push(j);
+        }
+      }
+    }
+  }
+  return lines.filter((_, i) => seen.has(i));
 }
