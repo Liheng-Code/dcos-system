@@ -33,6 +33,6 @@
 	},
 	"homepage": "https://github.com/Liheng-Code/dcos-system#readme",
 	"devDependencies": {
-		"supabase": "^2.117.0"
+		"supabase": "^2.122.0"
 	}
 }
