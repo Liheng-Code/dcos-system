@@ -61,3 +61,23 @@ export function countBy<T>(rows: readonly T[], key: (r: T) => string): Map<strin
   for (const r of rows) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
   return m;
 }
+
+/** Division-pane bucket for library items that have no CSI division. */
+export const NO_DIVISION = "__none__";
+
+/** Items per CSI division code; an item in several divisions counts in each, one in none counts under NO_DIVISION. */
+export function countByDivision<T>(rows: readonly T[], divisionsOf: (r: T) => readonly (string | null)[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const codes = [...new Set(divisionsOf(r).filter((c): c is string => !!c))];
+    for (const c of codes.length ? codes : [NO_DIVISION]) m.set(c, (m.get(c) ?? 0) + 1);
+  }
+  return m;
+}
+
+/** True when an item with these division codes belongs to the selected pane bucket (null = all). */
+export function inDivision(codes: readonly (string | null)[], selected: string | null): boolean {
+  if (selected === null) return true;
+  const real = codes.filter((c): c is string => !!c);
+  return selected === NO_DIVISION ? real.length === 0 : real.includes(selected);
+}

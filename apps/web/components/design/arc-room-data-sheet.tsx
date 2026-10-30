@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { insertDesignArcRoomData, listDesignArcRoomData, updateDesignArcRoomDataById } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ interface RoomData {
 }
 
 export function ArcRoomDataSheet() {
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<RoomData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -23,14 +25,16 @@ export function ArcRoomDataSheet() {
   const [editing, setEditing] = useState<RoomData | null>(null);
 
   function load() {
+    if (!selectedProjectId) return;
     setLoading(true);
-    listDesignArcRoomData().then(({ data }) => { if (data) setItems(data as RoomData[]); setLoading(false); });
+    listDesignArcRoomData(selectedProjectId).then(({ data }) => { if (data) setItems(data as RoomData[]); setLoading(false); });
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedProjectId]);
 
   const filtered = items.filter(r => r.room_no.toLowerCase().includes(search.toLowerCase()) || r.room_name.toLowerCase().includes(search.toLowerCase()));
 
-  if (showForm) return <ArcRoomDataForm item={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
+  if (!selectedProjectId) return <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Select a project to see its room data.</p>;
+  if (showForm) return <ArcRoomDataForm projectId={selectedProjectId} item={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
   if (loading) return <Loader2 className="h-8 w-8 animate-spin mx-auto py-20" />;
 
   return (
@@ -65,7 +69,7 @@ export function ArcRoomDataSheet() {
   );
 }
 
-function ArcRoomDataForm({ item, onSaved, onCancel }: { item: RoomData | null; onSaved: () => void; onCancel: () => void }) {
+function ArcRoomDataForm({ projectId, item, onSaved, onCancel }: { projectId: string; item: RoomData | null; onSaved: () => void; onCancel: () => void }) {
   const isNew = !item?.id;
   const [roomNo, setRoomNo] = useState(item?.room_no ?? "");
   const [roomName, setRoomName] = useState(item?.room_name ?? "");
@@ -80,7 +84,7 @@ function ArcRoomDataForm({ item, onSaved, onCancel }: { item: RoomData | null; o
     e.preventDefault();
     setSaving(true);
     const payload = { room_no: roomNo, room_name: roomName, level: level || null, area_sqm: areaSqm || null, floor_finish: floorFinish || null, wall_finish: wallFinish || null, ceiling_finish: ceilingFinish || null };
-    const { error } = isNew ? await insertDesignArcRoomData({ ...payload, project_id: crypto.randomUUID() }) : await updateDesignArcRoomDataById(payload, item!.id);
+    const { error } = isNew ? await insertDesignArcRoomData({ ...payload, project_id: projectId }) : await updateDesignArcRoomDataById(payload, item!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "Room data created" : "Updated");
     setSaving(false); onSaved();

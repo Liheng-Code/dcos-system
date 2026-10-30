@@ -315,7 +315,7 @@ function greedy(
 
 const FAMILIES: { key: string; name: string; description: string; kinds: LeverKind[] }[] = [
   { key: "A", name: "More resources", description: "Add crews or a second shift on critical site activities that have not started.", kinds: ["crew"] },
-  { key: "B", name: "Method changes", description: "Switch critical activities to a faster construction method from the library.", kinds: ["method"] },
+  { key: "B", name: "Construction approach changes", description: "Switch critical activities to a faster construction approach from the activity library.", kinds: ["method"] },
   { key: "C", name: "Expedite procurement, design and approvals", description: "Shorten critical activities that crews cannot speed up, by management action (earlier release, parallel approvals).", kinds: ["expedite"] },
   { key: "D", name: "Combined, no overlapping", description: "Crews, method changes and expediting together, choosing whichever recovers most each step.", kinds: ["crew", "method", "expedite"] },
   { key: "E", name: "Everything, including overlapping", description: "As D, and also start critical successors before their predecessor finishes. Highest risk of rework.", kinds: ["crew", "method", "expedite", "fasttrack"] },

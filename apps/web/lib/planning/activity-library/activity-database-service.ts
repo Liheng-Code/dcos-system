@@ -10,7 +10,8 @@ import { listLogicRules } from "./library-service";
 import type { LibraryStatus, Relation } from "./types";
 import type { ActivityType } from "./activity-database-import";
 import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
-import { copyMasterChips } from "./activity-chips-service";
+import { copyMasterChips, resourceDivisions } from "./activity-chips-service";
+import { countByDivision, NO_DIVISION } from "./activity-chips-rules";
 import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
@@ -133,7 +134,7 @@ export interface BankSearchResult {
 export interface WorkItemListRow extends WorkItemRef { boqSection?: string; usedBy: number }
 export interface Page<T> { items: T[]; total: number }
 
-export interface ResourceListRow { id: string; code: string; name: string; kind: "labor" | "equipment"; unit: string; workItemCount: number }
+export interface ResourceListRow { id: string; code: string; name: string; kind: "labor" | "equipment"; unit: string; workItemCount: number; divisions: string[] }
 
 export interface LogicNeighbour {
   ruleId: string;
@@ -390,11 +391,24 @@ export async function listWorkItemsForDivision(db: Db, divisionCode: string | nu
   return { total: items.length, items: items.slice(offset, offset + limit).map((i) => ({ ...i, usedBy: uses.get(i.id) ?? 0 })) };
 }
 
-/** BOQ tab: the cost library's work items with the number of activities that use each. */
-export async function listWorkItemsLibrary(db: Db, opts: { q?: string; limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
+/** Active work items per CSI division code (NO_DIVISION for none) matching `q`, for the BOQ tab's division pane. */
+export async function workItemDivisionCounts(db: Db, q?: string): Promise<Map<string, number>> {
+  const s = safeTerm(q ?? "");
+  const rows = await allPages<{ csi_division_code: string | null }>((from, to) => {
+    let qb = db.from("dwl_work_items").select("csi_division_code").eq("is_active", true);
+    if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
+    return qb.order("id").range(from, to);
+  });
+  return countByDivision(rows, (r) => [r.csi_division_code]);
+}
+
+/** BOQ tab: the cost library's work items (optionally of one CSI division, or NO_DIVISION) with the number of activities that use each. */
+export async function listWorkItemsLibrary(db: Db, opts: { q?: string; division?: string | null; limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
   const s = safeTerm(opts.q ?? "");
   let qb = db.from("dwl_work_items").select("id, code, name, description, unit, boq_section", { count: "exact" }).eq("is_active", true);
   if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
+  if (opts.division === NO_DIVISION) qb = qb.is("csi_division_code", null);
+  else if (opts.division) qb = qb.eq("csi_division_code", opts.division);
   const { data, error, count } = await qb.order("code").order("id").range(opts.offset, opts.offset + opts.limit - 1);
   must(error);
   const rows = (data ?? []) as (WorkItemRef & { boq_section: string })[];
@@ -415,13 +429,13 @@ export async function listActivitiesUsingWorkItem(db: Db, workItemId: string): P
   return rows.sort((a, b) => (a.visible_code ?? "~").localeCompare(b.visible_code ?? "~") || a.code.localeCompare(b.code));
 }
 
-/** Resource tab: labour and equipment from the cost library with the number of work items that use each. */
+/** Resource tab: labour and equipment from the cost library with their CSI divisions (from the BOQ items that use them) and the number of work items that use each. */
 export async function listResourcesLibrary(db: Db, opts: { q?: string; kind?: "labor" | "equipment" | "all"; limit?: number } = {}): Promise<ResourceListRow[]> {
   const kinds = !opts.kind || opts.kind === "all" ? ["labor", "equipment"] : [opts.kind];
   const s = safeTerm(opts.q ?? "");
   let qb = db.from("dwl_resources").select("id, code, description, category, unit").eq("is_active", true).in("category", kinds);
   if (s) qb = qb.or(`code.ilike.%${s}%,description.ilike.%${s}%`);
-  const { data, error } = await qb.order("description").limit(opts.limit ?? 500);
+  const [{ data, error }, divisions] = await Promise.all([qb.order("description").limit(opts.limit ?? 2000), resourceDivisions(db)]);
   must(error);
   const res = (data ?? []) as { id: string; code: string; description: string; category: "labor" | "equipment"; unit: string }[];
   const counts = new Map<string, number>();
@@ -431,7 +445,7 @@ export async function listResourcesLibrary(db: Db, opts: { q?: string; kind?: "l
       db.from("dwl_work_item_resources").select("resource_id").in("resource_id", part).order("id").range(from, to));
     for (const r of rows) counts.set(r.resource_id, (counts.get(r.resource_id) ?? 0) + 1);
   }
-  return res.map((r) => ({ id: r.id, code: r.code, name: r.description, kind: r.category, unit: r.unit, workItemCount: counts.get(r.id) ?? 0 }));
+  return res.map((r) => ({ id: r.id, code: r.code, name: r.description, kind: r.category, unit: r.unit, workItemCount: counts.get(r.id) ?? 0, divisions: [...(divisions.get(r.id) ?? [])].sort() }));
 }
 
 export async function searchBank(db: Db, q: string, divisionCode: string | null): Promise<BankSearchResult> {

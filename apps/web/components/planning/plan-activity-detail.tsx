@@ -132,7 +132,7 @@ export function PlanActivityDetail({ id }: { id: string }) {
         <TabsList className="mx-6 mt-3 h-auto w-fit flex-wrap justify-start">
           {["overview", "methods", "productivity", "resources", "quantity", "logic", "templates", "qaqc", "hse", "documents", "applicability", "history"].map((t) => (
             <TabsTrigger key={t} value={t} className="capitalize">
-              {t === "qaqc" ? "QA/QC" : t === "hse" ? "HSE" : t === "history" ? "Version History" : t === "quantity" ? "Quantity Rules" : t}
+              {t === "qaqc" ? "QA/QC" : t === "hse" ? "HSE" : t === "history" ? "Version History" : t === "quantity" ? "Quantity Rules" : t === "methods" ? "Construction Approaches" : t}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -301,21 +301,21 @@ function Methods({ d, onChanged }: { d: Loaded; onChanged: () => void }) {
   return (
     <div className="space-y-4">
       {editable && !draft && (
-        <Button size="sm" onClick={() => setDraft({ code: "", name: "", description: "", constraints_note: "", is_default: d.methods.length === 0 })}>+ Add method</Button>
+        <Button size="sm" onClick={() => setDraft({ code: "", name: "", description: "", constraints_note: "", is_default: d.methods.length === 0 })}>+ Add approach</Button>
       )}
       {draft && (
-        <Card title={draft.id ? "Edit method" : "New method"}>
+        <Card title={draft.id ? "Edit construction approach" : "New construction approach"}>
           <div className="grid gap-3 md:grid-cols-2">
             <Input placeholder="Code (e.g. PUMP)" value={draft.code} disabled={!!draft.id} onChange={(e) => setDraft({ ...draft, code: e.target.value })} />
             <Input placeholder="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             <Input placeholder="Description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
             <Input placeholder="Constraints" value={draft.constraints_note} onChange={(e) => setDraft({ ...draft, constraints_note: e.target.value })} />
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.is_default} onChange={(e) => setDraft({ ...draft, is_default: e.target.checked })} /> Default method</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.is_default} onChange={(e) => setDraft({ ...draft, is_default: e.target.checked })} /> Default approach</label>
           </div>
           <div className="mt-3 flex gap-2"><Button size="sm" onClick={save}>Save</Button><Button size="sm" variant="outline" onClick={() => setDraft(null)}>Cancel</Button></div>
         </Card>
       )}
-      {!d.methods.length && !draft && <EmptyNote>No construction methods defined for this activity.</EmptyNote>}
+      {!d.methods.length && !draft && <EmptyNote>No construction approaches defined for this activity. An approach is an alternative way to build it (e.g. pumped vs. crane-and-skip), each with its own output rate; it is not a Method Statement document.</EmptyNote>}
       <div className="grid gap-4 md:grid-cols-3">
         {d.methods.map((m) => {
           const std = d.standards.find((s) => s.method_id === m.id);

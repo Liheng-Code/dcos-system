@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { DESIGN_GROUPS } from "@/lib/design/design-nav";
 import { countDesignDrawingsWithDisciplineArc, countDesignDrawingsWithDisciplineMep, countDesignDrawingsWithDisciplineStr, countDesignRfiWithStatusOpen } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 
 const CORRESPONDENCE_ITEMS = DESIGN_GROUPS.find((g) => g.key === "correspondence")!.items;
 
@@ -24,21 +25,27 @@ export default function DesignPage() {
   const supabase = createClient();
   const [checking, setChecking] = useState(true);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const { selectedProjectId } = useProject();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) { router.push("/"); return; }
       setChecking(false);
     });
+  }, []);
+
+  // Counts are for the selected project (no project: none shown).
+  useEffect(() => {
+    if (!selectedProjectId) return;
     Promise.all([
-      countDesignDrawingsWithDisciplineArc(),
-      countDesignDrawingsWithDisciplineStr(),
-      countDesignDrawingsWithDisciplineMep(),
-      countDesignRfiWithStatusOpen(),
+      countDesignDrawingsWithDisciplineArc(selectedProjectId),
+      countDesignDrawingsWithDisciplineStr(selectedProjectId),
+      countDesignDrawingsWithDisciplineMep(selectedProjectId),
+      countDesignRfiWithStatusOpen(selectedProjectId),
     ]).then(([arc, str, mep, openRfi]) => {
       setCounts({ arc: arc.count ?? 0, str: str.count ?? 0, mep: mep.count ?? 0, openRfi: openRfi.count ?? 0 });
     });
-  }, []);
+  }, [selectedProjectId]);
 
   if (checking) return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 

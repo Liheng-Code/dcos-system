@@ -117,6 +117,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
       // Doc 24 phase 1: BOQ readiness report (programme generation follows in phase 2)
       { label: "Generate from BOQ", href: "/dashboard/planning/boq-programme", status: "development" },
+      // Phase 4: what the project's activities need (shop drawings, method statements, T&C) vs submittals and ITPs
+      { label: "Requirements Tracker", href: "/dashboard/planning/requirements-tracker", status: "development" },
     ],
   },
 ];

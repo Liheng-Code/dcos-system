@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/client";
 import { assignTaskToProfile, type AssignableTask } from "@/lib/project/tasks/assign-task";
 import { dedupe } from "@/lib/request-dedup";
+import { inChunks } from "@/lib/planning/activity-library/in-chunks";
+import { safeTerm } from "@/lib/planning/activity-library/catalogue-rules";
+import { QS_CATEGORY, type QsResourceOption } from "./resource-rate";
 
 export type ResourceType = "labor" | "equipment" | "material" | "subcontractor";
 
@@ -17,6 +20,8 @@ export interface PlanResource {
   profile_id: string | null;
   /** Set by plan_generate_resource_loading() on its pooled resources; null on a manually created one. */
   trade: string | null;
+  /** QS cost-library resource it is costed from; cost_per_unit then overrides the QS rate when set. */
+  dwl_resource_id: string | null;
   created_at: string;
 }
 
@@ -52,6 +57,7 @@ export interface CreateResourceInput {
   cost_per_unit: number | null;
   unit_label: string | null;
   profile_id?: string | null;
+  dwl_resource_id?: string | null;
 }
 
 /**
@@ -81,6 +87,7 @@ export async function createResource(projectId: string, input: CreateResourceInp
     cost_per_unit: input.cost_per_unit,
     unit_label: input.unit_label,
     profile_id: input.profile_id ?? null,
+    dwl_resource_id: input.dwl_resource_id ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -119,6 +126,41 @@ export async function findOrCreateResourceForProfile(
 export async function updateResource(id: string, patch: Partial<CreateResourceInput>): Promise<void> {
   const { error } = await createClient().from("plan_resources").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------- QS cost-library rates
+
+type QsRow = { id: string; code: string; description: string; category: string; unit: string | null };
+
+async function withQsRates(rows: QsRow[]): Promise<QsResourceOption[]> {
+  const rates = await inChunks<{ resource_id: string; costing_rate: number | string | null; currency: string | null }>(rows.map((r) => r.id), (part) =>
+    createClient().from("dwl_v_resource_costing_rates").select("resource_id, costing_rate, currency").in("resource_id", part));
+  const byId = new Map(rates.map((r) => [r.resource_id, r]));
+  return rows.map((r) => {
+    const rate = byId.get(r.id);
+    return {
+      id: r.id, code: r.code, name: r.description, category: r.category, unit: r.unit,
+      rate: rate?.costing_rate == null ? null : Number(rate.costing_rate), currency: rate?.currency ?? null,
+    };
+  });
+}
+
+/** Active QS cost-library resources of the category matching `type` whose code or description contains `q`, with their QS rate. */
+export async function searchQsResources(q: string, type: ResourceType, limit = 30): Promise<QsResourceOption[]> {
+  const s = safeTerm(q);
+  let qb = createClient().from("dwl_resources").select("id, code, description, category, unit").eq("is_active", true).eq("category", QS_CATEGORY[type]);
+  if (s) qb = qb.or(`code.ilike.%${s}%,description.ilike.%${s}%`);
+  const { data, error } = await qb.order("description").limit(limit);
+  if (error) throw new Error(error.message);
+  return withQsRates((data ?? []) as QsRow[]);
+}
+
+/** The linked QS resources (with their rate) of these project resources, by dwl_resources id. */
+export async function getQsResources(ids: readonly (string | null)[]): Promise<Map<string, QsResourceOption>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  const rows = await inChunks<QsRow>(unique, (part) =>
+    createClient().from("dwl_resources").select("id, code, description, category, unit").in("id", part));
+  return new Map((await withQsRates(rows)).map((r) => [r.id, r]));
 }
 
 /** Soft delete/reactivate — never hard-delete a resource, it may have historical assignments. */

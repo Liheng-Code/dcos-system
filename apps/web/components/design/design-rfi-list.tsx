@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { insertDesignRfi, listDesignRfiByDiscipline, updateDesignRfiById } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ const statusColors: Record<string, string> = { open: "bg-blue-100 text-blue-700"
 const priorityColors: Record<string, string> = { low: "bg-gray-100 text-gray-500", normal: "bg-blue-100 text-blue-700", high: "bg-orange-100 text-orange-700", critical: "bg-red-100 text-red-700" };
 
 export function DesignRfiList({ discipline }: { discipline: string }) {
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<RfiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,18 +29,21 @@ export function DesignRfiList({ discipline }: { discipline: string }) {
   const [editing, setEditing] = useState<RfiItem | null>(null);
 
   function load() {
+    if (!selectedProjectId) return;
     setLoading(true);
-    listDesignRfiByDiscipline(discipline).then(({ data }) => {
+    listDesignRfiByDiscipline(selectedProjectId, discipline).then(({ data }) => {
       if (data) setItems(data as RfiItem[]);
       setLoading(false);
     });
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedProjectId]);
 
   const filtered = items.filter(r => r.rfi_no.toLowerCase().includes(search.toLowerCase()) || r.title.toLowerCase().includes(search.toLowerCase()));
 
-  if (showForm) return <DesignRfiForm discipline={discipline} item={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
+  if (!selectedProjectId) return <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Select a project to see its RFIs.</p>;
+
+  if (showForm) return <DesignRfiForm projectId={selectedProjectId} discipline={discipline} item={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   return (
@@ -84,7 +89,7 @@ export function DesignRfiList({ discipline }: { discipline: string }) {
   );
 }
 
-function DesignRfiForm({ discipline, item, onSaved, onCancel }: { discipline: string; item: RfiItem | null; onSaved: () => void; onCancel: () => void }) {
+function DesignRfiForm({ projectId, discipline, item, onSaved, onCancel }: { projectId: string; discipline: string; item: RfiItem | null; onSaved: () => void; onCancel: () => void }) {
   const isNew = !item?.id;
   const [rfiNo, setRfiNo] = useState(item?.rfi_no ?? `RFI-${Date.now()}`);
   const [title, setTitle] = useState(item?.title ?? "");
@@ -99,7 +104,7 @@ function DesignRfiForm({ discipline, item, onSaved, onCancel }: { discipline: st
     setSaving(true);
     const payload = { discipline: item ? item.discipline : discipline, rfi_no: rfiNo, title, question, priority, status, due_date: dueDate || null };
     const { error } = isNew
-      ? await insertDesignRfi(payload)
+      ? await insertDesignRfi({ ...payload, project_id: projectId })
       : await updateDesignRfiById(payload, item!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "RFI created" : "RFI updated");

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { insertDrawingMarkup, listDesignDrawingsOfIdAndDrawingNo, listDrawingMarkups } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, PenTool, Plus, Eye, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ interface DrawingMarkup {
 }
 
 export default function DrawingMarkupPage() {
+  const { selectedProjectId } = useProject();
   const [markups, setMarkups] = useState<DrawingMarkup[]>([]);
   const [drawings, setDrawings] = useState<{id:string,drawing_no:string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,14 +32,17 @@ export default function DrawingMarkupPage() {
   });
 
   useEffect(() => {
-    listDesignDrawingsOfIdAndDrawingNo().then(({ data }) => {
-      if (data) setDrawings(data);
-    });
+    // Only the selected project's drawings can be marked up.
+    if (selectedProjectId) {
+      listDesignDrawingsOfIdAndDrawingNo(selectedProjectId).then(({ data }) => {
+        if (data) setDrawings(data);
+      });
+    }
     listDrawingMarkups().then(({ data }) => {
       if (data) setMarkups(data as DrawingMarkup[]);
       setLoading(false);
     });
-  }, []);
+  }, [selectedProjectId]);
 
   async function handleCreate() {
     setSaving(true);

@@ -7,6 +7,11 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { getProjectById, insertSubmittalPackages, listSubmittalPackagesByProjectId, listWbsNodesByProjectIdOrderedByFullPath } from "@/lib/documents/documents-queries";
+import { listCatalogueOptions, listProjectRequirements, type CatalogueOption } from "@/lib/planning/public";
+
+/** Submittal categories that fulfil a Planning requirement catalogue (Activity Database). */
+const CATALOGUE_KIND = { shop_drawing: "shop_drawing", method_statement: "method_statement" } as const;
+type CatalogueKind = (typeof CATALOGUE_KIND)[keyof typeof CATALOGUE_KIND];
 
 interface SubmittalCreateDialogProps {
   projectId: string;
@@ -60,7 +65,29 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
     sla_days: 14,
     target_submission_date: new Date().toISOString().split("T")[0],
     remarks: "",
+    catalogue_item_id: "",
   });
+
+  // Planning requirement this submittal fulfils: shop drawing type or method statement (Activity Database catalogue).
+  const catalogueKind: CatalogueKind | null = CATALOGUE_KIND[form.submittal_type as keyof typeof CATALOGUE_KIND] ?? null;
+  const [catalogue, setCatalogue] = useState<{ kind: CatalogueKind; options: CatalogueOption[]; required: Set<string> } | null>(null);
+  useEffect(() => {
+    if (!catalogueKind || !projectId) return;
+    let live = true;
+    Promise.all([
+      listCatalogueOptions(supabase, catalogueKind),
+      listProjectRequirements(supabase, projectId, { wbsNodeId: form.wbs_node_id || null, kinds: [catalogueKind] }).catch(() => []),
+    ])
+      .then(([options, reqs]) => { if (live) setCatalogue({ kind: catalogueKind, options, required: new Set(reqs.map((r) => r.item.id)) }); })
+      .catch(() => { if (live) setCatalogue({ kind: catalogueKind, options: [], required: new Set() }); });
+    return () => { live = false; };
+  }, [supabase, projectId, catalogueKind, form.wbs_node_id]);
+  const catalogueLoaded = catalogue && catalogue.kind === catalogueKind ? catalogue : null;
+  const catalogueOptions = useMemo(() => {
+    if (!catalogueLoaded) return { required: [], other: [] };
+    const required = catalogueLoaded.options.filter((o) => catalogueLoaded.required.has(o.id));
+    return { required, other: catalogueLoaded.options.filter((o) => !catalogueLoaded.required.has(o.id)) };
+  }, [catalogueLoaded]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -96,7 +123,13 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
   }, [suggestedNumber, form.submittal_number]);
 
   function update(field: string, value: string | number) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    // A different category means a different catalogue, so its pick no longer applies.
+    setForm((prev) => ({ ...prev, [field]: value, ...(field === "submittal_type" ? { catalogue_item_id: "" } : {}) }));
+  }
+
+  function pickCatalogueItem(id: string) {
+    const item = catalogueLoaded?.options.find((o) => o.id === id);
+    setForm((prev) => ({ ...prev, catalogue_item_id: id, title: prev.title.trim() || !item ? prev.title : item.name }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -132,6 +165,8 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
       sla_days: Number(form.sla_days) || 14,
       remarks: form.remarks.trim() || null,
       created_by: userId,
+      shop_drawing_type_id: catalogueKind === "shop_drawing" ? form.catalogue_item_id || null : null,
+      method_statement_id: catalogueKind === "method_statement" ? form.catalogue_item_id || null : null,
     };
 
     const { error } = await insertSubmittalPackages(payload);
@@ -249,6 +284,32 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
                 required
               />
             </div>
+
+            {catalogueKind && (
+              <div className="space-y-1.5">
+                <Label htmlFor="catalogue_item">
+                  {catalogueKind === "shop_drawing" ? "Shop Drawing Type" : "Method Statement"} (Planning requirement, optional)
+                </Label>
+                <select
+                  id="catalogue_item"
+                  value={form.catalogue_item_id}
+                  onChange={(e) => pickCatalogueItem(e.target.value)}
+                  disabled={!catalogueLoaded}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary disabled:opacity-60"
+                >
+                  <option value="">{catalogueLoaded ? "— Not linked —" : "Loading…"}</option>
+                  {catalogueOptions.required.length > 0 && (
+                    <optgroup label={form.wbs_node_id ? "Required by activities at this WBS location" : "Required by this project's activities"}>
+                      {catalogueOptions.required.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.name}</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label={catalogueOptions.required.length > 0 ? "Other" : "All"}>
+                    {catalogueOptions.other.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.name}</option>)}
+                  </optgroup>
+                </select>
+                <p className="text-xs text-muted-foreground">Links this submittal to the Activity Database, so the Planning Requirements Tracker can show it as submitted.</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

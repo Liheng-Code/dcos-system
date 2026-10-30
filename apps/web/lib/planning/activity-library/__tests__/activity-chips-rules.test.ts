@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  countBy, divisionLabel, isHttpUrl, materialDisplayName, sortByDivision, TC_TYPE_LABEL, percentLabel, sectionLabel, sortShopDrawingsForDivision, suggestNextCode,
+  countBy, countByDivision, divisionLabel, inDivision, NO_DIVISION, isHttpUrl, materialDisplayName, sortByDivision, TC_TYPE_LABEL, percentLabel, sectionLabel, sortShopDrawingsForDivision, suggestNextCode,
 } from "../activity-chips-rules";
 
 describe("activity chips rules", () => {
@@ -54,5 +54,18 @@ describe("activity chips rules", () => {
 
   it("counts by key", () => {
     expect([...countBy(["a", "b", "a"], (x) => x)]).toEqual([["a", 2], ["b", 1]]);
+  });
+
+  it("counts items per division, with a bucket for none", () => {
+    const rows = [{ d: ["03"] }, { d: ["03", "05", "03"] }, { d: [null] }, { d: [] }];
+    expect(Object.fromEntries(countByDivision(rows, (r) => r.d))).toEqual({ "03": 2, "05": 1, [NO_DIVISION]: 2 });
+  });
+
+  it("matches the selected division bucket", () => {
+    expect(inDivision(["03"], null)).toBe(true);
+    expect(inDivision(["03", "05"], "05")).toBe(true);
+    expect(inDivision(["03"], "05")).toBe(false);
+    expect(inDivision([null], NO_DIVISION)).toBe(true);
+    expect(inDivision(["03"], NO_DIVISION)).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ import {
   aggregateByTrade,
   aggregateByType,
   flagShortageWeeks,
+  getQsResources,
   getResourceAllocation,
   listProjectAssignments,
   listResources,
@@ -24,6 +25,7 @@ import {
   type ProjectAssignmentRow,
 } from "@/lib/planning/resource-service";
 import { generateResourceLoadingFromNorms } from "@/lib/planning/resource-generation-service";
+import { effectiveRate, rateLabel, type QsResourceOption } from "@/lib/planning/resource-rate";
 import { PlanResourceDialog } from "./plan-resource-dialog";
 import { PlanLevellingPanel } from "./plan-levelling-panel";
 import { BoqManpowerHistogramCard, useHasBoqHours } from "./boq-programme/loading-charts";
@@ -93,6 +95,19 @@ export function PlanResourceLoading() {
   }
 
   useEffect(load, [selectedProjectId]);
+
+  // QS rates of the resources linked to the cost library (one request, only when any is linked).
+  const qsIdsKey = useMemo(() => [...new Set(resources.map((r) => r.dwl_resource_id).filter(Boolean))].sort().join(","), [resources]);
+  const [qsRates, setQsRates] = useState<{ key: string; map: Map<string, QsResourceOption> } | null>(null);
+  useEffect(() => {
+    if (!qsIdsKey) return;
+    let live = true;
+    getQsResources(qsIdsKey.split(","))
+      .then((map) => { if (live) setQsRates({ key: qsIdsKey, map }); })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Could not load QS rates"));
+    return () => { live = false; };
+  }, [qsIdsKey]);
+  const qsById = qsRates?.key === qsIdsKey ? qsRates.map : null;
 
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
@@ -522,6 +537,21 @@ export function PlanResourceLoading() {
                 )}
                 <Badge variant="outline" className="text-xs">{resourceTasks.length} tasks</Badge>
                 <Badge variant="outline" className="text-xs">Max {resource.max_units}%</Badge>
+                {(() => {
+                  const qs = resource.dwl_resource_id ? qsById?.get(resource.dwl_resource_id) ?? null : null;
+                  if (resource.dwl_resource_id && !qsById) return null; // QS rate still loading
+                  const r = effectiveRate(resource, qs);
+                  if (r.source === "none" && !qs) return null;
+                  return (
+                    <Badge
+                      variant="outline"
+                      className={cn("text-xs", r.source === "qs" && "border-emerald-200 bg-emerald-50 text-emerald-700")}
+                      title={qs ? `QS ${qs.code} ${qs.name}: ${rateLabel(qs)}` : "Manual rate (not linked to the QS cost library)"}
+                    >
+                      {rateLabel(r)} · {r.source === "qs" ? "QS rate" : r.source === "override" ? (qs ? "override" : "manual") : "QS not priced"}
+                    </Badge>
+                  );
+                })()}
                 {!resource.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
                 <button
                   type="button"

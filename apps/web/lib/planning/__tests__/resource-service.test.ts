@@ -9,6 +9,7 @@ function resource(id: string, type: PlanResource["resource_type"], maxUnits: num
     resource_type: type,
     max_units: maxUnits,
     cost_per_unit: null,
+    dwl_resource_id: null,
     unit_label: null,
     calendar_id: null,
     is_active: active,

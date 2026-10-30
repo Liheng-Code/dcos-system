@@ -153,9 +153,9 @@ The migration is additive because other lanes share one local database. The old 
 - `dwl_material_divisions`, `dwl_material_division_sections` and `plan_act_divisions` reject writes from anyone but `postgres` ("CSI divisions are managed in Administration > Master Libraries > CSI Divisions").
 - `plan_act_masters.division_id` is unused.
 - The old uuid overloads of `plan_act_bank_search(q, p_division uuid)` and `plan_act_division_counts()` remain as thin wrappers. The new RPCs are `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`.
-- An old foreign key `dwl_material_categories` to `dwl_material_divisions` still exists. It limits material categories to the old 25 division codes, so a category cannot yet use a CSI division outside that set.
+- The old foreign key `dwl_material_categories` → `dwl_material_divisions` was dropped in `20261030154000_core_csi_material_category_division_fk.sql`. Material categories now check against `csi_divisions` only, so every CSI division (including 34, 35 and 40-48) can be used.
 
-**Cleanup migration (later):** drop the FK above, then `dwl_material_divisions*`, `plan_act_divisions`, `plan_act_masters.division_id`, the uuid RPC overloads and the freeze trigger functions. Run it only when no lanes are active (`/lanes status`), after a backup (`scripts/db-backup.ps1`) and a dry run in a rolled-back transaction. Promotion to production is done by the user with `/dbpush`.
+**Cleanup migration (later):** drop `dwl_material_divisions*`, `plan_act_divisions`, `plan_act_masters.division_id`, the uuid RPC overloads and the freeze trigger functions. Run it only when no lanes are active (`/lanes status`), after a backup (`scripts/db-backup.ps1`) and a dry run in a rolled-back transaction. Promotion to production is done by the user with `/dbpush`.
 
 ## 11. Open items
 

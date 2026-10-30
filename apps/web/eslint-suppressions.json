@@ -544,14 +544,6 @@
       "count": 1
     }
   },
-  "components/design/arc-schedules.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 5
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
   "components/design/bim/bim-model-register.tsx": {
     "react-hooks/set-state-in-effect": {
       "count": 1
@@ -574,11 +566,6 @@
   },
   "components/design/bim/spatial-tree.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
-  "components/design/design-coordination-log.tsx": {
-    "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },
@@ -794,7 +781,7 @@
   },
   "components/procurement/po-form.tsx": {
     "react-hooks/set-state-in-effect": {
-      "count": 2
+      "count": 1
     }
   },
   "components/procurement/pr-form.tsx": {

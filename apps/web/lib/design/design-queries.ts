@@ -19,8 +19,8 @@ export function insertDesignArcRoomData(row: object) {
 }
 
 // @table design_arc_room_data
-export function listDesignArcRoomData() {
-  return db().from("design_arc_room_data").select("*").order("room_no");
+export function listDesignArcRoomData(projectId: string) {
+  return db().from("design_arc_room_data").select("*").eq("project_id", projectId).order("room_no");
 }
 
 // @table design_arc_room_data
@@ -36,25 +36,30 @@ export function insertDesignCoordinationLog(row: object) {
 }
 
 // @table design_coordination_log
-export function listDesignCoordinationLog() {
-  return db().from("design_coordination_log").select("*").order("created_at", { ascending: false });
+export function listDesignCoordinationLog(projectId: string) {
+  return db().from("design_coordination_log").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
+}
+
+// @table design_coordination_log
+export function updateDesignCoordinationLog(id: string, patch: object) {
+  return db().from("design_coordination_log").update(patch).eq("id", id);
 }
 
 // ── design_drawings ───────────────────────────────────────────────────────────
 
 // @table design_drawings
-export function countDesignDrawingsWithDisciplineArc() {
-  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "arc");
+export function countDesignDrawingsWithDisciplineArc(projectId: string) {
+  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("discipline", "arc");
 }
 
 // @table design_drawings
-export function countDesignDrawingsWithDisciplineMep() {
-  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "mep");
+export function countDesignDrawingsWithDisciplineMep(projectId: string) {
+  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("discipline", "mep");
 }
 
 // @table design_drawings
-export function countDesignDrawingsWithDisciplineStr() {
-  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("discipline", "str");
+export function countDesignDrawingsWithDisciplineStr(projectId: string) {
+  return db().from("design_drawings").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("discipline", "str");
 }
 
 // @table design_drawings
@@ -63,18 +68,13 @@ export function insertDesignDrawing(row: object) {
 }
 
 // @table design_drawings
-export function listDesignDrawings() {
-  return db().from("design_drawings").select("project_id").limit(1);
+export function listDesignDrawingsByDiscipline(projectId: string, discipline: string | number | boolean) {
+  return db().from("design_drawings").select("*").eq("project_id", projectId).eq("discipline", discipline).order("drawing_no");
 }
 
 // @table design_drawings
-export function listDesignDrawingsByDiscipline(discipline: string | number | boolean) {
-  return db().from("design_drawings").select("*").eq("discipline", discipline).order("drawing_no");
-}
-
-// @table design_drawings
-export function listDesignDrawingsOfIdAndDrawingNo() {
-  return db().from("design_drawings").select("id,drawing_no");
+export function listDesignDrawingsOfIdAndDrawingNo(projectId: string) {
+  return db().from("design_drawings").select("id,drawing_no").eq("project_id", projectId).order("drawing_no");
 }
 
 // @table design_drawings
@@ -107,8 +107,8 @@ export function updateDesignReviewCommentById(patch: object, id: string | number
 // ── design_rfi ────────────────────────────────────────────────────────────────
 
 // @table design_rfi
-export function countDesignRfiWithStatusOpen() {
-  return db().from("design_rfi").select("id", { count: "exact", head: true }).eq("status", "open");
+export function countDesignRfiWithStatusOpen(projectId: string) {
+  return db().from("design_rfi").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "open");
 }
 
 // @table design_rfi
@@ -117,10 +117,11 @@ export function insertDesignRfi(row: object) {
 }
 
 // @table design_rfi
-export function listDesignRfiByDiscipline(discipline: string | number | boolean) {
+export function listDesignRfiByDiscipline(projectId: string, discipline: string | number | boolean) {
   return db()
     .from("design_rfi")
     .select("*")
+    .eq("project_id", projectId)
     .eq("discipline", discipline)
     .order("created_at", { ascending: false });
 }

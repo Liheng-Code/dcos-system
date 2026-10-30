@@ -4,7 +4,7 @@ import { aggregateByTrade, flagShortageWeeks, type AllocationRow, type PlanResou
 function resource(over: Partial<PlanResource>): PlanResource {
   return {
     id: "r1", project_id: "p1", name: "R1", resource_type: "labor", max_units: 100,
-    cost_per_unit: null, unit_label: null, calendar_id: null, is_active: true, profile_id: null, trade: null,
+    cost_per_unit: null, unit_label: null, calendar_id: null, is_active: true, profile_id: null, trade: null, dwl_resource_id: null,
     created_at: "2026-01-01", ...over,
   };
 }

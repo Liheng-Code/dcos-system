@@ -153,13 +153,13 @@ export function ActivityDatabaseView() {
           />
         </TabsContent>
         <TabsContent value="boq" className="pt-2">
-          <BoqLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} onOpenBoq={(id, list) => setBoqDialog({ id, list })} />
+          <BoqLibraryTab db={db} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} onOpenBoq={(id, list) => setBoqDialog({ id, list })} />
         </TabsContent>
         <TabsContent value="method_statement" className="pt-2">
           <ChipLibraryTab kind="method_statement" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
         </TabsContent>
         <TabsContent value="material" className="pt-2">
-          <MaterialLibraryTab db={db} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
+          <MaterialLibraryTab db={db} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
         </TabsContent>
         <TabsContent value="coordination" className="pt-2">
           <ChipLibraryTab kind="coordination" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
@@ -168,7 +168,7 @@ export function ActivityDatabaseView() {
           <ChipLibraryTab kind="shop_drawing" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
         </TabsContent>
         <TabsContent value="resource" className="pt-2">
-          <ResourceLibraryTab db={db} query={query} refreshKey={refreshKey} />
+          <ResourceLibraryTab db={db} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} />
         </TabsContent>
         <TabsContent value="tc" className="pt-2">
           <ChipLibraryTab kind="tc" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />

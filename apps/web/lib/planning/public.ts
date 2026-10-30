@@ -22,3 +22,32 @@ export {
   refreshTaskWorkFromLinks,
 } from "./activity-library/bridge-calc-service";
 export { computeBridgeLinks, type BridgeCalcResult, type MasterRate } from "./activity-library/bridge-calc";
+
+// Requirement catalogues → project records (Phase 4): pickers in Document Control submittals and QA/QC ITPs
+export {
+  listCatalogueOptions,
+  listProjectRequirements,
+  type CatalogueOption,
+  type Requirement,
+  type RequirementRecord,
+  type RequirementTask,
+} from "./activity-library/requirement-status-service";
+export {
+  itpInspectionType,
+  REQUIREMENT_KIND_LABEL,
+  REQUIREMENT_STATE_LABEL,
+  type RequirementKind,
+  type RequirementState,
+} from "./activity-library/requirement-status";
+
+// Library pickers for Design schedules (MEP commissioning, material submittals, coordination log)
+export {
+  getChipOptionsByIds,
+  searchCoordinationItems,
+  searchMaterials,
+  searchTcItems,
+  type CoordinationItem,
+  type MaterialOption,
+  type TcItem,
+} from "./activity-library/activity-chips-service";
+export { TC_TYPE_LABEL } from "./activity-library/activity-chips-rules";

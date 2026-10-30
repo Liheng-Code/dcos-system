@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { insertDesignReviewComment, listDesignReviewCommentsByEntityTypeAndEntityId, updateDesignReviewCommentById } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ export function DesignReviewComments({ entityType, entityId, discipline }: { ent
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
   const [commentType, setCommentType] = useState("general");
-  const [projectId, setProjectId] = useState("");
+  const { selectedProjectId: projectId } = useProject();
 
   function load() {
     listDesignReviewCommentsByEntityTypeAndEntityId(entityType, entityId).then(({ data }) => {
@@ -32,9 +33,9 @@ export function DesignReviewComments({ entityType, entityId, discipline }: { ent
   useEffect(() => { load(); }, [entityId]);
 
   async function handleAdd() {
-    if (!newComment.trim()) return;
+    if (!newComment.trim() || !projectId) return;
     const { error } = await insertDesignReviewComment({
-      project_id: projectId || crypto.randomUUID(),
+      project_id: projectId,
       discipline, entity_type: entityType, entity_id: entityId,
       comment: newComment.trim(), comment_type: commentType,
     });

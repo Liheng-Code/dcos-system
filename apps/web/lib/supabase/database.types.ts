@@ -15808,6 +15808,7 @@ export type Database = {
           calendar_id: string | null
           cost_per_unit: number | null
           created_at: string
+          dwl_resource_id: string | null
           id: string
           is_active: boolean
           max_units: number
@@ -15822,6 +15823,7 @@ export type Database = {
           calendar_id?: string | null
           cost_per_unit?: number | null
           created_at?: string
+          dwl_resource_id?: string | null
           id?: string
           is_active?: boolean
           max_units?: number
@@ -15836,6 +15838,7 @@ export type Database = {
           calendar_id?: string | null
           cost_per_unit?: number | null
           created_at?: string
+          dwl_resource_id?: string | null
           id?: string
           is_active?: boolean
           max_units?: number

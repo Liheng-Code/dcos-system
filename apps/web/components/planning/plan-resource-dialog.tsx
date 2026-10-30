@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Users, X } from "lucide-react";
+import { Database, Loader2, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { getProfileById, listProfiles } from "@/lib/planning/planning-queries";
+import { effectiveRate, QS_CATEGORY, rateLabel, type QsResourceOption } from "@/lib/planning/resource-rate";
 import {
   createResource,
+  getQsResources,
+  searchQsResources,
   setResourceActive,
   updateResource,
   type PlanResource,
@@ -47,6 +50,49 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
   const [isActive, setIsActive] = useState(resource?.is_active ?? true);
   const [busy, setBusy] = useState(false);
 
+  // QS cost-library link: the resource takes its rate from QS unless Cost per Unit overrides it.
+  const linkedQsId = resource?.dwl_resource_id ?? null;
+  const [qs, setQs] = useState<QsResourceOption | null>(null);
+  const [qsLoading, setQsLoading] = useState(!!linkedQsId);
+  const [qsQuery, setQsQuery] = useState("");
+  const [qsResults, setQsResults] = useState<{ key: string; rows: QsResourceOption[] } | null>(null);
+  const qsKey = `${resourceType}|${qsQuery.trim()}`;
+
+  useEffect(() => {
+    if (!linkedQsId) return;
+    let live = true;
+    getQsResources([linkedQsId])
+      .then((m) => { if (live) setQs(m.get(linkedQsId) ?? null); })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Could not load the QS resource"))
+      .finally(() => { if (live) setQsLoading(false); });
+    return () => { live = false; };
+  }, [linkedQsId]);
+
+  useEffect(() => {
+    if (qs || qsLoading) return;
+    let live = true;
+    const t = setTimeout(() => {
+      searchQsResources(qsQuery, resourceType)
+        .then((rows) => { if (live) setQsResults({ key: qsKey, rows }); })
+        .catch(() => { if (live) setQsResults({ key: qsKey, rows: [] }); });
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [qs, qsLoading, qsQuery, resourceType, qsKey]);
+
+  function pickQs(option: QsResourceOption) {
+    setQs(option);
+    if (!name.trim()) setName(option.name);
+    if (!unitLabel.trim() && option.unit) setUnitLabel(option.unit);
+  }
+
+  function changeType(type: ResourceType) {
+    setResourceType(type);
+    if (qs && qs.category !== QS_CATEGORY[type]) setQs(null); // a QS link must match the resource type
+  }
+
+  const costPreview = costPerUnit.trim() === "" || Number.isNaN(Number(costPerUnit)) ? null : Number(costPerUnit);
+  const rate = effectiveRate({ cost_per_unit: costPreview, unit_label: unitLabel.trim() || null }, qs);
+
   const [profileId, setProfileId] = useState(resource?.profile_id ?? "");
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
@@ -83,7 +129,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
     setProfileId(id);
     if (id) {
       const p = profiles.find((pr) => pr.id === id);
-      setResourceType("labor");
+      changeType("labor");
       if (p) setName(p.full_name);
     }
   }
@@ -113,6 +159,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
           cost_per_unit: costNum,
           unit_label: unitLabel.trim() || null,
           profile_id: alreadyLinked ? resource.profile_id : profileId || null,
+          dwl_resource_id: qs?.id ?? null,
         });
         if (isActive !== resource.is_active) {
           await setResourceActive(resource.id, isActive);
@@ -125,6 +172,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
           cost_per_unit: costNum,
           unit_label: unitLabel.trim() || null,
           profile_id: profileId || null,
+          dwl_resource_id: qs?.id ?? null,
         });
       }
       toast.success(isEdit ? "Resource updated" : "Resource created");
@@ -214,7 +262,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
             <span className="font-semibold">Type</span>
             <select
               value={resourceType}
-              onChange={(e) => setResourceType(e.target.value as ResourceType)}
+              onChange={(e) => changeType(e.target.value as ResourceType)}
               disabled={!!profileId && !alreadyLinked}
               className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none disabled:opacity-60"
             >
@@ -231,6 +279,52 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
             )}
           </label>
 
+          <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <Database className="h-3.5 w-3.5 text-muted-foreground" /> Rate from QS Cost Library (optional)
+            </span>
+            {qsLoading ? (
+              <div className="flex items-center gap-1.5 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Loading QS resource…</div>
+            ) : qs ? (
+              <div className="flex items-start justify-between gap-2 rounded-md bg-muted/40 px-2.5 py-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-foreground"><span className="font-mono text-muted-foreground">{qs.code}</span> {qs.name}</p>
+                  <p className="text-muted-foreground">QS rate: {rateLabel(qs)}{qs.rate == null && " (not priced in QS yet)"}</p>
+                </div>
+                <button type="button" onClick={() => setQs(null)} className="shrink-0 rounded-md border border-border px-2 py-1 hover:bg-muted">Unlink</button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2.5 text-sm outline-none"
+                    value={qsQuery}
+                    onChange={(e) => setQsQuery(e.target.value)}
+                    placeholder={`Search QS ${TYPE_OPTIONS.find((o) => o.value === resourceType)?.label.toLowerCase()} by code or name…`}
+                  />
+                </div>
+                <div className="max-h-40 overflow-auto rounded-md border border-border">
+                  {qsResults?.key !== qsKey ? (
+                    <div className="flex items-center gap-1.5 p-2 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Searching…</div>
+                  ) : qsResults.rows.length === 0 ? (
+                    <p className="p-2 text-muted-foreground">No matching QS resources.</p>
+                  ) : (
+                    qsResults.rows.map((o) => (
+                      <button
+                        key={o.id} type="button" onClick={() => pickQs(o)}
+                        className="flex w-full items-baseline justify-between gap-2 border-b border-border/60 px-2 py-1.5 text-left last:border-b-0 hover:bg-muted/60"
+                      >
+                        <span className="min-w-0 truncate"><span className="font-mono text-muted-foreground">{o.code}</span> {o.name}</span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{rateLabel(o)}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="font-semibold">Max Units %</span>
@@ -242,16 +336,20 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
               />
             </label>
             <label className="block">
-              <span className="font-semibold">Cost per Unit</span>
+              <span className="font-semibold">{qs ? "Override rate" : "Cost per Unit"}</span>
               <input
                 type="number"
                 className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
                 value={costPerUnit}
                 onChange={(e) => setCostPerUnit(e.target.value)}
-                placeholder="optional"
+                placeholder={qs ? "blank = use QS rate" : "optional"}
               />
             </label>
           </div>
+          <p className="text-muted-foreground">
+            Costed at <span className="font-medium text-foreground">{rateLabel(rate)}</span>
+            {rate.source === "qs" ? " (QS rate)" : rate.source === "override" ? (qs ? " (overrides the QS rate)" : " (manual rate)") : " (no rate yet)"}
+          </p>
 
           <label className="block">
             <span className="font-semibold">Unit Label</span>

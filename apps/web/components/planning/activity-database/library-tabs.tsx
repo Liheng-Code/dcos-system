@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  listActivitiesUsingWorkItem, listResourcesLibrary, listWorkItemsLibrary, type MasterRow, type ResourceListRow, type WorkItemListRow,
+  listActivitiesUsingWorkItem, listResourcesLibrary, listWorkItemsLibrary, workItemDivisionCounts, type Division, type MasterRow, type ResourceListRow, type WorkItemListRow,
 } from "@/lib/planning/activity-library/activity-database-service";
+import { countByDivision, inDivision, NO_DIVISION } from "@/lib/planning/activity-library/activity-chips-rules";
 import { workItemLabel } from "@/lib/planning/activity-library/boq-item-rules";
 import { errorMessage, PAGE_SIZE, SELECT_CLS } from "./activity-database-shared";
+import { DivisionSplit, selectedDivisionLabel } from "./division-filter-pane";
+import { QsSourceNote } from "./qs-source-note";
 
 function TableError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -55,11 +58,27 @@ function UsedByCell({ db, workItemId, onOpenActivity }: { db: SupabaseClient; wo
   );
 }
 
-/** BOQ tab: the cost library's work items with the activities that use each one. */
+/** BOQ tab: the cost library's work items by CSI division, with the activities that use each one. */
 export function BoqLibraryTab({
-  db, query, refreshKey, onOpenActivity, onOpenBoq,
-}: { db: SupabaseClient; query: string; refreshKey: number; onOpenActivity: (id: string) => void; onOpenBoq: (id: string, list: WorkItemListRow[]) => void }) {
-  const key = `${query}|${refreshKey}`;
+  db, divisions, query, refreshKey, onOpenActivity, onOpenBoq,
+}: {
+  db: SupabaseClient; divisions: Division[]; query: string; refreshKey: number;
+  onOpenActivity: (id: string) => void; onOpenBoq: (id: string, list: WorkItemListRow[]) => void;
+}) {
+  const [division, setDivision] = useState<string | null>(null);
+  const key = `${query}|${division}|${refreshKey}`;
+  const countKey = `${query}|${refreshKey}`;
+  const [counts, setCounts] = useState<{ key: string; map: Map<string, number> } | null>(null);
+  useEffect(() => {
+    let live = true;
+    // On failure the pane shows no counts; the table reports its own error.
+    workItemDivisionCounts(db, query)
+      .then((map) => { if (live) setCounts({ key: countKey, map }); })
+      .catch(() => { if (live) setCounts({ key: countKey, map: new Map() }); });
+    return () => { live = false; };
+  }, [db, query, countKey]);
+  const countMap = counts?.key === countKey ? counts.map : null;
+  const countTotal = countMap ? [...countMap.values()].reduce((a, n) => a + n, 0) : null;
   const [state, setState] = useState<{ key: string; items: WorkItemListRow[]; total: number; error: string | null } | null>(null);
   const [more, setMore] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -67,11 +86,11 @@ export function BoqLibraryTab({
 
   useEffect(() => {
     let live = true;
-    listWorkItemsLibrary(db, { q: query, limit: PAGE_SIZE, offset: 0 })
+    listWorkItemsLibrary(db, { q: query, division, limit: PAGE_SIZE, offset: 0 })
       .then((p) => { if (live) setState({ key, items: p.items, total: p.total, error: null }); })
       .catch((e) => { if (live) setState({ key, items: [], total: 0, error: errorMessage(e, "Failed to load BOQ items") }); });
     return () => { live = false; };
-  }, [db, query, key, retry]);
+  }, [db, query, division, key, retry]);
 
   const liveKey = useRef(key);
   useEffect(() => { liveKey.current = key; }, [key]);
@@ -82,7 +101,7 @@ export function BoqLibraryTab({
     const offset = state.items.length;
     setMore(true);
     try {
-      const p = await listWorkItemsLibrary(db, { q: query, limit: PAGE_SIZE, offset });
+      const p = await listWorkItemsLibrary(db, { q: query, division, limit: PAGE_SIZE, offset });
       if (liveKey.current !== startKey) return;
       setState((s) => (s && s.key === startKey ? { ...s, items: [...s.items, ...p.items], total: p.total } : s));
     } catch (e) {
@@ -91,14 +110,37 @@ export function BoqLibraryTab({
     } finally { setMore(false); }
   }
 
-  if (!state || state.key !== key) return <TableSkeleton />;
-  if (state.error) return <TableError message={state.error} onRetry={() => { setState(null); setRetry((n) => n + 1); }} />;
-  if (state.items.length === 0) {
-    return <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{query ? "No BOQ items match your search." : "The cost library has no BOQ items yet."}</p>;
-  }
+  return (
+    <DivisionSplit divisions={divisions} counts={countMap} total={countTotal} noun="BOQ item" selected={division} onSelect={setDivision}
+      note={<QsSourceNote source="boq">Each BOQ item takes its CSI division from the QS cost library.</QsSourceNote>}
+    >
+      {!state || state.key !== key ? <TableSkeleton /> : state.error ? (
+        <TableError message={state.error} onRetry={() => { setState(null); setRetry((n) => n + 1); }} />
+      ) : state.items.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {division !== null ? "No BOQ items in this division." : query ? "No BOQ items match your search." : "The cost library has no BOQ items yet."}
+        </p>
+      ) : (
+        <BoqTable
+          db={db} items={state.items} total={state.total} label={selectedDivisionLabel(divisions, division)} more={more} onLoadMore={() => void loadMore()}
+          openId={openId} setOpenId={setOpenId} onOpenActivity={onOpenActivity} onOpenBoq={onOpenBoq}
+        />
+      )}
+    </DivisionSplit>
+  );
+}
+
+function BoqTable({
+  db, items, total, label, more, onLoadMore, openId, setOpenId, onOpenActivity, onOpenBoq,
+}: {
+  db: SupabaseClient; items: WorkItemListRow[]; total: number; label: string; more: boolean; onLoadMore: () => void;
+  openId: string | null; setOpenId: (id: string | null) => void; onOpenActivity: (id: string) => void; onOpenBoq: (id: string, list: WorkItemListRow[]) => void;
+}) {
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">{state.total.toLocaleString()} BOQ item{state.total === 1 ? "" : "s"}. Select a row to open the BOQ item; use the arrow to see the activities that use it.</p>
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">{label}</span>: {total.toLocaleString()} BOQ item{total === 1 ? "" : "s"}. Select a row to open the BOQ item; use the arrow to see the activities that use it.
+      </p>
       <div className="overflow-auto rounded-lg border border-border">
         <Table>
           <TableHeader>
@@ -107,11 +149,11 @@ export function BoqLibraryTab({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {state.items.map((w) => {
+            {items.map((w) => {
               const open = openId === w.id;
               return (
                 <Fragment key={w.id}>
-                  <TableRow className="cursor-pointer" onClick={() => onOpenBoq(w.id, state.items)}>
+                  <TableRow className="cursor-pointer" onClick={() => onOpenBoq(w.id, items)}>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <button type="button" aria-expanded={open} aria-label={open ? "Hide activities" : "Show activities"} onClick={() => setOpenId(open ? null : w.id)}>
                         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -134,10 +176,10 @@ export function BoqLibraryTab({
           </TableBody>
         </Table>
       </div>
-      {state.items.length < state.total && (
+      {items.length < total && (
         <div className="flex justify-center">
-          <Button variant="outline" size="sm" disabled={more} onClick={() => void loadMore()}>
-            {more && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Load more ({(state.total - state.items.length).toLocaleString()} left)
+          <Button variant="outline" size="sm" disabled={more} onClick={onLoadMore}>
+            {more && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Load more ({(total - items.length).toLocaleString()} left)
           </Button>
         </div>
       )}
@@ -145,9 +187,10 @@ export function BoqLibraryTab({
   );
 }
 
-/** Resource tab: labour and equipment from the cost library. */
-export function ResourceLibraryTab({ db, query, refreshKey }: { db: SupabaseClient; query: string; refreshKey: number }) {
+/** Resource tab: labour and equipment from the cost library, by CSI division (taken from the BOQ items that use them). */
+export function ResourceLibraryTab({ db, divisions, query, refreshKey }: { db: SupabaseClient; divisions: Division[]; query: string; refreshKey: number }) {
   const [kind, setKind] = useState<"all" | "labor" | "equipment">("all");
+  const [division, setDivision] = useState<string | null>(null);
   const key = `${query}|${kind}|${refreshKey}`;
   const [state, setState] = useState<{ key: string; rows: ResourceListRow[]; error: string | null } | null>(null);
   const [retry, setRetry] = useState(0);
@@ -161,39 +204,53 @@ export function ResourceLibraryTab({ db, query, refreshKey }: { db: SupabaseClie
   }, [db, query, kind, key, retry]);
 
   const loaded = state?.key === key ? state : null;
+  const counts = useMemo(() => (loaded && !loaded.error ? countByDivision(loaded.rows, (r) => r.divisions) : null), [loaded]);
+  const rows = useMemo(() => (loaded?.rows ?? []).filter((r) => inDivision(r.divisions, division)), [loaded, division]);
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Type
-          <select className={`${SELECT_CLS} w-44`} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-            <option value="all">All (M and E)</option>
-            <option value="labor">M - Manpower</option>
-            <option value="equipment">E - Equipment</option>
-          </select>
-        </label>
-        {loaded && !loaded.error && <span className="text-sm text-muted-foreground">{loaded.rows.length.toLocaleString()} resource{loaded.rows.length === 1 ? "" : "s"}</span>}
-      </div>
-      {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={() => { setState(null); setRetry((n) => n + 1); }} /> : loaded.rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{query ? "No resources match your search." : "The cost library has no manpower or equipment resources yet."}</p>
-      ) : (
-        <div className="overflow-auto rounded-lg border border-border">
-          <Table>
-            <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Resource</TableHead><TableHead>Type</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">BOQ items</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {loaded.rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-mono text-xs">{r.code}</TableCell>
-                  <TableCell>{r.name}</TableCell>
-                  <TableCell><Badge variant="secondary">{r.kind === "labor" ? "M" : "E"}</Badge></TableCell>
-                  <TableCell>{r.unit}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.workItemCount.toLocaleString()}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+    <DivisionSplit divisions={divisions} counts={counts} total={loaded?.rows.length ?? null} noun="resource" selected={division} onSelect={setDivision}
+      note={<QsSourceNote source="resource">Labour and equipment have no division of their own; they are listed under the divisions of the BOQ items that use them.</QsSourceNote>}
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            Type
+            <select className={`${SELECT_CLS} w-44`} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+              <option value="all">All (M and E)</option>
+              <option value="labor">M - Manpower</option>
+              <option value="equipment">E - Equipment</option>
+            </select>
+          </label>
+          {loaded && !loaded.error && (
+            <span className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{selectedDivisionLabel(divisions, division)}</span>: {rows.length.toLocaleString()} resource{rows.length === 1 ? "" : "s"}
+              {division === NO_DIVISION && ". No BOQ item with a division uses these yet."}
+            </span>
+          )}
         </div>
-      )}
-    </div>
+        {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={() => { setState(null); setRetry((n) => n + 1); }} /> : rows.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            {loaded.rows.length > 0 ? "No resources in this division." : query ? "No resources match your search." : "The cost library has no manpower or equipment resources yet."}
+          </p>
+        ) : (
+          <div className="overflow-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Resource</TableHead><TableHead>Type</TableHead><TableHead>Unit</TableHead><TableHead>Divisions</TableHead><TableHead className="text-right">BOQ items</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs">{r.code}</TableCell>
+                    <TableCell>{r.name}</TableCell>
+                    <TableCell><Badge variant="secondary">{r.kind === "labor" ? "M" : "E"}</Badge></TableCell>
+                    <TableCell>{r.unit}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{r.divisions.length ? r.divisions.join(", ") : "-"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.workItemCount.toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </DivisionSplit>
   );
 }

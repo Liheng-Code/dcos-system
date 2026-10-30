@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { insertDesignDrawing, listDesignDrawings, listDesignDrawingsByDiscipline, updateDesignDrawingById } from "@/lib/design/design-queries";
+import { insertDesignDrawing, listDesignDrawingsByDiscipline, updateDesignDrawingById } from "@/lib/design/design-queries";
+import { useProject } from "@/components/dashboard/project-context";
 import { Search, Plus, Loader2, Pencil, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ const statusColors: Record<string, string> = {
 };
 
 export function DesignDrawingList({ discipline }: { discipline: string }) {
+  const { selectedProjectId } = useProject();
   const [items, setItems] = useState<Drawing[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -31,18 +33,20 @@ export function DesignDrawingList({ discipline }: { discipline: string }) {
   const [editing, setEditing] = useState<Drawing | null>(null);
 
   function load() {
+    if (!selectedProjectId) return;
     setLoading(true);
-    listDesignDrawingsByDiscipline(discipline).then(({ data }) => {
+    listDesignDrawingsByDiscipline(selectedProjectId, discipline).then(({ data }) => {
       if (data) setItems(data as Drawing[]);
       setLoading(false);
     });
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedProjectId]);
 
   const filtered = items.filter(d => d.drawing_no.toLowerCase().includes(search.toLowerCase()) || d.title.toLowerCase().includes(search.toLowerCase()));
 
-  if (showForm) return <DesignDrawingForm discipline={discipline} drawing={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
+  if (!selectedProjectId) return <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Select a project to see its drawings.</p>;
+  if (showForm) return <DesignDrawingForm projectId={selectedProjectId} discipline={discipline} drawing={editing} onSaved={() => { setShowForm(false); setEditing(null); load(); }} onCancel={() => { setShowForm(false); setEditing(null); }} />;
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   return (
@@ -86,7 +90,7 @@ export function DesignDrawingList({ discipline }: { discipline: string }) {
   );
 }
 
-function DesignDrawingForm({ discipline, drawing, onSaved, onCancel }: { discipline: string; drawing: Drawing | null; onSaved: () => void; onCancel: () => void }) {
+function DesignDrawingForm({ projectId, discipline, drawing, onSaved, onCancel }: { projectId: string; discipline: string; drawing: Drawing | null; onSaved: () => void; onCancel: () => void }) {
   const isNew = !drawing?.id;
   const [drawingNo, setDrawingNo] = useState(drawing?.drawing_no ?? "");
   const [title, setTitle] = useState(drawing?.title ?? "");
@@ -97,9 +101,9 @@ function DesignDrawingForm({ discipline, drawing, onSaved, onCancel }: { discipl
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const payload = { discipline, drawing_no: drawingNo, title, revision, status, project_id: (await listDesignDrawings()).data?.[0]?.project_id || "00000000-0000-0000-0000-000000000000" };
+    const payload = { discipline, drawing_no: drawingNo, title, revision, status, project_id: projectId };
     const { error } = isNew
-      ? await insertDesignDrawing({ ...payload, project_id: crypto.randomUUID() })
+      ? await insertDesignDrawing(payload)
       : await updateDesignDrawingById({ title, revision, status }, drawing!.id);
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(isNew ? "Drawing created" : "Drawing updated");

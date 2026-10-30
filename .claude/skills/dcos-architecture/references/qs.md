@@ -43,7 +43,7 @@
   - `dwl_work_items.csi_section_code` / `csi_division_code` (nullable FKs; trigger `dwl_work_item_csi_sync`). Backfilled for 86 of 305 items; the rest need classifying.
   - `qs_wbs_template_items.masterformat_code` → FK `csi_sections`, `NOT VALID`.
   - **Frozen:** `dwl_material_divisions` and `dwl_material_division_sections` (writes rejected; dropped in a later cleanup). The Material Divisions page is read-only with a link to Administration.
-  - Old FK `dwl_material_categories` → `dwl_material_divisions` still limits categories to the old 25 codes until cleanup.
+  - Old FK `dwl_material_categories` → `dwl_material_divisions` dropped in `20261030154000`; categories reference `csi_divisions` only (all CSI codes allowed).
   - Planning reads the new RPCs `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`, which filter `dwl_work_items` by CSI division.
 - **Triggers:**
   - `tender_lock_guard` on 12 tender pricing tables + `tender_commercial_items` + alternates.

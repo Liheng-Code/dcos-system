@@ -32,7 +32,7 @@ export interface CoordinationItem {
   id: string; code: string; name: string; discipline: string | null; description: string | null; is_active: boolean; sort_order: number;
 }
 export interface MaterialOption { id: string; code: string; name: string; unit: string }
-export interface MaterialListRow extends MaterialOption { usedBy: number }
+export interface MaterialListRow extends MaterialOption { usedBy: number; divisions: string[] }
 export type WithUsage<T> = T & { usedBy: number };
 
 export type UsingActivity = { id: string; visible_code: string | null; code: string; name: string };
@@ -159,6 +159,24 @@ async function withMaterialNames(db: Db, rows: ResourceRow[]): Promise<MaterialO
   return rows.map((r) => ({ id: r.id, code: r.code, unit: r.unit, name: materialDisplayName(nameById.get(r.id), r.description) }));
 }
 
+const CHIP_TABLE: Record<Exclude<ChipKind, "material">, string> = {
+  shop_drawing: "plan_act_shop_drawing_types",
+  coordination: "plan_act_coordination_items",
+  method_statement: "plan_act_method_statements",
+  tc: "plan_act_tc_items",
+};
+
+/** Library items (or QS materials) by id, active or not, to show a link stored on a project record. */
+export async function getChipOptionsByIds(db: Db, kind: ChipKind, ids: readonly string[]): Promise<Map<string, { id: string; code: string; name: string }>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (kind === "material") {
+    const rows = await inChunks<ResourceRow>(unique, (p) => db.from("dwl_resources").select("id, code, description, unit").in("id", p));
+    return new Map((await withMaterialNames(db, rows)).map((m) => [m.id, m]));
+  }
+  const rows = await inChunks<{ id: string; code: string; name: string }>(unique, (p) => db.from(CHIP_TABLE[kind]).select("id, code, name").in("id", p));
+  return new Map(rows.map((r) => [r.id, r]));
+}
+
 /** Active QS materials (dwl_resources category 'material') whose code or description contains `q`. */
 export async function searchMaterials(db: Db, q: string, limit = 40): Promise<MaterialOption[]> {
   const s = safeTerm(q);
@@ -196,11 +214,37 @@ export async function listActivitiesUsingChip(db: Db, kind: ChipKind, refId: str
   return rows.sort((a, b) => (a.visible_code ?? "~").localeCompare(b.visible_code ?? "~") || a.code.localeCompare(b.code));
 }
 
-/** Material tab: QS materials with the number of activities that use each (read-only). */
+/**
+ * CSI divisions of labour and equipment resources. They carry no division of their own, so they take the divisions of
+ * the active BOQ items that use them.
+ */
+export async function resourceDivisions(db: Db): Promise<Map<string, Set<string>>> {
+  const rows = await allPages<{ resource_id: string; parent: { csi_division_code: string } | null }>((from, to) =>
+    db.from("dwl_work_item_resources").select("resource_id, parent:dwl_work_items!inner(csi_division_code)")
+      .eq("parent.is_active", true).not("parent.csi_division_code", "is", null).order("id").range(from, to) as never);
+  const out = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.parent) continue;
+    const set = out.get(r.resource_id) ?? new Set<string>();
+    set.add(r.parent.csi_division_code);
+    out.set(r.resource_id, set);
+  }
+  return out;
+}
+
+/** CSI division of each material from its QS material category (dwl_material_attributes.category_id -> dwl_material_categories). */
+async function materialCategoryDivisions(db: Db, ids: string[]): Promise<Map<string, string>> {
+  const rows = await inChunks<{ resource_id: string; category: { division_code: string | null } | null }>(ids, (p) =>
+    db.from("dwl_material_attributes").select("resource_id, category:dwl_material_categories(division_code)").in("resource_id", p) as never);
+  return new Map(rows.filter((r) => r.category?.division_code).map((r) => [r.resource_id, r.category!.division_code!]));
+}
+
+/** Material tab: QS materials with the CSI division of their QS material category and the number of activities that use each (read-only). */
 export async function listMaterialsLibrary(db: Db, opts: { q?: string; limit?: number } = {}): Promise<MaterialListRow[]> {
-  const mats = await searchMaterials(db, opts.q ?? "", opts.limit ?? 300);
-  const used = await usageCounts(db, "material", mats.map((m) => m.id));
-  return mats.map((m) => ({ ...m, usedBy: used.get(m.id) ?? 0 }));
+  const mats = await searchMaterials(db, opts.q ?? "", opts.limit ?? 2000);
+  const ids = mats.map((m) => m.id);
+  const [used, divisions] = await Promise.all([usageCounts(db, "material", ids), materialCategoryDivisions(db, ids)]);
+  return mats.map((m) => ({ ...m, usedBy: used.get(m.id) ?? 0, divisions: divisions.has(m.id) ? [divisions.get(m.id)!] : [] }));
 }
 
 // ---------------------------------------------------------------- libraries (shop drawing types, coordination items)

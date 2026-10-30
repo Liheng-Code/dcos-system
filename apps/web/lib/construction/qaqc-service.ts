@@ -23,6 +23,8 @@ export interface ItpItem {
   responsible_party: string | null;
   acceptance_criteria: string | null;
   document_reference: string | null;
+  /** Planning T&C item (Activity Database) this line comes from; null for a line typed by hand. */
+  tc_item_id: string | null;
 }
 
 export interface InspectionRequest {
@@ -131,7 +133,7 @@ export async function getItpItems(itpId: string): Promise<ItpItem[]> {
 }
 
 export async function createItpItem(
-  payload: Pick<ItpItem, "itp_id" | "activity" | "inspection_type" | "responsible_party" | "acceptance_criteria" | "document_reference"> & { seq: number },
+  payload: Pick<ItpItem, "itp_id" | "activity" | "inspection_type" | "responsible_party" | "acceptance_criteria" | "document_reference"> & { seq: number; tc_item_id?: string | null },
 ): Promise<ItpItem> {
   const supabase = createClient();
   const { data, error } = await supabase.from("itp_items").insert(payload).select().single();

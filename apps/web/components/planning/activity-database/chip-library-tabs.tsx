@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { isHttpUrl, suggestNextCode, TC_TYPE_LABEL, TC_TYPES, type ChipKind, type TcType } from "@/lib/planning/activity-library/activity-chips-rules";
+import {
+  countByDivision, inDivision, isHttpUrl, NO_DIVISION, suggestNextCode, TC_TYPE_LABEL, TC_TYPES, type ChipKind, type TcType,
+} from "@/lib/planning/activity-library/activity-chips-rules";
 import {
   listActivitiesUsingChip, listCoordinationItems, listMaterialsLibrary, listMethodStatements, listShopDrawingTypes, listTcItems, setCoordinationItemActive,
   setMethodStatementActive, setShopDrawingTypeActive, setTcItemActive, upsertCoordinationItem, upsertMethodStatement, upsertShopDrawingType, upsertTcItem,
@@ -22,6 +24,8 @@ import {
 } from "@/lib/planning/activity-library/activity-chips-service";
 import type { Division } from "@/lib/planning/activity-library/activity-database-service";
 import { errorMessage, SELECT_CLS } from "./activity-database-shared";
+import { DivisionSplit, FilterSplit, selectedDivisionLabel, type FilterEntry } from "./division-filter-pane";
+import { QsSourceNote } from "./qs-source-note";
 
 function TableError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -80,25 +84,52 @@ function useRows<T>(load: () => Promise<T[]>, key: string, failure: string) {
 
 // ---------------------------------------------------------------- Material (read-only)
 
-/** Material tab: QS materials with the number of activities that use each. Managed in the QS cost library, so read-only here. */
-export function MaterialLibraryTab({ db, query, refreshKey, onOpenActivity }: { db: SupabaseClient; query: string; refreshKey: number; onOpenActivity: (id: string) => void }) {
+/**
+ * Material tab: QS materials by CSI division (the division of its QS material category) with the number of
+ * activities that use each. Managed in the QS cost library, so read-only here.
+ */
+export function MaterialLibraryTab({
+  db, divisions, query, refreshKey, onOpenActivity,
+}: { db: SupabaseClient; divisions: Division[]; query: string; refreshKey: number; onOpenActivity: (id: string) => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [division, setDivision] = useState<string | null>(null);
   const load = useCallback(() => listMaterialsLibrary(db, { q: query }), [db, query]);
   const { loaded, retry } = useRows<MaterialListRow>(load, `${query}|${refreshKey}`, "Failed to load materials");
+  const counts = useMemo(() => (loaded && !loaded.error ? countByDivision(loaded.rows, (m) => m.divisions) : null), [loaded]);
+  const rows = useMemo(() => (loaded?.rows ?? []).filter((m) => inDivision(m.divisions, division)), [loaded, division]);
 
-  if (!loaded) return <TableSkeleton />;
-  if (loaded.error) return <TableError message={loaded.error} onRetry={retry} />;
-  if (loaded.rows.length === 0) {
-    return <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{query ? "No materials match your search." : "The cost library has no materials yet."}</p>;
-  }
+  return (
+    <DivisionSplit divisions={divisions} counts={counts} total={loaded?.rows.length ?? null} noun="material" selected={division} onSelect={setDivision}
+      note={<QsSourceNote source="material">Each material takes its CSI division from its QS material category.</QsSourceNote>}
+    >
+      {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={retry} /> : rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          {loaded.rows.length > 0 ? "No materials in this division." : query ? "No materials match your search." : "The cost library has no materials yet."}
+        </p>
+      ) : (
+        <MaterialTable db={db} rows={rows} division={division} divisions={divisions} openId={openId} setOpenId={setOpenId} onOpenActivity={onOpenActivity} />
+      )}
+    </DivisionSplit>
+  );
+}
+
+function MaterialTable({
+  db, rows, division, divisions, openId, setOpenId, onOpenActivity,
+}: {
+  db: SupabaseClient; rows: MaterialListRow[]; division: string | null; divisions: Division[]; openId: string | null; setOpenId: (id: string | null) => void;
+  onOpenActivity: (id: string) => void;
+}) {
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">{loaded.rows.length.toLocaleString()} material{loaded.rows.length === 1 ? "" : "s"} from the QS cost library. Select a row to see the activities that use it.</p>
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">{selectedDivisionLabel(divisions, division)}</span>: {rows.length.toLocaleString()} material{rows.length === 1 ? "" : "s"} from the QS cost library.
+        {division === NO_DIVISION ? " These have no material category with a division in the QS cost library yet." : " Select a row to see the activities that use it."}
+      </p>
       <div className="overflow-auto rounded-lg border border-border">
         <Table>
-          <TableHeader><TableRow><TableHead className="w-8" /><TableHead>Code</TableHead><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">Used by</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="w-8" /><TableHead>Code</TableHead><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead>Division</TableHead><TableHead className="text-right">Used by</TableHead></TableRow></TableHeader>
           <TableBody>
-            {loaded.rows.map((m) => {
+            {rows.map((m) => {
               const open = openId === m.id;
               return (
                 <Fragment key={m.id}>
@@ -107,11 +138,12 @@ export function MaterialLibraryTab({ db, query, refreshKey, onOpenActivity }: { 
                     <TableCell className="font-mono text-xs">{m.code}</TableCell>
                     <TableCell>{m.name}</TableCell>
                     <TableCell>{m.unit}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{m.divisions.length ? m.divisions.join(", ") : "-"}</TableCell>
                     <TableCell className="text-right">{usedByBadge(m.usedBy)}</TableCell>
                   </TableRow>
                   {open && (
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableCell /><TableCell colSpan={4}><UsedByCell db={db} kind="material" refId={m.id} onOpenActivity={onOpenActivity} /></TableCell>
+                      <TableCell /><TableCell colSpan={5}><UsedByCell db={db} kind="material" refId={m.id} onOpenActivity={onOpenActivity} /></TableCell>
                     </TableRow>
                   )}
                 </Fragment>
@@ -192,15 +224,18 @@ const SPECS: Record<LibraryKind, Spec> = {
 };
 
 function ItemDialog({
-  kind, db, row, existingCodes, divisions, onClose, onSaved,
+  kind, db, row, existingCodes, divisions, defaultDivision, onClose, onSaved,
 }: {
-  kind: LibraryKind; db: SupabaseClient; row: LibraryRow | null; existingCodes: string[]; divisions: Division[]; onClose: () => void; onSaved: () => void;
+  kind: LibraryKind; db: SupabaseClient; row: LibraryRow | null; existingCodes: string[]; divisions: Division[];
+  /** Division (discipline for coordination) a new item starts in: the one selected in the left pane. */
+  defaultDivision: string | null;
+  onClose: () => void; onSaved: () => void;
 }) {
   const spec = SPECS[kind];
   const form = useForm<ItemValues>({
     resolver: zodResolver(itemSchema),
     defaultValues: {
-      code: row?.code ?? suggestNextCode(existingCodes, spec.prefix(""), 2), name: row?.name ?? "", division: row?.division ?? "", discipline: row?.discipline ?? "",
+      code: row?.code ?? suggestNextCode(existingCodes, spec.prefix(""), 2), name: row?.name ?? "", division: row ? row.division ?? "" : defaultDivision ?? "", discipline: row ? row.discipline ?? "" : defaultDivision ?? "",
       reference: row?.reference ?? "", criteria: row?.criteria ?? "", tc_type: row?.tcType ?? "test", description: row?.description ?? "", sort_order: String(row?.sort_order ?? 0),
     },
   });
@@ -349,6 +384,12 @@ export function ChipLibraryTab({
   const [busyId, setBusyId] = useState<string | null>(null);
   const load = useCallback(() => spec.load(db, query, type), [spec, db, query, type]);
   const { loaded, retry } = useRows<LibraryRow>(load, `${kind}|${query}|${type}|${refreshKey}|${local}`, "Failed to load the library");
+  // Coordination items have a discipline, not a CSI division, so that tab's left pane lists disciplines.
+  const byDivision = kind !== "coordination";
+  const [division, setDivision] = useState<string | null>(null);
+  const groupOf = useCallback((r: LibraryRow) => (byDivision ? r.division : r.discipline?.trim() || null), [byDivision]);
+  const counts = useMemo(() => (loaded && !loaded.error ? countByDivision(loaded.rows, (r) => [groupOf(r)]) : null), [loaded, groupOf]);
+  const rows = useMemo(() => (loaded?.rows ?? []).filter((r) => inDivision([groupOf(r)], division)), [loaded, groupOf, division]);
   const divisionName = (code: string | null) => (code ? divisions.find((d) => d.code === code)?.name ?? "" : "");
   const heads = extraHeads(kind);
   const colSpan = heads.length + 3 + (canManage ? 1 : 0);
@@ -362,7 +403,7 @@ export function ChipLibraryTab({
     } catch (e) { toast.error(errorMessage(e, "Could not update")); } finally { setBusyId(null); }
   }
 
-  return (
+  const body = (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
@@ -376,16 +417,19 @@ export function ChipLibraryTab({
             </label>
           )}
           <p className="text-sm text-muted-foreground">
-            {loaded && !loaded.error ? `${loaded.rows.length.toLocaleString()} ${spec.noun}${loaded.rows.length === 1 ? "" : "s"}. ` : ""}
+            <span className="font-medium text-foreground">
+              {byDivision ? selectedDivisionLabel(divisions, division) : division === null ? "All disciplines" : division === NO_DIVISION ? "No discipline" : division}:{" "}
+            </span>
+            {loaded && !loaded.error ? `${rows.length.toLocaleString()} ${spec.noun}${rows.length === 1 ? "" : "s"}. ` : ""}
             Select a row to see the activities that use it.
           </p>
         </div>
         {canManage && <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add {spec.noun}</Button>}
       </div>
-      {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={retry} /> : loaded.rows.length === 0 ? (
+      {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={retry} /> : rows.length === 0 ? (
         <div className="space-y-2 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          <p>{query || type !== "all" ? "No items match your filter." : "This library is empty."}</p>
-          {canManage && !query && type === "all" && <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add the first one</Button>}
+          <p>{loaded.rows.length > 0 ? `No items in this ${byDivision ? "division" : "discipline"}.` : query || type !== "all" ? "No items match your filter." : "This library is empty."}</p>
+          {canManage && !query && type === "all" && <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add {loaded.rows.length > 0 ? `one to this division` : "the first one"}</Button>}
         </div>
       ) : (
         <div className="overflow-auto rounded-lg border border-border">
@@ -398,7 +442,7 @@ export function ChipLibraryTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loaded.rows.map((r) => {
+              {rows.map((r) => {
                 const open = openId === r.id;
                 return (
                   <Fragment key={r.id}>
@@ -431,10 +475,34 @@ export function ChipLibraryTab({
       {editing && (
         <ItemDialog
           kind={kind} db={db} row={editing === "new" ? null : editing} divisions={divisions}
+          defaultDivision={division !== NO_DIVISION ? division : null}
           existingCodes={loaded?.rows.map((r) => r.code) ?? []}
           onClose={() => setEditing(null)} onSaved={() => setLocal((n) => n + 1)}
         />
       )}
     </div>
   );
+
+  if (!byDivision) {
+    return (
+      <FilterSplit title="Disciplines" noun={spec.noun} entries={disciplineEntries(counts)} total={loaded?.rows.length ?? null} selected={division} onSelect={setDivision}>
+        {body}
+      </FilterSplit>
+    );
+  }
+  return (
+    <DivisionSplit divisions={divisions} counts={counts} total={loaded?.rows.length ?? null} noun={spec.noun} selected={division} onSelect={setDivision}>
+      {body}
+    </DivisionSplit>
+  );
+}
+
+/** Coordination disciplines as filter entries (alphabetical), "No discipline" last. */
+function disciplineEntries(counts: Map<string, number> | null): FilterEntry[] | null {
+  if (!counts) return null;
+  const named = [...counts].filter(([k]) => k !== NO_DIVISION).sort(([a], [b]) => a.localeCompare(b));
+  const out: FilterEntry[] = named.map(([k, n]) => ({ key: k, label: k, group: "", count: n }));
+  const none = counts.get(NO_DIVISION) ?? 0;
+  if (none > 0) out.push({ key: NO_DIVISION, label: "No discipline", group: "Unassigned", count: none, dim: true });
+  return out;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, ChevronDown, ChevronRight, Trash2, CheckCircle2, Archive, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, ChevronDown, ChevronRight, Trash2, CheckCircle2, Archive, Loader2, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,22 @@ import {
   createItpItem,
   deleteItpItem,
 } from "@/lib/construction/qaqc-service";
+import { createClient } from "@/lib/supabase/client";
+import { itpInspectionType, listCatalogueOptions, listProjectRequirements, type CatalogueOption, type Requirement } from "@/lib/planning/public";
+
+type ItemForm = {
+  activity: string; inspection_type: "hold" | "witness" | "review";
+  responsible_party: string; acceptance_criteria: string; document_reference: string; tc_item_id: string;
+};
+const EMPTY_ITEM: ItemForm = { activity: "", inspection_type: "review", responsible_party: "", acceptance_criteria: "", document_reference: "", tc_item_id: "" };
+
+/** ITP line fields from a Planning T&C item (Activity Database). */
+function itemFromTc(tc: CatalogueOption): Omit<ItemForm, "responsible_party"> {
+  return {
+    activity: tc.name, inspection_type: itpInspectionType(tc.tc_type ?? "test"),
+    acceptance_criteria: tc.acceptance_criteria ?? "", document_reference: tc.standard_ref ?? "", tc_item_id: tc.id,
+  };
+}
 
 const TYPE_COLORS = {
   hold:    "bg-red-100 text-red-700",
@@ -45,10 +61,23 @@ export function ItpManager({ projectId }: Props) {
   const [saving, setSaving] = useState(false);
 
   // New item form (per ITP)
-  const [itemForm, setItemForm] = useState<Record<string, {
-    activity: string; inspection_type: "hold" | "witness" | "review";
-    responsible_party: string; acceptance_criteria: string; document_reference: string;
-  }>>({});
+  const [itemForm, setItemForm] = useState<Record<string, ItemForm>>({});
+
+  // Planning T&C catalogue and the T&C items this project's activities require (Activity Database).
+  const db = useMemo(() => createClient(), []);
+  const [tcOptions, setTcOptions] = useState<CatalogueOption[]>([]);
+  const [tcRequired, setTcRequired] = useState<Requirement[] | null>(null);
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    let live = true;
+    listCatalogueOptions(db, "tc").then((o) => { if (live) setTcOptions(o); }).catch(() => {});
+    listProjectRequirements(db, projectId, { kinds: ["tc"] })
+      .then((r) => { if (live) setTcRequired(r); })
+      .catch(() => { if (live) setTcRequired([]); });
+    return () => { live = false; };
+  }, [db, projectId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,10 +140,39 @@ export function ItpManager({ projectId }: Props) {
         responsible_party: f.responsible_party || null,
         acceptance_criteria: f.acceptance_criteria || null,
         document_reference: f.document_reference || null,
+        tc_item_id: f.tc_item_id || null,
       });
       setItemsMap((prev) => ({ ...prev, [itpId]: [...(prev[itpId] ?? []), item] }));
-      setItemForm((prev) => ({ ...prev, [itpId]: { activity: "", inspection_type: "review", responsible_party: "", acceptance_criteria: "", document_reference: "" } }));
+      setItemForm((prev) => ({ ...prev, [itpId]: EMPTY_ITEM }));
     } catch (e: any) { toast.error(e.message); }
+  }
+
+  /** T&C requirements of the project's activities (only those at the ITP's WBS node when it has one) not yet on this ITP. */
+  function openRequirements(itp: Itp): Requirement[] {
+    const onItp = new Set((itemsMap[itp.id] ?? []).map((i) => i.tc_item_id).filter(Boolean));
+    return (tcRequired ?? []).filter((r) => !onItp.has(r.item.id) && (!itp.wbs_node_id || r.tasks.some((t) => t.wbs_node_id === itp.wbs_node_id)));
+  }
+
+  async function handleAddRequired(itp: Itp) {
+    const reqs = openRequirements(itp).filter((r) => picked.has(r.item.id));
+    if (!reqs.length) return;
+    setAdding(true);
+    try {
+      let seq = itemsMap[itp.id]?.length ?? 0;
+      const created: ItpItem[] = [];
+      for (const r of reqs) {
+        const fields = itemFromTc(r.item);
+        created.push(await createItpItem({
+          itp_id: itp.id, seq: ++seq, activity: fields.activity, inspection_type: fields.inspection_type, responsible_party: null,
+          acceptance_criteria: fields.acceptance_criteria || null, document_reference: fields.document_reference || null, tc_item_id: fields.tc_item_id,
+        }));
+      }
+      setItemsMap((prev) => ({ ...prev, [itp.id]: [...(prev[itp.id] ?? []), ...created] }));
+      setPickingFor(null);
+      setPicked(new Set());
+      toast.success(`${created.length} T&C item${created.length === 1 ? "" : "s"} added`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Could not add the T&C items"); }
+    finally { setAdding(false); }
   }
 
   async function handleDeleteItem(itpId: string, itemId: string) {
@@ -196,7 +254,8 @@ export function ItpManager({ projectId }: Props) {
       {itps.map((itp) => {
         const expanded = expandedId === itp.id;
         const items = itemsMap[itp.id] ?? [];
-        const f = itemForm[itp.id] ?? { activity: "", inspection_type: "review" as const, responsible_party: "", acceptance_criteria: "", document_reference: "" };
+        const f = itemForm[itp.id] ?? EMPTY_ITEM;
+        const open = expanded ? openRequirements(itp) : [];
 
         return (
           <div key={itp.id} className="rounded-xl border border-slate-200 overflow-hidden">
@@ -253,7 +312,10 @@ export function ItpManager({ projectId }: Props) {
                           {items.map((item) => (
                             <tr key={item.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
                               <td className="px-3 py-2 text-slate-400">{item.seq}</td>
-                              <td className="px-3 py-2 font-medium">{item.activity}</td>
+                              <td className="px-3 py-2 font-medium">
+                                {item.activity}
+                                {item.tc_item_id && <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700" title="From the Planning T&C library">T&C</span>}
+                              </td>
                               <td className="px-3 py-2 text-center">
                                 <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", TYPE_COLORS[item.inspection_type])}>
                                   {item.inspection_type}
@@ -272,9 +334,63 @@ export function ItpManager({ projectId }: Props) {
                       </table>
                     )}
 
+                    {/* T&C required by the project's activities (Planning Activity Database) */}
+                    {tcRequired && open.length > 0 && (
+                      <div className="border-b border-slate-100 bg-violet-50/50 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs text-violet-800">
+                            <ListChecks className="h-3.5 w-3.5" />
+                            {open.length} T&C item{open.length === 1 ? "" : "s"} required by {itp.wbs_node_id ? "activities at this ITP's WBS location" : "this project's activities"} {open.length === 1 ? "is" : "are"} not on this ITP yet.
+                          </div>
+                          {pickingFor !== itp.id && (
+                            <Button size="sm" variant="outline" onClick={() => { setPickingFor(itp.id); setPicked(new Set(open.map((r) => r.item.id))); }}>Add from activities</Button>
+                          )}
+                        </div>
+                        {pickingFor === itp.id && (
+                          <>
+                            <div className="max-h-56 overflow-auto rounded-lg border border-violet-100 bg-white">
+                              {open.map((r) => (
+                                <label key={r.item.id} className="flex cursor-pointer items-start gap-2 border-b border-slate-100 px-3 py-1.5 text-xs last:border-0 hover:bg-slate-50">
+                                  <input
+                                    type="checkbox" className="mt-0.5" checked={picked.has(r.item.id)}
+                                    onChange={(e) => setPicked((prev) => { const n = new Set(prev); if (e.target.checked) n.add(r.item.id); else n.delete(r.item.id); return n; })}
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="font-mono text-slate-400">{r.item.code}</span> <span className="font-medium">{r.item.name}</span>
+                                    <span className="block truncate text-[10px] text-slate-500">
+                                      For {r.tasks.slice(0, 3).map((t) => t.task_name).join(", ")}{r.tasks.length > 3 ? ` +${r.tasks.length - 3} more` : ""}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="sm" disabled={adding || picked.size === 0} onClick={() => handleAddRequired(itp)}>
+                                {adding && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Add {picked.size} item{picked.size === 1 ? "" : "s"}
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setPickingFor(null)}>Cancel</Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     {/* Add item form */}
                     <div className="bg-slate-50 p-3 space-y-2">
                       <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Add Checklist Item</div>
+                      {tcOptions.length > 0 && (
+                        <select
+                          value={f.tc_item_id}
+                          onChange={(e) => {
+                            const tc = tcOptions.find((o) => o.id === e.target.value);
+                            setItemForm((p) => ({ ...p, [itp.id]: tc ? { ...f, ...itemFromTc(tc) } : { ...f, tc_item_id: "" } }));
+                          }}
+                          className="w-full rounded-lg border border-border bg-white px-2 py-1.5 text-xs outline-none focus:border-primary"
+                        >
+                          <option value="">From the Planning T&C library (optional): pick to fill the fields…</option>
+                          {tcOptions.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.name}</option>)}
+                        </select>
+                      )}
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-2">
                           <input
