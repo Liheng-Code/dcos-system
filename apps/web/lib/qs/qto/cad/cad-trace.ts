@@ -66,6 +66,11 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
   if (kind === "count") return [];
   if (kind === "length") return sheet.objects.filter((o) => o.layer === layer && LINEWORK.has(o.type) && o.length !== null && o.length > 0);
   const tol = Math.max(opts.tol, 1e-9);
+  return traceAreasOf(layerUnits(sheet, layer, tol), layer, tol, opts.islands ?? true, sheet.frame.k);
+}
+
+/** The closed boundaries on a layer: closed objects as drawn, loose lines joined into groups. */
+function layerUnits(sheet: CadSheet, layer: string, tol: number): Unit[] {
   // Areas and lengths of CAD objects are in drawing units; the outlines are in sheet units.
   const k = sheet.frame.k, k2 = k * k;
   const units: Unit[] = [];
@@ -87,7 +92,12 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
     else open.push({ pts: p.pts, handle: p.handle });
   }
   units.push(...joinLines(open, tol, k));
+  return units;
+}
 
+/** The areas of a layer's boundaries, each less the boundaries inside it (even-odd) when `islands`. */
+function traceAreasOf(units: Unit[], layer: string, tol: number, islands: boolean, k: number): TracedObject[] {
+  const k2 = k * k;
   // Openings: a unit wholly inside a larger area of another unit (touching its boundary counts as
   // inside, e.g. internal walls against the inner face of a core wall). Depth counts the areas around it.
   const all = units.flatMap((u, ui) => u.areas.map((a) => ({ ui, a, box: boxOf([a.poly]) })));
@@ -98,7 +108,6 @@ export function traceLayer(sheet: CadSheet, layer: string, kind: CadPickKind, op
       && p.y >= box.minY - tol && p.y <= box.maxY + tol && (pointIn(p, a.poly) || nearEdge(p, a.poly, tol)));
   };
   const depth = units.map((u, ui) => all.filter((x) => x.ui !== ui && inside(u, x.a, x.box)).length);
-  const islands = opts.islands ?? true;
   const out: TracedObject[] = [];
   all.forEach(({ ui, a, box }) => {
     const d = depth[ui];
@@ -321,4 +330,61 @@ function chainOf(lines: SheetObject[], handle: string, tol: number): SheetObject
     }
   }
   return lines.filter((_, i) => seen.has(i));
+}
+
+/**
+ * Every closed boundary on a layer by its outer edge, as a candidate opening: a closed object as
+ * drawn, a group of joined lines by its outside (an opening's cross lines do not split it).
+ */
+export function traceOpenings(sheet: CadSheet, layer: string, opts: TraceOptions): SheetObject[] {
+  const tol = Math.max(opts.tol, 1e-9);
+  const k = sheet.frame.k, k2 = k * k;
+  return layerUnits(sheet, layer, tol).map((u, i) => {
+    const one = u.areas.length === 1 && u.areas[0].poly === u.outer ? u.areas[0] : null;
+    return {
+      handle: `opening:${layer}:${i + 1}`, type: "LWPOLYLINE", layer, closed: true,
+      area: one ? one.area : Math.abs(signed(u.outer)) / k2,
+      length: one ? one.length : perim(u.outer) / k,
+      outline: [u.outer], box: boxOf([u.outer]), handles: u.handles,
+    };
+  });
+}
+
+/**
+ * The openings (from `traceOpenings`) lying wholly inside `area` and not in one of its openings
+ * already; an opening inside another is left out. With `pick`, only the one that entity draws, or
+ * else the smallest one around the cursor (a click on an opening's cross line).
+ */
+export function openingsIn(openings: SheetObject[], area: SheetObject, tol: number, pick?: { handle: string; p: Pt }): SheetObject[] {
+  const outer = area.outline[0];
+  const holes = area.outline.slice(1);
+  const size = Math.abs(signed(outer));
+  const box = boxOf([outer]);
+  const within = (l: Pt[], poly: Pt[]) => l.every((q) => pointIn(q, poly) || nearEdge(q, poly, tol));
+  const ins = openings.filter((o) => {
+    const l = o.outline[0];
+    if (Math.abs(signed(l)) >= size - tol * tol) return false;
+    if (o.box.minX < box.minX - tol || o.box.maxX > box.maxX + tol || o.box.minY < box.minY - tol || o.box.maxY > box.maxY + tol) return false;
+    return within(l, outer) && !holes.some((h) => within(l, h));
+  });
+  const top = ins.filter((o) => !ins.some((x) => x !== o && Math.abs(signed(x.outline[0])) > Math.abs(signed(o.outline[0])) && within(o.outline[0], x.outline[0])));
+  if (!pick) return top;
+  const byHandle = top.filter((o) => o.handles?.includes(pick.handle));
+  if (byHandle.length) return byHandle.slice(0, 1);
+  const around = top.filter((o) => pointIn(pick.p, o.outline[0])).sort((a, b) => (a.area ?? 0) - (b.area ?? 0));
+  return around.slice(0, 1);
+}
+
+/** The area less the openings: one shape keeping each opening open, with its net area and length. */
+export function deduct(area: TracedObject, openings: SheetObject[]): TracedObject {
+  if (!openings.length) return area;
+  const outline = [...area.outline, ...openings.map((o) => o.outline[0])];
+  return {
+    ...area,
+    area: Math.max(0, (area.area ?? 0) - openings.reduce((t, o) => t + (o.area ?? 0), 0)),
+    length: (area.length ?? 0) + openings.reduce((t, o) => t + (o.length ?? 0), 0),
+    outline,
+    box: boxOf(outline),
+    handles: [...new Set([...(area.handles ?? [area.handle]), ...openings.flatMap((o) => o.handles ?? [o.handle])])],
+  };
 }

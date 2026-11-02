@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseDxf } from "../cad/dxf-parse";
 import { buildModel } from "../cad/cad-geometry";
 import { buildSheet, toSheet } from "../cad/cad-sheet";
-import { mainLoop, objectAt, regionsOf, similarTo } from "../cad/cad-select";
+import { mainLoop, objectAt, objectsInWindow, regionsOf, similarTo, windowMode } from "../cad/cad-select";
 
 const dxf = (entities: (string | number)[], blocks: (string | number)[] = []) =>
   [0, "SECTION", 2, "HEADER", 9, "$INSUNITS", 70, 4, 0, "ENDSEC", 0, "SECTION", 2, "BLOCKS", ...blocks, 0, "ENDSEC",
@@ -57,6 +57,27 @@ describe("CAD selection", () => {
     const d = objectAt(sheet, at(15400, 7050), "count", tol)!;
     expect(d.block).toBe("D1");
     expect(similarTo(sheet, d, "block", "count").map((o) => o.handle).sort()).toEqual(["D1a", "D1b"]);
+  });
+
+  it("selects by window (wholly inside) and crossing (touching), taking a polyline and its hatch once", () => {
+    // Window around both beams: B1, B2 and their hatches H1, H2 share outlines → two objects.
+    const win = objectsInWindow(sheet, at(900, 900), at(7100, 5500), "window", "area");
+    expect(win.map((o) => o.handle).sort()).toEqual(["B1", "B2"]);
+    expect(windowMode(at(900, 900), at(7100, 5500))).toBe("window");
+    // The same box dragged right to left is a crossing; nothing else touches it here.
+    expect(windowMode(at(7100, 900), at(900, 5500))).toBe("crossing");
+    // A small crossing box over B1's top edge only.
+    expect(objectsInWindow(sheet, at(2500, 1300), at(2000, 1500), "crossing", "area").map((o) => o.handle)).toEqual(["B1"]);
+    // As a window the same box takes nothing (B1 is not wholly inside).
+    expect(objectsInWindow(sheet, at(2000, 1300), at(2500, 1500), "window", "area")).toHaveLength(0);
+    // A crossing box inside the slab touching no line takes nothing (a polyline is selected by its lines).
+    expect(objectsInWindow(sheet, at(11000, 7000), at(10000, 7500), "crossing", "area")).toHaveLength(0);
+    // ...but inside a hatch it takes the hatch.
+    expect(objectsInWindow(sheet, at(13500, 2500), at(12500, 3500), "crossing", "area").map((o) => o.handle)).toEqual(["H3"]);
+    // Lengths and block counts.
+    expect(objectsInWindow(sheet, at(-100, 7900), at(4100, 8100), "window", "length").map((o) => o.handle)).toEqual(["W1"]);
+    expect(objectsInWindow(sheet, at(16000, 6900), at(14900, 7200), "crossing", "count").map((o) => o.handle).sort()).toEqual(["D1a"]);
+    expect(objectsInWindow(sheet, at(900, 900), at(7100, 5500), "window", "area", new Set(["S-BEAM"]))).toHaveLength(0);
   });
 
   it("ignores hidden layers", () => {

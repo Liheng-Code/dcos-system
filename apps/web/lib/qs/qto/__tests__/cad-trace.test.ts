@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseDxf } from "../cad/dxf-parse";
 import { buildModel } from "../cad/cad-geometry";
 import { buildSheet, toSheet } from "../cad/cad-sheet";
-import { pickTraced, traceLayer, traceableLayers } from "../cad/cad-trace";
+import { deduct, openingsIn, pickTraced, traceLayer, traceOpenings, traceableLayers } from "../cad/cad-trace";
 import { regionsOf } from "../cad/cad-select";
 
 const dxf = (entities: (string | number)[]) =>
@@ -115,6 +115,34 @@ describe("trace a layer", () => {
     const chain = pickTraced(lines, L1, toSheet(s.frame, { x: 2000, y: 0 }), "length", tolOf(s));
     expect(chain.map((o) => o.handle).sort()).toEqual(["L1", "L2", "L3", "L4"]);
     expect(chain.reduce((t, o) => t + (o.length ?? 0), 0)).toBeCloseTo(14_000, 6);
+  });
+
+  it("deducts openings drawn on another layer, picked one by one or all at once", () => {
+    // Slab 20 × 10 m on S-SLAB; on OPENING: a polyline box with an X, a box drawn as lines with an X,
+    // and a box outside the slab.
+    const s = sheetOf([...rect("SLAB", "S-SLAB", 0, 0, 20000, 10000),
+      ...rect("O1", "OPENING", 2000, 2000, 1000, 1000), ...line("X1", "OPENING", 2000, 2000, 3000, 3000), ...line("X2", "OPENING", 3000, 2000, 2000, 3000),
+      ...lines4("O2", "OPENING", 6000, 2000, 2000, 1000), ...line("Y1", "OPENING", 6000, 2000, 8000, 3000), ...line("Y2", "OPENING", 8000, 2000, 6000, 3000),
+      ...rect("OUT", "OPENING", 30000, 0, 1000, 1000)]);
+    const tol = tolOf(s);
+    const slab = traceLayer(s, "S-SLAB", "area", { tol })[0];
+    const ops = traceOpenings(s, "OPENING", { tol });
+    const all = openingsIn(ops, slab, tol);
+    expect(all.map((o) => Math.round(o.area!)).sort((a, b) => a - b)).toEqual([1_000_000, 2_000_000]);
+    // A click on the cross line of the box drawn as lines picks that whole box.
+    const at = (x: number, y: number) => toSheet(s.frame, { x, y });
+    const one = openingsIn(ops, slab, tol, { handle: "Y1", p: at(6500, 2250) });
+    expect(one.map((o) => Math.round(o.area!))).toEqual([2_000_000]);
+    // A click on the X inside the polyline box (the X closes nothing) picks the box around the cursor.
+    expect(openingsIn(ops, slab, tol, { handle: "X1", p: at(2500, 2500) }).map((o) => o.handles)).toEqual([["O1"]]);
+    const net = deduct(slab, all);
+    expect(net.area).toBeCloseTo(200_000_000 - 3_000_000, 3);
+    expect(net.outline).toHaveLength(3);
+    const ring = regionsOf(net)[0].pts;
+    const shoelace = Math.abs(ring.reduce((a, p, i) => a + p.x * ring[(i + 1) % ring.length].y - ring[(i + 1) % ring.length].x * p.y, 0)) / 2;
+    expect(shoelace / s.frame.k ** 2).toBeCloseTo(197_000_000, 0);
+    // An opening is not deducted twice: once deducted it is no longer inside the area.
+    expect(openingsIn(ops, net, tol)).toHaveLength(0);
   });
 
   it("totals every line on the layer for length tools", () => {
