@@ -97,6 +97,63 @@ export function similarTo(sheet: CadSheet, o: SheetObject, by: CadSimilar, kind:
   });
 }
 
+/**
+ * AutoCAD window selection: a box dragged left to right is a window (objects wholly inside it),
+ * right to left a crossing (objects inside it or touching it).
+ */
+export type CadWindow = "window" | "crossing";
+export const windowMode = (a: Pt, b: Pt): CadWindow => (b.x >= a.x ? "window" : "crossing");
+
+const rectOf = (a: Pt, b: Pt): Bounds => ({ minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) });
+const boxIn = (b: Bounds, r: Bounds) => b.minX >= r.minX && b.maxX <= r.maxX && b.minY >= r.minY && b.maxY <= r.maxY;
+const boxesMeet = (b: Bounds, r: Bounds) => b.minX <= r.maxX && b.maxX >= r.minX && b.minY <= r.maxY && b.maxY >= r.minY;
+
+function segmentsCross(p: Pt, q: Pt, a: Pt, b: Pt): boolean {
+  const d = (q.x - p.x) * (b.y - a.y) - (q.y - p.y) * (b.x - a.x);
+  if (d === 0) return false;
+  const t = ((a.x - p.x) * (b.y - a.y) - (a.y - p.y) * (b.x - a.x)) / d;
+  const u = ((a.x - p.x) * (q.y - p.y) - (a.y - p.y) * (q.x - p.x)) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/** Whether a line from p to q runs through the box. */
+function segmentInRect(p: Pt, q: Pt, r: Bounds): boolean {
+  if (inBox(r, p) || inBox(r, q)) return true;
+  const c = [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }];
+  return c.some((a, i) => segmentsCross(p, q, a, c[(i + 1) % 4]));
+}
+
+/** Whether an object is selected by a window or crossing box from a to b (sheet units). */
+export function inWindow(o: SheetObject, a: Pt, b: Pt, mode: CadWindow, box: Bounds = o.box): boolean {
+  const r = rectOf(a, b);
+  if (boxIn(box, r)) return true;
+  if (mode === "window" || !boxesMeet(box, r)) return false;
+  if (o.type === "INSERT") return true;
+  // Crossing: the box touches the object's lines (and, for a hatch, its fill).
+  if (o.outline.some((l) => l.some((p, i) => i > 0 && segmentInRect(l[i - 1], p, r)) || (o.closed && l.length > 2 && segmentInRect(l[l.length - 1], l[0], r)))) return true;
+  return o.type === "HATCH" && inLoops({ x: r.minX, y: r.minY }, o.outline);
+}
+
+/**
+ * The objects the tool can measure that a window or crossing box selects, on the visible layers.
+ * An object drawn twice (a closed polyline and the hatch on the same outline) is taken once.
+ */
+export function objectsInWindow(sheet: CadSheet, a: Pt, b: Pt, mode: CadWindow, kind: CadPickKind, hidden: Set<string> = new Set(), boxes?: Map<string, Bounds>, only?: (o: SheetObject) => boolean): SheetObject[] {
+  const bx = kind === "count" ? boxes ?? insertBoxes(sheet) : null;
+  const picked = sheet.objects.filter((o) => !hidden.has(o.layer) && eligible(o, kind) && (!only || only(o)) && inWindow(o, a, b, mode, bx?.get(o.handle) ?? o.box));
+  if (kind !== "area") return picked;
+  // Prefer the polyline over a hatch with the same area and extents.
+  const sorted = [...picked].sort((x, y) => Number(x.type === "HATCH") - Number(y.type === "HATCH"));
+  const out: SheetObject[] = [];
+  for (const o of sorted) {
+    const size = Math.hypot(o.box.maxX - o.box.minX, o.box.maxY - o.box.minY), t = size * 1e-4;
+    const same = out.some((x) => Math.abs((x.area ?? 0) - (o.area ?? 0)) <= Math.max(x.area ?? 0, o.area ?? 0) * 1e-6
+      && Math.abs(x.box.minX - o.box.minX) <= t && Math.abs(x.box.minY - o.box.minY) <= t && Math.abs(x.box.maxX - o.box.maxX) <= t && Math.abs(x.box.maxY - o.box.maxY) <= t);
+    if (!same) out.push(o);
+  }
+  return out;
+}
+
 /** The largest loop of an outline (what a measurement shape stores). */
 export function mainLoop(o: SheetObject): Pt[] {
   let best = o.outline[0] ?? [], bestA = -1;

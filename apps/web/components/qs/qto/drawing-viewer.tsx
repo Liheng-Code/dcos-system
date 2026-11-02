@@ -52,7 +52,7 @@ import {
   type Snap,
 } from "@/lib/qs/qto/pdf-snap";
 import { drawSheet, toModel, type CadSheet, type SheetObject } from "@/lib/qs/qto/cad/cad-sheet";
-import { insertBoxes, mainLoop, objectAt, regionsOf, similarTo, type CadPickKind, type CadSimilar } from "@/lib/qs/qto/cad/cad-select";
+import { inWindow, insertBoxes, mainLoop, objectAt, objectsInWindow, regionsOf, similarTo, windowMode, type CadPickKind, type CadSimilar, type CadWindow } from "@/lib/qs/qto/cad/cad-select";
 import { deduct, openingsIn, pickTraced, traceLayer, traceOpenings, type TracedObject } from "@/lib/qs/qto/cad/cad-trace";
 import { CadLayersButton } from "@/components/qs/qto/cad-layers-panel";
 import { detectHatches, hatchAt, hatchInside, pickRegion, sameHatchRegions, type HatchInfo } from "@/lib/qs/qto/smart-pick";
@@ -672,6 +672,8 @@ export function DrawingViewer({
     setHoverSnap(null);
   };
 
+  /** Space held: a left drag pans in any tool. */
+  const spaceDown = useRef(false);
   const startPan = (e: React.PointerEvent) => {
     e.preventDefault();
     pressAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
@@ -686,6 +688,38 @@ export function DrawingViewer({
     return r ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
   };
 
+
+  /** A click in the CAD take-off modes: pick the object under p. */
+  const cadClick = (p: Pt) => {
+    if (!cad) return;
+    const o = cadObjectAt(p);
+    if (!o) {
+      setPickMsg(cadKind === "count" ? "No block here. Click on a block (e.g. a door or a column symbol)."
+        : cadKind === "length" || drawMode === "trace" ? "No line here. Click on a line, polyline or arc." : drawMode === "hatch" ? "No hatch here. Click inside a hatched area." : "No closed object here. Click inside a closed polyline, circle or hatch.");
+      return;
+    }
+    setPickMsg(null);
+    if (drawMode === "trace") {
+      if (cadKind === "area" && traceDraft) {
+        // Deduct the opening that line draws, or put it back when it is deducted already.
+        const op = openingAt(o, p);
+        if (!op) { setPickMsg("That line draws no closed boundary inside the picked area. Click an opening's line, or press Enter to add the area."); return; }
+        const k = holeKey(op);
+        const holes = traceDraft.holes.some((h) => holeKey(h) === k) ? traceDraft.holes.filter((h) => holeKey(h) !== k) : [...traceDraft.holes, op];
+        setTraceDraft({ ...traceDraft, holes, layer: op.layer, layerOpenings: openingsIn(openingsOf(op.layer), traceDraft.base, traceTol()) });
+        return;
+      }
+      const objs = tracedAt(o, p);
+      if (!objs.length) setPickMsg(`This line closes no boundary on layer ${o.layer}. Pick a line of a closed outline.`);
+      else if (cadKind === "area") { setTraceDraft({ base: objs[0], holes: [], layer: null, layerOpenings: [] }); setTraceHover(null); }
+      else emitCad(objs, objs[0], "trace");
+      return;
+    }
+    if (drawMode === "object") { emitCad([o], o, "object"); return; }
+    const by: CadSimilar = drawMode === "block" ? "block" : drawMode === "hatch" ? "hatch" : "layer";
+    setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
+  };
+
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.focus();
     if (gripDrag.current) {
@@ -696,7 +730,7 @@ export function DrawingViewer({
     }
     if (middleDouble(e)) { e.stopPropagation(); return; }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
-    if (tool === "pan" || readOnly || e.button === 1) {
+    if (tool === "pan" || readOnly || e.button === 1 || (e.button === 0 && spaceDown.current)) {
       e.stopPropagation();
       startPan(e);
       return;
@@ -711,6 +745,20 @@ export function DrawingViewer({
         // would see the rest of the click (pointer-up / click on the drawing) as a click outside and close.
         pendingCalibration.current = { points: next, pageUnits: distance(next[0], next[1]), page_no: currentPage };
       }
+      return;
+    }
+    // CAD take-off modes come before the hand-drawn tools (Linear is the "length" tool).
+    if (cadMode && cad) {
+      const p = toPage(e);
+      // Second click of a click-click window.
+      if (win && !win.held) { finishWindow(win.a, p); return; }
+      if (windowable) {
+        // A click picks as before; a drag draws a selection window (decided on pointer up).
+        winPress.current = { x: e.clientX, y: e.clientY, p };
+        svgRef.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+      cadClick(p);
       return;
     }
     if (tool === "length") {
@@ -733,35 +781,6 @@ export function DrawingViewer({
     }
     if (tool === "point") {
       emit("point", [pt]);
-      return;
-    }
-    if (cadMode && cad) {
-      const o = cadObjectAt(toPage(e));
-      if (!o) {
-        setPickMsg(cadKind === "count" ? "No block here. Click on a block (e.g. a door or a column symbol)."
-          : cadKind === "length" || drawMode === "trace" ? "No line here. Click on a line, polyline or arc." : drawMode === "hatch" ? "No hatch here. Click inside a hatched area." : "No closed object here. Click inside a closed polyline, circle or hatch.");
-        return;
-      }
-      setPickMsg(null);
-      if (drawMode === "trace") {
-        if (cadKind === "area" && traceDraft) {
-          // Deduct the opening that line draws, or put it back when it is deducted already.
-          const op = openingAt(o, toPage(e));
-          if (!op) { setPickMsg("That line draws no closed boundary inside the picked area. Click an opening's line, or press Enter to add the area."); return; }
-          const k = holeKey(op);
-          const holes = traceDraft.holes.some((h) => holeKey(h) === k) ? traceDraft.holes.filter((h) => holeKey(h) !== k) : [...traceDraft.holes, op];
-          setTraceDraft({ ...traceDraft, holes, layer: op.layer, layerOpenings: openingsIn(openingsOf(op.layer), traceDraft.base, traceTol()) });
-          return;
-        }
-        const objs = tracedAt(o, toPage(e));
-        if (!objs.length) setPickMsg(`This line closes no boundary on layer ${o.layer}. Pick a line of a closed outline.`);
-        else if (cadKind === "area") { setTraceDraft({ base: objs[0], holes: [], layer: null, layerOpenings: [] }); setTraceHover(null); }
-        else emitCad(objs, objs[0], "trace");
-        return;
-      }
-      if (drawMode === "object") { emitCad([o], o, "object"); return; }
-      const by: CadSimilar = drawMode === "block" ? "block" : drawMode === "hatch" ? "hatch" : "layer";
-      setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
       return;
     }
     if (pickMode) {
@@ -798,7 +817,7 @@ export function DrawingViewer({
     && (drawMode === "object" || drawMode === "layer" || drawMode === "trace" || drawMode === "block" || (drawMode === "hatch" && cadKind === "area"));
   const cadBoxes = useMemo(() => (cad ? insertBoxes(cad) : new Map()), [cad]);
   const [cadHover, setCadHover] = useState<SheetObject | null>(null);
-  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar } | null>(null);
+  const [cadPending, setCadPending] = useState<{ objs: SheetObject[]; ref: SheetObject; by: CadSimilar | "window"; win?: CadWindow } | null>(null);
   // Trace layer: the picked line gives the boundary it draws (hatches and blocks are not lines).
   const cadObjectAt = (pt: Pt) => cad
     ? objectAt(drawMode === "hatch" ? { ...cad, objects: cad.objects.filter((o) => o.type === "HATCH") } : cad, pt, drawMode === "trace" ? "length" : cadKind, 6 / view.zoom, hiddenLayers, cadBoxes)
@@ -851,6 +870,38 @@ export function DrawingViewer({
     setTraceDraft(null);
     setTraceHover(null);
   };
+  /**
+   * Selection window (AutoCAD): drag, or click empty space and click again. Left to right takes the
+   * objects wholly inside (window), right to left also the ones it touches (crossing).
+   */
+  const [win, setWin] = useState<{ a: Pt; b: Pt; held: boolean } | null>(null);
+  const winPress = useRef<{ x: number; y: number; p: Pt } | null>(null);
+  const windowable = cadMode && (drawMode !== "trace" || (cadKind === "area" && !!traceDraft));
+  const finishWindow = (a: Pt, b: Pt) => {
+    setWin(null);
+    if (!cad || (a.x === b.x && a.y === b.y)) return;
+    const mode = windowMode(a, b);
+    if (drawMode === "trace") {
+      if (!traceDraft) return;
+      // Openings inside the held area that the window selects, on the visible layers it covers.
+      const layers = [...new Set(objectsInWindow(cad, a, b, "crossing", "length", hiddenLayers).map((o) => o.layer))];
+      const keys = new Set(traceDraft.holes.map(holeKey));
+      const found = layers.flatMap((l) => openingsIn(openingsOf(l), traceDraft.base, traceTol()))
+        .filter((op) => inWindow(op, a, b, mode) && !keys.has(holeKey(op)) && (keys.add(holeKey(op)), true));
+      if (!found.length) { setPickMsg(`No opening inside the area is ${mode === "window" ? "wholly inside" : "touched by"} that box.`); return; }
+      const last = found[found.length - 1].layer;
+      setTraceDraft({ ...traceDraft, holes: [...traceDraft.holes, ...found], layer: last, layerOpenings: openingsIn(openingsOf(last), traceDraft.base, traceTol()) });
+      setPickMsg(null);
+      return;
+    }
+    const objs = objectsInWindow(cad, a, b, mode, cadKind, hiddenLayers, cadBoxes, drawMode === "hatch" ? (o) => o.type === "HATCH" : undefined);
+    if (!objs.length) {
+      setPickMsg(`Nothing to measure ${mode === "window" ? "wholly inside" : "touched by"} that box. Drag left to right for objects wholly inside, right to left for objects it touches.`);
+      return;
+    }
+    setPickMsg(null);
+    setCadPending({ objs, ref: objs[0], by: "window", win: mode });
+  };
   /** Metres per model unit (from the page scale, so a corrected scale applies too). */
   const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
   const cadQty = (o: SheetObject) => (cadKind === "count" ? 1
@@ -861,7 +912,7 @@ export function DrawingViewer({
   const describe = (o: SheetObject) => (o.type === "INSERT" ? `block ${o.block}` : o.type === "HATCH" ? `hatch ${o.pattern}` : o.type.toLowerCase()) + ` · ${o.layer}`;
 
   /** Saves CAD objects as measurements with their handles and how they were selected. */
-  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "trace" | "object", islands?: boolean, extra?: Record<string, unknown>) => {
+  const emitCad = (objs: SheetObject[], ref: SheetObject, by: CadSimilar | "trace" | "object" | "window", islands?: boolean, extra?: Record<string, unknown>) => {
     if (!cad || !objs.length) return;
     const selection = { by, layer: ref.layer, ...(ref.pattern ? { pattern: ref.pattern } : {}), ...(ref.block ? { block: ref.block } : {}), ...(islands !== undefined ? { islands } : {}), ...extra, scope: "model" };
     const source = (list: SheetObject[]) => ({ format: "dxf" as const, handles: list.flatMap((o) => o.handles ?? [o.handle]), layer: ref.layer, block: ref.block ?? null, selection });
@@ -906,6 +957,7 @@ export function DrawingViewer({
     setTraceHover(null);
     setCadPending(null);
     setTraceDraft(null);
+    setWin(null);
   }, [cadMode]);
 
   // Leaving Smart pick clears its preview.
@@ -929,6 +981,9 @@ export function DrawingViewer({
     }
     if (cadMode) {
       const pt = toPage(e);
+      const press = winPress.current;
+      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
+      else if (win) setWin({ ...win, b: pt });
       setCursor(pt);
       setHoverSnap(null);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
@@ -962,13 +1017,15 @@ export function DrawingViewer({
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === " ") { e.preventDefault(); spaceDown.current = true; return; }
     if (e.key === "Enter" && traceDraft) { e.preventDefault(); addTraceDraft(); }
     else if (e.key === "Enter") { e.preventDefault(); finish(); }
     else if (e.key === "Escape" && gripDrag.current) cancelGrip();
     else if ((e.key === "Delete" || e.key === "Backspace") && (gripDrag.current || draftPts.length > 0)) { e.stopPropagation(); }
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
-      if (cadPending) setCadPending(null);
+      if (win) setWin(null);
+      else if (cadPending) setCadPending(null);
       else if (traceDraft) { setTraceDraft(null); setTraceHover(null); }
       else if (draftPts.length > 0) cancelDraft();
       else if (tool !== "pan") { setTool("pan"); setHoverSnap(null); setScreenCursor(null); }
@@ -1028,7 +1085,8 @@ export function DrawingViewer({
   }
   if (cadMode) {
     liveText = pickMsg
-      ?? (cadPending ? `${cadPending.objs.length} objects selected: confirm below`
+      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + (win.held ? " · release to select" : " · click to select") + " · Esc cancels"
+      : cadPending ? `${cadPending.objs.length} objects selected: confirm below`
       : traceDraft && cadHover && traceHover ? (() => {
         const op = traceHover[0];
         if (!op) return `${describe(cadHover)}: not an opening inside the picked area`;
@@ -1061,9 +1119,10 @@ export function DrawingViewer({
   const activeHint = editPreview?.grip ? "Grip is hot: move the mouse, click to place · Esc or right-click cancels"
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
-    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity"
+    : cadMode && win ? "Left to right: objects wholly inside · right to left: objects touching · Esc cancels"
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or drag a window to select many · middle button or Space + drag pans"
       : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : (traceDraft ? "Click an opening's line (any layer) to deduct it, again to put it back · Enter adds · Esc cancels" : "Trace: click a line of a closed boundary, then deduct its openings · Esc cancels"))
-      : "Click an object to select every one like it, then confirm · Esc cancels")
+      : "Click an object to select every one like it, or drag a window to select many, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
@@ -1230,7 +1289,9 @@ export function DrawingViewer({
           // Never pan from controls floating over the drawing (tool panel, chip, buttons).
           if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
           if (middleDouble(e)) return;
-          if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly))) startPan(e);
+          // The second click of a click-click selection window may land off the sheet.
+          if (win && !win.held && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
+          if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly || spaceDown.current))) startPan(e);
         }}
         onPointerMove={(e) => {
           if (dragging.current && panStart.current) {
@@ -1246,6 +1307,7 @@ export function DrawingViewer({
           }
           // Off the sheet the cross-hair follows the mouse unsnapped (the sheet sets its own position).
           if (readOnly || svgRef.current?.contains(e.target as Node)) return;
+          if (win) setWin({ ...win, b: toPage(e) });
           setScreenCursor(toViewport(e));
           setHoverSnap(null);
         }}
@@ -1314,6 +1376,16 @@ export function DrawingViewer({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => {
+                  const press = winPress.current;
+                  if (press) {
+                    winPress.current = null;
+                    if (svgRef.current?.hasPointerCapture(e.pointerId)) svgRef.current.releasePointerCapture(e.pointerId);
+                    if (win?.held) { finishWindow(win.a, toPage(e)); return; }
+                    // A click: pick the object under it, or on empty space start a click-click window.
+                    if (cadObjectAt(press.p)) cadClick(press.p);
+                    else { setWin({ a: press.p, b: press.p, held: false }); setPickMsg(null); }
+                    return;
+                  }
                   const picked = pendingCalibration.current;
                   if (picked) {
                     pendingCalibration.current = null;
@@ -1330,6 +1402,7 @@ export function DrawingViewer({
                 onPointerLeave={() => setHoverSnap(null)}
                 onDoubleClick={finish}
                 onKeyDown={handleKey}
+                onKeyUp={(e) => { if (e.key === " ") spaceDown.current = false; }}
                 onContextMenu={(e) => e.preventDefault()}
                 tabIndex={0}
                 role="application"
@@ -1430,6 +1503,14 @@ export function DrawingViewer({
                       stroke={cadPending || o === traceShape ? "#16a34a" : "#f59e0b"} strokeWidth={cadKind === "area" ? 2 : 3} vectorEffect="non-scaling-stroke" pointerEvents="none" />
                   )
                 ))}
+                {win && (() => {
+                  const crossing = windowMode(win.a, win.b) === "crossing";
+                  return (
+                    <rect x={Math.min(win.a.x, win.b.x)} y={Math.min(win.a.y, win.b.y)} width={Math.abs(win.b.x - win.a.x)} height={Math.abs(win.b.y - win.a.y)}
+                      fill={crossing ? "rgba(34,197,94,0.12)" : "rgba(59,130,246,0.12)"} stroke={crossing ? "#16a34a" : "#2563eb"}
+                      strokeDasharray={crossing ? `${6 / view.zoom} ${4 / view.zoom}` : undefined} strokeWidth={1.5 / view.zoom} pointerEvents="none" />
+                  );
+                })()}
                 {/* Openings deducted from the held area: red, so they stand apart from the green area. */}
                 {cadMode && traceDraft?.holes.map((h) => (
                   <path key={`hole-${holeKey(h)}`} d={h.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + "Z").join(" ")}
@@ -1547,7 +1628,7 @@ export function DrawingViewer({
                 <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Draw mode">
                   {modes.map(([m, label, Icon]) => (
                     <button key={m} type="button" role="radio" aria-checked={drawMode === m} aria-label={label} title={label}
-                      onClick={() => { cancelDraft(); setPickMsg(null); setPickPreview(null); setCadPending(null); setTraceDraft(null); setDrawMode(m); svgRef.current?.focus(); }}
+                      onClick={() => { cancelDraft(); setPickMsg(null); setPickPreview(null); setCadPending(null); setTraceDraft(null); setWin(null); setDrawMode(m); svgRef.current?.focus(); }}
                       className={cn("flex h-6 w-7 items-center justify-center rounded", drawMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
                       <Icon size={14} />
                     </button>
@@ -1597,15 +1678,15 @@ export function DrawingViewer({
         {cadPending && (
           <div role="dialog" aria-label="Add CAD selection" className="absolute bottom-3 left-1/2 z-30 w-[min(28rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
             <p className="font-semibold">
-              {cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}
+              {cadPending.by === "window" ? `${cadPending.objs.length} object${cadPending.objs.length === 1 ? "" : "s"} ${cadPending.win === "window" ? "wholly inside the window" : "touched by the crossing box"}` : <>{cadPending.objs.length} {cadPending.by === "block" ? `× block ${cadPending.ref.block}` : cadPending.by === "hatch" ? `${cadPending.objs.length === 1 ? "hatch" : "hatches"} ${cadPending.ref.pattern}` : `${cadPending.ref.type.toLowerCase()} objects`} on {cadPending.ref.layer}</>}
             </p>
             <p className="mt-0.5 text-muted-foreground">
               Total {fmt(cadPending.objs.reduce((t, o) => t + cadQty(o), 0), cadKind === "count" ? 0 : 3)} {cadUnit}
-              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()} · whole drawing, visible layers only
+              {cadKind === "count" ? "" : (() => { const n = cadKind === "area" ? cadPending.objs.reduce((t, o) => t + regionsOf(o).length, 0) : cadPending.objs.length; return ` · ${n} shape${n === 1 ? "" : "s"} in one take-off`; })()}{cadPending.by === "window" ? ` · ${[...new Set(cadPending.objs.map((o) => o.layer))].length} layer(s), visible layers only` : " · whole drawing, visible layers only"}
             </p>
             <div className="mt-2 flex justify-end gap-2">
               <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadPending(null)}>Cancel</Button>
-              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by); setCadPending(null); }}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { emitCad(cadPending.objs, cadPending.ref, cadPending.by, undefined, cadPending.win ? { window: cadPending.win } : undefined); setCadPending(null); }}>
                 Add {cadPending.objs.length}
               </Button>
             </div>
