@@ -19,6 +19,9 @@ export interface ScheduleKpis {
   overdue: number;
   startingNext14d: number;
   finishingNext14d: number;
+  /** Activities on the critical path (total float at or below the critical threshold). */
+  critical: number;
+  /** Activities with total float below zero: the programme misses a deadline or must-finish-by date (doc 35 Q4). */
   negativeFloat: number;
   nearCritical: number;
   /** Plan Completion Rate from the last closed weekly plan, 0–100. Null until one has been closed (1.8). */
@@ -53,6 +56,7 @@ export function computeScheduleKpis(
   let overdue = 0;
   let startingNext14d = 0;
   let finishingNext14d = 0;
+  let critical = 0;
   let negativeFloat = 0;
   let nearCritical = 0;
 
@@ -73,7 +77,8 @@ export function computeScheduleKpis(
 
     const f = floatMap.get(t.id);
     if (f) {
-      if (f.critical) negativeFloat++;
+      if (f.totalFloat < 0) negativeFloat++;
+      if (f.critical) critical++;
       else if (f.nearCritical) nearCritical++;
     }
   }
@@ -81,14 +86,12 @@ export function computeScheduleKpis(
   const forecastFinish = projectFinish(dates);
   const overrunWd = forecastFinish && contractEnd ? signedWorkingDayGap(cal, contractEnd, forecastFinish) : null;
 
-  // Note: `negativeFloat` counts tasks the engine flags `critical` — which
-  // fires at totalFloat <= thresholds.critical (0 by default). That is a
-  // completely normal property of the longest path through any linked
-  // schedule, not itself a risk signal, so it does not drive programmeStatus
-  // here — only genuine schedule slippage (overdue work, or the forecast
-  // finish landing past the contract end) does.
+  // `critical` (zero float) is a normal property of the longest path through any linked
+  // schedule, not itself a risk signal, so it does not drive programmeStatus here — only
+  // genuine schedule slippage (overdue work, or the forecast finish landing past the
+  // contract end) does. `negativeFloat` is that slippage seen per activity.
   const programmeStatus: ProgrammeStatus =
     overrunWd !== null && overrunWd > 0 ? "overrun" : overdue > 0 ? "at_risk" : "on_track";
 
-  return { overdue, startingNext14d, finishingNext14d, negativeFloat, nearCritical, pcr, forecastFinish, overrunWd, programmeStatus };
+  return { overdue, startingNext14d, finishingNext14d, critical, negativeFloat, nearCritical, pcr, forecastFinish, overrunWd, programmeStatus };
 }

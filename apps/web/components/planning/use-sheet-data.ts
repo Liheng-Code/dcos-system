@@ -24,6 +24,11 @@ import {
   type FloatThresholds,
   type TaskFloat,
 } from "@/lib/planning/schedule-engine";
+import {
+  loadProjectCalendars,
+  recordScheduleCalculation,
+  type CalculationRecordInput,
+} from "@/lib/planning/schedule-calculation-service";
 import { computeScheduleKpis, type ScheduleKpis } from "@/lib/planning/schedule-kpis";
 import { logScheduleAudit, logScheduleFieldChanges, type ScheduleAuditAction } from "@/lib/planning/schedule-audit";
 import {
@@ -69,7 +74,7 @@ import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, deleteWbsNodeByI
 const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
   "sort_order, is_milestone, duration_days, duration_unit, dependency_task_ids, dependency_types, dependency_lag_days, " +
-  "constraint_type, constraint_date, manually_scheduled, baseline_start_date, " +
+  "constraint_type, constraint_date, manually_scheduled, actual_start_date, actual_finish_date, calendar_id, baseline_start_date, " +
   "baseline_finish_date, delay_status, wbs_outline_code, discipline, owner_id, owner_name, priority";
 const NODE_COLS =
   "id, project_id, parent_id, node_type, wbs_code, wbs_name, sort_order, is_locked, wbs_outline_code, " +
@@ -97,9 +102,10 @@ function findContainer(nodes: SheetNode[]): string | null {
 }
 
 /** Map the grid's task rows onto the scheduling engine's input shape. */
-function toEngineTasks(tasks: SheetTask[], cal: WorkCalendar): EngineTask[] {
+function toEngineTasks(tasks: SheetTask[], cal: WorkCalendar, calendars?: Map<string, WorkCalendar>): EngineTask[] {
   return tasks.map((t) => {
-    const { durationWd, elapsed } = engineDuration(cal, {
+    const taskCal = (t.calendar_id && calendars?.get(t.calendar_id)) || cal;
+    const { durationWd, elapsed } = engineDuration(taskCal, {
       start: t.start_date,
       finish: t.end_date,
       isMilestone: t.is_milestone,
@@ -120,6 +126,12 @@ function toEngineTasks(tasks: SheetTask[], cal: WorkCalendar): EngineTask[] {
         t.dependency_types,
         t.dependency_lag_days,
       ),
+      calendarId: t.calendar_id ?? null,
+      // Progress (used when the project has a data date). Older rows often carry progress without
+      // actual dates: progress means started as planned, 100% means finished as planned.
+      actualStart: t.actual_start_date ?? (Number(t.progress) > 0 ? t.start_date : null),
+      actualFinish: t.actual_finish_date ?? (Number(t.progress) >= 100 ? t.end_date : null),
+      percentComplete: Number(t.progress) || 0,
     };
   });
 }
@@ -229,6 +241,9 @@ export function useSheetData(
   const [dataDate, setDataDate] = useState<string | null>(null);
   const [containerId, setContainerId] = useState<string | null>(null);
   const [calendar, setCalendar] = useState<WorkCalendar>(DEFAULT_CALENDAR);
+  /** Every project calendar by id, for activities with their own calendar (doc 35 E3). */
+  const [calendars, setCalendars] = useState<Map<string, WorkCalendar>>(() => new Map());
+  const calendarsRef = useRef(calendars);
   const [wbsCodeMask, setWbsCodeMask] = useState<WbsCodeMask>(DEFAULT_MASK);
   const [floatThresholds, setFloatThresholds] = useState<FloatThresholds>(DEFAULT_FLOAT_THRESHOLDS);
   const [progressLineStyle, setProgressLineStyle] = useState<ProgressLineStyle>(DEFAULT_PROGRESS_LINE_STYLE);
@@ -418,6 +433,9 @@ export function useSheetData(
     tasksRef.current = freshTasks;
     nodesRef.current = freshNodes;
     calendarRef.current = freshCalendar;
+    const freshCalendars = await loadProjectCalendars(projectId).catch(() => new Map<string, WorkCalendar>());
+    calendarsRef.current = freshCalendars;
+    setCalendars(freshCalendars);
 
     setTasks(freshTasks);
     setNodes(freshNodes);
@@ -558,10 +576,13 @@ export function useSheetData(
       };
     }
     const result = scheduleProject(
-      toEngineTasks(viewTasks, calendar),
+      toEngineTasks(viewTasks, calendar, calendars),
       calendar,
       dataDate ?? todayISO(),
       floatThresholds,
+      // Progress-aware once the project has a data date; the contract end anchors the late
+      // dates, so a programme running past it shows negative float (doc 35 E2–E4).
+      { dataDate, calendars, mustFinishBy: project?.end_date ?? null },
     );
     if (!result.ok) {
       const names = result.cycle
@@ -575,7 +596,7 @@ export function useSheetData(
       };
     }
     return { float: result.float, dates: result.dates, violations: result.violations, error: null };
-  }, [viewTasks, calendar, dataDate, floatThresholds]);
+  }, [viewTasks, calendar, calendars, dataDate, floatThresholds, project?.end_date]);
 
   /** Dashboard/toolbar headline numbers (Planning Completion Plan 1.4 / 1.5). */
   const kpis = useMemo(
@@ -667,11 +688,16 @@ export function useSheetData(
       const rippled: Array<{ id: string; start_date: string; end_date: string }> = [];
       const engineRan = (opts.force || autoScheduleRef.current) && next.length > 0;
 
+      let calcRecord: CalculationRecordInput | null = null;
       if (engineRan) {
+        const engineTasks = toEngineTasks(next, cal, calendarsRef.current);
+        const engineOpts = { dataDate, calendars: calendarsRef.current };
         const result = scheduleProject(
-          toEngineTasks(next, cal),
+          engineTasks,
           cal,
           dataDate ?? todayISO(),
+          DEFAULT_FLOAT_THRESHOLDS,
+          engineOpts,
         );
         if (!result.ok) {
           const names = result.cycle
@@ -693,6 +719,10 @@ export function useSheetData(
             rippled.push({ id: t.id, start_date: d.start, end_date: d.finish });
           }
         }
+        calcRecord = {
+          projectId, source: "sheet", tasks: engineTasks, calendar: cal, projectStart: dataDate ?? todayISO(),
+          thresholds: DEFAULT_FLOAT_THRESHOLDS, options: engineOpts, result, changedCount: rippled.length,
+        };
         const rippleById = new Map(rippled.map((r) => [r.id, r]));
         next = next.map((t) => {
           const r = rippleById.get(t.id);
@@ -726,6 +756,8 @@ export function useSheetData(
           return;
         }
       }
+      // Calculation log (doc 35 E6): only when the engine moved something.
+      if (calcRecord && calcRecord.changedCount > 0) void recordScheduleCalculation(calcRecord);
 
       // Audit trail (Completion Plan 1.1) — one row per changed field on a
       // directly-patched task, plus one "ripple" row per task the CPM engine

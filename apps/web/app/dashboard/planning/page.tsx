@@ -274,8 +274,10 @@ export default function PlanningPage() {
               <Link href="/dashboard/planning/gantt">
                 <Card className={cn("h-full transition-colors hover:bg-muted/50", kpis.negativeFloat > 0 && "border-red-500/40")}>
                   <CardContent className="p-4 text-center">
-                    <p className={cn("text-2xl font-bold", kpis.negativeFloat > 0 ? "text-red-400" : "text-foreground")}>{kpis.negativeFloat}</p>
-                    <p className="text-xs text-muted-foreground">Critical (0 float)</p>
+                    <p className={cn("text-2xl font-bold", kpis.negativeFloat > 0 ? "text-red-400" : "text-foreground")}>{kpis.critical}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Critical (0 float){kpis.negativeFloat > 0 ? ` · ${kpis.negativeFloat} negative` : ""}
+                    </p>
                   </CardContent>
                 </Card>
               </Link>

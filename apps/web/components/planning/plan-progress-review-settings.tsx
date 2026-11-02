@@ -5,6 +5,7 @@ import { ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getPlanScheduleSettingByProjectId, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
+import { createClient } from "@/lib/supabase/client";
 
 /**
  * Completion Plan 2.2 — per-project toggle for the progress review flow.
@@ -15,8 +16,13 @@ export function PlanProgressReviewSettings() {
   const { selectedProjectId } = useProject();
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
+  // false = following the project-type default (stored as null)
+  const [explicit, setExplicit] = useState(false);
   const [lockOnComplete, setLockOnComplete] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const projectDefault = async (projectId: string) =>
+    Boolean((await createClient().rpc("progress_review_required", { p_project_id: projectId })).data);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -26,14 +32,18 @@ export function PlanProgressReviewSettings() {
     }
     setLoading(true);
     getPlanScheduleSettingByProjectId(selectedProjectId, "progress_review_enabled, lock_on_complete")
-      .then(({ data }) => {
-        setEnabled(data?.progress_review_enabled ?? false);
+      .then(async ({ data }) => {
+        // Not set = the project-type default (doc 35 R4): on for awarded projects, off for tenders.
+        const stored = data?.progress_review_enabled as boolean | null | undefined;
+        setExplicit(stored != null);
+        setEnabled(stored ?? (await projectDefault(selectedProjectId)));
         setLockOnComplete(data?.lock_on_complete ?? true);
         setLoading(false);
       });
   }, [selectedProjectId]);
 
-  async function save(next: { enabled: boolean; lockOnComplete: boolean }) {
+  /** enabled null = back to the project-type default. */
+  async function save(next: { enabled: boolean | null; lockOnComplete: boolean }) {
     if (!selectedProjectId) return;
     setSaving(true);
     const { error } = await upsertPlanScheduleSetting({
@@ -43,6 +53,8 @@ export function PlanProgressReviewSettings() {
         updated_at: new Date().toISOString(),
       });
     if (error) toast.error(error.message);
+    else if (next.enabled === null) setEnabled(await projectDefault(selectedProjectId));
+    setExplicit(next.enabled !== null);
     setSaving(false);
   }
 
@@ -66,7 +78,14 @@ export function PlanProgressReviewSettings() {
           <span>
             <span className="block font-medium text-foreground">Require review before progress changes take effect</span>
             <span className="block text-muted-foreground">
-              When on, editing an activity&apos;s % complete creates a pending request instead of writing it immediately — a planner must confirm or reject it under Look-ahead ▸ Progress Reviews.
+              When on, progress from site staff and daily reports (including step progress and actual dates) creates a pending request instead of changing the schedule — a planner must confirm or reject it under Look-ahead ▸ Progress Reviews. Planners&apos; own edits apply directly. On by default for awarded projects, off for tenders.{" "}
+              {explicit ? (
+                <button type="button" className="font-medium underline" onClick={() => void save({ enabled: null, lockOnComplete })}>
+                  Use the project default
+                </button>
+              ) : (
+                <span className="font-medium">(using the project default)</span>
+              )}
             </span>
           </span>
         </label>
@@ -74,7 +93,7 @@ export function PlanProgressReviewSettings() {
           <input
             type="checkbox"
             checked={lockOnComplete}
-            onChange={(e) => { setLockOnComplete(e.target.checked); void save({ enabled, lockOnComplete: e.target.checked }); }}
+            onChange={(e) => { setLockOnComplete(e.target.checked); void save({ enabled: explicit ? enabled : null, lockOnComplete: e.target.checked }); }}
             className="mt-0.5"
           />
           <span>

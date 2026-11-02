@@ -95,11 +95,11 @@ function TaskActionContent({ task, userId, onClose, onChanged }: Props & { task:
     void Promise.resolve().then(reload);
   }, [reload]);
 
-  async function run(action: () => Promise<unknown>, success: string) {
+  async function run(action: () => Promise<unknown>, success: string | ((result: unknown) => string)) {
     setBusy(true);
     try {
-      await action();
-      toast.success(success);
+      const result = await action();
+      toast.success(typeof success === "function" ? success(result) : success);
       onChanged();
       await reload();
     } catch (e) {
@@ -197,7 +197,10 @@ function TaskActionContent({ task, userId, onClose, onChanged }: Props & { task:
                                 comment: note,
                                 workDate,
                               }),
-                            "Progress recorded",
+                            (r) =>
+                              (r as { mode?: string } | null)?.mode === "pending"
+                                ? "Progress sent to a planner for approval"
+                                : "Progress recorded",
                           )
                         }
                       >

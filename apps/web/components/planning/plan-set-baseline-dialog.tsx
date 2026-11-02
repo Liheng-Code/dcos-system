@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Flag, Loader2, Lock, X } from "lucide-react";
+import { Check, Flag, Loader2, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { runScheduleCheck } from "@/lib/planning/schedule-qaqc-service";
 import {
+  approveBaseline,
   clearBaseline,
   listBaselines,
+  rejectBaseline,
   setBaseline,
   type BaselineRow,
   type BaselineType,
@@ -33,13 +37,35 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
   const [baselineType, setBaselineType] = useState<BaselineType>("current");
   const [reason, setReason] = useState("");
 
+  const [me, setMe] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
   const hasSelection = selectedTaskIds.length > 0;
 
-  useEffect(() => {
+  const reload = () =>
     listBaselines(projectId)
-      .then(setExisting)
-      .catch((e) => toast.error(String(e)))
+      .then((rows) => {
+        setExisting(rows);
+        return rows;
+      })
+      .catch((e) => {
+        toast.error(String(e));
+        return [] as BaselineRow[];
+      });
+
+  useEffect(() => {
+    // Start on an empty number, so nobody's pending baseline is replaced by accident; failing that,
+    // the first one that was never approved.
+    reload()
+      .then((rows) => {
+        const used = new Map(rows.map((b) => [b.baseline_number, b]));
+        const free = SLOTS.find((n) => !used.has(n)) ?? SLOTS.find((n) => used.get(n)?.status !== "approved");
+        if (free !== undefined) setSlot(free);
+      })
       .finally(() => setLoading(false));
+    createClient().auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const byNumber = useMemo(
@@ -47,7 +73,26 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
     [existing],
   );
   const selected = byNumber.get(slot) ?? null;
-  const isLocked = selected?.locked ?? false;
+  // Approved baselines never change; a pending or rejected one in this number is replaced.
+  const isLocked = selected?.status === "approved";
+  const pending = existing.filter((b) => b.status === "pending");
+
+  async function decide(b: BaselineRow, approve: boolean) {
+    setBusy(true);
+    try {
+      if (approve) await approveBaseline(b.id);
+      else await rejectBaseline(b.id, rejectReason.trim());
+      toast.success(approve ? `${b.baseline_name} approved and now active` : `${b.baseline_name} rejected`);
+      setRejecting(null);
+      setRejectReason("");
+      await reload();
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Prefill governance fields from the selected slot's existing values, if any.
   /* eslint-disable react-hooks/set-state-in-effect -- syncing local form fields to the newly-selected slot's saved values */
@@ -60,8 +105,8 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function run() {
-    if (mode === "set" && isLocked) {
-      toast.error("This baseline slot is locked — create a revised baseline in a different slot instead");
+    if (isLocked && (mode === "set" || scope === "selected")) {
+      toast.error("This baseline is approved and can't be changed — choose an empty number");
       return;
     }
     if (mode === "set" && baselineType === "revised" && reason.trim().length < 10) {
@@ -72,11 +117,17 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
     try {
       const ids = scope === "selected" && hasSelection ? selectedTaskIds : null;
       if (mode === "set") {
+        // A fresh schedule check goes with every submission (doc 35 Q3). With the project gate set to
+        // block, the database refuses the baseline while critical findings are open.
+        const check = await runScheduleCheck(projectId).catch(() => null);
+        const critical = check?.results.filter((r) => !r.pass && r.severity === "critical") ?? [];
+        if (critical.length) toast.warning(`Schedule check: ${critical.map((r) => r.name).join(", ")} failed`);
         await setBaseline(projectId, slot, ids, {
           name: baselineName.trim() || null,
           type: baselineType,
           reason: baselineType === "revised" ? reason.trim() : null,
         });
+        toast.success("Baseline submitted. It takes effect when another planner approves it.");
       } else {
         await clearBaseline(projectId, slot, ids);
       }
@@ -99,7 +150,7 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-bold leading-tight">Set Baseline</h2>
-            <p className="text-[11px] text-white/70">Snapshot the current schedule (Baseline 0–10)</p>
+            <p className="text-[11px] text-white/70">Snapshot the schedule; it takes effect once another planner approves it</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-white/70 hover:bg-white/10">
             <X className="h-4 w-4" />
@@ -107,6 +158,62 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
         </div>
 
         <div className="space-y-4 p-4 text-xs">
+          {pending.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <div className="font-semibold">Waiting for approval</div>
+              {pending.map((b) => {
+                const own = !!me && b.set_by === me;
+                return (
+                  <div key={b.id} className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate">
+                        {b.baseline_name} · {b.baseline_type} · {b.task_count} tasks · {b.baseline_date}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={busy || own}
+                        title={own ? "The person who set a baseline can't approve it" : undefined}
+                        onClick={() => decide(b, true)}
+                        className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Check className="h-3 w-3" /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || own}
+                        onClick={() => setRejecting(rejecting === b.id ? null : b.id)}
+                        className="rounded-md border border-current px-2 py-1 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                    {rejecting === b.id && (
+                      <div className="flex gap-2">
+                        <input
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Reason for rejecting"
+                          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-foreground outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={busy || rejectReason.trim().length < 5}
+                          onClick={() => decide(b, false)}
+                          className="rounded-md bg-red-600 px-2 py-1 font-semibold text-white disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {pending.some((b) => b.set_by === me) && (
+                <p className="text-[11px]">You set one of these, so another planner must approve it.</p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-4">
             <label className="flex items-center gap-1.5">
               <input type="radio" checked={mode === "set"} onChange={() => setMode("set")} /> Set baseline
@@ -128,18 +235,30 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
                 return (
                   <option key={n} value={n}>
                     {n === 0 ? "Baseline" : `Baseline ${n}`}
-                    {b ? ` — ${b.baseline_type} — saved ${b.baseline_date} (${b.task_count} tasks)${b.locked ? " 🔒" : ""}` : " — empty"}
+                    {b
+                      ? ` — ${b.baseline_type} — ${b.status === "approved" ? "approved" : b.status === "pending" ? "waiting for approval" : "rejected"} ${b.baseline_date} (${b.task_count} tasks)${b.status === "approved" ? " 🔒" : ""}`
+                      : " — empty"}
                   </option>
                 );
               })}
             </select>
           </label>
 
-          {mode === "set" && isLocked && (
+          {isLocked && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
               <Lock className="h-3.5 w-3.5 shrink-0" />
-              This slot is locked ({selected?.baseline_type}) — pick an empty or non-locked slot to create a new baseline.
+              {mode === "set"
+                ? "This baseline is approved and can't be changed — pick an empty number to set a new one."
+                : "An approved baseline can only be deleted as a whole, and only by an administrator."}
             </div>
+          )}
+          {mode === "set" && selected?.status === "pending" && (
+            <p className="text-[11px] text-amber-700">
+              Submitting here replaces the baseline waiting for approval in this number{selected.set_by !== me ? ", which someone else set" : ""}.
+            </p>
+          )}
+          {selected?.status === "rejected" && selected.decision_comment && (
+            <p className="text-[11px] text-muted-foreground">Rejected: {selected.decision_comment}</p>
           )}
 
           {mode === "set" && (
@@ -228,11 +347,11 @@ export function PlanSetBaselineDialog({ projectId, selectedTaskIds, onClose, onS
           <button
             type="button"
             onClick={run}
-            disabled={busy || (mode === "set" && isLocked)}
+            disabled={busy || (isLocked && (mode === "set" || scope === "selected"))}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {mode === "set" ? "Set" : "Clear"}
+            {mode === "set" ? "Submit for approval" : "Clear"}
           </button>
         </div>
       </div>

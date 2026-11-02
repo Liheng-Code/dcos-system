@@ -40,6 +40,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
         ],
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
+      // doc 35 Q3: DCMA 14-point checks and the submission gate
+      { label: "Schedule Check", href: "/dashboard/planning/schedule-check" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
     ],
   },

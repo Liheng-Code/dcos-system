@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 
 export type BaselineType = "contract" | "revised" | "current";
+/** Doc 35 R3: a baseline takes effect only once a second person approves it; approved ones never change. */
+export type BaselineStatus = "pending" | "approved" | "rejected";
 
 export interface BaselineRow {
   id: string;
@@ -16,6 +18,10 @@ export interface BaselineRow {
   locked: boolean;
   client_accepted: boolean;
   client_accepted_at: string | null;
+  status: BaselineStatus;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_comment: string | null;
 }
 
 /** All numbered baselines for a project, ordered by number. */
@@ -23,7 +29,7 @@ export async function listBaselines(projectId: string): Promise<BaselineRow[]> {
   const { data, error } = await createClient()
     .from("wbs_baselines")
     .select(
-      "id, baseline_number, baseline_name, baseline_date, is_active, set_by, snapshot_data, baseline_type, reason, locked, client_accepted, client_accepted_at",
+      "id, baseline_number, baseline_name, baseline_date, is_active, set_by, snapshot_data, baseline_type, reason, locked, client_accepted, client_accepted_at, status, decided_by, decided_at, decision_comment",
     )
     .eq("project_id", projectId)
     .order("baseline_number");
@@ -43,11 +49,18 @@ export async function listBaselines(projectId: string): Promise<BaselineRow[]> {
       locked: Boolean(r.locked),
       client_accepted: Boolean(r.client_accepted),
       client_accepted_at: (r.client_accepted_at as string | null) ?? null,
+      status: ((r.status as BaselineStatus | null) ?? "approved"),
+      decided_by: (r.decided_by as string | null) ?? null,
+      decided_at: (r.decided_at as string | null) ?? null,
+      decision_comment: (r.decision_comment as string | null) ?? null,
     };
   });
 }
 
-/** Snapshot the schedule into baseline `number` (0 = "Baseline", 1–10). */
+/**
+ * Snapshot the schedule into baseline `number` (0 = "Baseline", 1–10) as a version waiting for
+ * approval. An approved number is refused: approved baselines are never overwritten.
+ */
 export async function setBaseline(
   projectId: string,
   number: number,
@@ -65,7 +78,19 @@ export async function setBaseline(
   if (error) throw new Error(error.message);
 }
 
-/** Records that the client has accepted a baseline (Completion Plan 1.3). Permission-gating deferred to Phase 2. */
+/** Approve a pending baseline: it becomes the active one. The approver must not be the person who set it. */
+export async function approveBaseline(baselineId: string, comment?: string | null): Promise<void> {
+  const { error } = await createClient().rpc("approve_baseline", { p_baseline_id: baselineId, p_comment: comment ?? null });
+  if (error) throw new Error(error.message);
+}
+
+/** Reject a pending baseline with a reason; it never takes effect. */
+export async function rejectBaseline(baselineId: string, comment: string): Promise<void> {
+  const { error } = await createClient().rpc("reject_baseline", { p_baseline_id: baselineId, p_comment: comment });
+  if (error) throw new Error(error.message);
+}
+
+/** Records that the client has accepted an approved baseline (needs Planning programme approve). */
 export async function acceptBaselineByClient(baselineId: string): Promise<void> {
   const { error } = await createClient().rpc("accept_baseline_by_client", { p_baseline_id: baselineId });
   if (error) throw new Error(error.message);

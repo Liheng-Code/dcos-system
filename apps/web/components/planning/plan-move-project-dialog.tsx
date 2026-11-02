@@ -29,7 +29,7 @@ export function PlanMoveProjectDialog({
   const [newStart, setNewStart] = useState(currentStart);
   const [days, setDays] = useState("0");
   const [shiftConstraints, setShiftConstraints] = useState(true);
-  const [shiftBaseline, setShiftBaseline] = useState(false);
+  const shiftBaseline = false;
   const [busy, setBusy] = useState(false);
 
   const opts = useMemo(
@@ -126,14 +126,10 @@ export function PlanMoveProjectDialog({
               />
               Also move constraint dates
             </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={shiftBaseline}
-                onChange={(e) => setShiftBaseline(e.target.checked)}
-              />
-              Also move baseline dates
-            </label>
+            {/* Approved baselines never change (doc 35 R3): moving the schedule needs a new baseline instead. */}
+            <p className="text-[11px] text-muted-foreground">
+              Baseline dates stay as approved. To move them, set a new baseline after moving the project.
+            </p>
           </div>
 
           <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-muted-foreground">

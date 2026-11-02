@@ -81,7 +81,8 @@ describe("computeScheduleKpis", () => {
     const kpis = computeScheduleKpis(kpiTasks, result.float, result.dates, cal, DATA_DATE, null, null);
     // origin, critical and join are all on the critical path (zero float);
     // slack has positive float within the wide near-critical band.
-    expect(kpis.negativeFloat).toBe(3);
+    expect(kpis.critical).toBe(3);
+    expect(kpis.negativeFloat).toBe(0); // zero float is critical, not negative
     expect(kpis.nearCritical).toBe(1);
   });
 

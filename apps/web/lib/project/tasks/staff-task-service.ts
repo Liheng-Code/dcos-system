@@ -40,7 +40,8 @@ export interface ProgressUpdate {
 }
 
 export function recordProgress(supabase: SupabaseClient, taskId: string, u: ProgressUpdate) {
-  return rpc<{ progress: number }>(supabase, "record_task_progress", {
+  // mode 'pending': the project requires planner approval, so the update waits as a progress review
+  return rpc<{ progress: number; mode?: "direct" | "pending"; review_id?: string }>(supabase, "record_task_progress", {
     p_task: taskId,
     p_progress: u.progress,
     p_hours: u.hours ?? null,

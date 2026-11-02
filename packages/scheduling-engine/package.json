@@ -1,0 +1,11 @@
+{
+  "name": "@dcos/scheduling-engine",
+  "version": "2.1.0",
+  "private": true,
+  "description": "DCOS scheduling engine (doc 35 E1): working-day calendars, CPM forward/backward pass, float, critical path, diagnostics and resource levelling. Pure TypeScript: no UI, no database.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  }
+}

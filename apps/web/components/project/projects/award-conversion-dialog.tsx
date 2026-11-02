@@ -16,7 +16,7 @@ import {
   carryOverRisks,
   createContractSnapshot,
 } from "@/lib/qs/public";
-import { activateBaseline, listBaselines, setBaseline } from "@/lib/planning/baseline-service";
+import { listBaselines, setBaseline } from "@/lib/planning/baseline-service";
 import { commitBoqProgramme, previewBoqProgramme } from "@/lib/planning/boq-programme/boq-programme-service";
 import { createClient } from "@/lib/supabase/client";
 import { COMMERCIAL_TOPICS, setTenderStage, type TenderStage } from "@/lib/qs/tender-lifecycle";
@@ -234,9 +234,9 @@ export function AwardConversionDialog({ project, tenderId, stage, bidPrice, onCl
         const existing = await listBaselines(project.id);
         const n = existing.length ? Math.max(...existing.map((b) => b.baseline_number)) + 1 : 0;
         if (n > 10) throw new Error("No free baseline slot (0–10)");
+        // Baselines take effect only after a second planner approves them (doc 35 R3).
         await setBaseline(project.id, n, null, { name: "Tender Programme", type: "contract", reason: "Tender programme at award" });
-        await activateBaseline(project.id, n);
-        add(`Tender programme saved as contract baseline ${n}`);
+        add(`Tender programme saved as contract baseline ${n}, waiting for approval in Planning > Set Baseline`);
       }],
     ];
     const failed: string[] = [];

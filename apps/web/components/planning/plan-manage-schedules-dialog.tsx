@@ -24,6 +24,7 @@ import {
   type ScheduleStreamRevision,
   type ShiftUnit,
 } from "@/lib/planning/schedule-comparison-service";
+import { runScheduleCheck } from "@/lib/planning/schedule-qaqc-service";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
 import { getProfileById, getProfileByIdOfCompanyId, listStakeholderAbbreviations } from "@/lib/planning/planning-queries";
 
@@ -429,7 +430,7 @@ function StreamCard({
         ) : (
           <ul className="space-y-1">
             {stream.revisions.map((r) => (
-              <RevisionRow key={r.id} rev={r} isAdmin={isAdmin} busy={busy} run={run} />
+              <RevisionRow key={r.id} rev={r} projectId={stream.project_id} isAdmin={isAdmin} busy={busy} run={run} />
             ))}
           </ul>
         )}
@@ -539,11 +540,13 @@ function StreamCard({
 
 function RevisionRow({
   rev,
+  projectId,
   isAdmin,
   busy,
   run,
 }: {
   rev: ScheduleStreamRevision;
+  projectId: string;
   isAdmin: boolean;
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<void>;
@@ -596,6 +599,12 @@ function RevisionRow({
     if ((action === "reject" || action === "client_reject") && !comment?.trim()) return;
     if (action === "client_approve" && !window.confirm("Record the client's approval of this revision? This will create a new baseline.")) return;
     await run(async () => {
+      if (action === "submit") {
+        // A fresh schedule check goes with every submission (doc 35 Q3); a blocking project gate is enforced in the database.
+        const check = await runScheduleCheck(projectId).catch(() => null);
+        const critical = check?.results.filter((r) => !r.pass && r.severity === "critical") ?? [];
+        if (critical.length) toast.warning(`Schedule check: ${critical.map((r) => r.name).join(", ")} failed`);
+      }
       const result = await transitionRevision(rev.id, action, comment ?? undefined);
       toast.success(`Revision ${rev.revision_number}: ${REVISION_STATUS_LABEL[result.status]}`);
     });

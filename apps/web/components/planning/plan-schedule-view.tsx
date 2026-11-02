@@ -516,8 +516,8 @@ export function PlanScheduleView({
         await data.reload();
         refreshBaselines();
         refreshReferenceOptions();
-      } catch {
-        /* toast handled in the service caller path */
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
       }
     },
     [selectedProjectId, data, refreshBaselines, refreshReferenceOptions],
@@ -921,7 +921,8 @@ export function PlanScheduleView({
         onRunAutoSchedule={() => data.actions.runAutoSchedule()}
         onToggleTimeline={() => setShowTimeline((v) => !v)}
         calcNeeded={data.calcNeeded}
-        baselines={baselines.map((b) => ({
+        // only approved baselines can be made active (doc 35 R3)
+        baselines={baselines.filter((b) => b.status === "approved").map((b) => ({
           number: b.baseline_number,
           name: b.baseline_name,
           active: b.is_active,

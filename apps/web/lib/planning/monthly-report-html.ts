@@ -100,7 +100,7 @@ export function buildMonthlyReportHtml(input: MonthlyReportInput): string {
     <div class="tile"><div class="label">Forecast Finish</div><div class="value" style="font-size:15px">${kpis.forecastFinish ?? "—"}</div></div>
     <div class="tile"><div class="label">Overrun (wd)</div><div class="value">${kpis.overrunWd ?? "—"}</div></div>
     <div class="tile"><div class="label">Overdue Activities</div><div class="value">${kpis.overdue}</div></div>
-    <div class="tile"><div class="label">Critical Activities</div><div class="value">${kpis.negativeFloat}</div></div>
+    <div class="tile"><div class="label">Critical Activities</div><div class="value">${kpis.critical}</div></div>
     <div class="tile"><div class="label">Near-Critical</div><div class="value">${kpis.nearCritical}</div></div>
     <div class="tile"><div class="label">Plan Completion Rate</div><div class="value">${kpis.pcr !== null ? `${kpis.pcr.toFixed(0)}%` : "—"}</div></div>
   </div>

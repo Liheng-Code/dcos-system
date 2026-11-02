@@ -70,9 +70,18 @@
   - Because project RLS depends on `is_project_member`, and `project_members` has only 3 rows (2 of 14 projects), non-admins see no project-scoped Planning data on most projects.
 
 ## 3. Code map
+- **Scheduling engine package `packages/scheduling-engine` (`@dcos/scheduling-engine`, doc 35 E1–E8):** `schedule-engine.ts`, `work-calendar.ts`, `resource-levelling.ts`, `input-hash.ts`, `version.ts` (`ENGINE_VERSION`). The `lib/planning` files of the same names only re-export it. Reference suite: `packages/scheduling-engine/__tests__/reference.test.ts`, which runs in the app's vitest.
+  - **`scheduleProject(tasks, cal, start, thresholds, opts)`:** `opts.dataDate` turns on progress-aware scheduling (`actualStart`/`actualFinish`/`remainingWd`/`percentComplete`). Other options: `calendars` with `EngineTask.calendarId`, `lagCalendar`, `mustFinishBy` (negative float), `completionTaskId`.
+  - **Results:** `diagnostics`, `state`, `longestPath`, `criticalPaths`. Without options, the results equal engine v1.
+  - **Calculation log:** `lib/planning/schedule-calculation-service.ts` writes `plan_schedule_calculations` and loads all project calendars. `wbs_tasks.calendar_id` is the activity calendar.
+  - **Schedule QA/QC (doc 35 Q):**
+    - Engine: `runScheduleQaqc` (DCMA 14).
+    - App service: `lib/planning/schedule-qaqc-service.ts`. Page: `/dashboard/planning/schedule-check`.
+    - Tables: `plan_schedule_qaqc_runs` and `plan_schedule_qaqc_findings`, written only through the RPCs `record_schedule_qaqc_run` and `accept_schedule_qaqc_finding`.
+    - Gate: `plan_schedule_settings.qaqc_gate` (warn / block), enforced by triggers on `wbs_baselines` insert and on revision submit through `schedule_qaqc_gate_check`.
 - **Pure engines (`lib/planning/`):**
-  - `schedule-engine.ts`: CPM forward/backward pass, float, critical path, link-array helpers, `wouldCycle`.
-  - `work-calendar.ts`: working-day maths.
+  - `schedule-engine.ts`: re-export of the package (see above).
+  - `work-calendar.ts`: re-export of the package.
   - `project-schedule.ts`: whole-project scheduling from a start date.
   - `work-engine.ts`: quantity × norm → hours, crew, duration.
   - Also `resource-levelling.ts`, `time-impact-analysis.ts`, `delay-analysis.ts`, `cost-engine.ts`, `timescale.ts`, `lookahead-filters.ts`.
@@ -103,6 +112,12 @@
 - **Task progress is the weighted average of its steps** (`trg_wbs_task_steps_recalc`).
 - **Locked WBS node:** only WBS managers can change its tasks (`trg_wbs_tasks_lock_guard`).
 - **Locked baselines are immutable;** a revised baseline needs a reason (`20260919000004`).
+- **Phase R (doc 35, 2026-11-02):**
+  - **Baselines** have `status` pending / approved / rejected. They are written only through `set_baseline` / `approve_baseline` (four-eyes) / `reject_baseline` / `activate_baseline` / `clear_baseline`, under the flag `dcos.baseline_decide`. Approved baselines are frozen.
+  - **Task baseline fields** change only through those RPCs (flag `dcos.schedule_write`).
+  - **`trg_wbs_tasks_schedule_guard`:** dates and links need planning schedule edit. Progress needs schedule edit, or Tasks update-progress when `progress_review_required(project)` is false (awarded projects default to true). `task_transition`, `review_task` and `dr_sync_version_to_planning` are trusted through PG_CONTEXT.
+  - **`wbs_task_steps`** has real RLS. A started step locks its weight and basis.
+  - **Daily reports, the sheet and Tasks progress** create pending reviews when approval is required.
 - **Approved or active masters, templates, kits and norms are immutable:** change them through a new version (guard triggers). Approving norms needs the planning norms approve permission.
 - **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`). It must match `csi_division_code` (`D26-…` for division 26); a division change on a root master regenerates it.
 - **Master guard (doc 23):** `csi_division_code`, `csi_section_code`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.
@@ -126,6 +141,7 @@ See `integration-map.md`, rows tagged **Planning**.
 
 ## 6. Status and gaps
 - Feature-complete across schedule, resources, productivity and the Activity Library (A–E plus Generate G1–G6), but **nothing is released**.
+- **Gap register against the ICPS PRD (doc 34):** `docs/04-Business-Modules/06-Planning-Scheduling/35-ICPS-Gap-Register-and-Roadmap.md` (2026-11-02). It holds the phased to-do list (R release, E engine, Q QA/QC, P progress, B BOQ, U planner UX, C cost, F forecast, M reports, I integrations, A AI). Main engine gaps: actuals and data date, a single calendar, no negative float, critical path by threshold only, no calculation-run record. The engine is moving to `packages/scheduling-engine` (E1).
 - **Tests:** 41 files.
   - `lib/planning/__tests__`: schedule engine, work engine, levelling, TIA, delay governance, duration rules, step spread and matching, look-ahead filters, calendar, cost.
   - `lib/planning/activity-library/__tests__`: generation planner, kits, qs-bridge, bridge-calc, location map, recovery, scenarios, BIM/BOQ quantity.

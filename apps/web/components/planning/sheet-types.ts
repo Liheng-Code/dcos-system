@@ -25,6 +25,10 @@ export interface SheetTask {
   constraint_type: string | null;
   constraint_date: string | null;
   manually_scheduled: boolean;
+  /** Doc 35 E2 / E3: progress facts and the activity's own calendar for progress-aware scheduling. */
+  actual_start_date?: string | null;
+  actual_finish_date?: string | null;
+  calendar_id?: string | null;
   baseline_start_date: string | null;
   baseline_finish_date: string | null;
   delay_status: string | null;

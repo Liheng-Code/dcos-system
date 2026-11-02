@@ -14,7 +14,7 @@ if (enabledModules) {
 
 const nextConfig: NextConfig = {
   // The license contract shared with DCOS HQ ships as TypeScript source.
-  transpilePackages: ["@dcos/licensing"],
+  transpilePackages: ["@dcos/licensing", "@dcos/scheduling-engine"],
   env: {
     // Client code (sidebar, module hub) reads the same selection.
     NEXT_PUBLIC_DCOS_ENABLED_MODULES: rawEnabledModules ?? "",

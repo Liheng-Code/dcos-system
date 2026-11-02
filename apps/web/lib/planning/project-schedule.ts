@@ -7,7 +7,8 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { applyScheduleDates } from "./planning-queries";
-import { depsFromArrays, engineDuration, scheduleProject, type EngineTask } from "./schedule-engine";
+import { DEFAULT_FLOAT_THRESHOLDS, depsFromArrays, engineDuration, scheduleProject, type EngineTask, type ScheduleResult } from "./schedule-engine";
+import { loadProjectCalendars, recordScheduleCalculation } from "./schedule-calculation-service";
 import {
   buildWorkCalendar,
   spanInUnit,
@@ -32,6 +33,8 @@ export interface ScheduleInputTask {
   dependency_task_ids: string[] | null;
   dependency_types: string[] | null;
   dependency_lag_days: number[] | null;
+  /** The activity's own calendar (doc 35 E3); null = the project calendar. */
+  calendar_id?: string | null;
 }
 
 export type ProjectScheduleResult =
@@ -53,11 +56,22 @@ export function planProjectSchedule(
   tasks: ScheduleInputTask[],
   cal: WorkCalendar,
   projectStart: string,
+  calendars?: Map<string, WorkCalendar>,
 ): ProjectScheduleResult {
+  return planWithEngine(tasks, cal, projectStart, calendars).out;
+}
+
+function planWithEngine(
+  tasks: ScheduleInputTask[],
+  cal: WorkCalendar,
+  projectStart: string,
+  calendars?: Map<string, WorkCalendar>,
+): { out: ProjectScheduleResult; engineTasks: EngineTask[]; result: ScheduleResult } {
   const engineTasks: EngineTask[] = tasks.map((t) => {
+    const taskCal = (t.calendar_id && calendars?.get(t.calendar_id)) || cal;
     const keep = !!t.manually_scheduled;
     // Auto tasks: duration from the stored value (dates are recalculated); manual: from their dates.
-    const { durationWd, elapsed } = engineDuration(cal, {
+    const { durationWd, elapsed } = engineDuration(taskCal, {
       start: keep ? t.start_date : null,
       finish: keep ? t.end_date : null,
       isMilestone: t.is_milestone,
@@ -74,13 +88,14 @@ export function planProjectSchedule(
       constraintType: t.constraint_type,
       constraintDate: t.constraint_date,
       deps: depsFromArrays(t.dependency_task_ids, t.dependency_types, t.dependency_lag_days),
+      calendarId: t.calendar_id ?? null,
     };
   });
 
-  const result = scheduleProject(engineTasks, cal, projectStart);
+  const result = scheduleProject(engineTasks, cal, projectStart, DEFAULT_FLOAT_THRESHOLDS, { calendars });
   if (!result.ok) {
     const code = new Map(tasks.map((t) => [t.id, t.task_code ?? t.id.slice(0, 8)]));
-    return { ok: false, cycle: result.cycle.map((id) => code.get(id) ?? id) };
+    return { out: { ok: false, cycle: result.cycle.map((id) => code.get(id) ?? id) }, engineTasks, result };
   }
 
   const rows: { id: string; start_date: string; end_date: string }[] = [];
@@ -99,7 +114,7 @@ export function planProjectSchedule(
   const f = finish ?? projectStart;
   let criticalCount = 0;
   for (const fl of result.float.values()) if (fl.critical) criticalCount++;
-  return { ok: true, rows, start: s, finish: f, workingDays: spanInUnit(cal, s, f, "wd"), criticalCount, changed };
+  return { out: { ok: true, rows, start: s, finish: f, workingDays: spanInUnit(cal, s, f, "wd"), criticalCount, changed }, engineTasks, result };
 }
 
 /** The project's working calendar (default plan_calendars row + exceptions; Mon–Sat when none). */
@@ -135,7 +150,7 @@ export function workWeekLabel(cal: WorkCalendar): string {
 
 const COLS =
   "id, task_code, start_date, end_date, duration_days, duration_unit, is_milestone, manually_scheduled, " +
-  "constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days";
+  "constraint_type, constraint_date, dependency_task_ids, dependency_types, dependency_lag_days, calendar_id";
 
 async function loadScheduleTasks(projectId: string): Promise<ScheduleInputTask[]> {
   const out: ScheduleInputTask[] = [];
@@ -168,8 +183,13 @@ export async function runProjectSchedule(
   projectStart: string,
   opts: { dryRun?: boolean } = {},
 ): Promise<ProjectScheduleResult> {
-  const [cal, tasks] = await Promise.all([loadProjectCalendar(projectId), loadScheduleTasks(projectId)]);
-  const result = planProjectSchedule(tasks, cal, projectStart);
+  const [cal, calendars, tasks] = await Promise.all([
+    loadProjectCalendar(projectId),
+    loadProjectCalendars(projectId).catch(() => new Map<string, WorkCalendar>()),
+    loadScheduleTasks(projectId),
+  ]);
+  const planned = planWithEngine(tasks, cal, projectStart, calendars);
+  const result = planned.out;
   if (!result.ok || opts.dryRun) return result;
 
   const before = new Map(tasks.map((t) => [t.id, t]));
@@ -184,5 +204,11 @@ export async function runProjectSchedule(
   }
   const { error } = await db().from("projects").update({ start_date: projectStart }).eq("id", projectId);
   if (error) throw error;
+  if (planned.result.ok) {
+    void recordScheduleCalculation({
+      projectId, source: "wbs_builder", tasks: planned.engineTasks, calendar: cal, projectStart,
+      thresholds: DEFAULT_FLOAT_THRESHOLDS, options: { calendars }, result: planned.result, changedCount: changedRows.length,
+    });
+  }
   return result;
 }

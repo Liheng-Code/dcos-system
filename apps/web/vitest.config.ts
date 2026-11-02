@@ -12,7 +12,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["**/*.test.ts"],
+    // the scheduling engine package keeps its reference suite next to its code (doc 35 E8)
+    include: ["**/*.test.ts", "../../packages/scheduling-engine/__tests__/**/*.test.ts"],
     exclude: ["node_modules/**", ".next/**"],
   },
 });
