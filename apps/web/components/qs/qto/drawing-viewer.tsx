@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import {
   Loader2,
@@ -751,6 +751,7 @@ export function DrawingViewer({
     if (middleDouble(e)) { e.stopPropagation(); return; }
     if (noToolSelect && e.button === 0) {
       e.stopPropagation();
+      e.preventDefault();
       winPress.current = { x: e.clientX, y: e.clientY, p: toPage(e) };
       svgRef.current?.setPointerCapture(e.pointerId);
       return;
@@ -777,9 +778,10 @@ export function DrawingViewer({
     if (cadMode && cad) {
       const p = toPage(e);
       // Second click of a click-click window.
-      if (win && !win.held) { finishWindow(win.a, p); return; }
+      if (win && !win.held) { finishWindow(win.a, p); syncCursor(p); return; }
       if (windowable) {
         // A click picks as before; a drag draws a selection window (decided on pointer up).
+        e.preventDefault();
         winPress.current = { x: e.clientX, y: e.clientY, p };
         svgRef.current?.setPointerCapture(e.pointerId);
         return;
@@ -900,9 +902,57 @@ export function DrawingViewer({
    * Selection window (AutoCAD): drag, or click empty space and click again. Left to right takes the
    * objects wholly inside (window), right to left also the ones it touches (crossing).
    */
-  const [win, setWin] = useState<{ a: Pt; b: Pt; held: boolean } | null>(null);
+  const [win, setWin] = useState<{ a: Pt; held: boolean; mode: CadWindow } | null>(null);
+  /** The window's moving corner, the box, the cross-hair and the coordinates: updated without a React render while the window is drawn. */
+  const winEnd = useRef<Pt | null>(null);
+  const winRectRef = useRef<SVGRectElement | null>(null);
+  const crossH = useRef<HTMLDivElement | null>(null);
+  const crossV = useRef<HTMLDivElement | null>(null);
+  const crossRing = useRef<HTMLDivElement | null>(null);
+  const coordsRef = useRef<HTMLSpanElement | null>(null);
+  const drawWinRect = (a: Pt, b: Pt) => {
+    const r = winRectRef.current;
+    if (!r) return;
+    r.setAttribute("x", String(Math.min(a.x, b.x)));
+    r.setAttribute("y", String(Math.min(a.y, b.y)));
+    r.setAttribute("width", String(Math.abs(b.x - a.x)));
+    r.setAttribute("height", String(Math.abs(b.y - a.y)));
+  };
+  /** Follows the mouse while a window is drawn: box, cross-hair and coordinates move directly; React renders only when the box flips between window and crossing. */
+  const trackWindow = (pt: Pt) => {
+    if (!win) return;
+    winEnd.current = pt;
+    drawWinRect(win.a, pt);
+    const sx = PAGE_OFFSET + view.x + pt.x * view.zoom, sy = PAGE_OFFSET + view.y + pt.y * view.zoom;
+    if (crossH.current) crossH.current.style.top = `${sy}px`;
+    if (crossV.current) crossV.current.style.left = `${sx}px`;
+    if (crossRing.current) { crossRing.current.style.left = `${sx - 12}px`; crossRing.current.style.top = `${sy - 12}px`; }
+    if (coordsRef.current) coordsRef.current.textContent = coordText(pt);
+    const mode = windowMode(win.a, pt);
+    if (mode !== win.mode) {
+      setWin({ ...win, mode });
+      setCursor(pt);
+      setScreenCursor({ x: sx, y: sy });
+    }
+  };
+  /** Starts drawing a window from a (the button held, or waiting for the second click). */
+  const openWindow = (a: Pt, b: Pt, held: boolean) => {
+    winEnd.current = b;
+    setWin({ a, held, mode: windowMode(a, b) });
+    setCadHover(null);
+    setTraceHover(null);
+  };
+  /** Puts the React cursor state back on the mouse once a window ends. */
+  const syncCursor = (pt: Pt) => {
+    setCursor(pt);
+    setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
+  };
   const winPress = useRef<{ x: number; y: number; p: Pt } | null>(null);
   const windowable = cadMode && (drawMode !== "trace" || (cadKind === "area" && !!traceDraft));
+  // Draw the box at its current corner after each render of the window (start, flip).
+  useLayoutEffect(() => {
+    if (win && winEnd.current) drawWinRect(win.a, winEnd.current);
+  });
   /** No tool on a CAD drawing: a left drag selects CAD objects (AutoCAD), then a take-off is chosen for them. */
   const noToolSelect = !!cad && !readOnly && tool === "pan";
   const [cadSelection, setCadSelection] = useState<{ mode: CadWindow; areas: SheetObject[]; lines: SheetObject[]; blocks: SheetObject[] } | null>(null);
@@ -950,6 +1000,10 @@ export function DrawingViewer({
     setPickMsg(null);
     setCadPending({ objs, ref: objs[0], by: "window", win: mode });
   };
+  const coordText = (p: Pt | null) => (!p ? "X — · Y —"
+    : cad ? (() => { const m = toModel(cad.frame, p); return `X ${fmt(m.x, 1)} · Y ${fmt(m.y, 1)}${cad.model.insUnits === 4 ? " mm" : ""}`; })()
+    : cal ? `X ${fmt(lengthInMetres(p.x, cal), 3)} m · Y ${fmt(lengthInMetres(p.y, cal), 3)} m`
+    : `X ${fmt(p.x, 1)} · Y ${fmt(p.y, 1)} (page units)`);
   /** Metres per model unit (from the page scale, so a corrected scale applies too). */
   const modelMetres = cad && calibration ? calibration.metresPerUnit * cad.frame.k : null;
   const cadQty = (o: SheetObject) => (cadKind === "count" ? 1
@@ -1029,8 +1083,8 @@ export function DrawingViewer({
     if (noToolSelect && (winPress.current || win)) {
       const pt = toPage(e);
       const press = winPress.current;
-      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
-      else if (win) setWin({ ...win, b: pt });
+      if (win) { trackWindow(pt); return; }
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) openWindow(press.p, pt, true);
       setCursor(pt);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
       return;
@@ -1047,8 +1101,8 @@ export function DrawingViewer({
     if (cadMode) {
       const pt = toPage(e);
       const press = winPress.current;
-      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
-      else if (win) setWin({ ...win, b: pt });
+      if (win) { trackWindow(pt); return; }
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) { openWindow(press.p, pt, true); syncCursor(pt); return; }
       setCursor(pt);
       setHoverSnap(null);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
@@ -1150,7 +1204,7 @@ export function DrawingViewer({
   }
   if (cadMode) {
     liveText = pickMsg
-      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + (win.held ? " · release to select" : " · click to select") + " · Esc cancels"
+      ?? (win ? (win.mode === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + (win.held ? " · release to select" : " · click to select") + " · Esc cancels"
       : cadPending ? `${cadPending.objs.length} objects selected: confirm below`
       : traceDraft && cadHover && traceHover ? (() => {
         const op = traceHover[0];
@@ -1170,7 +1224,7 @@ export function DrawingViewer({
       : drawMode === "block" ? "Same block: hover over a block" : drawMode === "layer" ? "All on layer: hover over an object" : drawMode === "hatch" ? "Same hatch: hover over a hatch" : "Pick object: hover over a CAD object");
   }
   if (noToolSelect && (win || pickMsg)) {
-    liveText = pickMsg ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + " · release to select · Esc cancels" : "");
+    liveText = pickMsg ?? (win ? (win.mode === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + " · release to select · Esc cancels" : "");
   }
   if (pickMode && draftPts.length === 0) {
     const shape = pickPreview?.[0];
@@ -1378,7 +1432,7 @@ export function DrawingViewer({
           }
           // Off the sheet the cross-hair follows the mouse unsnapped (the sheet sets its own position).
           if (readOnly || svgRef.current?.contains(e.target as Node)) return;
-          if (win) setWin({ ...win, b: toPage(e) });
+          if (win) { trackWindow(toPage(e)); return; }
           setScreenCursor(toViewport(e));
           setHoverSnap(null);
         }}
@@ -1435,11 +1489,11 @@ export function DrawingViewer({
                   if (press) {
                     winPress.current = null;
                     if (svgRef.current?.hasPointerCapture(e.pointerId)) svgRef.current.releasePointerCapture(e.pointerId);
-                    if (win?.held) { finishWindow(win.a, toPage(e)); return; }
+                    if (win?.held) { const pt = toPage(e); finishWindow(win.a, pt); syncCursor(pt); return; }
                     if (noToolSelect) { setWin(null); selectShapeAt(e); return; }
                     // A click: pick the object under it, or on empty space start a click-click window.
                     if (cadObjectAt(press.p)) cadClick(press.p);
-                    else { setWin({ a: press.p, b: press.p, held: false }); setPickMsg(null); }
+                    else { openWindow(press.p, press.p, false); setPickMsg(null); }
                     return;
                   }
                   const picked = pendingCalibration.current;
@@ -1559,9 +1613,9 @@ export function DrawingViewer({
                   )
                 ))}
                 {win && (() => {
-                  const crossing = windowMode(win.a, win.b) === "crossing";
+                  const crossing = win.mode === "crossing";
                   return (
-                    <rect x={Math.min(win.a.x, win.b.x)} y={Math.min(win.a.y, win.b.y)} width={Math.abs(win.b.x - win.a.x)} height={Math.abs(win.b.y - win.a.y)}
+                    <rect ref={winRectRef} x={win.a.x} y={win.a.y} width={0} height={0}
                       fill={crossing ? "rgba(34,197,94,0.12)" : "rgba(59,130,246,0.12)"} stroke={crossing ? "#16a34a" : "#2563eb"}
                       strokeDasharray={crossing ? `${6 / view.zoom} ${4 / view.zoom}` : undefined} strokeWidth={1.5 / view.zoom} pointerEvents="none" />
                   );
@@ -1652,9 +1706,9 @@ export function DrawingViewer({
         })()}
         {!readOnly && screenCursor && !panelTool && (
           <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
-            <div className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
-            <div className="absolute inset-y-0" style={{ left: screenCursor.x, width: 1, background: ink }} />
-            <div className="absolute rounded-full" style={{ left: screenCursor.x - 12, top: screenCursor.y - 12, width: 25, height: 25, border: `1.5px solid ${hoverSnap ? "#16a34a" : ink}` }} />
+            <div ref={crossH} className="absolute inset-x-0" style={{ top: screenCursor.y, height: 1, background: ink }} />
+            <div ref={crossV} className="absolute inset-y-0" style={{ left: screenCursor.x, width: 1, background: ink }} />
+            <div ref={crossRing} className="absolute rounded-full" style={{ left: screenCursor.x - 12, top: screenCursor.y - 12, width: 25, height: 25, border: `1.5px solid ${hoverSnap ? "#16a34a" : ink}` }} />
           </div>
         )}
         {panelTool && takeoffTarget && onStartTakeoff && (() => {
@@ -1790,15 +1844,7 @@ export function DrawingViewer({
 
       {/* Status bar: coordinates, snap and ortho */}
       <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
-        <span className="tabular-nums">
-          {cursor && cad
-            ? (() => { const m = toModel(cad.frame, cursor); return `X ${fmt(m.x, 1)} · Y ${fmt(m.y, 1)}${cad.model.insUnits === 4 ? " mm" : ""}`; })()
-            : cursor
-            ? cal
-              ? `X ${fmt(lengthInMetres(cursor.x, cal), 3)} m · Y ${fmt(lengthInMetres(cursor.y, cal), 3)} m`
-              : `X ${fmt(cursor.x, 1)} · Y ${fmt(cursor.y, 1)} (page units)`
-            : "X — · Y —"}
-        </span>
+        <span ref={coordsRef} className="tabular-nums">{coordText(cursor)}</span>
         {measuring && hoverSnap && <span className="font-medium text-emerald-700 dark:text-emerald-400">{SNAP_LABEL[hoverSnap.kind]}</span>}
         {activeHint && !readOnly && <span className="hidden min-w-0 flex-1 truncate lg:inline">{activeHint}</span>}
         {!readOnly && (
