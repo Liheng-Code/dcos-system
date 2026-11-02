@@ -672,8 +672,6 @@ export function DrawingViewer({
     setHoverSnap(null);
   };
 
-  /** Space held: a left drag pans in any tool. */
-  const spaceDown = useRef(false);
   const startPan = (e: React.PointerEvent) => {
     e.preventDefault();
     pressAt.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
@@ -751,14 +749,14 @@ export function DrawingViewer({
       return;
     }
     if (middleDouble(e)) { e.stopPropagation(); return; }
-    if (noToolSelect && e.button === 0 && !spaceDown.current) {
+    if (noToolSelect && e.button === 0) {
       e.stopPropagation();
       winPress.current = { x: e.clientX, y: e.clientY, p: toPage(e) };
       svgRef.current?.setPointerCapture(e.pointerId);
       return;
     }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
-    if (tool === "pan" || readOnly || e.button === 1 || (e.button === 0 && spaceDown.current)) {
+    if (tool === "pan" || readOnly || e.button === 1) {
       e.stopPropagation();
       startPan(e);
       return;
@@ -1084,7 +1082,6 @@ export function DrawingViewer({
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === " ") { e.preventDefault(); spaceDown.current = true; return; }
     if (e.key === "Enter" && traceDraft) { e.preventDefault(); addTraceDraft(); }
     else if (e.key === "Enter") { e.preventDefault(); finish(); }
     else if (e.key === "Escape" && gripDrag.current) cancelGrip();
@@ -1191,7 +1188,7 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode && win ? "Left to right: objects wholly inside · right to left: objects touching · Esc cancels"
-    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or drag a window to select many · middle button or Space + drag pans"
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or drag a window to select many · middle button pans"
       : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : (traceDraft ? "Click an opening's line (any layer) to deduct it, again to put it back · Enter adds · Esc cancels" : "Trace: click a line of a closed boundary, then deduct its openings · Esc cancels"))
       : "Click an object to select every one like it, or drag a window to select many, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
@@ -1201,7 +1198,7 @@ export function DrawingViewer({
         : draftPts.length === 1
           ? "Click the second extension point"
           : "Move the cursor to position the dimension, then click to place"
-    : !activeTool && cad && !readOnly ? "No tool: click a shape to select · drag a window to select CAD objects (left to right: inside, right to left: touching) · middle button or Space + drag pans · wheel zooms"
+    : !activeTool && cad && !readOnly ? "No tool: click a shape to select · drag a window to select CAD objects (left to right: inside, right to left: touching) · middle button pans · wheel zooms"
     : activeTool?.hint ?? "No tool: click a shape to select · drag to move · wheel to zoom";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
@@ -1356,14 +1353,16 @@ export function DrawingViewer({
         className={cn("relative flex-1 overflow-hidden", cad ? (darkSheet ? "bg-black" : "bg-white") : darkSheet ? "bg-neutral-900" : "bg-muted/30")}
         style={{ cursor: readOnly ? undefined : "none" }}
         onPointerDown={(e) => {
-          // Off the sheet: middle button pans in any tool; with no tool the left button pans (and a click unselects).
+          // Off the sheet: middle button pans in any tool. On a CAD drawing the left button selects, never
+          // pans (a click with no tool unselects); on a PDF, or read-only, the left button pans with no tool.
           if (svgRef.current?.contains(e.target as Node) || gripDrag.current) return;
           // Never pan from controls floating over the drawing (tool panel, chip, buttons).
           if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
           if (middleDouble(e)) return;
           // The second click of a click-click selection window may land off the sheet.
-          if (win && !win.held && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
-          if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly || spaceDown.current))) startPan(e);
+          if (win && !win.held && e.button === 0) { finishWindow(win.a, toPage(e)); return; }
+          if (noToolSelect && e.button === 0) { onSelectItem?.(null); return; }
+          if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly))) startPan(e);
         }}
         onPointerMove={(e) => {
           if (dragging.current && panStart.current) {
@@ -1459,7 +1458,6 @@ export function DrawingViewer({
                 onPointerLeave={() => setHoverSnap(null)}
                 onDoubleClick={finish}
                 onKeyDown={handleKey}
-                onKeyUp={(e) => { if (e.key === " ") spaceDown.current = false; }}
                 onContextMenu={(e) => e.preventDefault()}
                 tabIndex={0}
                 role="application"
