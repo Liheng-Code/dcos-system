@@ -131,7 +131,8 @@ export function inWindow(o: SheetObject, a: Pt, b: Pt, mode: CadWindow, box: Bou
   if (o.type === "INSERT") return true;
   // Crossing: the box touches the object's lines (and, for a hatch, its fill).
   if (o.outline.some((l) => l.some((p, i) => i > 0 && segmentInRect(l[i - 1], p, r)) || (o.closed && l.length > 2 && segmentInRect(l[l.length - 1], l[0], r)))) return true;
-  return o.type === "HATCH" && inLoops({ x: r.minX, y: r.minY }, o.outline);
+  // A box lying inside a hatch's fill touches it too (any corner inside the fill).
+  return o.type === "HATCH" && [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }].some((c) => inLoops(c, o.outline));
 }
 
 /**
