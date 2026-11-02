@@ -751,10 +751,10 @@ export function DrawingViewer({
     if (cadMode && cad) {
       const p = toPage(e);
       // Second click of a click-click window.
-      if (win && !win.held) { finishWindow(win.a, p); return; }
+      if (win) { finishWindow(win.a, p); return; }
       if (windowable) {
-        // A click picks as before; a drag draws a selection window (decided on pointer up).
-        winPress.current = { x: e.clientX, y: e.clientY, p };
+        // A click picks (or on empty space starts a selection window); a drag pans. Decided on pointer up.
+        winPress.current = { x: e.clientX, y: e.clientY, p, lx: e.clientX, ly: e.clientY, panned: false };
         svgRef.current?.setPointerCapture(e.pointerId);
         return;
       }
@@ -871,11 +871,11 @@ export function DrawingViewer({
     setTraceHover(null);
   };
   /**
-   * Selection window (AutoCAD): drag, or click empty space and click again. Left to right takes the
-   * objects wholly inside (window), right to left also the ones it touches (crossing).
+   * Selection window (AutoCAD): click empty space and click again. Left to right takes the objects
+   * wholly inside (window), right to left also the ones it touches (crossing). A left drag pans.
    */
-  const [win, setWin] = useState<{ a: Pt; b: Pt; held: boolean } | null>(null);
-  const winPress = useRef<{ x: number; y: number; p: Pt } | null>(null);
+  const [win, setWin] = useState<{ a: Pt; b: Pt } | null>(null);
+  const winPress = useRef<{ x: number; y: number; p: Pt; lx: number; ly: number; panned: boolean } | null>(null);
   const windowable = cadMode && (drawMode !== "trace" || (cadKind === "area" && !!traceDraft));
   const finishWindow = (a: Pt, b: Pt) => {
     setWin(null);
@@ -982,8 +982,15 @@ export function DrawingViewer({
     if (cadMode) {
       const pt = toPage(e);
       const press = winPress.current;
-      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
-      else if (win) setWin({ ...win, b: pt });
+      if (press && (press.panned || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4)) {
+        // A left drag pans, as with no tool.
+        const dx = e.clientX - press.lx, dy = e.clientY - press.ly;
+        press.lx = e.clientX; press.ly = e.clientY; press.panned = true;
+        setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+        setScreenCursor(toViewport(e));
+        return;
+      }
+      if (win) setWin({ ...win, b: pt });
       setCursor(pt);
       setHoverSnap(null);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
@@ -1085,7 +1092,7 @@ export function DrawingViewer({
   }
   if (cadMode) {
     liveText = pickMsg
-      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + (win.held ? " · release to select" : " · click to select") + " · Esc cancels"
+      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + " · click to select · Esc cancels"
       : cadPending ? `${cadPending.objs.length} objects selected: confirm below`
       : traceDraft && cadHover && traceHover ? (() => {
         const op = traceHover[0];
@@ -1120,9 +1127,9 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode && win ? "Left to right: objects wholly inside · right to left: objects touching · Esc cancels"
-    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or drag a window to select many · middle button or Space + drag pans"
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or click empty space twice for a selection window · drag pans"
       : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : (traceDraft ? "Click an opening's line (any layer) to deduct it, again to put it back · Enter adds · Esc cancels" : "Trace: click a line of a closed boundary, then deduct its openings · Esc cancels"))
-      : "Click an object to select every one like it, or drag a window to select many, then confirm · Esc cancels")
+      : "Click an object to select every one like it, or click empty space twice for a selection window, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
@@ -1290,7 +1297,7 @@ export function DrawingViewer({
           if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
           if (middleDouble(e)) return;
           // The second click of a click-click selection window may land off the sheet.
-          if (win && !win.held && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
+          if (win && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
           if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly || spaceDown.current))) startPan(e);
         }}
         onPointerMove={(e) => {
@@ -1380,10 +1387,10 @@ export function DrawingViewer({
                   if (press) {
                     winPress.current = null;
                     if (svgRef.current?.hasPointerCapture(e.pointerId)) svgRef.current.releasePointerCapture(e.pointerId);
-                    if (win?.held) { finishWindow(win.a, toPage(e)); return; }
-                    // A click: pick the object under it, or on empty space start a click-click window.
+                    if (press.panned) return;
+                    // A click: pick the object under it, or on empty space start a selection window.
                     if (cadObjectAt(press.p)) cadClick(press.p);
-                    else { setWin({ a: press.p, b: press.p, held: false }); setPickMsg(null); }
+                    else { setWin({ a: press.p, b: press.p }); setPickMsg(null); }
                     return;
                   }
                   const picked = pendingCalibration.current;
