@@ -720,28 +720,6 @@ export function DrawingViewer({
     setCadPending({ objs: similarTo(cad, o, by, cadKind, hiddenLayers), ref: o, by });
   };
 
-  /** With no tool, a click selects the saved shape under the cursor; empty space unselects. */
-  const selectShapeAt = (e: { clientX: number; clientY: number }) => {
-    if (!onSelectItem) return;
-    const shapes = (savedMeasurements ?? [])
-      .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
-      .map((m) => {
-        const dimension = m.dimension ?? decodeDimensionPoints(m.points);
-        const points = dimension && m.points.length >= 2
-          ? dimensionGeometry(m.points[0], m.points[1], dimension.location, dimension.mode)
-          : null;
-        return {
-          id: m.id,
-          itemId: m.itemId,
-          measureType: m.measure_type,
-          points: points ? [points.start, points.end] : m.points,
-          segments: points ? [[points.start, points.end] as [Pt, Pt]] : undefined,
-        };
-      });
-    const hit = hitTest(shapes, toPage(e), 6 / view.zoom);
-    onSelectItem(hit?.itemId ?? null, hit?.id ?? null);
-  };
-
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.focus();
     if (gripDrag.current) {
@@ -751,12 +729,6 @@ export function DrawingViewer({
       return;
     }
     if (middleDouble(e)) { e.stopPropagation(); return; }
-    if (noToolSelect && e.button === 0 && !spaceDown.current) {
-      e.stopPropagation();
-      winPress.current = { x: e.clientX, y: e.clientY, p: toPage(e) };
-      svgRef.current?.setPointerCapture(e.pointerId);
-      return;
-    }
     // Pan with the Pan tool, in read-only mode, or with the middle mouse button in any tool.
     if (tool === "pan" || readOnly || e.button === 1 || (e.button === 0 && spaceDown.current)) {
       e.stopPropagation();
@@ -779,10 +751,10 @@ export function DrawingViewer({
     if (cadMode && cad) {
       const p = toPage(e);
       // Second click of a click-click window.
-      if (win && !win.held) { finishWindow(win.a, p); return; }
+      if (win) { finishWindow(win.a, p); return; }
       if (windowable) {
-        // A click picks as before; a drag draws a selection window (decided on pointer up).
-        winPress.current = { x: e.clientX, y: e.clientY, p };
+        // A click picks (or on empty space starts a selection window); a drag pans. Decided on pointer up.
+        winPress.current = { x: e.clientX, y: e.clientY, p, lx: e.clientX, ly: e.clientY, panned: false };
         svgRef.current?.setPointerCapture(e.pointerId);
         return;
       }
@@ -899,38 +871,16 @@ export function DrawingViewer({
     setTraceHover(null);
   };
   /**
-   * Selection window (AutoCAD): drag, or click empty space and click again. Left to right takes the
-   * objects wholly inside (window), right to left also the ones it touches (crossing).
+   * Selection window (AutoCAD): click empty space and click again. Left to right takes the objects
+   * wholly inside (window), right to left also the ones it touches (crossing). A left drag pans.
    */
-  const [win, setWin] = useState<{ a: Pt; b: Pt; held: boolean } | null>(null);
-  const winPress = useRef<{ x: number; y: number; p: Pt } | null>(null);
+  const [win, setWin] = useState<{ a: Pt; b: Pt } | null>(null);
+  const winPress = useRef<{ x: number; y: number; p: Pt; lx: number; ly: number; panned: boolean } | null>(null);
   const windowable = cadMode && (drawMode !== "trace" || (cadKind === "area" && !!traceDraft));
-  /** No tool on a CAD drawing: a left drag selects CAD objects (AutoCAD), then a take-off is chosen for them. */
-  const noToolSelect = !!cad && !readOnly && tool === "pan";
-  const [cadSelection, setCadSelection] = useState<{ mode: CadWindow; areas: SheetObject[]; lines: SheetObject[]; blocks: SheetObject[] } | null>(null);
-  /** Objects selected with no tool, added to the take-off the Start panel creates for them. */
-  const [preselect, setPreselect] = useState<{ tool: TakeoffTool; objs: SheetObject[]; mode: CadWindow } | null>(null);
-  const shownSelection = tool === "pan" ? cadSelection : null;
   const finishWindow = (a: Pt, b: Pt) => {
     setWin(null);
     if (!cad || (a.x === b.x && a.y === b.y)) return;
     const mode = windowMode(a, b);
-    if (tool === "pan") {
-      const sel = {
-        mode,
-        areas: objectsInWindow(cad, a, b, mode, "area", hiddenLayers),
-        lines: objectsInWindow(cad, a, b, mode, "length", hiddenLayers),
-        blocks: objectsInWindow(cad, a, b, mode, "count", hiddenLayers, cadBoxes),
-      };
-      if (!sel.areas.length && !sel.lines.length && !sel.blocks.length) {
-        setCadSelection(null);
-        setPickMsg(`No CAD object ${mode === "window" ? "wholly inside" : "touched by"} that box.`);
-        return;
-      }
-      setPickMsg(null);
-      setCadSelection(sel);
-      return;
-    }
     if (drawMode === "trace") {
       if (!traceDraft) return;
       // Openings inside the held area that the window selects, on the visible layers it covers.
@@ -999,14 +949,6 @@ export function DrawingViewer({
     if (onMeasureMany) onMeasureMany(ms); else ms.forEach((x) => onMeasure?.(x));
   };
 
-  useEffect(() => {
-    if (!preselect || panelTool || tool !== preselect.tool) return;
-    emitCad(preselect.objs, preselect.objs[0], "window", undefined, { window: preselect.mode });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreselect(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselect, panelTool, tool]);
-
   // Leaving the CAD modes clears their preview and pending selection.
   useEffect(() => {
     if (cadMode) return;
@@ -1028,15 +970,6 @@ export function DrawingViewer({
   }, [pickMode]);
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (noToolSelect && (winPress.current || win)) {
-      const pt = toPage(e);
-      const press = winPress.current;
-      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
-      else if (win) setWin({ ...win, b: pt });
-      setCursor(pt);
-      setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
-      return;
-    }
     const g = gripDrag.current;
     if (g) {
       const { pt, snap } = resolve(e, g.objects, g.grip.at);
@@ -1049,8 +982,15 @@ export function DrawingViewer({
     if (cadMode) {
       const pt = toPage(e);
       const press = winPress.current;
-      if (press && !win && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) setWin({ a: press.p, b: pt, held: true });
-      else if (win) setWin({ ...win, b: pt });
+      if (press && (press.panned || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4)) {
+        // A left drag pans, as with no tool.
+        const dx = e.clientX - press.lx, dy = e.clientY - press.ly;
+        press.lx = e.clientX; press.ly = e.clientY; press.panned = true;
+        setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+        setScreenCursor(toViewport(e));
+        return;
+      }
+      if (win) setWin({ ...win, b: pt });
       setCursor(pt);
       setHoverSnap(null);
       setScreenCursor({ x: PAGE_OFFSET + view.x + pt.x * view.zoom, y: PAGE_OFFSET + view.y + pt.y * view.zoom });
@@ -1092,7 +1032,6 @@ export function DrawingViewer({
     else if (e.key === "Escape") {
       // Esc cancels the measurement in progress; with nothing in progress it returns to Pan.
       if (win) setWin(null);
-      else if (shownSelection) setCadSelection(null);
       else if (cadPending) setCadPending(null);
       else if (traceDraft) { setTraceDraft(null); setTraceHover(null); }
       else if (draftPts.length > 0) cancelDraft();
@@ -1153,7 +1092,7 @@ export function DrawingViewer({
   }
   if (cadMode) {
     liveText = pickMsg
-      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + (win.held ? " · release to select" : " · click to select") + " · Esc cancels"
+      ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + " · click to select · Esc cancels"
       : cadPending ? `${cadPending.objs.length} objects selected: confirm below`
       : traceDraft && cadHover && traceHover ? (() => {
         const op = traceHover[0];
@@ -1172,9 +1111,6 @@ export function DrawingViewer({
       : drawMode === "trace" ? "Trace: hover over a line of the boundary"
       : drawMode === "block" ? "Same block: hover over a block" : drawMode === "layer" ? "All on layer: hover over an object" : drawMode === "hatch" ? "Same hatch: hover over a hatch" : "Pick object: hover over a CAD object");
   }
-  if (noToolSelect && (win || pickMsg)) {
-    liveText = pickMsg ?? (win ? (windowMode(win.a, win.b) === "window" ? "Window: objects wholly inside the box" : "Crossing: objects inside or touching the box") + " · release to select · Esc cancels" : "");
-  }
   if (pickMode && draftPts.length === 0) {
     const shape = pickPreview?.[0];
     liveText = pickMsg
@@ -1191,9 +1127,9 @@ export function DrawingViewer({
     : panelTool ? "Set the name, colour and draw mode, then Start Takeoff"
     : boxMode ? BOX_HINT
     : cadMode && win ? "Left to right: objects wholly inside · right to left: objects touching · Esc cancels"
-    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or drag a window to select many · middle button or Space + drag pans"
+    : cadMode ? (drawMode === "object" ? "Pick object: click a CAD object to add its exact quantity, or click empty space twice for a selection window · drag pans"
       : drawMode === "trace" ? (cadKind === "length" ? "Trace: click a line to add it with every line joined end to end with it · Esc cancels" : (traceDraft ? "Click an opening's line (any layer) to deduct it, again to put it back · Enter adds · Esc cancels" : "Trace: click a line of a closed boundary, then deduct its openings · Esc cancels"))
-      : "Click an object to select every one like it, or drag a window to select many, then confirm · Esc cancels")
+      : "Click an object to select every one like it, or click empty space twice for a selection window, then confirm · Esc cancels")
     : pickMode ? (drawMode === "hatch" ? HATCH_HINT : PICK_HINT)
     : tool === "dimension"
       ? draftPts.length === 0
@@ -1201,7 +1137,6 @@ export function DrawingViewer({
         : draftPts.length === 1
           ? "Click the second extension point"
           : "Move the cursor to position the dimension, then click to place"
-    : !activeTool && cad && !readOnly ? "No tool: click a shape to select · drag a window to select CAD objects (left to right: inside, right to left: touching) · middle button or Space + drag pans · wheel zooms"
     : activeTool?.hint ?? "No tool: click a shape to select · drag to move · wheel to zoom";
   const drawingScale = calibration ? drawingScaleFromCalibration(calibration.metresPerUnit) : null;
   const marker = 6 / view.zoom;
@@ -1362,7 +1297,7 @@ export function DrawingViewer({
           if ((e.target as HTMLElement).closest("button, input, select, textarea, a, [role=\"dialog\"]")) return;
           if (middleDouble(e)) return;
           // The second click of a click-click selection window may land off the sheet.
-          if (win && !win.held && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
+          if (win && e.button === 0 && !spaceDown.current) { finishWindow(win.a, toPage(e)); return; }
           if (e.button === 1 || (e.button === 0 && (tool === "pan" || readOnly || spaceDown.current))) startPan(e);
         }}
         onPointerMove={(e) => {
@@ -1392,7 +1327,23 @@ export function DrawingViewer({
           pressAt.current = null;
           // A click (not a drag) with no tool selects the shape under the cursor; empty space unselects.
           if (!start || !onSelectItem || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
-          selectShapeAt(e);
+          const shapes = (savedMeasurements ?? [])
+            .filter((m) => (m.page_no ?? 1) === currentPage && Array.isArray(m.points))
+            .map((m) => {
+              const dimension = m.dimension ?? decodeDimensionPoints(m.points);
+              const points = dimension && m.points.length >= 2
+                ? dimensionGeometry(m.points[0], m.points[1], dimension.location, dimension.mode)
+                : null;
+              return {
+                id: m.id,
+                itemId: m.itemId,
+                measureType: m.measure_type,
+                points: points ? [points.start, points.end] : m.points,
+                segments: points ? [[points.start, points.end] as [Pt, Pt]] : undefined,
+              };
+            });
+          const hit = hitTest(shapes, toPage(e), 6 / view.zoom);
+          onSelectItem(hit?.itemId ?? null, hit?.id ?? null);
         }}
         onAuxClick={(e) => e.preventDefault()}
         onPointerLeave={() => { setScreenCursor(null); setHoverSnap(null); }}
@@ -1436,11 +1387,10 @@ export function DrawingViewer({
                   if (press) {
                     winPress.current = null;
                     if (svgRef.current?.hasPointerCapture(e.pointerId)) svgRef.current.releasePointerCapture(e.pointerId);
-                    if (win?.held) { finishWindow(win.a, toPage(e)); return; }
-                    if (noToolSelect) { setWin(null); selectShapeAt(e); return; }
-                    // A click: pick the object under it, or on empty space start a click-click window.
+                    if (press.panned) return;
+                    // A click: pick the object under it, or on empty space start a selection window.
                     if (cadObjectAt(press.p)) cadClick(press.p);
-                    else { setWin({ a: press.p, b: press.p, held: false }); setPickMsg(null); }
+                    else { setWin({ a: press.p, b: press.p }); setPickMsg(null); }
                     return;
                   }
                   const picked = pendingCalibration.current;
@@ -1568,13 +1518,6 @@ export function DrawingViewer({
                       strokeDasharray={crossing ? `${6 / view.zoom} ${4 / view.zoom}` : undefined} strokeWidth={1.5 / view.zoom} pointerEvents="none" />
                   );
                 })()}
-                {shownSelection && [...new Map([...shownSelection.areas, ...shownSelection.lines].map((o) => [o.handle, o])).values()].map((o) => (
-                  <path key={`sel-${o.handle}`} d={o.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + (o.closed ? "Z" : "")).join(" ")}
-                    fillRule="evenodd" fill={o.closed || o.type === "HATCH" ? "rgba(59,130,246,0.18)" : "none"} stroke="#2563eb" strokeWidth={2 / view.zoom} pointerEvents="none" />
-                ))}
-                {shownSelection?.blocks.map((o) => (
-                  <circle key={`selb-${o.handle}`} cx={o.at?.x ?? 0} cy={o.at?.y ?? 0} r={7 / view.zoom} fill="rgba(59,130,246,0.35)" stroke="#2563eb" strokeWidth={2 / view.zoom} pointerEvents="none" />
-                ))}
                 {/* Openings deducted from the held area: red, so they stand apart from the green area. */}
                 {cadMode && traceDraft?.holes.map((h) => (
                   <path key={`hole-${holeKey(h)}`} d={h.outline.map((l) => "M" + l.map((q) => `${q.x},${q.y}`).join("L") + "Z").join(" ")}
@@ -1668,7 +1611,7 @@ export function DrawingViewer({
               cad={!!cad}
               defaultName={t.defaultName}
               target={t}
-              onCancel={() => { setPanelTool(null); setPreselect(null); }}
+              onCancel={() => setPanelTool(null)}
               onStart={async (cfg) => {
                 await onStartTakeoff(cfg);
                 setPanelTool(null);
@@ -1710,35 +1653,6 @@ export function DrawingViewer({
             <button className="whitespace-nowrap rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => { cancelDraft(); setTool("pan"); }}>Stop (Esc)</button>
           </div>
         )}
-        {shownSelection && !panelTool && (() => {
-          const m = modelMetres ?? 0;
-          const area = shownSelection.areas.reduce((t, o) => t + (o.area ?? 0), 0) * m * m;
-          const length = shownSelection.lines.reduce((t, o) => t + (o.length ?? 0), 0) * m;
-          const choose = (t: TakeoffTool, objs: SheetObject[]) => {
-            setPreselect({ tool: t, objs, mode: shownSelection.mode });
-            setCadSelection(null);
-            setPanelTool(t);
-          };
-          const row = (label: string, n: number, total: string, t: TakeoffTool, objs: SheetObject[], action: string) => n > 0 && (
-            <div className="flex items-center justify-between gap-2 border-t border-border py-1.5 first:border-t-0">
-              <span>{n} {label}{total && <span className="text-muted-foreground"> · {total}</span>}</span>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!onStartTakeoff || !takeoffTarget} onClick={() => choose(t, objs)}>{action}</Button>
-            </div>
-          );
-          return (
-            <div role="dialog" aria-label="CAD objects selected" className="absolute bottom-3 left-1/2 z-30 w-[min(30rem,90%)] -translate-x-1/2 rounded-md border border-border bg-background p-3 text-xs shadow-lg">
-              <p className="font-semibold">{shownSelection.mode === "window" ? "Window: objects wholly inside" : "Crossing: objects inside or touching"} · visible layers only</p>
-              <div className="mt-1">
-                {row(`closed object${shownSelection.areas.length === 1 ? "" : "s"}`, shownSelection.areas.length, `${fmt(area, 3)} m²`, "area", shownSelection.areas, "Add as Area")}
-                {row(`line${shownSelection.lines.length === 1 ? "" : "s"} and outlines`, shownSelection.lines.length, `${fmt(length, 3)} m`, "length", shownSelection.lines, "Add as Linear")}
-                {row(`block${shownSelection.blocks.length === 1 ? "" : "s"}`, shownSelection.blocks.length, "", "count", shownSelection.blocks, "Add as Count")}
-              </div>
-              <div className="mt-1 flex justify-end">
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCadSelection(null)}>Clear (Esc)</Button>
-              </div>
-            </div>
-          );
-        })()}
         {traceDraft && traceShape && (() => {
           const keys = new Set(traceDraft.holes.map(holeKey));
           const rest = traceDraft.layerOpenings.filter((h) => !keys.has(holeKey(h)));
