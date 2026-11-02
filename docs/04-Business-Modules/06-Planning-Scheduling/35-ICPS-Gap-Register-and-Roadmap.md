@@ -239,10 +239,13 @@ Status values: `todo`, `doing`, `done`. Owner is the first agent in the pipeline
 ### Phase P: progress integrity
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| P1 | Actual and remaining quantity per activity; physical % from quantity | yes | todo |
-| P2 | Actual quantity capped at scope unless a scope adjustment is approved | yes | todo |
-| P3 | Progress methods (percent, steps, quantity, weighted milestones) as a schedule setting | yes | todo |
-| P4 | Each period's progress links to its approved report | yes | todo |
+| P1 | `plan_task_quantity_progress` (one entry per installed quantity: date, source, status, approver); `task_quantity_status` gives scope (`plan_task_work.quantity`), installed, pending, remaining and %. Entries from the task drawer (`record_task_quantity`; Quantity & Method tab in the Planning Gantt drawer, panel in the WBS Gantt drawer) and from site daily reports (`sync_daily_report_to_planning`). With approval on, entries wait on the activity's progress review and follow its decision | yes (`20261102132428`) | done (local) |
+| P2 | Installed + pending can never exceed scope; more needs a scope change (recorded with a reason in the quantity history). Corrections (negative entries) cannot go below zero | yes | done (local) |
+| P3 | Progress method per activity (`wbs_tasks.progress_method`) with a project default (`plan_schedule_settings.progress_method_default`, on the Progress Review settings card); automatic = steps when the activity has steps, else percent. Quantity: progress follows installed quantity and cannot be typed (guard trigger). Steps drive progress only for steps / weighted milestones; milestone steps are 0 or 100 | yes | done (local) |
+| P4 | `v_plan_progress_history` (security invoker): confirmed reviews (with their daily report), approved quantity entries and Tasks progress, each with source and approver; shown in the task drawer | yes | done (local) |
+
+**Also fixed in Phase P:** the progress roll-up's temporary table (`_wbs_dirty_projects`) could belong to a security-definer function's owner and then refuse later requests on the same pooled connection ("permission denied"). Its two trigger functions now always run as the owner.
+**Follow-up:** quantities from the Daily Reporting module's PM-verified reports (`dr_sync_version_to_planning`, Construction module) are not yet written to the quantity record.
 
 ### Phase B: BOQ mapping integrity
 | ID | Todo | Mig | Status |

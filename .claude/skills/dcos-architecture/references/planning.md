@@ -79,6 +79,13 @@
     - App service: `lib/planning/schedule-qaqc-service.ts`. Page: `/dashboard/planning/schedule-check`.
     - Tables: `plan_schedule_qaqc_runs` and `plan_schedule_qaqc_findings`, written only through the RPCs `record_schedule_qaqc_run` and `accept_schedule_qaqc_finding`.
     - Gate: `plan_schedule_settings.qaqc_gate` (warn / block), enforced by triggers on `wbs_baselines` insert and on revision submit through `schedule_qaqc_gate_check`.
+  - **Progress integrity (doc 35 P):**
+    - Installed quantity: `plan_task_quantity_progress`, written only via `record_task_quantity` and the daily-report sync. The internal `add_task_quantity_entry` enforces the scope cap.
+    - Status: `task_quantity_status`. Method: `task_effective_progress_method` (task `progress_method`, else the project `progress_method_default`, else steps / percentage).
+    - Quantity-method progress: `apply_task_quantity_progress`, plus a guard that blocks typed progress.
+    - History: `v_plan_progress_history`.
+    - Service and UI: `lib/planning/progress-quantity-service.ts` and `components/planning/plan-task-quantity-panel.tsx`.
+    - The roll-up triggers `collect_dirty_wbs_project` / `flush_dirty_wbs_progress` are security definer.
 - **Pure engines (`lib/planning/`):**
   - `schedule-engine.ts`: re-export of the package (see above).
   - `work-calendar.ts`: re-export of the package.
