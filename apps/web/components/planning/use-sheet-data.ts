@@ -475,7 +475,7 @@ export function useSheetData(
       exceptions = (exRes.data ?? []) as PlanCalendarExceptionRow[];
     } else if (warnedNoCalendar.current !== projectId) {
       warnedNoCalendar.current = projectId;
-      toast.message("No work calendar for this project — scheduling on Mon–Fri", {
+      toast.message("No work calendar for this project — scheduling on Mon–Sat", {
         description: "Set one up under Planning ▸ Calendars.",
       });
     }

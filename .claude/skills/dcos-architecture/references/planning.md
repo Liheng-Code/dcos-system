@@ -156,6 +156,12 @@
   - **`trg_wbs_tasks_schedule_guard`:** dates and links need planning schedule edit. Progress needs schedule edit, or Tasks update-progress when `progress_review_required(project)` is false (awarded projects default to true). `task_transition`, `review_task` and `dr_sync_version_to_planning` are trusted through PG_CONTEXT.
   - **`wbs_task_steps`** has real RLS. A started step locks its weight and basis.
   - **Daily reports, the sheet and Tasks progress** create pending reviews when approval is required.
+- **Wave 1 gate (doc 22, 2026-11-03):**
+  - **Steps are project-scoped** (`20261103172251`): insert / update / delete need project membership as well as the permission; a user without Planning schedule edit changes only a step's progress, dates and notes (`trg_wbs_task_steps_field_guard`). Reading: a member, or Planning schedule view.
+  - **Direct progress through Tasks update-progress needs project membership** (schedule guard, same migration).
+  - **Actual dates follow progress** (`trg_wbs_tasks_actual_dates`, `20261103171941`): above 0 fills the actual start, 100 the actual finish (planned date, or the data date if that is earlier); dates entered by hand are kept.
+  - **No Planning function is executable by anon** (`20261103171832`).
+  - **Release checks:** `supabase/tests/planning/planning_release_checks.sql` (50 self-checking SQL tests, rolled back) and `lib/planning/__tests__/release-services.test.ts`.
 - **Approved or active masters, templates, kits and norms are immutable:** change them through a new version (guard triggers). Approving norms needs the planning norms approve permission.
 - **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`). It must match `csi_division_code` (`D26-…` for division 26); a division change on a root master regenerates it.
 - **Master guard (doc 23):** `csi_division_code`, `csi_section_code`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.

@@ -30,7 +30,12 @@ describe("isFeatureActive", () => {
   it("releases only what lib/modules/release.ts lists", () => {
     const released = MODULE_FEATURES.filter((f) => f.status === "released");
     expect(released.filter((f) => f.moduleKey !== "administration").map((f) => f.navKey).sort()).toEqual(
-      ["/dashboard", "/dashboard/hr/employees", "/dashboard/projects", "group:hr:workforce"].sort(),
+      [
+        "/dashboard", "/dashboard/hr/employees", "/dashboard/projects", "group:hr:workforce",
+        // Planning Wave 1 (doc 22)
+        "group:planning:schedule", "/dashboard/planning/overview", "/dashboard/planning", "/dashboard/planning/gantt",
+        "/dashboard/planning/sheet", "/dashboard/wbs/lookahead", "/dashboard/planning/calendars", "/dashboard/planning/comparison",
+      ].sort(),
     );
     const administration = MODULE_FEATURES.filter((f) => f.moduleKey === "administration");
     expect(administration.every((f) => f.status === "released")).toBe(true);
@@ -40,6 +45,28 @@ describe("isFeatureActive", () => {
     expect(isFeatureActive("/dashboard/hr/payroll", [], false)).toBe(false);
     expect(isFeatureActive("/dashboard/hr/payroll", [], true)).toBe(true);
     expect(isFeatureActive("/dashboard/hr/payroll", on("/dashboard/hr/payroll"), false)).toBe(true);
+  });
+});
+
+describe("Planning Wave 1 release (doc 22)", () => {
+  it("opens the core scheduling pages without a settings row or the local override", () => {
+    for (const path of ["/dashboard/planning/overview", "/dashboard/planning", "/dashboard/planning/gantt", "/dashboard/planning/sheet",
+      "/dashboard/wbs/lookahead", "/dashboard/planning/calendars", "/dashboard/planning/comparison"]) {
+      expect(isFeatureRouteBlocked(path, [], false), path).toBe(false);
+    }
+    expect(moduleHasActiveFeature("planning", [], false)).toBe(true);
+  });
+
+  it("keeps the later waves and MS Project Sync in development", () => {
+    for (const path of ["/dashboard/planning/sync", "/dashboard/planning/forecast", "/dashboard/planning/milestones",
+      "/dashboard/planning/schedule-check", "/dashboard/planning/resource-loading", "/dashboard/planning/feeds",
+      "/dashboard/planning/cost", "/dashboard/planning/productivity", "/dashboard/planning/activity-library"]) {
+      expect(isFeatureRouteBlocked(path, [], false), path).toBe(true);
+    }
+  });
+
+  it("an admin can still switch a released page off in Module Settings", () => {
+    expect(isFeatureRouteBlocked("/dashboard/planning/gantt", off("/dashboard/planning/gantt"), false)).toBe(true);
   });
 });
 

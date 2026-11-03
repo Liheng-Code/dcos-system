@@ -18,6 +18,19 @@ export const RELEASED: Record<string, "all" | string[]> = {
   administration: "all",
   project: ["/dashboard", "/dashboard/projects"],
   hr: ["group:hr:workforce", "/dashboard/hr/employees"],
+  // Planning Wave 1, core scheduling (doc 22; released 2026-11-03 after the P2 release checks). The Look-ahead's
+  // sub-tabs (Weekly Plans, S-Curve, Progress Reviews) follow their parent. MS Project Sync and the newer pages
+  // (Forecast, Contract Milestones, Schedule Check) stay in development until their wave.
+  planning: [
+    "group:planning:schedule",
+    "/dashboard/planning/overview",
+    "/dashboard/planning",
+    "/dashboard/planning/gantt",
+    "/dashboard/planning/sheet",
+    "/dashboard/wbs/lookahead",
+    "/dashboard/planning/calendars",
+    "/dashboard/planning/comparison",
+  ],
 };
 
 export function isReleased(moduleKey: string, navKey: string): boolean {
