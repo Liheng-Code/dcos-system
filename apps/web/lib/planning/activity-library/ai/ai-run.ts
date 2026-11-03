@@ -19,6 +19,14 @@ import { loadRun } from "../generation-service";
 import { proposeFromHistory } from "../productivity-learning";
 import { standardHistoryStats } from "../productivity-learning-service";
 import { runRecovery, type TargetSpec } from "../recovery-service";
+import {
+  askSchema, askSuggestion, buildAskContext, buildDelayContext, buildQaqcContext, buildReportContext, delaySchema, delaySuggestion,
+  delayTotals, qaqcSchema, qaqcSuggestions, reportSchema, reportSuggestion, scheduleDigest, type DelayFact, type QaqcFindingFact,
+} from "./ai-assist";
+import { loadReportData } from "../../reports/report-data";
+import { buildMonthlyReport, buildWeeklyReport } from "../../reports/report-builders";
+import type { ReportBasis } from "../../reports/report-model";
+import { milestoneStatus, type ContractMilestone } from "../../milestones/contract-milestones";
 
 type Db = SupabaseClient;
 
@@ -43,7 +51,12 @@ export type AiRequest =
   | { tool: "suggest_productivity"; standardId: string }
   | { tool: "detect_schedule_conflict"; runId: string }
   | { tool: "explain_generation"; runId: string }
-  | { tool: "suggest_recovery_plan"; projectId: string; target: TargetSpec };
+  | { tool: "suggest_recovery_plan"; projectId: string; target: TargetSpec }
+  // doc 35 Phase A
+  | { tool: "explain_qaqc_findings"; projectId: string }
+  | { tool: "summarise_delays"; projectId: string }
+  | { tool: "draft_report_commentary"; projectId: string; reportType: "weekly" | "monthly"; weekEnding?: string }
+  | { tool: "ask_schedule"; projectId: string; question: string };
 
 export interface StoredSuggestion extends SuggestionDraft { id: string; status: string }
 
@@ -70,8 +83,104 @@ const embedName = (v: unknown): string => {
   return (o as { name?: string } | null | undefined)?.name ?? "";
 };
 
+/** The programme as the reports see it (float recalculated from the data date), read as the caller. */
+async function programme(db: Db, projectId: string) {
+  const { data: basis, error } = await db.rpc("plan_report_basis", { p_project_id: projectId });
+  if (error) throw new Error(error.message);
+  const b = basis as ReportBasis;
+  return { basis: b, data: await loadReportData(db, projectId, b, null) };
+}
+
 async function prepare(db: Db, req: AiRequest): Promise<Prepared> {
   switch (req.tool) {
+    case "explain_qaqc_findings": {
+      const { data: rows, error } = await db.from("plan_schedule_qaqc_findings")
+        .select("id, check_code, check_name, severity, message, metric, threshold, affected_task_ids")
+        .eq("project_id", req.projectId).eq("status", "open").order("check_number").limit(30);
+      if (error) throw new Error(error.message);
+      const list = (rows ?? []) as { id: string; check_code: string; check_name: string; severity: string; message: string; metric: number | null; threshold: number | null; affected_task_ids: string[] | null }[];
+      if (list.length === 0) return { projectId: req.projectId, summary: { findings: 0 }, empty: "There are no open Schedule Check findings to explain. Run the check first, or every finding is resolved or accepted." };
+      const sampleIds = [...new Set(list.flatMap((f) => (f.affected_task_ids ?? []).slice(0, 4)))];
+      const { data: tasks } = sampleIds.length ? await db.from("wbs_tasks").select("id, task_code, task_name").in("id", sampleIds) : { data: [] };
+      const label = new Map(((tasks ?? []) as { id: string; task_code: string | null; task_name: string }[]).map((t) => [t.id, `${t.task_code ?? ""} ${t.task_name}`.trim().slice(0, 60)]));
+      const { data: run } = await db.from("plan_schedule_qaqc_runs").select("task_count").eq("project_id", req.projectId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      const facts: QaqcFindingFact[] = list.map((f) => ({
+        id: f.id, code: f.check_code, name: f.check_name, severity: f.severity, message: f.message,
+        metric: f.metric == null ? null : Number(f.metric), threshold: f.threshold == null ? null : Number(f.threshold),
+        affected: (f.affected_task_ids ?? []).length,
+        samples: (f.affected_task_ids ?? []).slice(0, 4).map((id) => label.get(id)).filter((x): x is string => !!x),
+      }));
+      const user = buildQaqcContext(facts, Number((run as { task_count: number } | null)?.task_count ?? 0));
+      return {
+        projectId: req.projectId, summary: { findings: facts.map((f) => f.id) }, user, schema: qaqcSchema, maxTokens: 2500,
+        build: ((o: never) => qaqcSuggestions(o, facts, user, req.projectId)) as never,
+      };
+    }
+
+    case "summarise_delays": {
+      const { data: rows, error } = await db.from("delay_register")
+        .select("id, delay_code, description, delay_type, cause, responsible_party, impact_days, status, lifecycle, critical_at_open, opened_at, wbs_task_id")
+        .eq("project_id", req.projectId).limit(500);
+      if (error) throw new Error(error.message);
+      const list = (rows ?? []) as {
+        id: string; delay_code: string | null; description: string | null; delay_type: string | null; cause: string | null; responsible_party: string | null;
+        impact_days: number | null; status: string; lifecycle: string | null; critical_at_open: boolean | null; opened_at: string | null; wbs_task_id: string | null;
+      }[];
+      if (list.length === 0) return { projectId: req.projectId, summary: { delays: 0 }, empty: "The delay register of this project is empty: nothing to summarise." };
+      const { data: links } = await db.from("delay_register_tasks").select("delay_id, wbs_task_id").in("delay_id", list.map((d) => d.id));
+      const linkRows = (links ?? []) as { delay_id: string; wbs_task_id: string }[];
+      const taskIds = [...new Set([...list.map((d) => d.wbs_task_id), ...linkRows.map((l) => l.wbs_task_id)].filter((x): x is string => !!x))];
+      const { data: tasks } = taskIds.length ? await db.from("wbs_tasks").select("id, task_code").in("id", taskIds.slice(0, 200)) : { data: [] };
+      const code = new Map(((tasks ?? []) as { id: string; task_code: string | null }[]).map((t) => [t.id, t.task_code ?? ""]));
+      const facts: DelayFact[] = list.map((d, i) => ({
+        code: d.delay_code ?? `D${i + 1}`, description: d.description ?? "", type: d.delay_type, cause: d.cause, responsible: d.responsible_party,
+        impactDays: Number(d.impact_days ?? 0), status: d.status, lifecycle: d.lifecycle, critical: d.critical_at_open, openedAt: d.opened_at?.slice(0, 10) ?? null,
+        activities: [...new Set([d.wbs_task_id, ...linkRows.filter((l) => l.delay_id === d.id).map((l) => l.wbs_task_id)]
+          .map((id) => (id ? code.get(id) : "")).filter((x): x is string => !!x))],
+      }));
+      const { data: p } = await db.from("projects").select("data_date").eq("id", req.projectId).maybeSingle();
+      const asAt = (p as { data_date: string | null } | null)?.data_date ?? new Date().toISOString().slice(0, 10);
+      const user = buildDelayContext(facts, delayTotals(facts), asAt);
+      return {
+        projectId: req.projectId, summary: { delays: facts.length }, user, schema: delaySchema, maxTokens: 2000,
+        build: ((o: never) => delaySuggestion(o, facts, user, req.projectId, asAt)) as never,
+      };
+    }
+
+    case "draft_report_commentary": {
+      const { basis, data } = await programme(db, req.projectId);
+      if (data.tasks.length === 0) return { projectId: req.projectId, summary: { tasks: 0 }, empty: "The programme has no activities, so there is nothing to report." };
+      const doc = req.reportType === "weekly" ? buildWeeklyReport(data, basis, req.weekEnding ?? data.asAt) : buildMonthlyReport(data, basis);
+      const user = buildReportContext(doc);
+      return {
+        projectId: req.projectId, summary: { report: req.reportType, period: doc.periodLabel }, user, schema: reportSchema, maxTokens: 2500,
+        build: ((o: never) => reportSuggestion(o, doc, user, req.projectId)) as never,
+      };
+    }
+
+    case "ask_schedule": {
+      const question = req.question.trim();
+      if (question.length < 5) return { projectId: req.projectId, summary: { question_length: question.length }, empty: "Ask a full question, for example: what is driving the finish date?" };
+      const { data } = await programme(db, req.projectId);
+      if (data.tasks.length === 0) return { projectId: req.projectId, summary: { tasks: 0 }, empty: "The programme has no activities yet." };
+      const { data: ms } = await db.from("plan_contract_milestones").select("*").eq("project_id", req.projectId).limit(30);
+      const byId = new Map(data.tasks.map((t) => [t.id, t]));
+      const milestones = ((ms ?? []) as ContractMilestone[]).map((m) => {
+        const t = m.task_id ? byId.get(m.task_id) : null;
+        const s = milestoneStatus(m, t ? {
+          id: t.id, task_code: t.code, task_name: t.name, start_date: t.start, end_date: t.finish, baseline_start_date: t.baselineStart,
+          baseline_finish_date: t.baselineFinish, actual_start_date: t.actualStart, actual_finish_date: t.actualFinish, progress: t.progress,
+        } : null);
+        return { code: m.code, name: m.name, due: s.due, forecast: s.achieved ?? s.forecast, state: s.state };
+      });
+      const digest = scheduleDigest(data, question, milestones);
+      const user = buildAskContext(question, digest);
+      return {
+        projectId: req.projectId, summary: { question: question.slice(0, 120), activities: digest.codes.size }, user, schema: askSchema, maxTokens: 1500,
+        build: ((o: never) => askSuggestion(o, question, digest, user, req.projectId)) as never,
+      };
+    }
+
     case "find_activity_master": {
       const q = req.query.trim();
       if (q.length < 3) return { projectId: null, summary: { query_length: q.length }, empty: "Type at least three characters." };

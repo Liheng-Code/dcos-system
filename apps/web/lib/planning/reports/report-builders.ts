@@ -271,11 +271,35 @@ export function buildMonthlyReport(data: ReportData, basis: ReportBasis): Report
   };
 }
 
-export function buildReport(type: ReportType, data: ReportData, basis: ReportBasis, opts: { weekEnding?: string } = {}): ReportDoc {
-  switch (type) {
-    case "master_programme": return buildMasterProgramme(data, basis);
-    case "weekly": return buildWeeklyReport(data, basis, opts.weekEnding ?? data.asAt);
-    case "recovery": return buildRecoveryReport(data, basis);
-    case "monthly": return buildMonthlyReport(data, basis);
-  }
+export interface ReportCommentary {
+  paragraphs: string[];
+  /** drafted by the AI assistant (doc 35 A3) and then edited / approved by the person generating the report */
+  aiAssisted: boolean;
+}
+
+/** The planner's commentary, placed after the report's headline figures, with who wrote it and how. */
+export function withCommentary(doc: ReportDoc, c: ReportCommentary | null | undefined): ReportDoc {
+  const paragraphs = (c?.paragraphs ?? []).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 8);
+  if (!paragraphs.length) return doc;
+  const by = doc.generatedBy ?? "the planner";
+  const section: ReportSection = {
+    kind: "text", title: "Planner's commentary",
+    paragraphs: [...paragraphs, c!.aiAssisted ? `Drafted with AI assistance from the programme data, then reviewed and edited by ${by}.` : `By ${by}.`],
+  };
+  const at = doc.sections.findIndex((s) => s.kind === "kpis");
+  const sections = [...doc.sections];
+  sections.splice(at >= 0 ? at + 1 : 0, 0, section);
+  return { ...doc, sections };
+}
+
+export function buildReport(type: ReportType, data: ReportData, basis: ReportBasis, opts: { weekEnding?: string; commentary?: ReportCommentary | null } = {}): ReportDoc {
+  const doc = (() => {
+    switch (type) {
+      case "master_programme": return buildMasterProgramme(data, basis);
+      case "weekly": return buildWeeklyReport(data, basis, opts.weekEnding ?? data.asAt);
+      case "recovery": return buildRecoveryReport(data, basis);
+      case "monthly": return buildMonthlyReport(data, basis);
+    }
+  })();
+  return withCommentary(doc, opts.commentary);
 }

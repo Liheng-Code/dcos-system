@@ -58,6 +58,8 @@ export interface GeneratedReport {
 
 export async function generateReport(opts: {
   userDb: SupabaseClient; adminDb: SupabaseClient; projectId: string; userId: string; type: ReportType; weekEnding?: string;
+  /** the planner's commentary; aiSuggestionId = the AI draft it started from (doc 35 A3) */
+  commentary?: { paragraphs: string[]; aiSuggestionId?: string };
 }): Promise<GeneratedReport> {
   const { userDb, adminDb, projectId, userId, type } = opts;
 
@@ -68,7 +70,18 @@ export async function generateReport(opts: {
   const basis = basisRaw as ReportBasis;
 
   const data = await loadReportData(userDb, projectId, basis, userId);
-  const doc = buildReport(type, data, basis, { weekEnding: opts.weekEnding });
+  let aiAssisted = false;
+  if (opts.commentary?.aiSuggestionId) {
+    const { data: s } = await userDb.from("plan_act_ai_suggestions").select("id, kind, project_id")
+      .eq("id", opts.commentary.aiSuggestionId).maybeSingle();
+    const row = s as { kind: string; project_id: string | null } | null;
+    if (!row || row.kind !== "report_draft" || row.project_id !== projectId) throw new ReportError("The AI draft does not belong to this project's reports.", 400);
+    aiAssisted = true;
+  }
+  const doc = buildReport(type, data, basis, {
+    weekEnding: opts.weekEnding,
+    commentary: opts.commentary ? { paragraphs: opts.commentary.paragraphs, aiAssisted } : null,
+  });
   const html = renderReportHtml(doc);
   const pdf = await renderReportPdf(doc);
   const hash = contentHash(doc);

@@ -8,8 +8,11 @@ import { singularise } from "../boq-quantity";
 export const PROMPT_VERSION = "plan-ai-v1";
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
-export type AiTool = "find_activity_master" | "suggest_quantity_mapping" | "suggest_productivity" | "detect_schedule_conflict" | "explain_generation" | "suggest_recovery_plan";
-export type SuggestionKind = "match_master" | "quantity_mapping" | "productivity" | "conflict" | "explanation" | "recovery";
+export type AiTool = "find_activity_master" | "suggest_quantity_mapping" | "suggest_productivity" | "detect_schedule_conflict" | "explain_generation" | "suggest_recovery_plan"
+  // doc 35 Phase A (ai-assist.ts)
+  | "explain_qaqc_findings" | "summarise_delays" | "draft_report_commentary" | "ask_schedule";
+export type SuggestionKind = "match_master" | "quantity_mapping" | "productivity" | "conflict" | "explanation" | "recovery"
+  | "qaqc_explanation" | "delay_summary" | "report_draft" | "schedule_answer";
 export type TargetType = "query" | "generation_item" | "generation_run" | "standard" | "project";
 
 export interface SuggestionDraft {

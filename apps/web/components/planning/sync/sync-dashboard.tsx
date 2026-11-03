@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { WbsExcelExportButton } from "./wbs-excel-export-button";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -325,10 +326,13 @@ export function SyncDashboard() {
               : ""}
           </p>
         </div>
-        <Button variant="outline" onClick={handleExport} disabled={exporting}>
-          {exporting ? <Loader2 className="animate-spin" /> : <Download />}
-          Export XML
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <WbsExcelExportButton projectId={selectedProjectId} projectCode={selectedProject.project_code} />
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            {exporting ? <Loader2 className="animate-spin" /> : <Download />}
+            Export XML
+          </Button>
+        </div>
       </div>
 
       <Separator />

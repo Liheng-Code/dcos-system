@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deletePlanCalendarById, insertPlanCalendar, listPlanCalendarsByProjectId, updatePlanCalendarById } from "@/lib/planning/planning-queries";
+import { insertPlanCalendar, listPlanCalendarsByProjectId } from "@/lib/planning/planning-queries";
+import type { CalendarEdit } from "@/lib/planning/calendar-change";
+import { PlanCalendarImpactDialog } from "./plan-calendar-impact-dialog";
 import { Plus, Loader2, Pencil, Trash2, Search } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,8 @@ export function PlanCalendarList() {
   });
   const [isDefault, setIsDefault] = useState(false);
   const [hoursPerDay, setHoursPerDay] = useState("8");
+  // doc 35 I2: changes to an existing calendar are previewed, then saved with a recalculation
+  const [pending, setPending] = useState<CalendarEdit | null>(null);
 
   async function load() {
     if (!selectedProjectId) { setRows([]); setLoading(false); return; }
@@ -64,21 +68,21 @@ export function PlanCalendarList() {
       toast.error("Hours per day must be more than 0 and at most 24");
       return;
     }
-    setSaving(true);
     const payload: Record<string, any> = { name, description: desc || null, is_default: isDefault, hours_per_day: hours };
     for (const d of DAYS) payload[d] = dayFlags[d];
-    const { error } = editing
-      ? await updatePlanCalendarById(payload, editing.id)
-      : await insertPlanCalendar({ ...payload, project_id: selectedProjectId });
+    if (editing) {
+      setPending({ kind: "update", calendarId: editing.id, patch: payload });
+      return;
+    }
+    setSaving(true);
+    const { error } = await insertPlanCalendar({ ...payload, project_id: selectedProjectId });
     if (error) { toast.error(error.message); setSaving(false); return; }
     toast.success(editing ? "Updated" : "Created");
     setShowForm(false); resetForm(); load(); setSaving(false);
   }
 
-  async function handleDelete(id: string) {
-    const { error } = await deletePlanCalendarById(id);
-    if (error) toast.error(error.message);
-    else { toast.success("Deleted"); load(); }
+  function handleDelete(id: string) {
+    setPending({ kind: "delete", calendarId: id });
   }
 
   const filtered = rows.filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()));
@@ -87,6 +91,14 @@ export function PlanCalendarList() {
 
   return (
     <div className="space-y-4">
+      {selectedProjectId && (
+        <PlanCalendarImpactDialog
+          projectId={selectedProjectId}
+          edit={pending}
+          onClose={() => setPending(null)}
+          onSaved={() => { setPending(null); setShowForm(false); resetForm(); load(); }}
+        />
+      )}
       <div className="flex items-center justify-between">
         <div className="relative w-72">
           <Input placeholder="Search calendars..." value={search} onChange={e => setSearch(e.target.value)} className="pl-3" />
@@ -128,7 +140,7 @@ export function PlanCalendarList() {
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => { setShowForm(false); resetForm(); }}>Cancel</Button>
-              <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Preview and save" : "Create"}</Button>
             </div>
           </form>
         </CardContent></Card>

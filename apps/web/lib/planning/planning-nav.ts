@@ -41,6 +41,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
       { label: "Forecast", href: "/dashboard/planning/forecast" },
+      // doc 35 I1: contractual dates, extensions and damages exposure
+      { label: "Contract Milestones", href: "/dashboard/planning/milestones" },
       // doc 35 Q3: DCMA 14-point checks and the submission gate
       { label: "Schedule Check", href: "/dashboard/planning/schedule-check" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
@@ -55,6 +57,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "Resources", href: "/dashboard/planning/resource-loading" },
       { label: "Members", href: "/dashboard/planning/members" },
       { label: "Cost & Cash Flow", href: "/dashboard/planning/cost" },
+      // doc 35 I3-I7: published feeds to Procurement, HR, QA/QC, Document Control and Finance
+      { label: "Outbound Feeds", href: "/dashboard/planning/feeds" },
       {
         label: "Delay Register",
         href: "/dashboard/planning/delays",

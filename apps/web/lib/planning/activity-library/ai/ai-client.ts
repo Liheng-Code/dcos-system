@@ -31,8 +31,9 @@ export async function askAi(req: AiRequest): Promise<AiResponse> {
   return json;
 }
 
-export async function listSuggestions(db: Db, filter: { targetType?: string; targetId?: string; runId?: string; status?: string; limit?: number }): Promise<AiSuggestionRow[]> {
+export async function listSuggestions(db: Db, filter: { targetType?: string; targetId?: string; runId?: string; status?: string; kind?: string; limit?: number }): Promise<AiSuggestionRow[]> {
   let q = db.from("plan_act_ai_suggestions").select("*").order("created_at", { ascending: false }).limit(filter.limit ?? 50);
+  if (filter.kind) q = q.eq("kind", filter.kind);
   if (filter.targetType) q = q.eq("target_type", filter.targetType);
   if (filter.targetId) q = q.eq("target_id", filter.targetId);
   if (filter.runId) q = q.eq("run_id", filter.runId);

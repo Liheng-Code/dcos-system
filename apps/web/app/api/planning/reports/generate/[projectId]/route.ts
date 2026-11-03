@@ -11,6 +11,11 @@ export const maxDuration = 120;
 const body = z.object({
   type: z.enum(["master_programme", "weekly", "monthly", "recovery"]),
   weekEnding: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // doc 35 A3: the planner's commentary, possibly started from an AI draft
+  commentary: z.object({
+    paragraphs: z.array(z.string().max(2000)).max(8),
+    aiSuggestionId: z.string().uuid().optional(),
+  }).optional(),
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!parsed.success) return NextResponse.json({ error: "Invalid request", issues: parsed.error.issues }, { status: 400 });
 
   try {
-    const r = await generateReport({ userDb, adminDb: createAdminClient(), projectId, userId: user.id, type: parsed.data.type, weekEnding: parsed.data.weekEnding });
+    const r = await generateReport({ userDb, adminDb: createAdminClient(), projectId, userId: user.id, type: parsed.data.type, weekEnding: parsed.data.weekEnding, commentary: parsed.data.commentary });
     return NextResponse.json(r);
   } catch (e) {
     const status = e instanceof ReportError ? e.status : 500;

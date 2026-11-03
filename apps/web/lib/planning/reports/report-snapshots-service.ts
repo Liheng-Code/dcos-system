@@ -42,9 +42,12 @@ export async function getReportContent(db: Db, id: string): Promise<ReportDoc> {
   return (data as { content: ReportDoc }).content;
 }
 
-export async function requestReport(projectId: string, type: ReportType, weekEnding?: string): Promise<{ id: string; document_number: string; document_revision: number; page_count: number }> {
+export async function requestReport(
+  projectId: string, type: ReportType, weekEnding?: string, commentary?: { paragraphs: string[]; aiSuggestionId?: string },
+): Promise<{ id: string; document_number: string; document_revision: number; page_count: number }> {
   const res = await fetch(`/api/planning/reports/generate/${projectId}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, ...(weekEnding ? { weekEnding } : {}) }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, ...(weekEnding ? { weekEnding } : {}), ...(commentary?.paragraphs.length ? { commentary } : {}) }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error ?? `Report failed (${res.status})`);

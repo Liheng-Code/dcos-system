@@ -6,10 +6,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileDown, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { FileDown, FileSpreadsheet, FileText, Loader2, Sparkles } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { askAi, decideSuggestion } from "@/lib/planning/activity-library/ai/ai-client";
 import { useProject } from "@/components/dashboard/project-context";
 import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
 import { createClient } from "@/lib/supabase/client";
@@ -37,6 +39,11 @@ export function PlanReportDocuments() {
   const [busy, setBusy] = useState(false);
   const [rows, setRows] = useState<{ projectId: string; list: ReportSnapshotRow[] } | null>(null);
   const [names, setNames] = useState<Map<string, string>>(new Map());
+  // doc 35 A3: the planner's commentary for weekly / monthly reports, optionally started from an AI draft
+  const [commentary, setCommentary] = useState("");
+  const [draft, setDraft] = useState<{ id: string; status: string } | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const withCommentary = type === "weekly" || type === "monthly";
 
   const load = useCallback(() => {
     if (!projectId) return;
@@ -53,11 +60,33 @@ export function PlanReportDocuments() {
   }, [db, projectId]);
   useEffect(load, [load]);
 
+  async function draftCommentary() {
+    if (!projectId || !withCommentary) return;
+    setDrafting(true);
+    try {
+      const r = await askAi({ tool: "draft_report_commentary", projectId, reportType: type as "weekly" | "monthly", ...(type === "weekly" ? { weekEnding } : {}) });
+      const s = r.suggestions[0];
+      const paragraphs = (s?.payload as { paragraphs?: string[] } | undefined)?.paragraphs;
+      if (s && paragraphs?.length) {
+        setCommentary(paragraphs.join("\n\n"));
+        setDraft({ id: s.id, status: s.status });
+        toast.success("Draft ready. Edit it before you generate the report.");
+      } else toast.message(r.message ?? "No draft passed the checks.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "AI request failed"); } finally { setDrafting(false); }
+  }
+
   async function generate() {
     if (!projectId) return;
     setBusy(true);
     try {
-      const r = await requestReport(projectId, type, type === "weekly" ? weekEnding : undefined);
+      const paragraphs = withCommentary ? commentary.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
+      if (draft && paragraphs.length && draft.status === "pending") {
+        // using the draft is the planner's acceptance of it (kept in the AI decision log)
+        await decideSuggestion(db, draft.id, "accepted", "Edited and used as report commentary").catch(() => {});
+      }
+      const r = await requestReport(projectId, type, type === "weekly" ? weekEnding : undefined,
+        paragraphs.length ? { paragraphs, ...(draft ? { aiSuggestionId: draft.id } : {}) } : undefined);
+      setCommentary(""); setDraft(null);
       toast.success(`${REPORT_TYPE_LABEL[type]} generated: ${r.page_count} page(s), filed as ${r.document_number} revision ${r.document_revision}.`);
       window.open(reportFileUrl(r.id, "pdf"), "_blank", "noopener");
       load();
@@ -111,6 +140,19 @@ export function PlanReportDocuments() {
           )}
           <Button onClick={generate} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}Generate PDF</Button>
           <span className="pb-2 text-xs text-muted-foreground">{TYPES.find((t) => t.value === type)?.hint}</span>
+          {withCommentary && (
+            <div className="w-full space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Planner&apos;s commentary (optional; paragraphs separated by a blank line)</span>
+                <Button size="sm" variant="ghost" onClick={() => void draftCommentary()} disabled={drafting || busy}>
+                  {drafting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}Draft with AI
+                </Button>
+              </div>
+              <Textarea rows={5} value={commentary} onChange={(e) => setCommentary(e.target.value)}
+                placeholder="Overall position, progress this period, critical work and delays, what is next." />
+              {draft && <p className="text-[11px] text-muted-foreground">Started from an AI draft. Check every statement; the report will say it was drafted with AI assistance and reviewed by you.</p>}
+            </div>
+          )}
         </div>
       ) : (
         <p className="px-4 py-3 text-xs text-muted-foreground">Generating reports needs Schedule export permission. Reports already generated are listed below.</p>

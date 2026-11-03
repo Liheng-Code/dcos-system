@@ -73,7 +73,7 @@ import {
   todayISO,
   uniqueSiblingCode,
 } from "./sheet-utils";
-import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, deleteWbsNodeByIdReturning, deleteWbsTaskByIdReturning, getPlanCalendarByProjectId, getPlanScheduleSettingByProjectId, getPlanWbsCodeMaskByProjectId, getProjectById, getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS, getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS, getWeeklyPlanByProjectIdWithStatusApproved, insertWbsNodeReturning, insertWbsTasksReturning, listPlanCalendarExceptionsByCalendarIdLimited, listWbsNodesByProjectIdOrderedBySortOrder, listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId, listWbsTasksByProjectIdOfTaskCode, listWbsTasksByProjectIdOrderedBySortOrder, submitProgress, updateWbsNodeById, updateWbsTaskById, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
+import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, checkWbsNodeDelete, deleteWbsNodeByIdReturning, deleteWbsTaskByIdReturning, getPlanCalendarByProjectId, getPlanScheduleSettingByProjectId, getPlanWbsCodeMaskByProjectId, getProjectById, getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS, getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS, getWeeklyPlanByProjectIdWithStatusApproved, insertWbsNodeReturning, insertWbsTasksReturning, listPlanCalendarExceptionsByCalendarIdLimited, listWbsNodesByProjectIdOrderedBySortOrder, listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId, listWbsTasksByProjectIdOfTaskCode, listWbsTasksByProjectIdOrderedBySortOrder, submitProgress, updateWbsNodeById, updateWbsTaskById, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 
 const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
@@ -1702,6 +1702,13 @@ export function useSheetData(
       const descIds = getDescendantNodeIds(nodesRef.current, nodeId);
       const subtree = new Set([nodeId, ...descIds]);
       const taskCount = tasksRef.current.filter((t) => subtree.has(t.wbs_node_id)).length;
+      // records elsewhere that point at it block the delete (doc 35 I8; the database enforces it too)
+      const check = await checkWbsNodeDelete(nodeId);
+      const blockers = (check.data ?? []) as { label: string; count: number }[];
+      if (blockers.length) {
+        toast.error(`"${node.wbs_name}" cannot be deleted. Records point at it: ${blockers.map((b) => `${b.label} (${b.count})`).join(", ")}. Move them to another WBS item or close them first.`, { duration: 10000 });
+        return;
+      }
       const parts = [`Delete "${node.wbs_name}"`];
       if (descIds.length) parts.push(`its ${descIds.length} sub-group${descIds.length > 1 ? "s" : ""}`);
       if (taskCount) parts.push(`${taskCount} task${taskCount > 1 ? "s" : ""}`);

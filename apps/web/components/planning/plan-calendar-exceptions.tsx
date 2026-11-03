@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deletePlanCalendarExceptionById, insertPlanCalendarException, listPlanCalendarExceptionsByCalendarId, listPlanCalendarsByProjectId } from "@/lib/planning/planning-queries";
+import { listPlanCalendarExceptionsByCalendarId, listPlanCalendarsByProjectId } from "@/lib/planning/planning-queries";
+import type { CalendarEdit } from "@/lib/planning/calendar-change";
+import { PlanCalendarImpactDialog } from "./plan-calendar-impact-dialog";
 import { Plus, Loader2, Trash2, Calendar as CalendarIcon } from "lucide-react";
 import { useProject } from "@/components/dashboard/project-context";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,8 @@ export function PlanCalendarExceptions() {
   const [exceptionDate, setExceptionDate] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [reason, setReason] = useState("");
+  // doc 35 I2: adding or removing a holiday is previewed, then saved with a recalculation
+  const [pending, setPending] = useState<CalendarEdit | null>(null);
 
   useEffect(() => {
     setSelectedCalId("");
@@ -42,32 +46,31 @@ export function PlanCalendarExceptions() {
 
   function resetForm() { setExceptionDate(""); setIsWorking(false); setReason(""); }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedCalId) return;
+    setPending({ kind: "add_exception", calendarId: selectedCalId, date: exceptionDate, isWorking, reason: reason || null });
+  }
+
+  function handleDelete(id: string) {
+    setPending({ kind: "remove_exception", calendarId: selectedCalId, exceptionId: id });
+  }
+
+  async function onSaved() {
+    const added = pending?.kind === "add_exception";
+    setPending(null);
+    if (added) resetForm();
     setSaving(true);
-    const { error } = await insertPlanCalendarException({
-      calendar_id: selectedCalId, exception_date: exceptionDate, is_working: isWorking, reason: reason || null,
-    });
-    if (error) { toast.error(error.message); setSaving(false); return; }
-    toast.success("Exception added");
-    resetForm();
     const { data } = await listPlanCalendarExceptionsByCalendarId(selectedCalId);
     if (data) setRows(data);
     setSaving(false);
   }
 
-  async function handleDelete(id: string) {
-    const { error } = await deletePlanCalendarExceptionById(id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Deleted");
-      setRows(prev => prev.filter(r => r.id !== id));
-    }
-  }
-
   return (
     <div className="space-y-4">
+      {selectedProjectId && (
+        <PlanCalendarImpactDialog projectId={selectedProjectId} edit={pending} onClose={() => setPending(null)} onSaved={() => void onSaved()} />
+      )}
       <div className="flex items-center gap-3">
         <Label className="shrink-0">Calendar</Label>
         <select className="flex h-10 w-64 rounded-md border border-input bg-transparent px-3 py-2 text-sm"
@@ -93,7 +96,7 @@ export function PlanCalendarExceptions() {
                 <div className="col-span-2 space-y-1.5"><Label>Reason</Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. National holiday, weather shutdown..." /></div>
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Add Exception"}</Button>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Preview and add"}</Button>
               </div>
             </form>
           </CardContent></Card>
