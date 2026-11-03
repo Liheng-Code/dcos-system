@@ -40,6 +40,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
         ],
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
+      { label: "Forecast", href: "/dashboard/planning/forecast" },
       // doc 35 Q3: DCMA 14-point checks and the submission gate
       { label: "Schedule Check", href: "/dashboard/planning/schedule-check" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
@@ -53,6 +54,7 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Resources", href: "/dashboard/planning/resource-loading" },
       { label: "Members", href: "/dashboard/planning/members" },
+      { label: "Cost & Cash Flow", href: "/dashboard/planning/cost" },
       {
         label: "Delay Register",
         href: "/dashboard/planning/delays",
@@ -119,6 +121,8 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
       { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
       // Doc 24 phase 1: BOQ readiness report (programme generation follows in phase 2)
       { label: "Generate from BOQ", href: "/dashboard/planning/boq-programme", status: "development" },
+      // doc 35 Phase B: mapped vs BOQ quantity, double counting, BOQ change reviews, mapping history
+      { label: "BOQ Mapping Check", href: "/dashboard/planning/boq-check", status: "development" },
       // Phase 4: what the project's activities need (shop drawings, method statements, T&C) vs submittals and ITPs
       { label: "Requirements Tracker", href: "/dashboard/planning/requirements-tracker", status: "development" },
     ],

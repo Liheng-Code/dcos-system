@@ -81,6 +81,8 @@ export interface PlannerInput {
   locations: readonly SavedLocation[];
   levels: readonly WbsLevel[];
   gfaByNode: ReadonlyMap<string, number>;
+  /** Zone nodes under each level node, in order; a location with a zone split shares its level over them (doc 35 B5). */
+  zonesByLevel?: ReadonlyMap<string, readonly string[]>;
   linksByWorkItem: ReadonlyMap<string, readonly LinkFact[]>;
   resourcesByWorkItem: ReadonlyMap<string, readonly ResourceFact[]>;
   masters: ReadonlyMap<string, MasterFact>;
@@ -262,7 +264,7 @@ export function planBoqProgramme(input: PlannerInput): BoqProgrammePreview {
       warnings.push({ code: "item_unlinked", lineId: line.id, message: `${line.itemCode}: its BOQ item is not linked to an activity` });
       continue;
     }
-    const shares = allocateLine({ building_code: line.building, level: line.level }, locations, levels, new Map(input.gfaByNode));
+    const shares = allocateLine({ building_code: line.building, level: line.level }, locations, levels, new Map(input.gfaByNode), input.zonesByLevel);
     if (!shares.length) {
       warnings.push({ code: "line_unlocated", lineId: line.id, message: `${line.itemCode}: ${line.building ?? ""} / ${line.level ?? ""} is not on the location map` });
       continue;

@@ -3,17 +3,20 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  BarChart, Bar, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  Bar, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ReferenceLine, ResponsiveContainer, Cell,
 } from "recharts";
 import { ChartWrapper } from "@/components/report-kit/charts/chart-wrapper";
 import { cn } from "@/lib/utils";
 import {
   aggregateByType,
+  capacityPeriodsByResource,
   getResourceAllocation,
+  listCapacityPeriods,
   listResources,
   type AllocationRow,
   type PlanResource,
+  type ResourceCapacityRow,
 } from "@/lib/planning/resource-service";
 import { loadLevellingContext, runLevelling } from "@/lib/planning/levelling-service";
 import { buildLevellingProfile, type LevellingProfile } from "@/lib/planning/levelling-profile";
@@ -132,6 +135,7 @@ function todayMarker(weeks: string[], asOf: string) {
 interface ManpowerData {
   allocation: AllocationRow[];
   resources: PlanResource[];
+  capacity: ResourceCapacityRow[];
 }
 
 /** BOQ man-hours when the project has them (doc 24 phase 3), otherwise the allocation-% demand from Resource Loading. */
@@ -147,13 +151,15 @@ function AllocationHistogramCard({ projectId, asOf, range, className, refreshTok
   const { data, loading, error } = useCachedFetch<ManpowerData>(
     projectId ? `dcos.planning.dashboard.manpower.${projectId}` : null,
     async () => {
-      const [allocation, resources] = await Promise.all([getResourceAllocation(projectId), listResources(projectId)]);
-      return { allocation, resources };
+      const [allocation, resources, capacity] = await Promise.all([
+        getResourceAllocation(projectId), listResources(projectId), listCapacityPeriods(projectId).catch(() => []),
+      ]);
+      return { allocation, resources, capacity };
     },
     `${refreshToken}:${retry}`,
   );
   const points = useMemo(
-    () => aggregateByType(data?.allocation ?? [], data?.resources ?? []),
+    () => aggregateByType(data?.allocation ?? [], data?.resources ?? [], capacityPeriodsByResource(data?.capacity ?? [])),
     [data],
   );
   const types = useMemo(
@@ -162,25 +168,34 @@ function AllocationHistogramCard({ projectId, asOf, range, className, refreshTok
   );
   const type = picked && types.includes(picked as never) ? picked : types.includes("labor") ? "labor" : types[0];
 
-  const { rows, weeks, ticks, capacity, peak, hasAny } = useMemo(() => {
+  const { rows, weeks, ticks, capacity, varies, peak, hasAny } = useMemo(() => {
     const mine = points.filter((p) => p.resource_type === type);
     const peaks = weeklyPeak(mine.map((p) => ({ date: p.work_date, value: p.demand })));
     const weeks = projectWeeks(range, mine.map((p) => p.work_date));
-    const capacity = toUnits(mine[0]?.capacity ?? 0);
-    const rows = weeks.map((wk) => ({ week: wk, demand: toUnits(peaks.get(wk) ?? 0) }));
+    // capacity can change by date (capacity periods): the week's lowest, carried over weeks without demand
+    const weekCap = new Map<string, number>();
+    for (const p of mine) {
+      const wk = weekStart(p.work_date);
+      weekCap.set(wk, Math.min(weekCap.get(wk) ?? Infinity, p.capacity));
+    }
+    const rawCaps: number[] = [];
+    for (const wk of weeks) rawCaps.push(weekCap.get(wk) ?? rawCaps[rawCaps.length - 1] ?? mine[0]?.capacity ?? 0);
+    const rows = weeks.map((wk, i) => ({ week: wk, demand: toUnits(peaks.get(wk) ?? 0), capacity: toUnits(rawCaps[i]) }));
+    const caps = new Set(rows.map((r) => r.capacity));
+    const capacity = caps.size === 1 ? rows[0]?.capacity ?? 0 : Math.max(0, ...caps);
     const peak = rows.reduce((m, r) => Math.max(m, r.demand), 0);
-    return { rows, weeks, ticks: monthTicks(weeks), capacity, peak, hasAny: peak > 0 };
+    return { rows, weeks, ticks: monthTicks(weeks), capacity, varies: caps.size > 1, peak, hasAny: peak > 0 };
   }, [points, type, range]);
 
-  const barColor = (demand: number) =>
-    capacity > 0 && demand > capacity ? "#ef4444" : capacity > 0 && demand > capacity * 0.85 ? "#f59e0b" : "var(--chart-1)";
+  const barColor = (demand: number, cap: number) =>
+    cap > 0 && demand > cap ? "#ef4444" : cap > 0 && demand > cap * 0.85 ? "#f59e0b" : "var(--chart-1)";
 
   return (
     <ChartWrapper
       title="Manpower Histogram"
       description={
         hasAny
-          ? `Weekly peak ${(TYPE_LABEL[type] ?? type).toLowerCase()} demand vs available · peak ${peak}${capacity > 0 ? ` of ${capacity}` : ""} · ${weeks.length} weeks, project start to finish`
+          ? `Weekly peak ${(TYPE_LABEL[type] ?? type).toLowerCase()} demand vs available · peak ${peak}${capacity > 0 ? ` of ${varies ? "up to " : ""}${capacity}` : ""} · ${weeks.length} weeks, project start to finish`
           : "Weekly peak resource demand vs available capacity"
       }
       loading={loading}
@@ -210,16 +225,17 @@ function AllocationHistogramCard({ projectId, asOf, range, className, refreshTok
           </div>
         )}
         <ResponsiveContainer width="100%" height={types.length > 1 ? 310 : 340}>
-          <BarChart data={rows} margin={{ top: 16, right: 12, left: -8, bottom: 0 }} barCategoryGap="12%">
+          <ComposedChart data={rows} margin={{ top: 16, right: 12, left: -8, bottom: 0 }} barCategoryGap="12%">
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             {weekAxis(ticks)}
             <YAxis allowDecimals={false} tick={TICK} tickLine={false} axisLine={false} />
             <Tooltip
               {...TOOLTIP_STYLE}
               labelFormatter={(wk) => `Week of ${fullDate(String(wk))}`}
-              formatter={(v) => [`${v} (100% = 1 unit)`, "Peak demand"]}
+              formatter={(v, name) => (name === "Available" ? [String(v), "Available"] : [`${v} (100% = 1 unit)`, "Peak demand"])}
             />
-            {capacity > 0 && (
+            {varies && <Line dataKey="capacity" name="Available" type="stepAfter" stroke="var(--muted-foreground)" strokeDasharray="5 4" dot={false} isAnimationActive={false} />}
+            {!varies && capacity > 0 && (
               <ReferenceLine
                 y={capacity}
                 stroke="var(--muted-foreground)"
@@ -229,9 +245,9 @@ function AllocationHistogramCard({ projectId, asOf, range, className, refreshTok
             )}
             {todayMarker(weeks, asOf)}
             <Bar dataKey="demand" name="Peak demand" radius={[2, 2, 0, 0]} maxBarSize={18}>
-              {rows.map((r, i) => <Cell key={i} fill={barColor(r.demand)} />)}
+              {rows.map((r, i) => <Cell key={i} fill={barColor(r.demand, r.capacity)} />)}
             </Bar>
-          </BarChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </ChartWrapper>
@@ -263,7 +279,7 @@ export function LevellingDiagramCard({ projectId, asOf, range, className, refres
       return {
         empty: false,
         summary: {
-          profile: buildLevellingProfile(ctx.levelTasks, ctx.cal, ctx.capacities, result),
+          profile: buildLevellingProfile(ctx.levelTasks, ctx.cal, ctx.capacities, result, ctx.capacityPeriods),
           shifts: result.assignments.length,
           residual: result.residual.length,
           stoppedAtLimit: result.stoppedAtLimit,

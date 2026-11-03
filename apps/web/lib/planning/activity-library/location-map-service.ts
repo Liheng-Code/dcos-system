@@ -2,7 +2,8 @@
 // Writes need project membership + planning/schedule edit (RLS on plan_location_map).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { SavedLocation, SplitRule, WbsLevel } from "./location-map";
+import type { SavedLocation, SplitRule, WbsLevel, ZoneSplit } from "./location-map";
+import { allPages } from "./in-chunks";
 
 type Db = SupabaseClient;
 
@@ -61,7 +62,7 @@ export async function listLevelGfa(db: Db, projectId: string): Promise<Map<strin
 export async function listSavedLocations(db: Db, projectId: string): Promise<SavedLocation[]> {
   const { data, error } = await db
     .from("plan_location_map")
-    .select("building_code, qs_level_label, wbs_node_id, status, split_rule")
+    .select("building_code, qs_level_label, wbs_node_id, status, split_rule, zone_split")
     .eq("project_id", projectId);
   if (error) throw new Error(error.message);
   return (data ?? []) as SavedLocation[];
@@ -91,6 +92,17 @@ export async function saveLocations(db: Db, projectId: string, decisions: Locati
   if (error) throw new Error(error.message);
 }
 
+/** Splits a saved location's level share over the level's zones (doc 35 B5). Only Generate from BOQ uses it. */
+export async function setZoneSplit(db: Db, projectId: string, buildingCode: string, label: string, zoneSplit: ZoneSplit): Promise<void> {
+  const { error } = await db
+    .from("plan_location_map")
+    .update({ zone_split: zoneSplit })
+    .eq("project_id", projectId)
+    .eq("building_code", buildingCode ?? "")
+    .eq("qs_level_label", label);
+  if (error) throw new Error(error.message);
+}
+
 /** Forgets a decision, so the location goes back to a suggestion. */
 export async function clearLocation(db: Db, projectId: string, buildingCode: string, label: string): Promise<void> {
   const { error } = await db
@@ -100,4 +112,16 @@ export async function clearLocation(db: Db, projectId: string, buildingCode: str
     .eq("building_code", buildingCode ?? "")
     .eq("qs_level_label", label);
   if (error) throw new Error(error.message);
+}
+
+/** Zone child nodes (node type zone or area) of each level node, in WBS code order (doc 35 B5). */
+export async function listZonesByLevel(db: Db, projectId: string): Promise<Map<string, string[]>> {
+  const data = await allPages<{ id: string; parent_id: string; wbs_code: string }>((from, to) =>
+    db.from("wbs_nodes").select("id, parent_id, wbs_code").eq("project_id", projectId)
+      .in("node_type", ["zone", "area"]).not("parent_id", "is", null).order("id").range(from, to));
+  const rows = data
+    .sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+  const out = new Map<string, string[]>();
+  for (const r of rows) out.set(r.parent_id, [...(out.get(r.parent_id) ?? []), r.id]);
+  return out;
 }

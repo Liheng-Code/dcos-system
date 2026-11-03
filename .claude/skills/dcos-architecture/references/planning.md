@@ -16,7 +16,7 @@
 ## 2. Data model
 - **Schedule data lives on the core `wbs_tasks` table.** Planning added `duration_unit` ('wd'/'cd', `20261003000005`), `manually_scheduled`, and the link arrays `dependency_task_ids` / `dependency_types` / `dependency_lag_days` (`20260903000001`).
 - **Calendars, codes, timescale:** `plan_calendars`, `plan_calendar_exceptions` (`20260531000045`), `plan_wbs_code_mask` (`20260904000003`), `plan_timescale` (`…04`).
-- **Resources:** `plan_resources`, `plan_task_assignments` (`20260905000004`). `plan_resources.dwl_resource_id` (`20261030155000`) links a project resource to its QS `dwl_resources` row; rate = `cost_per_unit` override if set, else QS `dwl_v_resource_costing_rates.costing_rate` (pure rule `lib/planning/resource-rate.ts`; picker in `plan-resource-dialog.tsx`, badge in `plan-resource-loading.tsx`). Nothing computes cost from it yet.
+- **Resources:** `plan_resources`, `plan_task_assignments` (`20260905000004`). `plan_resources.dwl_resource_id` (`20261030155000`) links a project resource to its QS `dwl_resources` row; rate = `cost_per_unit` override if set, else QS `dwl_v_resource_costing_rates.costing_rate` (pure rule `lib/planning/resource-rate.ts`; picker in `plan-resource-dialog.tsx`, badge in `plan-resource-loading.tsx`). `plan_resource_capacity` (`20261103080455`, doc 35 C1): capacity % by date range per resource, no overlaps (trigger `plan_resource_capacity_guard`), RLS like `plan_resources`.
 - **Schedule governance:** `plan_schedule_streams`, `plan_schedule_revisions` (`20260905100449`), `plan_schedule_settings` (`20260917000002`), `plan_schedule_state` (`20260919000005`), `plan_revision_approvals`, `plan_report_jobs`, `plan_tia_scenarios`, `plan_levelling_runs` (`20260919…`).
 - **Progress and baselines:** `progress_snapshots` (`20260531000003`), `weekly_plans` + `weekly_plan_tasks` (`20260531000008`), `wbs_baselines` (`20260527000016`), `delay_register` (`20260609000002`) + `delay_register_tasks` (`20260919000011`).
 - **Steps:** `activity_step_template_master`, `activity_step_template_item` (weight, duration_basis, duration_share_pct), `wbs_task_steps` (weight, progress 0–100, est_duration_days) (`20260918000001`); `activity_step_template_match` (`20261020000002`).
@@ -42,7 +42,7 @@
   - New RPCs `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`. The uuid overloads stay as wrappers until cleanup.
   - **Frozen:** `plan_act_divisions` (writes rejected) and `plan_act_masters.division_id` (unused). Dropped in a later cleanup migration, only when no lanes are active.
 - **QS bridge and generation inputs:**
-  - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`).
+  - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`; `zone_split` from `20261102135540`).
   - `plan_act_kits` / `plan_act_kit_items` (`20261021000022`), `plan_act_attributes` (`…23`), `plan_act_generation_profiles` (project_id PK, `…25`).
 - **Triggers:**
   - `trg_wbs_tasks_sync_duration`
@@ -86,6 +86,31 @@
     - History: `v_plan_progress_history`.
     - Service and UI: `lib/planning/progress-quantity-service.ts` and `components/planning/plan-task-quantity-panel.tsx`.
     - The roll-up triggers `collect_dirty_wbs_project` / `flush_dirty_wbs_progress` are security definer.
+  - **Planner experience (doc 35 U):**
+    - Readiness checklist: `components/planning/readiness/` on the Overview page; `plan_programme_readiness(project)` (`20261102143702`) + `lib/planning/readiness/programme-readiness.ts` (the 11 steps, pure).
+    - Undo / redo: `lib/planning/edit-history.ts` (pure stack); `useSheetData().history`. `applySchedule` now returns `true` / `false` and records one step unless `history: true`; progress, Calculate and data-date moves are never recorded.
+    - Views: `lib/planning/sheet-view.ts` (filterTree, groupTree; group rows `node:group:*` are read-only, structure actions stubbed in `plan-schedule-view.tsx`), `schedule-view-bar.tsx`, table `plan_saved_views` (`20261102144653`, owner writes, shared read by members with Schedule view), `bulkUpdate` in the hook.
+  - **Reporting (doc 35 M, `20261103085210`):**
+    - `lib/planning/reports/`: `report-model.ts` (ReportDoc, basis lines, RENDERER_VERSION), `report-data.ts` (loads with the caller's client, recalculates float from the data date), `report-builders.ts` (master_programme, weekly, monthly, recovery), `report-html.ts`, `report-pdf.ts` (pdf-lib), `report-filing.ts` (server: files, Document Control revision, snapshot), `report-snapshots-service.ts` (browser).
+    - Routes: `POST /api/planning/reports/generate/[projectId]` (Schedule export), `GET /api/planning/reports/file/[snapshotId]?format=pdf|html` (signed URL after RLS read), `POST /api/planning/reports/monthly/[projectId]` (job wrapper). `monthly-report-html.ts` is removed.
+    - DB: `plan_report_basis(project)`; `plan_report_snapshots` (select: member + Schedule view; written by the route's service client only; trigger `plan_report_snapshot_immutable`).
+    - UI: `components/planning/reports/plan-report-documents.tsx`, `report-basis-strip.tsx` on Reports and S-curve.
+  - **Forecast and recovery (doc 35 F, `20261103082915`):**
+    - Recovery: `recovery-engine.ts` adds `calendarScenario` (key F: extra working days, overtime on critical work), `scenarioDates`, `finishDrivers` on the analysis; levers store `predId` / `lag` / `dates`. `plan_act_recovery_scenarios` gains `revision_id`, `applied_*`; guard trigger `plan_recovery_scenario_guard` (writes only through the RPCs, flag `dcos.recovery_rpc`).
+    - RPCs: `plan_adopt_recovery(scenario, snapshot, note)` → draft `plan_schedule_revisions` row (snapshot_data.source = 'recovery'); `plan_apply_recovery(scenario, forecast_finish)` once the revision is approved_internal or later. Service: `adoptRecoveryScenario`, `applyRecoveryScenario` (then `runProjectSchedule`). Effectiveness: `recovery-effectiveness.ts`.
+    - What-ifs: `plan_whatif_scenarios`, `whatif-service.ts`, Save / Load in `plan-activity-scenarios.tsx`.
+    - Forecast: `plan_forecast_snapshots` (immutable) + `plan_capture_forecast(project, assumptions, label)`; `lib/planning/forecast/` (service, `forecast-trend.ts`); page Planning › Forecast (`components/planning/forecast/plan-forecast.tsx`).
+  - **Resources and cost (doc 35 C, `20261103080455`):**
+    - Capacity by date: `get_resource_loading` returns each day's capacity in `max_units`; engine `levelResources(tasks, cal, capacities, capacityPeriods)` + `capacityOn`; `aggregateByType` / `aggregateByTrade` take the periods; editor `components/planning/plan-resource-capacity.tsx` in the resource dialog.
+    - Cost RPCs (security definer, member + Schedule view, jsonb): `plan_cost_components(project, period, basis)`, `plan_material_histogram(project, period, basis)`, `plan_budget_reconciliation(project)`. Internal, not callable: `plan_cost_component_rows` (every resource line per activity: hours from `plan_task_resource_hours`, the rest from `plan_task_boq_lines` x `dwl_work_item_resources`; lines over 100 % count once), `plan_task_day_shares` (each activity's share per working day).
+    - Cash flow is pure: `lib/planning/cost-plan/cash-flow.ts`; payment terms `plan_schedule_settings.cashflow_*`. Budget rules: `lib/planning/cost-plan/budget-reconciliation.ts`. I/O: `cost-plan-service.ts`.
+    - Screens: Planning › Cost & Cash Flow (`app/dashboard/planning/cost`, `components/planning/cost-plan/`); material histogram on Resources.
+  - **BOQ mapping integrity (doc 35 B, `20261102135540`):**
+    - Page `/dashboard/planning/boq-check` (`components/planning/boq-mapping/`); service and pure rules in `lib/planning/boq-mapping/` (`reconcile.ts`).
+    - `plan_boq_mapping_facts(project)`: per BOQ line (contract main works + the programme's tender + any other mapped line), what Generate from BOQ (`plan_task_boq_lines`), library links (`plan_act_quantity_links`) and Task Work direct links map. Security definer with an explicit member + Schedule view check; returns one jsonb (no max_rows cap).
+    - `plan_boq_mapping_history`: trigger-written history of `plan_task_boq_lines` and `plan_act_quantity_links`; a delete + re-insert in one transaction folds into one row.
+    - `plan_boq_change_reviews`: opened by `plan_boq_change_capture` (BEFORE UPDATE OF quantity OR DELETE on `qs_boq_items` / `tender_boq_items`; errors become warnings). Decided through `plan_decide_boq_change` (apply / keep).
+    - Zones: `allocateLine(…, zonesByLevel)` and `listZonesByLevel`; only Generate from BOQ passes zones.
 - **Pure engines (`lib/planning/`):**
   - `schedule-engine.ts`: re-export of the package (see above).
   - `work-calendar.ts`: re-export of the package.
@@ -135,6 +160,7 @@
 See `integration-map.md`, rows tagged **Planning**.
 - **Reads and writes core WBS:** `wbs_tasks`, `wbs_nodes`, `wbs_audit_log`, `wbs_node_quantities`, `projects`.
 - **Reads QS:** `qs_boq_items` and `tender_boq_items` (bridge, BOQ mapping, productivity). It serves IPC progress through `get_node_progress_asof` (`20260919000013`).
+- **Triggers on QS tables (doc 35 B4):** `trg_qs_boq_items_plan_boq_change` and `trg_tender_boq_items_plan_boq_change` write only Planning's `plan_boq_change_reviews`, and never fail the QS write.
 - **Reads BIM:** `bim_models`, `bim_element_takeoff`.
 - **Reads cost libraries:** `dwl_*`, `overtime_rates`.
 - **HR:** timesheet → productivity-log trigger; resources map to `profiles`.
@@ -148,6 +174,7 @@ See `integration-map.md`, rows tagged **Planning**.
 
 ## 6. Status and gaps
 - Feature-complete across schedule, resources, productivity and the Activity Library (A–E plus Generate G1–G6), but **nothing is released**.
+- **Doc 35 phases R, E, Q, P, B, U, C, F and M are built** (B, U, C, F and M local, not committed yet; their migrations need /dbpush).
 - **Gap register against the ICPS PRD (doc 34):** `docs/04-Business-Modules/06-Planning-Scheduling/35-ICPS-Gap-Register-and-Roadmap.md` (2026-11-02). It holds the phased to-do list (R release, E engine, Q QA/QC, P progress, B BOQ, U planner UX, C cost, F forecast, M reports, I integrations, A AI). Main engine gaps: actuals and data date, a single calendar, no negative float, critical path by threshold only, no calculation-run record. The engine is moving to `packages/scheduling-engine` (E1).
 - **Tests:** 41 files.
   - `lib/planning/__tests__`: schedule engine, work engine, levelling, TIA, delay governance, duration rules, step spread and matching, look-ahead filters, calendar, cost.

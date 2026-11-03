@@ -14,6 +14,7 @@ import {
   type PlanResource,
   type ResourceType,
 } from "@/lib/planning/resource-service";
+import { PlanResourceCapacity } from "./plan-resource-capacity";
 
 interface Props {
   projectId: string;
@@ -188,7 +189,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex w-full max-w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl">
+      <div className="relative flex max-h-[92vh] w-full max-w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl">
         <div className="flex items-start gap-3 bg-slate-900 px-4 py-3 text-white">
           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
             <Users className="h-4 w-4" />
@@ -204,7 +205,7 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
           </button>
         </div>
 
-        <div className="space-y-4 p-4 text-xs">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-xs">
           <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
             <span className="flex items-center gap-1.5 font-semibold">
               <Users className="h-3.5 w-3.5 text-muted-foreground" /> Link to Team Member (optional)
@@ -360,6 +361,10 @@ export function PlanResourceDialog({ projectId, resource, onClose, onSaved }: Pr
               placeholder="hr, day, m³…"
             />
           </label>
+
+          {isEdit && resource && (
+            <PlanResourceCapacity projectId={projectId} resourceId={resource.id} baseUnits={resource.max_units} />
+          )}
 
           {isEdit && (
             <label className="flex items-center gap-1.5">

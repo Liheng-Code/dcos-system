@@ -81,12 +81,12 @@ Status: **done**, **partial** or **missing**. "Todo" refers to §3.
 |---|---|---|---|
 | One-to-many and many-to-one mapping | done | `plan_task_boq_lines.share_pct` (`20261026155000`); `plan_act_quantity_links` (`20261006000008`) | — |
 | Allocation by building / floor | done | `plan_location_map` (`20261020000004`) | — |
-| Allocation by zone | missing | no zone dimension | B5 |
+| Allocation by zone | done (local) | `plan_location_map.zone_split` (`20261102135540`), `allocateLine` zones | B5 |
 | Unmapped items report | done | `bridgeCoverage()` (`qs-bridge.ts:122-198`) | — |
-| Duplicate detection; shares add up to 100% | missing | — | B2 |
-| Mapped vs BOQ reconciliation | missing | coverage counts lines, not quantities | B1 |
-| Mapping revision history | partial | `plan_task_work_quantity_history` covers the main link only | B3 |
-| Quantity change → impact review | partial | drift flag (`boq-quantity.ts:45-55`); no review | B4 |
+| Duplicate detection; shares add up to 100% | done (local) | `reconcile.ts` (counted twice, several routes, library shares) | B2 |
+| Mapped vs BOQ reconciliation | done (local) | `plan_boq_mapping_facts` + BOQ Mapping Check page | B1 |
+| Mapping revision history | done (local) | `plan_boq_mapping_history` (programme lines and links) | B3 |
+| Quantity change → impact review | done (local) | `plan_boq_change_reviews`, `plan_decide_boq_change` | B4 |
 
 ### MOD-05 Schedule development
 | Requirement | Status | Evidence | Todo |
@@ -94,27 +94,27 @@ Status: **done**, **partial** or **missing**. "Todo" refers to §3.
 | Generate from templates, by building / floor, typical floors | done | Activity Library Generate (G1–G6), doc 24 | — |
 | Durations from norms; overrides tracked | done | `work-engine.ts`, `plan_task_work` | — |
 | Gantt, sheet, critical path, float | done | `gantt-view.tsx`, `sheet-grid.tsx` | — |
-| Bulk editing | partial | multi-select and chain-link only (`sheet-grid.tsx:89,104,374`) | U3 |
-| Filtering and grouping | partial | text search only (`gantt-toolbar.tsx:85-92`) | U3 |
-| Undo / redo | missing | — | U2 |
-| Guided workflow for new planners | missing | Overview page is a static diagram | U1 |
+| Bulk editing | done (local) | `bulkUpdate` in `use-sheet-data.ts`, Edit selected in `schedule-view-bar.tsx` | U3 |
+| Filtering and grouping | done (local) | `lib/planning/sheet-view.ts`, saved views `plan_saved_views` (`20261102144653`) | U3 |
+| Undo / redo | done (local) | `lib/planning/edit-history.ts`, `history` in `use-sheet-data.ts` | U2 |
+| Guided workflow for new planners | done (local) | readiness checklist on Overview, `plan_programme_readiness` (`20261102143702`) | U1 |
 
 ### MOD-06 Resource planning
 | Requirement | Status | Evidence | Todo |
 |---|---|---|---|
 | Labour / equipment / material resources | done | `plan_resources.resource_type` (`20260905000004`) | — |
 | Manpower histogram | done | `plan_manpower_histogram` (`20261027081636`) | — |
-| Equipment and material histograms | partial | equipment is a series in the same RPC; no material | C2 |
+| Equipment and material histograms | done (local) | equipment: `plan_manpower_histogram` (Equipment toggle); material: `plan_material_histogram` (`20261103080455`), card on Resources | C2 |
 | Over-allocation; levelling that leaves the baseline alone | done | `is_overallocated`; `plan_levelling_runs`; audited | — |
-| Planned vs available capacity over time | partial | one constant `max_units` | C1 |
+| Planned vs available capacity over time | done (local) | `plan_resource_capacity` (`20261103080455`); `get_resource_loading`, levelling and the histograms use each day's capacity | C1 |
 
 ### MOD-07 Cost and cash flow
 | Requirement | Status | Evidence | Todo |
 |---|---|---|---|
 | Activity budgets, time-phased cost | done | `plan_cost_loading`; project S-curve (doc 33) | — |
-| Labour / material / equipment components | partial | labour only (`plan_task_cost_lines`) | C3 |
-| Planned cash flow | missing | no payment lag or retention | C4 |
-| Reconcile to approved budget | missing | checks task budgets only | C5 |
+| Labour / material / equipment components | done (local) | `plan_cost_components` (`20261103080455`): labour, material, equipment, subcontract per activity and per period | C3 |
+| Planned cash flow | done (local) | `lib/planning/cost-plan/cash-flow.ts`; payment terms on `plan_schedule_settings` | C4 |
+| Reconcile to approved budget | done (local) | `plan_budget_reconciliation` (`20261103080455`) + `lib/planning/cost-plan/budget-reconciliation.ts` | C5 |
 
 ### MOD-08 Baseline management
 | Requirement | Status | Evidence | Todo |
@@ -148,20 +148,20 @@ Status: **done**, **partial** or **missing**. "Todo" refers to §3.
 |---|---|---|---|
 | Project forecast finish | done | `schedule-kpis.ts:81-82` | — |
 | Recovery options, kept apart from the baseline | done | `plan_act_recovery_scenarios` (`20261013000003`) | — |
-| What-if scenarios saved | missing | `scenario-compare.ts` results live in memory only | F1 |
-| Adopted recovery applied through approval | missing | "adopted" changes nothing | F2 |
-| Effectiveness tracking | missing | — | F3 |
-| Calendar-change simulation | missing | — | F4 |
-| Forecast snapshots with assumptions | missing | live dates only | F5 |
+| What-if scenarios saved | done (local) | `plan_whatif_scenarios` (`20261103082915`), Save / Load in Generate › Compare scenarios | F1 |
+| Adopted recovery applied through approval | done (local) | `plan_adopt_recovery` → draft revision; `plan_apply_recovery` after internal approval (`20261103082915`) | F2 |
+| Effectiveness tracking | done (local) | `lib/planning/activity-library/recovery-effectiveness.ts` on Recovery Scenarios | F3 |
+| Calendar-change simulation | done (local) | `calendarScenario` in `recovery-engine.ts` (extra working days, overtime) | F4 |
+| Forecast snapshots with assumptions | done (local) | `plan_forecast_snapshots` + `plan_capture_forecast` (`20261103082915`), Planning › Forecast | F5 |
 
 ### MOD-12 Reporting and closure
 | Requirement | Status | Evidence | Todo |
 |---|---|---|---|
 | S-curves, histograms, look-ahead, delay register, monthly | done | Reports page; `plan_report_jobs` (`20260919000014`) | — |
-| Master programme, weekly, recovery reports | missing | — | M1 |
-| PDF export | missing | XLSX and browser print only | M2 |
-| Data date and baseline reference on every report | partial | monthly report shows the data date only (`monthly-report-html.ts:93`) | M3 |
-| Reproducible historical reports | missing | monthly upload uses `upsert: true` (`app/api/planning/reports/monthly/[projectId]/route.ts:194`) | M4 |
+| Master programme, weekly, recovery reports | done (local) | `lib/planning/reports/report-builders.ts`; Planning › Reports › Report documents | M1 |
+| PDF export | done (local) | `report-pdf.ts` (pdf-lib, already a dependency); Excel from the stored content | M2 |
+| Data date and baseline reference on every report | done (local) | `plan_report_basis` (`20261103085210`): title block and every page footer; basis strip on Reports and S-curve | M3 |
+| Reproducible historical reports | done (local) | `plan_report_snapshots` (`20261103085210`, immutable); new file and Document Control revision per generation | M4 |
 
 ### Integrations (PRD §14)
 | Feed | Status | Evidence | Todo |
@@ -250,44 +250,44 @@ Status values: `todo`, `doing`, `done`. Owner is the first agent in the pipeline
 ### Phase B: BOQ mapping integrity
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| B1 | Reconciliation report: mapped vs BOQ quantity per line and in total | no | todo |
-| B2 | Detect quantities counted twice and shares/factors not adding up to 100% | no | todo |
-| B3 | History for `plan_act_quantity_links` and `plan_task_boq_lines` | yes | todo |
-| B4 | BOQ quantity change → impact review queue (notify; accept or re-plan) | yes | todo |
-| B5 | Zone below level in `plan_location_map` | yes | todo |
+| B1 | Planning › BOQ Mapping Check (`/dashboard/planning/boq-check`). `plan_boq_mapping_facts(project)` (security definer, project member + Schedule view) returns, per BOQ line of the contract main-works BOQ and of the programme's tender (plus any other mapped line of the project), what each route maps: Generate from BOQ (`plan_task_boq_lines` share %), library links (`plan_act_quantity_links` factor per level and metric), and Task Work's direct BOQ link on tasks without programme lines. `reconcile.ts` classifies each line (complete, partial, counted twice, unmapped, other unit) and totals BOQ vs mapped quantity per unit | yes (`20261102135540`) | done (local) |
+| B2 | Issues per line: over 100 % (counted twice), mapped by more than one route, the BOQ item's activity shares in the library not adding up to 100 %, BOQ changed since the programme or links were made, links in another unit (not compared), mapped from a BOQ the programme does not use, zero quantity. On PRJ-2026-004-PC it found 16 lines counted twice (rebar items at 700 %: one work item linked at 100 % to many reinforcement activities) and 2 partial | no | done (local) |
+| B3 | `plan_boq_mapping_history`: every insert / update / delete of programme lines and library links, with old and new values and who. A regeneration's delete + re-insert in one transaction folds into one "changed" row, or none when nothing changed. Shown on the page, per line or for the project | yes | done (local) |
+| B4 | `plan_boq_change_reviews`: a quantity change to a mapped QS or tender BOQ line (or its deletion) opens one review per line, kept up to date while open and closed by itself when the quantity returns. The capture triggers never block the QS edit. `plan_decide_boq_change`: **apply** finds the activities by their current link to the line and puts the new quantity on the programme lines (by share) and on Task Work, with the reason in the quantity history. Several directly linked activities share it in proportion to what they held. Activities under a locked WBS node are left unchanged unless the user is a WBS manager. It stops when an activity already has more installed than the new scope (Phase P). **Keep** needs a reason. Library links are not changed: Generate flags them "BOQ revised" for the per-activity update. The open count shows on the page (no push notification yet) | yes | done (local) |
+| B5 | `plan_location_map.zone_split` (none / equal / by zone GFA): Generate from BOQ shares a level's quantity over its zone (or area) child nodes, which follow their level in floor order, so floor-to-floor logic runs zone by zone. Set in the location map's Zones column, shown only when the WBS has zones. BOQ lines have no zone of their own, and QS Bridge links stay per level | yes | done (local) |
 
 ### Phase U: planner experience
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| U1 | **Programme readiness checklist** per project: the 11 guided steps (WBS, BOQ mapped %, activities generated, durations from norms, logic complete, QA/QC clean, submitted) with live status and a link to each existing page. No wizard | no | todo |
-| U2 | Undo / redo in Sheet and Gantt (command stack in `use-sheet-data.ts`) | no | todo |
-| U3 | Bulk field edit, group-by and saved filters | no | todo |
+| U1 | **Programme readiness checklist** on Planning › Overview for the selected project: the PRD's 11 guided steps (project, project information, WBS, BOQ, BOQ mapping, activities, durations, logic, calculation, QA/QC, submission), each done / needs attention / waiting for approval / to do, with the next step highlighted and a link to the existing page. Facts from one call, `plan_programme_readiness(project)` (security definer, member + Schedule view), plus the Phase B mapping summary. Logic uses the DCMA limit (open ends ≤ 5 %); calculation and QA/QC show as needing attention when activities changed after them. No wizard | yes (`20261102143702`) | done (local) |
+| U2 | Undo / Redo buttons and Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) in the Gantt and Sheet, up to 50 steps per project in the session. Covers dates, durations, links, constraints, task mode, milestone, name, code, status and priority, including bulk edits (one step each). Each step stores the fields it changed and the dates the engine moved; undo writes them back through the scheduler (or writes the moved dates directly when auto-schedule is off). Undo / redo run one at a time; deleted or locked activities and deleted predecessors are left out. Not on the stack: % complete (it goes through progress review), Calculate, data-date moves, and structure changes (add, delete, indent, move). Tested on the real project: a duration change that moved 36 activities undid exactly | no | done (local) |
+| U3 | A view bar in the Gantt and Sheet. **Filters**: code or name, status, discipline, owner, critical only, incomplete only, a date window. Matching rows open up, and the selection clears when the filter changes. **Group by** status, priority, discipline, owner or criticality: read-only group rows with roll-up dates and progress; the outline cannot be changed while grouped. **Saved views** (`plan_saved_views`): name + filters + grouping per project, private or shared with the team; only the owner changes one. **Edit selected**: status, priority, duration as one undo step, or % complete through `submit_progress` (review flow and audit, like a typed value); locked activities are skipped | yes (`20261102144653`) | done (local) |
 
 ### Phase C: resources and cost
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| C1 | Resource capacity that varies by date | yes | todo |
-| C2 | Equipment and material histograms | no | todo |
-| C3 | Material and equipment cost components | yes | todo |
-| C4 | Cash-flow curve (payment lag, retention), separate from the cost curve | maybe | todo |
-| C5 | Reconcile cost loading to the QS approved budget | no | todo |
+| C1 | **Capacity by period** per project resource (`plan_resource_capacity`: from, to or open-ended, capacity %), edited in the resource dialog; periods of one resource cannot overlap (trigger). Outside a period the capacity is Max Units. `get_resource_loading` flags over-allocation against each day's capacity; levelling (`levelResources(…, capacityPeriods)` in the engine package, `capacityOn`), the levelling profile, the type / trade histograms and the shortage weeks all use it. The dashboard histogram draws a stepped "Available" line when capacity changes | yes (`20261103080455`) | done (local) |
+| C2 | **Material histogram** on Resources: quantity per period of one material (its own unit) or the cost of all materials, from each activity's BOQ lines x the QS work item's materials (with waste), spread over working days; current or baseline dates. The BOQ histogram's Equipment view is titled as such and can open on equipment | yes (RPC) | done (local) |
+| C3 | **Cost by component** on the new Planning › Cost & Cash Flow page: labour, material, equipment and subcontract cost per period (stacked, with cumulative %) and per activity against its budget. Time resources come from the programme's hours, everything else from BOQ lines x work-item consumption. Rate: the project resource's own rate, else the QS costing rate, else the QS daily labour rate; unpriced lines are counted and shown, never guessed. A BOQ line mapped over 100 % counts once (its quantity, and the activity's hours weighted by amount) and the page says how many hours that left out | yes (RPC) | done (local) |
+| C4 | **Planned cash flow**: money in = each month's value certified at month end, paid after the payment lag, less retention (with an optional limit) and advance recovery; the advance is paid in the first month; retention comes back part at completion and the rest after the defects period. Money out = each month's cost after the supplier lag. Shows the cumulative position, peak funding need and retention dates. Payment terms (Schedule configure) on `plan_schedule_settings`; retention and advance default to the project's terms | yes (columns) | done (local) |
+| C5 | **Budget check**: approved budget = approved / locked contract BOQ + approved VOs (as QS counts it) against the activity budgets; per BOQ line: matches, partly, not in the programme, more than the BOQ, not approved yet. Also lists activities whose budget is not the sum of their BOQ lines. VOs are not mapped to activities, so they show as a known gap | yes (RPC) | done (local) |
 
 ### Phase F: forecast and recovery
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| F1 | Save what-if scenarios | yes | todo |
-| F2 | Adopting a recovery creates a draft revision for approval | maybe | todo |
-| F3 | Recovery effectiveness: planned vs achieved | yes | todo |
-| F4 | Calendar-change simulation (overtime, extra shifts) | no | todo |
-| F5 | Forecast snapshot each period, with assumptions and data date | yes | todo |
+| F1 | **Saved what-ifs** in Generate › Compare scenarios: Save keeps a variant (method per activity, productivity %, level link) with its headline figures and the reference's at the time; saved ones for the same template are listed and Load puts the variant back into the comparison, measured again on today's data. Stored variants are sanitised on load. Table `plan_whatif_scenarios` (member + Schedule view to read, Schedule edit to save; the author or Schedule delete removes) | yes (`20261103082915`) | done (local) |
+| F2 | **Adopt → approve → apply.** Adopt lays the programme out with the scenario's changes (`scenarioDates`) and stores those dates as a **draft revision** of the internal stream (`plan_adopt_recovery`, Schedule edit + Programme edit). It is submitted and approved in Comparison › Manage Schedules like any revision. Only when the revision is approved internally (or later) can **Apply to programme** run (`plan_apply_recovery`): durations, overlaps (FS → SS + lag) and extra working days are written, started or locked activities are skipped and reported, each change goes to `wbs_audit_log`, and the dates are recalculated. A guard trigger stops direct writes from adopting, linking a revision or marking a scenario applied. Client approval of the revision then baselines the programme as before. The old "Mark adopted" button is gone | yes (`20261103082915`) | done (local) |
+| F3 | **Did the recovery work?** For an applied scenario: planned working days against achieved (the forecast finish recorded just before apply vs the live finish now), and per change whether the programme still carries it (shortened activity within its new duration, overlap still SS, extra days still in the calendar). Achieved is the outcome, not an attribution: later progress and delays count | yes (columns) | done (local) |
+| F4 | **Calendar what-if** on Recovery Scenarios: work Sundays and / or Saturdays in a window (holidays stay off) and overtime % on critical labour-driven activities starting in it; scenario F, measured with the engine like A–E, saved, adopted and applied the same way (extra days become working exceptions; a project on the built-in calendar gets its Mon–Sat calendar stored). The analysis now also names **what sets the finish** (constraints, activities without predecessors, fixed work), and a scenario that recovers nothing cannot be saved | no | done (local) |
+| F5 | **Planning › Forecast**: record the live forecast with written assumptions (required), the data date, actual and planned %, critical count, open delays, the latest calculation (engine version, input hash, whether activities changed after it), calendar, applied recoveries, milestones and every activity's dates. Records cannot be changed or deleted (no grants + trigger). The page shows the forecast against baseline and contract, the trend of forecast finish across records, and which activities moved between two records. Recording is manual (one per update is suggested when the month has none) | yes (`20261103082915`) | done (local) |
 
 ### Phase M: reporting
 | ID | Todo | Mig | Status |
 |---|---|---|---|
-| M1 | Master programme, weekly and recovery reports | no | todo |
-| M2 | PDF export | no | todo |
-| M3 | Data date and baseline reference on every report | no | todo |
-| M4 | Report snapshots that are never overwritten | maybe | todo |
+| M1 | Four reports from one content model (`report-model.ts`, builders in `report-builders.ts`): **master programme** (every activity under its WBS heading with duration, dates, baseline finish, variance, total float and %, critical highlighted), **weekly** (started / finished this week, behind programme, approved progress records, the next two weeks, delays raised, milestones in 30 days), **monthly** (status, progress history, delay summary, milestones, critical work next month; replaces the old HTML-only builder) and **recovery** (position, scenarios with revision state, recovers vs achieved, the changes of adopted ones and whether they are still in the programme, open delays). Float and the critical path are recalculated from the data date with the scheduling engine. Generated from Planning › Reports › Report documents (Schedule export permission) | no | done (local) |
+| M2 | **PDF** with pdf-lib (already installed): A4 portrait / landscape, tables that break across pages and repeat their header, WBS heading rows, critical rows in red, page n of m. Helvetica draws Latin text only: other characters are replaced in the PDF and kept in the HTML copy. Each report is also stored as HTML, and any generated report exports to **Excel** (a Basis sheet plus one sheet per table) from its stored content | no | done (local) |
+| M3 | `plan_report_basis(project)`: data date (or "none set, as at"), the active approved baseline (number, name, type, set / approved, client accepted), the latest approved programme revision, the calculation (date, engine version, whether activities changed after it) and the last recorded forecast. Printed in every report's title block and in the footer of every page; shown as a strip on Planning › Reports and S-Curve & EVM, gaps flagged | yes (`20261103085210`) | done (local) |
+| M4 | Every generation: PDF + HTML under a new file name (`upsert: false`), a **new Document Control revision** of the report's document (SCH-MP-<date>, WLY-<ISO week>, MTH-<yyyy-mm>, SCH-RCV-<date>; R00, R01…, with file size, SHA-256 and pages), and a row in `plan_report_snapshots` (content model, basis, renderer version, content hash, files) that no one can change or delete. Reopen rebuilds the report from the stored content; the same programme data gives the same content hash. Files open through a short-lived signed link after an RLS check. The monthly job route now uses the same pipeline and checks the caller can see the project (it used the admin client after a login check only, re-inserted revision 1, and overwrote the file) | yes (`20261103085210`) | done (local) |
 
 ### Phase I: setup and outbound integrations
 | ID | Todo | Mig | Status |

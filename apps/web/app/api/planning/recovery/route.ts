@@ -23,6 +23,13 @@ const body = z.object({
     minDurationWd: z.number().int().min(1).max(60),
     allowFastTrack: z.boolean(),
   }).partial().optional(),
+  // calendar what-if (doc 35 F4)
+  calendar: z.object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    extraWeekdays: z.array(z.number().int().min(0).max(6)).max(7),
+    overtimePct: z.number().min(0).max(50),
+  }).nullable().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -35,7 +42,7 @@ export async function POST(request: NextRequest) {
   const started = Date.now();
   try {
     const settings = { ...DEFAULT_RECOVERY_SETTINGS, ...(parsed.data.settings ?? {}) };
-    const r = await runRecovery(user, parsed.data.projectId, parsed.data.target, settings);
+    const r = await runRecovery(user, parsed.data.projectId, parsed.data.target, settings, parsed.data.calendar ?? null);
     return NextResponse.json({
       analysis: r.analysis, settings, targetFinish: r.targetFinish, baselineFinish: r.inputs.baselineFinish,
       delays: r.delays, tasks: r.inputs.tasks.length, projectStart: r.inputs.projectStart, elapsedMs: Date.now() - started,

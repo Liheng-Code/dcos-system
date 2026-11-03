@@ -48,6 +48,8 @@ import { PlanWorkingTimeDialog } from "./plan-working-time-dialog";
 import { PlanSheetDetailPanel } from "./plan-sheet-detail-panel";
 import { ScheduleTimeline, toGanttTask } from "./schedule-timeline";
 import { ScheduleToolbar } from "./schedule-toolbar";
+import { ScheduleViewBar } from "./schedule-view-bar";
+import { GROUP_ROW_PREFIX, filterTree, groupTree, isFilterActive, type GroupBy, type ViewFilter } from "@/lib/planning/sheet-view";
 import { SheetGrid } from "./sheet-grid";
 import { ROW_HEIGHT, type SheetRow } from "./sheet-types";
 import { autoCollapsedIds, filterIncomplete, visibleRowsFrom } from "./sheet-utils";
@@ -132,6 +134,9 @@ export function PlanScheduleView({
   const [showCritical, setShowCritical] = useState(true);
   const [showFloat, setShowFloat] = useState(true);
   const [hideCompleted, setHideCompleted] = useState(false);
+  // doc 35 U3: filters and grouping (what is shown only; writes are unaffected)
+  const [viewFilter, setViewFilter] = useState<ViewFilter>({});
+  const [groupBy, setGroupBy] = useState<GroupBy>("wbs");
   const [editLink, setEditLink] = useState<{ successorId: string; index: number } | null>(null);
   const [savingLink, setSavingLink] = useState(false);
   const [linkDrag, setLinkDrag] = useState<{
@@ -206,8 +211,8 @@ export function PlanScheduleView({
   // Rows — one list drives BOTH panes, so they can never fall out of alignment.
   // -------------------------------------------------------------------------
   const filteredTree = useMemo(
-    () => (hideCompleted ? filterIncomplete(data.tree) : data.tree),
-    [data.tree, hideCompleted],
+    () => groupTree(filterTree(hideCompleted ? filterIncomplete(data.tree) : data.tree, viewFilter, data.float), groupBy, data.float),
+    [data.tree, data.float, hideCompleted, viewFilter, groupBy],
   );
   const visibleRows = useMemo(
     () => visibleRowsFrom(filteredTree, collapsedIds),
@@ -215,7 +220,24 @@ export function PlanScheduleView({
   );
   /** The grid renders this filtered tree; every other field stays the full, unfiltered data
    *  (row numbers / WBS codes must stay stable regardless of what the filter hides). */
-  const gridData = useMemo(() => ({ ...data, tree: filteredTree }), [data, filteredTree]);
+  // Grouped: the group rows are read-only and the outline (WBS structure) cannot be changed from them.
+  const gridData = useMemo(() => {
+    if (groupBy === "wbs") return { ...data, tree: filteredTree };
+    const groupIds: string[] = [];
+    const walk = (rows: SheetRow[]) => { for (const r of rows) { if (r.id.startsWith(GROUP_ROW_PREFIX)) groupIds.push(r.id); else if (r.kind === "node") walk(r.children); } };
+    walk(filteredTree);
+    const structural = async () => { toast.message("Set Group back to WBS to change the outline"); };
+    return {
+      ...data,
+      tree: filteredTree,
+      lockedRowIds: new Set([...data.lockedRowIds, ...groupIds]),
+      actions: {
+        ...data.actions,
+        createTask: structural, createNode: structural, renameNode: structural, deleteNode: structural,
+        indentRow: structural, outdentRow: structural, moveRow: structural,
+      },
+    };
+  }, [data, filteredTree, groupBy]);
 
   const handleToggleRow = useCallback((rowId: string, open: boolean) => {
     setCollapsedIds((prev) => {
@@ -247,14 +269,11 @@ export function PlanScheduleView({
 
   const handleCollapseAll = useCallback(() => {
     treeApiRef.current?.closeAll();
-    setCollapsedIds(
-      new Set(
-        data.flatRows
-          .filter((r) => r.children.length && !r.id.startsWith("node:project:"))
-          .map((r) => r.id),
-      ),
-    );
-  }, [data.flatRows]);
+    const ids: string[] = [];
+    const walk = (rows: SheetRow[]) => { for (const r of rows) if (r.children.length) { if (!r.id.startsWith("node:project:")) ids.push(r.id); walk(r.children); } };
+    walk(filteredTree);
+    setCollapsedIds(new Set(ids));
+  }, [filteredTree]);
 
   // -------------------------------------------------------------------------
   // Selection
@@ -523,17 +542,30 @@ export function PlanScheduleView({
     [selectedProjectId, data, refreshBaselines, refreshReferenceOptions],
   );
 
-  // F9 = Calculate Project
+  // F9 = Calculate Project; Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) = undo / redo (doc 35 U2), not while typing in a cell
+  const { history } = data;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F9") {
         e.preventDefault();
         void data.actions.runAutoSchedule();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.repeat) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.closest("[role=dialog]"))) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void history.undo();
+      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+        e.preventDefault();
+        void history.redo();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [data.actions]);
+  }, [data.actions, history]);
 
   // -------------------------------------------------------------------------
   // Timeline geometry
@@ -895,10 +927,16 @@ export function PlanScheduleView({
         showCritical={showCritical}
         showFloat={showFloat}
         hideCompleted={hideCompleted}
-        onAddTask={() => data.actions.createTask("New task", selectedRowId)}
-        onAddSummary={() => data.actions.createNode("New group", parentForSummary())}
-        onIndent={() => selectedRowId && data.actions.indentRow(selectedRowId)}
-        onOutdent={() => selectedRowId && data.actions.outdentRow(selectedRowId)}
+        onAddTask={() => gridData.actions.createTask("New task", selectedRowId)}
+        onAddSummary={() => gridData.actions.createNode("New group", parentForSummary())}
+        onIndent={() => selectedRowId && gridData.actions.indentRow(selectedRowId)}
+        onOutdent={() => selectedRowId && gridData.actions.outdentRow(selectedRowId)}
+        canUndo={data.history.canUndo}
+        canRedo={data.history.canRedo}
+        undoLabel={data.history.undoLabel}
+        redoLabel={data.history.redoLabel}
+        onUndo={() => void data.history.undo()}
+        onRedo={() => void data.history.redo()}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
         onLink={() => void linkSelectedChain()}
@@ -944,6 +982,28 @@ export function PlanScheduleView({
         dateFormatId={dateFormat.formatId ?? ""}
         onDateFormatChange={(id) => (id === "" ? dateFormat.resetToCompanyDefault() : dateFormat.setFormatId(id))}
       />
+      {selectedProjectId && (
+        <ScheduleViewBar
+          projectId={selectedProjectId}
+          tasks={data.tasks}
+          filter={viewFilter}
+          onFilterChange={(f) => {
+            setViewFilter(f);
+            setSelectedRowIds([]);
+            // matches can sit in collapsed branches: open everything once the new rows are in
+            if (isFilterActive(f)) requestAnimationFrame(handleExpandAll);
+          }}
+          groupBy={groupBy}
+          onGroupByChange={(g) => {
+            setGroupBy(g);
+            setSelectedRowIds([]);
+            if (g !== "wbs") requestAnimationFrame(handleExpandAll);
+          }}
+          selectedTaskIds={[...selectedTaskIdSet]}
+          onBulkUpdate={data.actions.bulkUpdate}
+          readOnly={readOnlyView}
+        />
+      )}
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         {/* Left: editable grid */}

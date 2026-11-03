@@ -4,12 +4,16 @@
 //   expedite    shorten a critical activity that crews cannot speed up (procurement, design, approvals) by management action; smaller cap
 //   method      switch to another construction method of the activity library whose standard gives a shorter duration
 //   fasttrack   overlap a critical finish-to-start link (start-to-start after half of the predecessor): highest risk
+// plus a calendar what-if (doc 35 F4, calendarScenario): extra working days (e.g. Sundays) in a window and overtime on
+// labour-driven activities that start in it.
 // Output is SCENARIOS to compare. Nothing here changes a programme; a planner decides what, if anything, to apply.
 
 import { depsFromArrays, scheduleProject, signedWorkingDayGap, type EngineDep, type EngineTask } from "../schedule-engine";
-import { workingDaysBetween, type WorkCalendar } from "../work-calendar";
+import { isWorkingDay, parseISO, workingDaysBetween, type WorkCalendar } from "../work-calendar";
 
-export type LeverKind = "crew" | "expedite" | "method" | "fasttrack";
+export type LeverKind = "crew" | "expedite" | "method" | "fasttrack" | "overtime" | "calendar";
+/** The lever kinds the greedy search combines; overtime and calendar come from calendarScenario. */
+type SearchKind = "crew" | "expedite" | "method" | "fasttrack";
 export type Risk = "low" | "medium" | "high";
 
 export interface RecoveryTask {
@@ -68,6 +72,10 @@ export interface Lever {
   risk: Risk;
   /** fast-track only */
   predId?: string;
+  /** fast-track only: the start-to-start lag that replaces the finish-to-start link */
+  lag?: number;
+  /** calendar only: the dates that become working days */
+  dates?: string[];
 }
 
 export interface Scenario {
@@ -95,6 +103,19 @@ export interface RecoveryAnalysis {
   criticalCount: number;
   candidates: { crew: number; expedite: number; method: number; fasttrack: number };
   scenarios: Scenario[];
+  /** the activities that finish last, and why recovery may not move them (a date constraint, no predecessors) */
+  finishDrivers: FinishDriver[];
+}
+
+export interface FinishDriver {
+  id: string;
+  code: string;
+  name: string;
+  constraintType: string | null;
+  constraintDate: string | null;
+  predecessors: number;
+  /** started or manually scheduled: its dates are fixed */
+  anchored: boolean;
 }
 
 const RISK_RANK: Record<Risk, number> = { low: 0, medium: 1, high: 2 };
@@ -214,7 +235,7 @@ function enumerate(
         c.deps.set(task.id, et.deps.map((x) => (x === d ? { ...x, type: "ss" as const, lag } : x)));
         out.push({
           kind: "fasttrack", task, change: c, magnitude: lag, // measured effect decides; lag is only a tie-break
-          lever: { kind: "fasttrack", taskId: task.id, predId: d.predId, code: task.code, name: task.name, fromWd: et.durationWd, toWd: et.durationWd, risk: "high",
+          lever: { kind: "fasttrack", taskId: task.id, predId: d.predId, lag, code: task.code, name: task.name, fromWd: et.durationWd, toWd: et.durationWd, risk: "high",
             label: `Start after half of ${predTask.code} (overlap): finish-to-start becomes start-to-start +${lag} wd` },
         });
       }
@@ -313,7 +334,7 @@ function greedy(
   return { levers, finish: now.finish, ok: true };
 }
 
-const FAMILIES: { key: string; name: string; description: string; kinds: LeverKind[] }[] = [
+const FAMILIES: { key: string; name: string; description: string; kinds: SearchKind[] }[] = [
   { key: "A", name: "More resources", description: "Add crews or a second shift on critical site activities that have not started.", kinds: ["crew"] },
   { key: "B", name: "Construction approach changes", description: "Switch critical activities to a faster construction approach from the activity library.", kinds: ["method"] },
   { key: "C", name: "Expedite procurement, design and approvals", description: "Shorten critical activities that crews cannot speed up, by management action (earlier release, parallel approvals).", kinds: ["expedite"] },
@@ -340,7 +361,7 @@ export function analyseRecovery(
 ): RecoveryAnalysis {
   const base = toEngine(tasks, cal);
   const live = scheduleProject(base, cal, projectStart);
-  if (!live.ok) return { ok: false, cycle: live.cycle, liveFinish: null, targetFinish, gapWd: 0, criticalCount: 0, candidates: { crew: 0, expedite: 0, method: 0, fasttrack: 0 }, scenarios: [] };
+  if (!live.ok) return { ok: false, cycle: live.cycle, liveFinish: null, targetFinish, gapWd: 0, criticalCount: 0, candidates: { crew: 0, expedite: 0, method: 0, fasttrack: 0 }, scenarios: [], finishDrivers: [] };
   const liveFinish = maxFinish(live.dates);
   const critical = new Set<string>();
   for (const [id, f] of live.float) if (f.critical) critical.add(id);
@@ -374,11 +395,148 @@ export function analyseRecovery(
       });
     }
   }
-  return { ok: true, liveFinish, targetFinish: target, gapWd, criticalCount: critical.size, candidates, scenarios };
+  const finishDrivers: FinishDriver[] = [];
+  for (const [id, d] of live.dates) {
+    if (d.finish !== liveFinish || finishDrivers.length >= 5) continue;
+    const t = byId.get(id);
+    if (!t) continue;
+    finishDrivers.push({ id, code: t.code, name: t.name, constraintType: t.constraintType, constraintDate: t.constraintDate, predecessors: t.depIds.length, anchored: t.manual || t.progress > 0 });
+  }
+  return { ok: true, liveFinish, targetFinish: target, gapWd, criticalCount: critical.size, candidates, scenarios, finishDrivers };
 }
 
 /** Plain-text change list a planner can paste into a programme review. */
 export function changeListText(s: Scenario, targetFinish: string | null): string {
   const head = `Recovery scenario ${s.key} - ${s.name}: finish ${s.finish}${targetFinish ? ` vs target ${targetFinish}` : ""}; recovers ${s.recoveredWd} wd; ${s.meetsTarget ? "meets the target" : `${s.remainingGapWd} wd still missing`}; risk ${s.risk}.`;
   return [head, ...s.levers.map((l, i) => `${i + 1}. ${l.code} ${l.name}: ${l.label} (+${l.gainWd} wd)`), `Resources: ${s.resourceNote}.`].join("\n");
+}
+
+// ── calendar what-if (doc 35 F4) ──────────────────────────────────────────
+
+export interface CalendarOptions {
+  /** first and last day of the window (inclusive) */
+  from: string;
+  to: string;
+  /** days of the week (0 = Sunday … 6 = Saturday) that become working inside the window; holidays stay off */
+  extraWeekdays: number[];
+  /** extra working time per day, %: a critical labour-driven activity that starts in the window gets duration / (1 + % / 100) */
+  overtimePct: number;
+}
+
+const DAY_MS = 86_400_000;
+const WEEKDAY = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+/** The non-working days of the window that become working (a holiday exception is never overridden). */
+export function extraWorkingDays(cal: WorkCalendar, opts: Pick<CalendarOptions, "from" | "to" | "extraWeekdays">): string[] {
+  const out: string[] = [];
+  if (!opts.from || !opts.to || opts.to < opts.from || opts.extraWeekdays.length === 0) return out;
+  const days = new Set(opts.extraWeekdays);
+  for (let t = parseISO(opts.from).getTime(), end = parseISO(opts.to).getTime(); t <= end && out.length < 2000; t += DAY_MS) {
+    const iso = new Date(t).toISOString().slice(0, 10);
+    if (cal.exceptions.has(iso) || isWorkingDay(cal, iso)) continue;
+    if (days.has(new Date(t).getUTCDay())) out.push(iso);
+  }
+  return out;
+}
+
+function withWorkingDays(cal: WorkCalendar, dates: string[]): WorkCalendar {
+  if (dates.length === 0) return cal;
+  const exceptions = new Map(cal.exceptions);
+  for (const d of dates) exceptions.set(d, true);
+  return { ...cal, exceptions };
+}
+
+/**
+ * One scenario from a calendar change: extra working days in a window and / or overtime there. Durations stay in the
+ * programme's working days (measured on the current calendar); the dates are laid out on the changed calendar.
+ * Recovery is counted in the current calendar's working days, like every other scenario. null = nothing changes.
+ */
+export function calendarScenario(
+  tasks: RecoveryTask[], cal: WorkCalendar, projectStart: string, targetFinish: string | null, opts: CalendarOptions,
+  settings: RecoverySettings = DEFAULT_RECOVERY_SETTINGS,
+): Scenario | null {
+  const base = toEngine(tasks, cal);
+  const live = run(base, cal, projectStart);
+  if (!live) return null;
+  const dates = extraWorkingDays(cal, opts);
+  const cal2 = withWorkingDays(cal, dates);
+
+  const levers: Lever[] = [];
+  let gainCalendar = 0;
+  if (dates.length > 0) {
+    const r = run(base, cal2, projectStart);
+    if (r) gainCalendar = signedWorkingDayGap(cal, r.finish, live.finish);
+    const which = [...new Set(opts.extraWeekdays)].sort().map((d) => WEEKDAY[d]).join(" and ");
+    levers.push({
+      kind: "calendar", taskId: "", code: "CAL", name: cal.name || "Project calendar",
+      label: `Work ${which} from ${opts.from} to ${opts.to}: ${dates.length} extra working day${dates.length === 1 ? "" : "s"}`,
+      fromWd: 0, toWd: dates.length, gainWd: gainCalendar, risk: dates.length > 30 ? "medium" : "low", dates,
+    });
+  }
+
+  const change = emptyChanges();
+  const ot = Math.max(0, opts.overtimePct) / 100;
+  if (ot > 0) {
+    const liveDates = scheduleProject(base, cal, projectStart);
+    for (const t of tasks) {
+      // critical work only: overtime elsewhere costs money and recovers nothing
+      if (!t.crewable || t.isMilestone || t.manual || t.progress > 0 || !live.critical.has(t.id)) continue;
+      const et = base.find((b) => b.id === t.id);
+      const start = liveDates.ok ? liveDates.dates.get(t.id)?.start : null;
+      if (!et || !start || start < opts.from || start > opts.to || et.durationWd < settings.minDurationWd) continue;
+      const to = Math.max(1, Math.ceil(et.durationWd / (1 + ot)));
+      if (to >= et.durationWd) continue;
+      change.duration.set(t.id, to);
+      levers.push({
+        kind: "overtime", taskId: t.id, code: t.code, name: t.name, fromWd: et.durationWd, toWd: to, gainWd: 0,
+        risk: ot > 0.25 ? "high" : ot > 0.15 ? "medium" : "low",
+        label: `Overtime +${Math.round(ot * 100)}%: ${et.durationWd} → ${to} wd`,
+      });
+    }
+  }
+  if (levers.length === 0) return null;
+
+  const final = run(apply(base, change), cal2, projectStart);
+  if (!final) return null;
+  const recovered = signedWorkingDayGap(cal, final.finish, live.finish);
+  const target = targetFinish ?? live.finish;
+  const remaining = Math.max(0, signedWorkingDayGap(cal, target, final.finish));
+  const overtime = levers.filter((l) => l.kind === "overtime");
+  const notes: string[] = [];
+  if (dates.length) notes.push(`${dates.length} extra working days on site (supervision, access and labour cost)`);
+  if (overtime.length) notes.push(`overtime +${Math.round(ot * 100)}% on ${overtime.length} activit${overtime.length === 1 ? "y" : "ies"} (overtime pay, fatigue)`);
+  return {
+    key: "F", name: "Calendar change",
+    description: "Work extra days and / or overtime in a window. The programme logic and crews stay as they are.",
+    levers, finish: final.finish, recoveredWd: recovered, remainingGapWd: remaining, meetsTarget: remaining === 0,
+    risk: maxRisk(levers.map((l) => l.risk)), resourceNote: notes.join("; ") || "no change",
+  };
+}
+
+/**
+ * The programme's dates with a scenario's changes applied (for the draft revision of an adopted scenario, doc 35 F2).
+ * A fast-track saved without its lag gets half the predecessor's duration, as the engine chose it.
+ */
+export function scenarioDates(
+  tasks: RecoveryTask[], cal: WorkCalendar, projectStart: string, levers: Pick<Lever, "kind" | "taskId" | "toWd" | "predId" | "lag" | "dates">[],
+): Map<string, { start: string; finish: string }> | null {
+  const base = toEngine(tasks, cal);
+  const byId = new Map(base.map((t) => [t.id, t]));
+  const change = emptyChanges();
+  const dates: string[] = [];
+  for (const l of levers) {
+    if (l.kind === "calendar") { dates.push(...(l.dates ?? [])); continue; }
+    const t = byId.get(l.taskId);
+    if (!t) continue;
+    if (l.kind === "fasttrack") {
+      const deps = change.deps.get(t.id) ?? t.deps;
+      const pred = l.predId ? byId.get(l.predId) : undefined;
+      const lag = l.lag ?? Math.ceil((pred?.durationWd ?? 2) / 2);
+      change.deps.set(t.id, deps.map((d) => (d.predId === l.predId && d.type === "fs" ? { ...d, type: "ss" as const, lag } : d)));
+    } else {
+      change.duration.set(t.id, l.toWd);
+    }
+  }
+  const r = scheduleProject(apply(base, change), withWorkingDays(cal, dates), projectStart);
+  return r.ok ? r.dates : null;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { levelResources, type LevelTask } from "../resource-levelling";
+import { capacityOn, levelResources, type LevelTask } from "../resource-levelling";
 import { DEFAULT_CALENDAR } from "../work-calendar";
 
 const cal = DEFAULT_CALENDAR; // Mon–Fri
@@ -167,5 +167,43 @@ describe("levelResources — multi-resource (a task demanding more than one reso
     const result = levelResources([t1], cal, {});
     expect(result.assignments).toHaveLength(0);
     expect(result.peaks).toEqual([]);
+  });
+});
+
+describe("levelResources — capacity that changes by date (doc 35 C1)", () => {
+  it("lets two tasks run together inside a period of extra capacity", () => {
+    const result = levelResources([lev("T1"), lev("T2", { priority: 2 })], cal, { "Crew A": 1 }, {
+      "Crew A": [{ from: "2026-01-05", to: "2026-01-09", units: 2 }],
+    });
+    expect(result.assignments).toHaveLength(0);
+    expect(result.starts.get("T2")).toBe("2026-01-05");
+  });
+
+  it("pushes work out of a period of reduced capacity", () => {
+    // capacity 0 on Mon-Tue: T1 cannot start until Wednesday
+    const result = levelResources([lev("T1")], cal, { "Crew A": 1 }, {
+      "Crew A": [{ from: "2026-01-05", to: "2026-01-06", units: 0 }],
+    });
+    expect(result.starts.get("T1")).toBe("2026-01-07");
+    expect(result.overAllocationResolved).toBe(true);
+  });
+
+  it("reports the capacity of the conflict's own day", () => {
+    const t1 = lev("T1", { totalFloatWd: 0, latestFinish: "2026-01-07" });
+    const t2 = lev("T2", { priority: 2, totalFloatWd: 0, latestFinish: "2026-01-07" });
+    const result = levelResources([t1, t2], cal, { "Crew A": 1 }, { "Crew A": [{ from: "2026-01-07", to: null, units: 2 }] });
+    expect(result.residual.map((r) => [r.date, r.capacity])).toEqual([["2026-01-05", 1], ["2026-01-06", 1]]);
+  });
+});
+
+describe("capacityOn", () => {
+  const periods = [{ from: "2026-02-01", to: "2026-02-28", units: 3 }, { from: "2026-04-01", to: null, units: 0.5 }];
+  it("uses the covering period, else the base", () => {
+    expect(capacityOn(1, periods, "2026-01-31")).toBe(1);
+    expect(capacityOn(1, periods, "2026-02-01")).toBe(3);
+    expect(capacityOn(1, periods, "2026-02-28")).toBe(3);
+    expect(capacityOn(1, periods, "2026-03-15")).toBe(1);
+    expect(capacityOn(1, periods, "2030-01-01")).toBe(0.5);
+    expect(capacityOn(2, undefined, "2026-02-10")).toBe(2);
   });
 });

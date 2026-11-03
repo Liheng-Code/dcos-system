@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages, inChunks } from "../activity-library/in-chunks";
-import { listLevelGfa, listSavedLocations, listWbsLevels } from "../activity-library/location-map-service";
+import { listLevelGfa, listSavedLocations, listWbsLevels, listZonesByLevel } from "../activity-library/location-map-service";
 import { wbsLevelCanonical, type WbsLevel } from "../activity-library/location-map";
 import { runProjectSchedule } from "../project-schedule";
 import { applyScheduleDates } from "../planning-queries";
@@ -266,11 +266,12 @@ export function workingDaysBetween(start: string, end: string): number | null {
 export async function loadPlannerInput(
   db: Db, projectId: string, opts: LoadOptions,
 ): Promise<{ input: PlannerInput; projectStart: string | null; startedTaskCount: number }> {
-  const [lines, locations, levels, gfaByNode, boqTaskIds, project, manager, startedTaskCount] = await Promise.all([
+  const [lines, locations, levels, gfaByNode, zonesByLevel, boqTaskIds, project, manager, startedTaskCount] = await Promise.all([
     loadLines(db, projectId, opts.source),
     listSavedLocations(db, projectId),
     listWbsLevels(db, projectId),
     listLevelGfa(db, projectId),
+    listZonesByLevel(db, projectId),
     loadBoqTaskIds(db, projectId),
     db.from("projects").select("start_date, end_date").eq("id", projectId).maybeSingle(),
     isWbsManager(db),
@@ -282,7 +283,7 @@ export async function loadPlannerInput(
   const [masters, logicRules, existing] = await Promise.all([
     loadMasters(db, masterIds),
     loadLogicRules(db, masterIds),
-    loadExistingTasks(db, projectId, new Set(levels.map((l) => l.id)), manager),
+    loadExistingTasks(db, projectId, new Set(levels.flatMap((l) => [l.id, ...(zonesByLevel.get(l.id) ?? [])])), manager),
   ]);
   const p = (project.data ?? null) as { start_date: string | null; end_date: string | null } | null;
   const duration = opts.projectDurationDays !== undefined ? opts.projectDurationDays : p?.start_date && p?.end_date ? workingDaysBetween(p.start_date, p.end_date) : null;
@@ -291,8 +292,12 @@ export async function loadPlannerInput(
     startedTaskCount,
     input: {
       lines, locations, levels, gfaByNode, linksByWorkItem, resourcesByWorkItem, masters, existingTasks: existing.tasks,
-      nodeBuilding: new Map(levels.map((l) => [l.id, l.building_code])), lockedNodes: existing.lockedNodes,
-      existingBoqTaskIds: boqTaskIds, logicRules, floorOrder: orderFloors(levels), projectDurationDays: duration, defaultCrew: opts.defaultCrew,
+      zonesByLevel,
+      // zones sit with their level: the building's, and right after the level in floor order (zone by zone, floor by floor)
+      nodeBuilding: new Map(levels.flatMap((l) => [l.id, ...(zonesByLevel.get(l.id) ?? [])].map((id) => [id, l.building_code] as const))),
+      lockedNodes: existing.lockedNodes,
+      existingBoqTaskIds: boqTaskIds, logicRules, floorOrder: orderFloors(levels).flatMap((id) => [id, ...(zonesByLevel.get(id) ?? [])]),
+      projectDurationDays: duration, defaultCrew: opts.defaultCrew,
     },
   };
 }

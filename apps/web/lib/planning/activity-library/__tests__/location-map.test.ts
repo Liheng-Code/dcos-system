@@ -122,3 +122,30 @@ describe("chainage sections (Phase E)", () => {
       .toEqual([{ wbs_node_id: "s1", share: 0.4 }, { wbs_node_id: "s2", share: 0.4 }, { wbs_node_id: "s3", share: 0.2 }]);
   });
 });
+
+describe("zone split (doc 35 B5)", () => {
+  const zones = new Map([["03.1F", ["Z1", "Z2"]], ["01.GF", ["ZA", "ZB"]]]);
+  const withZones = (zone_split: SavedLocation["zone_split"]): SavedLocation[] => [
+    { building_code: "BA", qs_level_label: "04.1F", wbs_node_id: "03.1F", status: "confirmed", split_rule: "none", zone_split },
+    { building_code: "BA", qs_level_label: "All", wbs_node_id: null, status: "confirmed", split_rule: "equal", zone_split },
+  ];
+
+  it("keeps the level when the location has no zone split or no zones are known", () => {
+    expect(allocateLine({ building_code: "BA", level: "04.1F" }, withZones("none"), levels, new Map(), zones)).toEqual([{ wbs_node_id: "03.1F", share: 1 }]);
+    expect(allocateLine({ building_code: "BA", level: "04.1F" }, withZones("equal"), levels, new Map())).toEqual([{ wbs_node_id: "03.1F", share: 1 }]);
+  });
+
+  it("shares a level equally over its zones, or by zone GFA", () => {
+    expect(allocateLine({ building_code: "BA", level: "04.1F" }, withZones("equal"), levels, new Map(), zones))
+      .toEqual([{ wbs_node_id: "Z1", share: 0.5 }, { wbs_node_id: "Z2", share: 0.5 }]);
+    expect(allocateLine({ building_code: "BA", level: "04.1F" }, withZones("gfa"), levels, new Map([["Z1", 300], ["Z2", 100]]), zones))
+      .toEqual([{ wbs_node_id: "Z1", share: 0.75 }, { wbs_node_id: "Z2", share: 0.25 }]);
+  });
+
+  it("splits a project-wide line's level shares further; levels without zones keep theirs", () => {
+    const two = levels.slice(1, 4); // GF, MZ, 1F
+    const shares = allocateLine({ building_code: "BA", level: "All" }, withZones("equal"), two, new Map(), zones);
+    expect(shares.map((s) => s.wbs_node_id)).toEqual(["ZA", "ZB", "02.MZ", "Z1", "Z2"]);
+    expect(shares.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1, 10);
+  });
+});

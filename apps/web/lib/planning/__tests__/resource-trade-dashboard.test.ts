@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateByTrade, flagShortageWeeks, type AllocationRow, type PlanResource } from "../resource-service";
+import { aggregateByTrade, aggregateByType, capacityPeriodsByResource, flagShortageWeeks, type AllocationRow, type PlanResource } from "../resource-service";
 
 function resource(over: Partial<PlanResource>): PlanResource {
   return {
@@ -77,5 +77,33 @@ describe("flagShortageWeeks", () => {
     ];
     const weeks = flagShortageWeeks(points);
     expect(weeks.map((w) => `${w.trade}|${w.week_start}`)).toEqual(["Formwork|2026-10-05", "Rebar|2026-10-05", "Rebar|2026-10-12"]);
+  });
+});
+
+describe("capacity periods (doc 35 C1)", () => {
+  const resources = [resource({ id: "r1", trade: "Formwork", max_units: 500 }), resource({ id: "r2", trade: "Formwork", max_units: 300 })];
+  const periods = capacityPeriodsByResource([
+    { id: "c1", resource_id: "r1", from_date: "2026-10-05", to_date: "2026-10-09", max_units: 1000, note: null },
+    { id: "c2", resource_id: "r2", from_date: "2026-10-12", to_date: null, max_units: 0, note: null },
+  ]);
+
+  it("sums each resource's capacity on the day itself", () => {
+    const allocation = [
+      alloc({ resource_id: "r1", work_date: "2026-10-01", total_allocation: 100 }),
+      alloc({ resource_id: "r1", work_date: "2026-10-06", total_allocation: 100 }),
+      alloc({ resource_id: "r1", work_date: "2026-10-13", total_allocation: 100 }),
+    ];
+    const cap = aggregateByTrade(allocation, resources, periods).map((p) => [p.work_date, p.capacity]);
+    expect(cap).toEqual([["2026-10-01", 800], ["2026-10-06", 1300], ["2026-10-13", 500]]);
+    expect(aggregateByType(allocation, resources, periods).map((p) => p.capacity)).toEqual([800, 1300, 500]);
+  });
+
+  it("flags a week against the capacity of its own days", () => {
+    const points = [
+      { work_date: "2026-10-06", trade: "Formwork", demand: 1200, capacity: 1300 }, // inside the extra capacity: fine
+      { work_date: "2026-10-13", trade: "Formwork", demand: 600, capacity: 500 },  // after r2 leaves: short
+      { work_date: "2026-10-14", trade: "Formwork", demand: 550, capacity: 500 },
+    ];
+    expect(flagShortageWeeks(points)).toEqual([{ trade: "Formwork", week_start: "2026-10-12", peak_demand: 600, capacity: 500 }]);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cleanVariant } from "../whatif-service";
 import { DEFAULT_CALENDAR } from "../../work-calendar";
 import { applyVariant, BASE_VARIANT, delta, runScenario, variantIsBase, type ScenarioVariant } from "../scenario-compare";
 import type { MasterContext, PlannerInput } from "../generation-planner";
@@ -97,5 +98,13 @@ describe("scenario compare", () => {
     const r = runScenario(input, BASE_VARIANT, input.nodes.map((n) => ({ id: n.id, wbs_name: n.wbs_name })), DEFAULT_CALENDAR, START, "u");
     expect(r.metrics.unsized).toBe(2);
     expect(r.metrics.low).toBe(2);
+  });
+});
+
+describe("cleanVariant (doc 35 F1)", () => {
+  it("keeps only what a variant can hold", () => {
+    expect(cleanVariant({ methodByMaster: { m1: "x", m2: 5 }, productivityPct: 5000, linkLevels: false, extra: 1 }))
+      .toEqual({ methodByMaster: { m1: "x" }, productivityPct: 100, linkLevels: false });
+    expect(cleanVariant(null)).toEqual({ methodByMaster: {}, productivityPct: 100, linkLevels: true });
   });
 });
