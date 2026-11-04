@@ -4,6 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveApprovalChain } from "@/lib/hr/approval-chain";
 import { insertLeaveTaskAlert } from "@/lib/hr/leave";
+import {
+  buildOccupiedDayPortions,
+  findLeaveDayConflicts,
+  formatLeaveDayConflict,
+  requestedDaySelections,
+  type DayPortion,
+  type OccupiedLeaveRequest,
+} from "@/lib/hr/leave-day-calculation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,8 +134,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [pickerSelected, setPickerSelected] = useState<Profile[]>([]);
 
-  // Existing leave dates (to detect overlaps)
-  const [existingLeaveDates, setExistingLeaveDates] = useState<Set<string>>(new Set());
+  // Days (and halves) already taken by active leave of any type (to detect overlaps)
+  const [occupiedDays, setOccupiedDays] = useState<Map<string, Set<DayPortion>>>(new Map());
 
   // Attachments
   const [files, setFiles] = useState<File[]>([]);
@@ -181,6 +189,14 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
     [daySelections, requestableDates],
   );
   const isSingleHalfDayRequest = halfDaySelections.length === 1 && daysRequested === 0.5;
+  // The per-day choice for every requestable day; saved with the request.
+  const requestSelections = useMemo(
+    () => Object.fromEntries(requestableDates.map((day) => {
+      const key = format(day, "yyyy-MM-dd");
+      return [key, daySelections[key] ?? "full"];
+    })) as Record<string, DaySelection>,
+    [daySelections, requestableDates],
+  );
   const isBalanceTracked = !!selectedType && !selectedType.is_replacement_leave;
   const availableBalance = selectedBalance?.remaining_days ?? selectedType?.max_days_per_year ?? 0;
   const isOverBalance = isBalanceTracked && daysRequested > availableBalance;
@@ -218,13 +234,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
         ]);
         setBalances(balData || []);
 
-        // Build set of occupied dates from active leave requests
-        const occupied = new Set<string>();
-        for (const req of (existingReqs || []) as { start_date: string; end_date: string }[]) {
-          const days = eachDayOfInterval({ start: new Date(req.start_date), end: new Date(req.end_date) });
-          for (const d of days) occupied.add(format(d, "yyyy-MM-dd"));
-        }
-        setExistingLeaveDates(occupied);
+        setOccupiedDays(buildOccupiedDayPortions((existingReqs || []) as OccupiedLeaveRequest[]));
       }
       if (holidaysRes.data) {
         const map: Record<string, string> = {};
@@ -239,17 +249,11 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
   }, [currentYear]);
 
   // ── Days calculation ──────────────────────────────────────
-  function checkDateConflicts(start: string, end: string): string[] {
-    if (!start || !end || existingLeaveDates.size === 0) return [];
-    return eachDayOfInterval({ start: new Date(start), end: new Date(end) })
-      .filter((d) => existingLeaveDates.has(format(d, "yyyy-MM-dd")))
-      .map((d) => format(d, "dd MMM yyyy"));
-  }
-
   function updateDateRange(nextStartDate: string, nextEndDate: string) {
-    setDaySelections((previous) => getDefaultDaySelections(nextStartDate, nextEndDate, previous, publicHolidays));
-    const conflicts = checkDateConflicts(nextStartDate, nextEndDate);
-    if (conflicts.length > 0) setConflictDates(conflicts);
+    const nextSelections = getDefaultDaySelections(nextStartDate, nextEndDate, daySelections, publicHolidays);
+    setDaySelections(nextSelections);
+    const conflicts = findLeaveDayConflicts(nextSelections, occupiedDays);
+    if (conflicts.length > 0) setConflictDates(conflicts.map(formatLeaveDayConflict));
   }
 
   // ── Teammate picker ───────────────────────────────────────
@@ -306,14 +310,8 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
 
     if (!reason.trim()) return "Please provide a reason for your leave request.";
 
-    // Check for overlap with existing active leave requests
-    const conflictDays = requestableDates
-      .filter((day) => {
-        const key = format(day, "yyyy-MM-dd");
-        const sel = daySelections[key] ?? "full";
-        return sel !== "skip" && existingLeaveDates.has(key);
-      })
-      .map((day) => format(day, "dd MMM yyyy"));
+    // Check for overlap with existing active leave of any type (half-day aware)
+    const conflictDays = findLeaveDayConflicts(requestSelections, occupiedDays).map(formatLeaveDayConflict);
     if (conflictDays.length > 0)
       return `You already have a leave request on: ${conflictDays.join(", ")}. Please select different dates.`;
 
@@ -384,6 +382,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
           days_requested: daysRequested,
           is_half_day: isSingleHalfDayRequest,
           half_day_period: isSingleHalfDayRequest ? halfDayPeriod : null,
+          day_selections: requestedDaySelections(requestSelections),
           reason,
           status: "submitted",
           submission_date: new Date().toISOString(),
@@ -393,7 +392,11 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
           approver_2_status: a2 && a2 !== a1 ? "pending" : null,
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        // 23P01: the database overlap guard caught a clash (e.g. submitted from another tab).
+        setValidationError(insertError.code === "23P01" ? insertError.message : "Failed to submit request. Please try again.");
+        return;
+      }
 
       if (request && a1) {
         // Notify only the first approver in the chain
@@ -958,6 +961,7 @@ export default function LeaveRequestForm({ onSuccess, onCancel, title, descripti
             </ul>
             <p className="text-xs text-muted-foreground mb-5">
               Please select different dates, or mark the conflicting days as <strong>Skip</strong> in the per-day selection below.
+              Where only half the day is taken, you can book the other half (<strong>AM</strong> or <strong>PM</strong>).
             </p>
             <div className="flex justify-end">
               <Button type="button" variant="outline" size="sm" onClick={() => setConflictDates([])}>

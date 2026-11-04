@@ -34,6 +34,7 @@ import {
   LogIn,
   QrCode,
   Settings2,
+  History,
 } from "lucide-react";
 import { countLeaveRequestsByEmployeeIdWithStatusSubmitted, countOvertimeApprovalsByApproverIdWithStatusPending, countOvertimeNotificationsByRecipientIdWithIsRead, countPayrollNotificationsByRecipientIdWithSentAt, listLeaveRequestsByFilterWithStatusSubmittedPendingCancellation } from "@/lib/hr/hr-queries";
 
@@ -135,6 +136,7 @@ const LEAVE_GROUPS = [
       { href: "/dashboard/hr/leave",               label: "Leave Dashboard",    icon: LayoutDashboard },
       { href: "/dashboard/hr/leave/apply",          label: "Apply for Leave",   icon: LogOut },
       { href: "/dashboard/hr/leave/my-requests",    label: "My Requests",       icon: FileText },
+      { href: "/dashboard/hr/leave/history",        label: "Leave History",     icon: History },
       { href: "/dashboard/hr/leave/team-calendar",  label: "Team Calendar",     icon: CalendarDays },
       { href: "/dashboard/hr/leave/public-holidays",label: "Public Holidays",   icon: Globe },
       { href: "/dashboard/hr/leave/who-is-on-leave",label: "Who's on Leave",    icon: Users2 },
