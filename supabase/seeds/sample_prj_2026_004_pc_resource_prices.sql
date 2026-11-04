@@ -2,7 +2,7 @@
 -- LOCAL DB ONLY, like sample_prj_2026_004_pc_boq.sql (those resources do not exist on production).
 -- Without a price their BOQ items (SMP-*) have no net rate, which the Work Library BOQ tab reports as "No rate".
 -- Hourly price = the matching company resource's base day rate / 8 (labour; dwl_v_resource_costing_rates then adds the
--- labour all-in on-costs) or its hourly rate (equipment). Rates with no company source are marked ASSUMPTION.
+-- labour all-in on-costs) or its hourly rate (equipment). Rates with no company source are marked ASSUMPTION and filed as source_type 'estimate' (BOQ tab "Estimated price").
 -- Idempotent: deletes and re-inserts only its own rows (notes start with 'Sample data PRJ-2026-004-PC price').
 -- Run from Git Bash after sample_prj_2026_004_pc_boq.sql:
 --   docker exec -i supabase_db_dcos-system psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seeds/sample_prj_2026_004_pc_resource_prices.sql
@@ -13,7 +13,7 @@ delete from public.dwl_resource_prices where notes like 'Sample data PRJ-2026-00
 insert into public.dwl_resource_prices (tenant_id, resource_id, unit_price, currency, valid_from, source_type, price_status, notes)
 select r.tenant_id, r.id,
        round(coalesce(src_price.unit_price / v.divisor, v.assumed), 4),
-       'USD', date '2026-11-04', 'market_survey', 'approved',
+       'USD', date '2026-11-04', case when src_price.unit_price is null then 'estimate' else 'market_survey' end, 'approved',
        'Sample data PRJ-2026-004-PC price: ' ||
          case when src_price.unit_price is not null then 'from ' || v.src || case when v.divisor = 8 then ' day rate / 8' else ' hourly rate' end
               else 'ASSUMPTION ' || v.assumed || '/hr, no company rate; replace with a quotation' end

@@ -64,12 +64,37 @@ export const GAP_HINT: Record<WorkItemGap, string> = {
   rate: "No net rate: the build-up is missing or a resource has no current price in QS.",
   activity: "Not linked to any current activity: Generate from BOQ cannot schedule it.",
 };
-/** Column test on wl_v_work_item_facts for each gap. */
-export const GAP_FILTER: Record<WorkItemGap, { column: string; op: "is" | "zero" }> = {
+/**
+ * Price basis filters: the item has a rate, but a build-up line is priced from an estimate (legacy flat rate, % of a
+ * base rate, ASSUMPTION) or from an expired quotation. Informational: they never stop "Compliant".
+ */
+export const PRICE_FLAGS = ["estimate", "expired"] as const;
+export type PriceFlag = (typeof PRICE_FLAGS)[number];
+/** Any BOQ tab filter chip: a compliance gap or a price basis flag. */
+export type WorkItemFlag = WorkItemGap | PriceFlag;
+export const PRICE_LABEL: Record<PriceFlag, string> = { estimate: "Estimated price", expired: "Expired quote" };
+export const PRICE_HINT: Record<PriceFlag, string> = {
+  estimate: "A build-up line uses an estimated price (legacy flat rate, % of a base rate or ASSUMPTION), not a quotation or market survey.",
+  expired: "A build-up line uses a quotation past its valid-until date.",
+};
+export const FLAG_LABEL: Record<WorkItemFlag, string> = { ...GAP_LABEL, ...PRICE_LABEL };
+
+/** Column test on wl_v_work_item_facts for each filter chip. */
+export const GAP_FILTER: Record<WorkItemFlag, { column: string; op: "is" | "zero" | "positive" }> = {
   division: { column: "csi_division_code", op: "is" },
   rate: { column: "net_rate", op: "is" },
   activity: { column: "activity_links", op: "zero" },
+  estimate: { column: "estimate_price_lines", op: "positive" },
+  expired: { column: "expired_price_lines", op: "positive" },
 };
+
+/** The price basis flags of one item, in display order. */
+export function priceFlags(w: { estimatePriceLines?: number; expiredPriceLines?: number }): PriceFlag[] {
+  const out: PriceFlag[] = [];
+  if ((w.estimatePriceLines ?? 0) > 0) out.push("estimate");
+  if ((w.expiredPriceLines ?? 0) > 0) out.push("expired");
+  return out;
+}
 
 /** The compliance gaps one item has, in display order. */
 export function workItemGaps(w: { divisionCode?: string | null; rate?: number | null; usedBy: number; boqUses?: number }): WorkItemGap[] {

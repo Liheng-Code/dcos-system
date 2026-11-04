@@ -12,12 +12,13 @@ import {
 import { workItemLabel } from "@/lib/work-library/boq-item-rules";
 import { activityLabel, errorMessage, PAGE_SIZE, type ActivityListItem } from "./work-library-shared";
 
-function PaneShell({ title, count, children }: { title: string; count: number | null; children: React.ReactNode }) {
+function PaneShell({ title, count, extra, children }: { title: string; count: number | null; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex min-h-72 min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card lg:h-full lg:min-h-0">
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
         {title}
         {count !== null && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground tabular-nums">{count.toLocaleString()}</span>}
+        {extra}
       </header>
       <div className="min-h-0 flex-1 overflow-auto">{children}</div>
     </section>
@@ -100,14 +101,24 @@ export function DivisionPane({
 
 // ---------------------------------------------------------------- activities
 
+const NO_NORM_HINT = "Duration comes from quantity but there is no productivity norm, so Generate cannot schedule it. Add one in Planning > Productivity > Norm Library.";
+
 export function ActivityPane({
   activities, loading, error, onRetry, searching, selectedId, onOpen, onFocus,
 }: {
   activities: ActivityListItem[]; loading: boolean; error: string | null; onRetry: () => void; searching: boolean;
   selectedId: string | null; onOpen: (id: string) => void; onFocus: (id: string | null) => void;
 }) {
+  const noNorm = activities.filter((a) => a.noNorm).length;
   return (
-    <PaneShell title={searching ? "Activities (search)" : "Activities"} count={loading || error ? null : activities.length}>
+    <PaneShell
+      title={searching ? "Activities (search)" : "Activities"} count={loading || error ? null : activities.length}
+      extra={!loading && !error && noNorm > 0 && (
+        <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-normal text-amber-700 tabular-nums dark:text-amber-400" title={NO_NORM_HINT}>
+          {noNorm.toLocaleString()} no norm
+        </span>
+      )}
+    >
       {error ? <PaneError message={error} onRetry={onRetry} /> : loading ? <PaneSkeleton rows={12} /> : (
         activities.length === 0 ? (
           <PaneEmpty>{searching ? "No activities match your search." : "No activities in this division yet. Use Import activities, or open an activity and choose Add activity."}</PaneEmpty>
@@ -122,6 +133,7 @@ export function ActivityPane({
                 >
                   <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground">{a.visible_code ?? "-"}</span>
                   <span className="min-w-0 flex-1 truncate">{activityLabel(a)}</span>
+                  {a.noNorm && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-400" title={NO_NORM_HINT}>No norm</span>}
                 </button>
               </li>
             ))}
