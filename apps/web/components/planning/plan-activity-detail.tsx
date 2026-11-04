@@ -105,15 +105,20 @@ export function PlanActivityDetail({ id }: { id: string }) {
         </Button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
+            {master.visible_code && <span className="mr-1.5 font-mono text-xs font-semibold">{master.visible_code}</span>}
             <CodeChip code={master.code} />
             <h1 className="mt-1 text-xl font-bold">{master.name}</h1>
             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
               <ActStatusPill status={master.status} />
               <span>v{master.version}</span><span>Rev {master.revision}</span>
               {master.owner && <span>Owner: {master.owner}</span>}
+              <span>CSI {master.csi_section_code ?? (master.csi_division_code ? `Div ${master.csi_division_code}` : "—")}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" render={<Link href="/dashboard/administration/work-library" />}>
+              BOQ, MS, T&amp;C &amp; packages in Work Library →
+            </Button>
             {nextStatuses(master.status).filter((s) => s !== "archived" || master.status !== "draft").map((s) => (
               <Button key={s} size="sm" variant="outline" disabled={busy} onClick={() => transition(s)}>{STATUS_LABEL[s]}</Button>
             ))}

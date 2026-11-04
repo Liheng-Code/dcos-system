@@ -51,6 +51,12 @@ export interface ActMaster {
   duration_basis?: DurationBasis;
   default_work_group?: string | null;
   default_step_template_id?: string | null;
+  /** Construction Work Library catalogue fields (doc 23; core CSI library). */
+  csi_division_code?: string | null;
+  csi_section_code?: string | null;
+  visible_code?: string | null;
+  trade?: string | null;
+  activity_type?: string | null;
 }
 
 /** How an activity's duration is set: from QS quantity x productivity, a standard fixed figure, or the planner. */

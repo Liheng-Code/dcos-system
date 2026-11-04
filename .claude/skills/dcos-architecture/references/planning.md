@@ -10,6 +10,7 @@
 - **Resources & Reports:** Resources (loading), Members, Delay Register (+ TIA), Reports.
 - **Productivity:** Norm Library, Task Work, BOQ Mapping, Cost Rollup, Site Records.
 - **BOQ & Requirements** group (navKey `group:planning:activity_database`): Generate from BOQ, BOQ Mapping Check, Requirements Tracker, plus a shortcut to the core **Construction Work Library** (`/dashboard/administration/work-library`; the old `/dashboard/planning/activity-database` redirects there). Moved to core 2026-11-04.
+- **Activity Library list** (`plan-activity-library.tsx`): left pane toggles CSI Division -> Section (default, rules in `activity-library/csi-grouping.ts`) or Domain -> Category -> Family (remembered per browser); columns visible code, CSI section, trade, link badges BOQ / MS / T&C / PD (`link-counts-service.ts`); bulk Activate steps drafts through under_review -> approved -> active (`activateMaster`).
 - **Activity Library:** Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
 - **Not in the nav:** `/dashboard/planning/scurve`, and the client programme portal `app/portal/programme/[projectId]`.
 
@@ -30,6 +31,7 @@
   - Generation runs, items and overrides: `…04`. Node quantities: `…05`. Quantity links: `…08`.
   - BIM maps, AI and recovery: `20261013000001–3`.
 - **Construction Work Library tables (core since 2026-11-04; data stays `plan_act_*`, Planning reads them).** Doc 23 history below.
+- **Activity expansion (`20261104101110`, 2026-11-04):** 106 DRAFT masters (source `Company Standard (expansion seed 2026-11)`) for the thin divisions 01, 02, 04-06, 08, 10-14, 21-23, 25-28; new domain PRE (Preliminaries & Site) and categories STR/MET, ARC/SPC, MEP/CONV, MEP/ELV; 67 new CSI sections (Division 02 had none); 9 method statements, 10 T&C items, 25 PD packages; links to MS / T&C / packages, BOQ cost items of the same section (only 9: most sections have no QS items yet) and 81 DRAFT norms (ASSUMPTION rates). Activated through the Activity Library bulk Activate.
 - **Procurement packages (`20261104083534`):** `plan_act_procurement_packages` (code unique, package_type material/subcontract/equipment/service, csi_division_code, trade_category, default_lead_time_days, is_long_lead; RLS read all, write `can_manage_master_libraries()`); `plan_act_master_procurement_packages` (master, package; audited by `plan_act_master_chip_audit`); `plan_act_master_chips` returns `procurement_packages`; `procurement_prs.package_id`. Backfilled 4 `PKG-STR-*` codes from `qs_wbs_template_items`.
 - **Activity Database (doc 23, `20261023091500`):**
   - `plan_act_divisions` (16 rows; `code` unique).
