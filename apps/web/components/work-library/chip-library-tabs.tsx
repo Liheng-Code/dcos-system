@@ -68,7 +68,7 @@ function UsedByCell({ db, kind, refId, onOpenActivity }: { db: SupabaseClient; k
   );
 }
 
-const usedByBadge = (n: number) => <Badge variant={n > 0 ? "default" : "secondary"}>{n} {n === 1 ? "activity" : "activities"}</Badge>;
+const usedByBadge = (n: number) => <Badge className="whitespace-nowrap" variant={n > 0 ? "default" : "secondary"}>{n} {n === 1 ? "activity" : "activities"}</Badge>;
 
 /** Loads rows with a stale-while-revalidate key, error and retry. */
 function useRows<T>(load: () => Promise<T[]>, key: string, failure: string) {
@@ -127,7 +127,7 @@ function MaterialTable({
         <span className="font-medium text-foreground">{selectedDivisionLabel(divisions, division)}</span>: {rows.length.toLocaleString()} material{rows.length === 1 ? "" : "s"} from the QS cost library.
         {division === NO_DIVISION ? " These have no material category with a division in the QS cost library yet." : " Select a row to see the activities that use it."}
       </p>
-      <div className="overflow-auto rounded-lg border border-border">
+      <div className="overflow-auto rounded-lg border border-border [&_th]:whitespace-nowrap">
         <Table>
           <TableHeader><TableRow><TableHead className="w-8" /><TableHead>Code</TableHead><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead>Division</TableHead><TableHead className="text-right">Used by</TableHead></TableRow></TableHeader>
           <TableBody>
@@ -192,6 +192,8 @@ const base = {
 
 interface Spec {
   noun: string;
+  /** Short name for the Add button. */
+  short: string;
   prefix: (division: string) => string;
   load: (db: SupabaseClient, q: string, type: TcType | "all") => Promise<LibraryRow[]>;
   setActive: (db: SupabaseClient, id: string, active: boolean) => Promise<void>;
@@ -202,19 +204,19 @@ const nul = (s: string) => (s.trim() === "" ? null : s.trim());
 
 const SPECS: Record<LibraryKind, Spec> = {
   shop_drawing: {
-    noun: "shop drawing type", prefix: () => "SD-",
+    noun: "shop drawing type", short: "Type", prefix: () => "SD-",
     load: async (db, q) => (await listShopDrawingTypes(db, { q })).map((r) => ({ ...base, ...r, division: r.csi_division_code })),
     setActive: setShopDrawingTypeActive,
     save: (db, v, id) => upsertShopDrawingType(db, { id, code: v.code, name: v.name, csi_division_code: nul(v.division), description: nul(v.description), sort_order: Number(v.sort_order) }),
   },
   coordination: {
-    noun: "coordination item", prefix: () => "CO-",
+    noun: "coordination item", short: "Item", prefix: () => "CO-",
     load: async (db, q) => (await listCoordinationItems(db, { q })).map((r) => ({ ...base, ...r, division: null, discipline: r.discipline })),
     setActive: setCoordinationItemActive,
     save: (db, v, id) => upsertCoordinationItem(db, { id, code: v.code, name: v.name, discipline: nul(v.discipline), description: nul(v.description), sort_order: Number(v.sort_order) }),
   },
   method_statement: {
-    noun: "method statement", prefix: () => "MS-",
+    noun: "method statement", short: "Statement", prefix: () => "MS-",
     load: async (db, q) => (await listMethodStatements(db, { q })).map((r) => ({ ...base, ...r, division: r.csi_division_code, reference: r.reference_doc })),
     setActive: setMethodStatementActive,
     save: (db, v, id) => upsertMethodStatement(db, {
@@ -222,7 +224,7 @@ const SPECS: Record<LibraryKind, Spec> = {
     }),
   },
   tc: {
-    noun: "testing and commissioning item", prefix: () => "TC-",
+    noun: "testing and commissioning item", short: "T&C item", prefix: () => "TC-",
     load: async (db, q, type) => (await listTcItems(db, { q, type })).map((r) => ({
       ...base, ...r, division: r.csi_division_code, tcType: r.tc_type, reference: r.standard_ref, criteria: r.acceptance_criteria,
     })),
@@ -232,7 +234,7 @@ const SPECS: Record<LibraryKind, Spec> = {
     }),
   },
   procurement_package: {
-    noun: "procurement package", prefix: () => "PKG-",
+    noun: "procurement package", short: "Package", prefix: () => "PKG-",
     load: async (db, q) => (await listProcurementPackages(db, { q })).map((r) => ({
       ...base, ...r, division: r.csi_division_code, packageType: r.package_type, trade: r.trade_category, leadDays: r.default_lead_time_days, longLead: r.is_long_lead,
     })),
@@ -482,7 +484,7 @@ export function ChipLibraryTab({
             Select a row to see the activities that use it.
           </p>
         </div>
-        {canManage && <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add {spec.noun}</Button>}
+        {canManage && <Button size="sm" className="shrink-0" title={`Add ${spec.noun}`} onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add {spec.short}</Button>}
       </div>
       {!loaded ? <TableSkeleton /> : loaded.error ? <TableError message={loaded.error} onRetry={retry} /> : rows.length === 0 ? (
         <div className="space-y-2 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -490,7 +492,7 @@ export function ChipLibraryTab({
           {canManage && !query && type === "all" && <Button size="sm" onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" /> Add {loaded.rows.length > 0 ? `one to this division` : "the first one"}</Button>}
         </div>
       ) : (
-        <div className="overflow-auto rounded-lg border border-border">
+        <div className="overflow-auto rounded-lg border border-border [&_th]:whitespace-nowrap">
           <Table>
             <TableHeader>
               <TableRow>
@@ -506,13 +508,13 @@ export function ChipLibraryTab({
                   <Fragment key={r.id}>
                     <TableRow className="cursor-pointer" onClick={() => setOpenId(open ? null : r.id)} aria-expanded={open}>
                       <TableCell>{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
-                      <TableCell className="font-mono text-xs">{r.code}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-xs">{r.code}</TableCell>
                       <TableCell>{r.name}</TableCell>
                       <ExtraCells kind={kind} r={r} divisionName={divisionName} />
                       <TableCell><Badge variant={r.is_active ? "default" : "secondary"}>{r.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                      <TableCell className="text-right">{usedByBadge(r.usedBy)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-right">{usedByBadge(r.usedBy)}</TableCell>
                       {canManage && (
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                           <Button size="sm" variant="ghost" aria-label={`Edit ${r.name}`} onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
                           <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => void toggleActive(r)}>{r.is_active ? "Deactivate" : "Activate"}</Button>
                         </TableCell>
