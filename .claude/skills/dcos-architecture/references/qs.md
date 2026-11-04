@@ -104,4 +104,10 @@ See `integration-map.md`, rows tagged **QS**.
 - **Not enforced in the DB:** the tender_stage transitions, and the post-contract BOQ `baseline_status` lock (app-side `checkBoqForLock`; DB unverified).
 - **Dead or legacy:** `pullFromUnitRateLibrary` has no callers; the unit-rates page.
 - **Open items:** provisional sums and dayworks are not linked to the cost library (OQ-8); the `cost_per_m2_internal` permission has nothing to gate.
-- **Docs:** `docs/04-Business-Modules/12-Quantity-Surveying/` (00–19; 18 = WBS templates, 19 = alternates ALT-1..9) and `21-IPC-Progress-Claim/` (01–12, R0, mostly draft).
+- **Found in the 2026-10-30 review** (full list: `docs/04-Business-Modules/20-Quantity-Surveying/QS-Module-Gap-Review-2026-10-30.md`):
+  - **Retention bug:** `recalculateClaim` computes retention on the cumulative value, and certification inserts that whole figure into `qs_retention_ledger` on every IPC, so the balance is over-counted.
+  - **No QS API routes:** post-contract writes are browser Supabase calls. Certify → ledger → AR invoice, and the award conversion, are not transactional.
+  - **No commitment feed:** Procurement never writes `qs_cost_transactions` (`'po'`), so committed and actual cost are entered by hand.
+  - **Not built:** final account, CVR / monthly cost report, post-contract dayworks, PS expenditure and PC sums, fluctuation / CPA, VO valuation → BOQ, sub-IPC beyond the header, EOT and L&E assessment.
+  - **Dead code:** `lib/qs/contract-service.ts` has no importers (the contracts pages use `qs-queries.ts`). `qs_notifications` is written but never read.
+- **Docs:** `docs/04-Business-Modules/20-Quantity-Surveying/` (moved from `12-Quantity-Surveying/`; 18 = WBS templates, 19 = alternates ALT-1..9) and `21-IPC-Progress-Claim/` (01–12, R0, mostly draft).
