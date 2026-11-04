@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,9 @@ import {
   listActivitiesUsingWorkItem, listAllWorkItems, listResourcesLibrary, listWorkItemsLibrary, workItemDivisionCounts, workItemGapCounts, type Division, type MasterRow, type ResourceListRow, type WorkItemListRow,
 } from "@/lib/work-library/work-library-service";
 import { countByDivision, inDivision, NO_DIVISION } from "@/lib/work-library/activity-chips-rules";
-import { GAP_HINT, GAP_LABEL, rateText, WORK_ITEM_GAPS, workItemGaps, workItemLabel, type WorkItemGap } from "@/lib/work-library/boq-item-rules";
+import {
+  countLabel, GAP_HINT, GAP_LABEL, rateText, WORK_ITEM_GAPS, workItemGaps, workItemLabel, type WorkItemGap,
+} from "@/lib/work-library/boq-item-rules";
 import { errorMessage, PAGE_SIZE, SELECT_CLS } from "./work-library-shared";
 import { DivisionSplit, selectedDivisionLabel } from "./division-filter-pane";
 import { QsSourceNote } from "./qs-source-note";
@@ -151,16 +153,26 @@ export function BoqLibraryTab({
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Gaps:</span>
-        {WORK_ITEM_GAPS.map((g) => (
-          <button
-            key={g} type="button" title={GAP_HINT[g]} aria-pressed={gap === g} onClick={() => setGap(gap === g ? null : g)}
-            className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs",
-              gap === g ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary hover:text-primary")}
-          >
-            {GAP_LABEL[g]}
-            {gapCount && <span className={cn("rounded-full px-1.5 tabular-nums", gap === g ? "bg-primary-foreground/20" : "bg-muted")}>{gapCount[g]}</span>}
-          </button>
-        ))}
+        {WORK_ITEM_GAPS.map((g) => {
+          const n = gapCount?.[g];
+          return (
+            <button
+              key={g} type="button" title={GAP_HINT[g]} aria-pressed={gap === g} onClick={() => setGap(gap === g ? null : g)}
+              className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs",
+                gap === g ? "border-primary bg-primary text-primary-foreground"
+                  : n ? "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary")}
+            >
+              {GAP_LABEL[g]}
+              {n !== undefined && <span className={cn("rounded-full px-1.5 tabular-nums", gap === g ? "bg-primary-foreground/20" : n ? "bg-amber-100 dark:bg-amber-900" : "bg-muted")}>{n}</span>}
+            </button>
+          );
+        })}
+        {gapCount && WORK_ITEM_GAPS.every((g) => gapCount[g] === 0) && (
+          <span className="inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 px-3 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Compliant
+          </span>
+        )}
         <label className="ml-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <input type="checkbox" className="h-3.5 w-3.5" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show inactive
         </label>
@@ -187,8 +199,8 @@ export function BoqLibraryTab({
   );
 }
 
-const countBadge = (n: number | undefined, noun: string) => (
-  <Badge className="whitespace-nowrap" variant={n ? "default" : "secondary"}>{n ?? 0} {noun}{n === 1 ? "" : "s"}</Badge>
+const countBadge = (n: number | undefined, singular: string, plural: string) => (
+  <Badge className="whitespace-nowrap" variant={n ? "default" : "secondary"}>{countLabel(n ?? 0, singular, plural)}</Badge>
 );
 
 function BoqTable({
@@ -232,8 +244,8 @@ function BoqTable({
                     <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">{w.sectionCode ?? "-"}</TableCell>
                     <TableCell className={cn("whitespace-nowrap text-right tabular-nums", noRate && "text-amber-600")}>{noRate ? "No rate" : rateText(w.rate)}</TableCell>
                     <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">{w.buildupLines ? `${w.buildupLines} line${w.buildupLines === 1 ? "" : "s"}` : "none"}</TableCell>
-                    <TableCell className="text-right">{countBadge(w.usedBy, "activity")}</TableCell>
-                    <TableCell className="text-right">{countBadge(w.boqUses, "line")}</TableCell>
+                    <TableCell className="text-right">{countBadge(w.usedBy, "activity", "activities")}</TableCell>
+                    <TableCell className="text-right">{countBadge(w.boqUses, "line", "lines")}</TableCell>
                   </TableRow>
                   {open && (
                     <TableRow className="bg-muted/30 hover:bg-muted/30">

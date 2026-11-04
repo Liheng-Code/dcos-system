@@ -52,32 +52,37 @@ export function divisionText(code: string | null | undefined, name: string | und
   return name ? `Division ${code} - ${name}` : `Division ${code}`;
 }
 
-/** BOQ tab gap filters: items with no CSI division, no rate (missing build-up or price), no activity, or no BOQ use. */
-export const WORK_ITEM_GAPS = ["division", "rate", "activity", "unused"] as const;
+/**
+ * BOQ tab gap filters: compliance defects (no CSI division, no rate, no activity) that should reach zero. Items no
+ * project uses yet are not a gap; the BOQ uses column shows them.
+ */
+export const WORK_ITEM_GAPS = ["division", "rate", "activity"] as const;
 export type WorkItemGap = (typeof WORK_ITEM_GAPS)[number];
-export const GAP_LABEL: Record<WorkItemGap, string> = { division: "No division", rate: "No rate", activity: "No activity", unused: "Not used in BOQs" };
+export const GAP_LABEL: Record<WorkItemGap, string> = { division: "No division", rate: "No rate", activity: "No activity" };
 export const GAP_HINT: Record<WorkItemGap, string> = {
   division: "No CSI division: the item cannot be found by division in the libraries.",
   rate: "No net rate: the build-up is missing or a resource has no current price in QS.",
   activity: "Not linked to any current activity: Generate from BOQ cannot schedule it.",
-  unused: "Not referenced by any project or tender BOQ line you can see.",
 };
 /** Column test on wl_v_work_item_facts for each gap. */
 export const GAP_FILTER: Record<WorkItemGap, { column: string; op: "is" | "zero" }> = {
   division: { column: "csi_division_code", op: "is" },
   rate: { column: "net_rate", op: "is" },
   activity: { column: "activity_links", op: "zero" },
-  unused: { column: "boq_uses", op: "zero" },
 };
 
-/** The gaps one item has, in display order. */
+/** The compliance gaps one item has, in display order. */
 export function workItemGaps(w: { divisionCode?: string | null; rate?: number | null; usedBy: number; boqUses?: number }): WorkItemGap[] {
   const out: WorkItemGap[] = [];
   if (!w.divisionCode) out.push("division");
   if (w.rate === null || w.rate === undefined) out.push("rate");
   if (w.usedBy === 0) out.push("activity");
-  if (!w.boqUses) out.push("unused");
   return out;
+}
+
+/** "1 activity" / "2 activities" / "0 lines": a count with its noun in the right number. */
+export function countLabel(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
 }
 
 /** "1,234.50" for a rate; "-" when there is none. */

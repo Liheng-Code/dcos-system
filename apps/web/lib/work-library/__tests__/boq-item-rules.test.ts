@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  divisionText, GAP_FILTER, mergeUnits, parseConsumption, rateText, resourceColumnLabel, usageBlockers, WORK_ITEM_GAPS, workItemGaps, workItemLabel,
+  countLabel, divisionText, GAP_FILTER, mergeUnits, parseConsumption, rateText, resourceColumnLabel, usageBlockers, WORK_ITEM_GAPS, workItemGaps, workItemLabel,
 } from "../boq-item-rules";
 
 describe("boq item rules", () => {
@@ -41,14 +41,21 @@ describe("boq item rules", () => {
 
 describe("BOQ item gaps", () => {
   it("lists the gaps of an item in display order", () => {
-    expect(workItemGaps({ divisionCode: null, rate: null, usedBy: 0, boqUses: 0 })).toEqual(["division", "rate", "activity", "unused"]);
+    expect(workItemGaps({ divisionCode: null, rate: null, usedBy: 0, boqUses: 0 })).toEqual(["division", "rate", "activity"]);
     expect(workItemGaps({ divisionCode: "03", rate: 12.5, usedBy: 2, boqUses: 4 })).toEqual([]);
-    expect(workItemGaps({ divisionCode: "03", rate: 0, usedBy: 1, boqUses: 0 })).toEqual(["unused"]);
+    expect(workItemGaps({ divisionCode: "03", rate: 0, usedBy: 1, boqUses: 0 })).toEqual([]);
   });
 
-  it("has a facts-view filter for every gap", () => {
+  it("has a filter column for every gap", () => {
+    expect(WORK_ITEM_GAPS).toEqual(["division", "rate", "activity"]);
     for (const g of WORK_ITEM_GAPS) expect(GAP_FILTER[g].column).toBeTruthy();
     expect(GAP_FILTER.rate).toEqual({ column: "net_rate", op: "is" });
+  });
+
+  it("puts counts in the right number", () => {
+    expect(countLabel(1, "activity", "activities")).toBe("1 activity");
+    expect(countLabel(0, "activity", "activities")).toBe("0 activities");
+    expect(countLabel(2, "line", "lines")).toBe("2 lines");
   });
 
   it("formats rates", () => {
