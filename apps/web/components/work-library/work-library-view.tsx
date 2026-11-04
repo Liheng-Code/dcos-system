@@ -36,6 +36,8 @@ export function WorkLibraryView() {
   const [dialogId, setDialogId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  /** Division the Auto-suggest dialog opens on: the BOQ tab's division when opened from its gap filter. */
+  const [suggestDivision, setSuggestDivision] = useState<string | null | undefined>(undefined);
   const [boqDialog, setBoqDialog] = useState<{ id: string; list: BoqListItem[] } | null>(null);
 
   const [input, setInput] = useState("");
@@ -154,7 +156,9 @@ export function WorkLibraryView() {
           />
         </TabsContent>
         <TabsContent value="boq" className="pt-2">
-          <BoqLibraryTab db={db} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} onOpenBoq={(id, list) => setBoqDialog({ id, list })} />
+          <BoqLibraryTab db={db} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={(id) => { setSelectedActivityId(id); setDialogId(id); }} onOpenBoq={(id, list) => setBoqDialog({ id, list })}
+            onSuggest={(division) => { setSuggestDivision(division); setSuggesting(true); }}
+          />
         </TabsContent>
         <TabsContent value="method_statement" className="pt-2">
           <ChipLibraryTab kind="method_statement" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
@@ -197,7 +201,8 @@ export function WorkLibraryView() {
       )}
       {suggesting && (
         <LinkSuggestionDialog
-          db={db} divisions={divisionsLoaded?.data ?? []} defaultDivision={selectedDivisionCode} onClose={() => setSuggesting(false)} onApplied={refresh}
+          db={db} divisions={divisionsLoaded?.data ?? []} defaultDivision={suggestDivision === undefined ? selectedDivisionCode : suggestDivision}
+          onClose={() => { setSuggesting(false); setSuggestDivision(undefined); }} onApplied={refresh}
           onOpenActivity={openFromLibrary}
         />
       )}

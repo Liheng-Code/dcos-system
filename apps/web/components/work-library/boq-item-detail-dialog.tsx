@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Loader2, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Maximize2, Minimize2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +23,7 @@ import {
 import { usageBlockers, workItemLabel, type WorkItemUsage } from "@/lib/work-library/boq-item-rules";
 import { BoqItemActivitiesTab } from "./boq-item-activities-tab";
 import { BoqItemCreateDialog } from "./boq-item-create-dialog";
+import { BoqItemCostTab, BoqItemUsedInTab } from "./boq-item-cost-tabs";
 import { BoqItemDetailsTab, boqDetailsSchema, type BoqDetailsValues } from "./boq-item-details-tab";
 import { errorMessage } from "./work-library-shared";
 
@@ -160,6 +161,17 @@ function DetailBody({
     } catch (e) { toast.error(errorMessage(e, "Could not check where this BOQ item is used")); } finally { setBusy(false); }
   }
 
+  async function reactivate() {
+    if (!item) return;
+    setBusy(true);
+    try {
+      await updateWorkItem(db, item.id, { is_active: true });
+      toast.success(`${item.code} reactivated`);
+      await load();
+      onChanged();
+    } catch (e) { toast.error(errorMessage(e, "Could not reactivate")); } finally { setBusy(false); }
+  }
+
   async function finishDelete(mode: "delete" | "deactivate") {
     if (!item) return;
     setBusy(true);
@@ -207,7 +219,9 @@ function DetailBody({
           <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
             <TabsList className="w-fit">
               <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="cost">Cost Build-up</TabsTrigger>
               <TabsTrigger value="activities">Master Activities</TabsTrigger>
+              <TabsTrigger value="used">Used in BOQs</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="pt-2">
               <form id="boq-details-form" onSubmit={form.handleSubmit(save)} noValidate>
@@ -226,8 +240,14 @@ function DetailBody({
                 />
               </form>
             </TabsContent>
+            <TabsContent value="cost" className="pt-2">
+              <BoqItemCostTab db={db} workItemId={item.id} />
+            </TabsContent>
             <TabsContent value="activities" className="pt-2">
               <BoqItemActivitiesTab db={db} item={item} divisions={divisions} canManage={canManage} onChanged={onChanged} />
+            </TabsContent>
+            <TabsContent value="used" className="pt-2">
+              <BoqItemUsedInTab db={db} workItemId={item.id} />
             </TabsContent>
           </Tabs>
         )}
@@ -238,6 +258,9 @@ function DetailBody({
           {canManage && (
             <>
               <Button type="button" size="sm" variant="outline" disabled={busy || !item} onClick={() => guardRun(() => setCreating(true))}><Plus className="mr-1 h-4 w-4" /> Add BOQ</Button>
+              {item && !item.is_active && (
+                <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void reactivate()}><RotateCcw className="mr-1 h-4 w-4" /> Reactivate</Button>
+              )}
               <Button type="button" size="sm" variant="destructive" disabled={busy || !item} onClick={() => void startDelete()}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>
             </>
           )}

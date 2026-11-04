@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { divisionText, mergeUnits, parseConsumption, resourceColumnLabel, usageBlockers, workItemLabel } from "../boq-item-rules";
+import {
+  divisionText, GAP_FILTER, mergeUnits, parseConsumption, rateText, resourceColumnLabel, usageBlockers, WORK_ITEM_GAPS, workItemGaps, workItemLabel,
+} from "../boq-item-rules";
 
 describe("boq item rules", () => {
   it("prefers the name over the description", () => {
@@ -34,5 +36,24 @@ describe("boq item rules", () => {
   it("formats the division", () => {
     expect(divisionText("09", "Finishes")).toBe("Division 09 - Finishes");
     expect(divisionText(null, undefined)).toBe("-");
+  });
+});
+
+describe("BOQ item gaps", () => {
+  it("lists the gaps of an item in display order", () => {
+    expect(workItemGaps({ divisionCode: null, rate: null, usedBy: 0, boqUses: 0 })).toEqual(["division", "rate", "activity", "unused"]);
+    expect(workItemGaps({ divisionCode: "03", rate: 12.5, usedBy: 2, boqUses: 4 })).toEqual([]);
+    expect(workItemGaps({ divisionCode: "03", rate: 0, usedBy: 1, boqUses: 0 })).toEqual(["unused"]);
+  });
+
+  it("has a facts-view filter for every gap", () => {
+    for (const g of WORK_ITEM_GAPS) expect(GAP_FILTER[g].column).toBeTruthy();
+    expect(GAP_FILTER.rate).toEqual({ column: "net_rate", op: "is" });
+  });
+
+  it("formats rates", () => {
+    expect(rateText(null)).toBe("-");
+    expect(rateText(undefined)).toBe("-");
+    expect(rateText(1234.5)).toMatch(/1.?234\.50/);
   });
 });

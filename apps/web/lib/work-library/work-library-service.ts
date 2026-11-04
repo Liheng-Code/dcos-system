@@ -13,6 +13,7 @@ import type { ActivityType } from "./activity-database-import";
 import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
 import { copyMasterChips, resourceDivisions } from "./activity-chips-service";
 import { countByDivision, NO_DIVISION } from "./activity-chips-rules";
+import { GAP_FILTER, WORK_ITEM_GAPS, type WorkItemGap } from "./boq-item-rules";
 import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
@@ -138,7 +139,18 @@ export interface BankSearchResult {
   workItems: WorkItemRef[];
 }
 
-export interface WorkItemListRow extends WorkItemRef { boqSection?: string; usedBy: number }
+export interface WorkItemListRow extends WorkItemRef {
+  boqSection?: string;
+  /** Current activities that link the item. */
+  usedBy: number;
+  sectionCode?: string | null;
+  isActive?: boolean;
+  /** Net direct rate from the build-up at current prices; null when a price is missing. */
+  rate?: number | null;
+  buildupLines?: number;
+  /** Project and tender BOQ lines that reference the item (rows the viewer can read). */
+  boqUses?: number;
+}
 export interface Page<T> { items: T[]; total: number }
 
 export interface ResourceListRow { id: string; code: string; name: string; kind: "labor" | "equipment"; unit: string; workItemCount: number; divisions: string[] }
@@ -358,19 +370,6 @@ export async function searchWorkItems(db: Db, q: string, limit = 30): Promise<Wo
   return (data ?? []) as WorkItemRef[];
 }
 
-async function usedByCounts(db: Db, workItemIds: string[]): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  for (let i = 0; i < workItemIds.length; i += 150) {
-    const part = workItemIds.slice(i, i + 150);
-    // only current masters count (same rule as the division counts)
-    const rows = await allPages<{ work_item_id: string }>((from, to) =>
-      db.from("plan_act_master_work_items").select("work_item_id, plan_act_masters!inner(status)").in("work_item_id", part)
-        .not("plan_act_masters.status", "in", CURRENT_EXCLUDED).order("id").range(from, to) as never);
-    for (const r of rows) map.set(r.work_item_id, (map.get(r.work_item_id) ?? 0) + 1);
-  }
-  return map;
-}
-
 /**
  * Work items of a CSI division: those whose own csi_division_code matches, plus those linked to the current
  * activities of the division (union, each once). null lists the whole cost library.
@@ -398,32 +397,109 @@ export async function listWorkItemsForDivision(db: Db, divisionCode: string | nu
   return { total: items.length, items: items.slice(offset, offset + limit).map((i) => ({ ...i, usedBy: uses.get(i.id) ?? 0 })) };
 }
 
-/** Active work items per CSI division code (NO_DIVISION for none) matching `q`, for the BOQ tab's division pane. */
-export async function workItemDivisionCounts(db: Db, q?: string): Promise<Map<string, number>> {
-  const s = safeTerm(q ?? "");
-  const rows = await allPages<{ csi_division_code: string | null }>((from, to) => {
-    let qb = db.from("dwl_work_items").select("csi_division_code").eq("is_active", true);
-    if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
-    return qb.order("id").range(from, to);
-  });
+/** BOQ tab filters over wl_v_work_item_facts: search, active only (default), one gap. */
+export interface WorkItemFilter { q?: string; showInactive?: boolean; gap?: WorkItemGap | null }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST filter builder of the facts view
+function applyWorkItemFilter<T extends { eq: any; or: any; is: any }>(qb: T, f: WorkItemFilter, skipGap?: boolean): T {
+  let out = qb;
+  const s = safeTerm(f.q ?? "");
+  if (!f.showInactive) out = out.eq("is_active", true);
+  if (s) out = out.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
+  if (!skipGap && f.gap) {
+    const g = GAP_FILTER[f.gap];
+    out = g.op === "is" ? out.is(g.column, null) : out.eq(g.column, 0);
+  }
+  return out;
+}
+
+/** Work items per CSI division code (NO_DIVISION for none) matching the filter, for the BOQ tab's division pane. */
+export async function workItemDivisionCounts(db: Db, q?: string, f: Omit<WorkItemFilter, "q"> = {}): Promise<Map<string, number>> {
+  const rows = await allPages<{ csi_division_code: string | null }>((from, to) =>
+    applyWorkItemFilter(db.from("wl_v_work_item_facts").select("csi_division_code"), { ...f, q }).order("id").range(from, to));
   return countByDivision(rows, (r) => [r.csi_division_code]);
 }
 
-/** BOQ tab: the cost library's work items (optionally of one CSI division, or NO_DIVISION) with the number of activities that use each. */
-export async function listWorkItemsLibrary(db: Db, opts: { q?: string; division?: string | null; limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
-  const s = safeTerm(opts.q ?? "");
-  let qb = db.from("dwl_work_items").select("id, code, name, description, unit, boq_section", { count: "exact" }).eq("is_active", true);
-  if (s) qb = qb.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
+/** Number of items per gap for the current search / division (the gap chips). */
+export async function workItemGapCounts(db: Db, f: WorkItemFilter & { division?: string | null }): Promise<Record<WorkItemGap, number>> {
+  const out = {} as Record<WorkItemGap, number>;
+  await Promise.all(WORK_ITEM_GAPS.map(async (gap) => {
+    let qb = applyWorkItemFilter(db.from("wl_v_work_item_facts").select("id", { count: "exact", head: true }), { ...f, gap });
+    if (f.division === NO_DIVISION) qb = qb.is("csi_division_code", null);
+    else if (f.division) qb = qb.eq("csi_division_code", f.division);
+    const { count, error } = await qb;
+    must(error);
+    out[gap] = count ?? 0;
+  }));
+  return out;
+}
+
+type FactRow = {
+  id: string; code: string; name: string | null; description: string; unit: string; boq_section: string; csi_section_code: string | null;
+  is_active: boolean; net_rate: number | null; buildup_lines: number; activity_links: number; boq_uses: number;
+};
+const FACT_COLS = "id, code, name, description, unit, boq_section, csi_section_code, is_active, net_rate, buildup_lines, activity_links, boq_uses";
+const toListRow = (r: FactRow): WorkItemListRow => ({
+  id: r.id, code: r.code, name: r.name, description: r.description, unit: r.unit, boqSection: r.boq_section, usedBy: r.activity_links,
+  sectionCode: r.csi_section_code, isActive: r.is_active, rate: r.net_rate === null ? null : Number(r.net_rate), buildupLines: r.buildup_lines, boqUses: r.boq_uses,
+});
+
+/** BOQ tab: the cost library's work items (optionally of one CSI division, or NO_DIVISION) with rate, build-up, activity and BOQ use. */
+export async function listWorkItemsLibrary(db: Db, opts: WorkItemFilter & { division?: string | null; limit: number; offset: number }): Promise<Page<WorkItemListRow>> {
+  let qb = applyWorkItemFilter(db.from("wl_v_work_item_facts").select(FACT_COLS, { count: "exact" }), opts);
   if (opts.division === NO_DIVISION) qb = qb.is("csi_division_code", null);
   else if (opts.division) qb = qb.eq("csi_division_code", opts.division);
   const { data, error, count } = await qb.order("code").order("id").range(opts.offset, opts.offset + opts.limit - 1);
   must(error);
-  const rows = (data ?? []) as (WorkItemRef & { boq_section: string })[];
-  const used = await usedByCounts(db, rows.map((r) => r.id));
-  return {
-    total: count ?? rows.length,
-    items: rows.map((r) => ({ id: r.id, code: r.code, name: r.name, description: r.description, unit: r.unit, boqSection: r.boq_section, usedBy: used.get(r.id) ?? 0 })),
-  };
+  const rows = (data ?? []) as FactRow[];
+  return { total: count ?? rows.length, items: rows.map(toListRow) };
+}
+
+/** Every item matching the filter (for the "Needs rate" export), most-used first. */
+export async function listAllWorkItems(db: Db, f: WorkItemFilter & { division?: string | null }): Promise<(WorkItemListRow & { divisionCode: string | null })[]> {
+  const rows = await allPages<FactRow & { csi_division_code: string | null }>((from, to) => {
+    let qb = applyWorkItemFilter(db.from("wl_v_work_item_facts").select(`${FACT_COLS}, csi_division_code`), f);
+    if (f.division === NO_DIVISION) qb = qb.is("csi_division_code", null);
+    else if (f.division) qb = qb.eq("csi_division_code", f.division);
+    return qb.order("id").range(from, to);
+  });
+  return rows.map((r) => ({ ...toListRow(r), divisionCode: r.csi_division_code }))
+    .sort((a, b) => (b.boqUses ?? 0) - (a.boqUses ?? 0) || b.usedBy - a.usedBy || a.code.localeCompare(b.code));
+}
+
+export interface CostBreakdownLine { category: string; resourceCode: string; resourceName: string; unit: string; consumption: number; unitPrice: number | null; lineCost: number | null; expired: boolean }
+
+/** Build-up lines of a work item at current prices (dwl_v_work_item_explosion), for the detail dialog. */
+export async function listWorkItemBreakdown(db: Db, workItemId: string): Promise<CostBreakdownLine[]> {
+  const { data, error } = await db.from("dwl_v_work_item_explosion")
+    .select("resource_category, resource_code, resource_desc, resource_unit, consumption, unit_price, line_cost, is_expired, sort_order")
+    .eq("work_item_id", workItemId).order("sort_order");
+  must(error);
+  return ((data ?? []) as { resource_category: string; resource_code: string; resource_desc: string; resource_unit: string; consumption: number; unit_price: number | null; line_cost: number | null; is_expired: boolean | null }[])
+    .map((r) => ({
+      category: r.resource_category, resourceCode: r.resource_code, resourceName: r.resource_desc, unit: r.resource_unit, consumption: Number(r.consumption),
+      unitPrice: r.unit_price === null ? null : Number(r.unit_price), lineCost: r.line_cost === null ? null : Number(r.line_cost), expired: !!r.is_expired,
+    }));
+}
+
+export interface BoqUse { source: "project" | "tender"; owner: string; itemNo: string; description: string; quantity: number | null; unit: string | null }
+
+/** Project BOQ and tender BOQ lines that reference a work item (only those the viewer can read). */
+export async function listWorkItemBoqUses(db: Db, workItemId: string): Promise<BoqUse[]> {
+  const [qs, tender] = await Promise.all([
+    db.from("qs_boq_items").select("item_no, item_code, description, quantity, unit, project:projects(project_code, project_name)").eq("dwl_work_item_id", workItemId).limit(500),
+    db.from("tender_boq_items").select("item_code, description, quantity, unit, tender:tender_register(tender_no, title)").eq("dwl_work_item_id", workItemId).limit(500),
+  ]);
+  must(qs.error);
+  must(tender.error);
+  type One<T> = T | T[] | null;
+  const first = <T,>(v: One<T>): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+  return [
+    ...((qs.data ?? []) as { item_no: string | null; item_code: string | null; description: string; quantity: number | null; unit: string | null; project: One<{ project_code: string; project_name: string }> }[])
+      .map((r) => { const p = first(r.project); return { source: "project" as const, owner: p ? `${p.project_code} ${p.project_name}` : "Project", itemNo: r.item_no ?? r.item_code ?? "", description: r.description, quantity: r.quantity, unit: r.unit }; }),
+    ...((tender.data ?? []) as { item_code: string | null; description: string; quantity: number | null; unit: string | null; tender: One<{ tender_no: string; title: string }> }[])
+      .map((r) => { const t = first(r.tender); return { source: "tender" as const, owner: t ? `${t.tender_no} ${t.title}` : "Tender", itemNo: r.item_code ?? "", description: r.description, quantity: r.quantity, unit: r.unit }; }),
+  ];
 }
 
 /** Current activities that link a work item (for the BOQ tab drill-down). */
