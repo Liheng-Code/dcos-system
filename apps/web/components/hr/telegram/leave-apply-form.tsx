@@ -11,10 +11,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useMiniApp } from "@/lib/hr/telegram/miniapp-context";
 import {
+  buildOccupiedDayPortions,
   computeLeaveDays,
+  findLeaveDayConflicts,
+  formatLeaveDayConflict,
   getDefaultDaySelections,
   getSelectedDates,
   type DaySelection,
+  type OccupiedLeaveRequest,
 } from "@/lib/hr/leave-day-calculation";
 
 // ── Reference payload shapes ────────────────────────────────────────────────
@@ -54,11 +58,8 @@ interface LeaveBalance {
   remaining_days: number;
 }
 
-// Mirrors LeaveDateRange (apps/web/lib/hr/leave.ts:531-534).
-interface OccupiedRange {
-  start_date: string;
-  end_date: string;
-}
+// Mirrors LeaveDateRange (apps/web/lib/hr/leave.ts).
+type OccupiedRange = OccupiedLeaveRequest;
 
 // Mirrors LeaveEmploymentPolicy (apps/web/lib/hr/leave.ts:504-511). Fetched
 // as part of the reference payload but not currently surfaced in this
@@ -195,17 +196,8 @@ export default function LeaveApplyForm() {
 
   const holidaysSet = useMemo(() => new Set(reference?.publicHolidays ?? []), [reference]);
 
-  // Client-side reconstruction of getOccupiedLeaveDateSet (leave.ts:554-563,
-  // not exported) from the raw ranges the reference endpoint returns.
-  const occupiedDatesSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const range of reference?.occupiedRanges ?? []) {
-      for (const day of getSelectedDates(range.start_date, range.end_date)) {
-        set.add(format(day, "yyyy-MM-dd"));
-      }
-    }
-    return set;
-  }, [reference]);
+  // Days (and halves) already taken by active leave, from the reference endpoint.
+  const occupiedDays = useMemo(() => buildOccupiedDayPortions(reference?.occupiedRanges ?? []), [reference]);
 
   const rangeInvalid = Boolean(startDate && endDate && isAfter(parseISO(startDate), parseISO(endDate)));
 
@@ -241,22 +233,15 @@ export default function LeaveApplyForm() {
       ? `Insufficient balance. You have ${remainingBalance} day${remainingBalance !== 1 ? "s" : ""} remaining.`
       : null;
 
-  // Mirrors the conflict check in leave-request-form.tsx:338-347 — only
-  // days that are actually being requested (not explicitly skipped) count
-  // as a conflict.
-  const conflictKeys = useMemo(
-    () =>
-      dayCalc.requestableDateKeys.filter((key) => {
-        const selection = effectiveSelections[key] ?? "full";
-        return selection !== "skip" && occupiedDatesSet.has(key);
-      }),
-    [dayCalc.requestableDateKeys, effectiveSelections, occupiedDatesSet],
+  // Same overlap rule as createLeaveRequest and the database guard: any leave
+  // type, half-day aware, skipped days never conflict.
+  const conflicts = useMemo(
+    () => findLeaveDayConflicts(effectiveSelections, occupiedDays),
+    [effectiveSelections, occupiedDays],
   );
   const conflictWarning =
-    conflictKeys.length > 0
-      ? `You already have a leave request on: ${conflictKeys
-          .map((key) => format(parseISO(key), "dd MMM yyyy"))
-          .join(", ")}. Please select different dates.`
+    conflicts.length > 0
+      ? `You already have a leave request on: ${conflicts.map(formatLeaveDayConflict).join(", ")}. Please select different dates.`
       : null;
 
   const canSubmit = Boolean(

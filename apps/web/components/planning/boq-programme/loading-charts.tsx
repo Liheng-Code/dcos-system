@@ -17,18 +17,18 @@ import {
 } from "@/lib/planning/boq-programme/loading-service";
 import { costLoadingRows, histogramRows, marginCheck, OTHER_KEY } from "@/lib/planning/boq-programme/loading-view";
 
-const COLORS = ["#2563eb", "#059669", "#d97706", "#e11d48", "#7c3aed", "#0891b2", "#65a30d", "#db2777"];
+export const COLORS = ["#2563eb", "#059669", "#d97706", "#e11d48", "#7c3aed", "#0891b2", "#65a30d", "#db2777"];
 const OTHER_COLOR = "#94a3b8";
 const colorOf = (key: string, i: number) => (key === OTHER_KEY ? OTHER_COLOR : COLORS[i % COLORS.length]);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const periodLabel = (iso: string, period: LoadingPeriod) =>
+export const periodLabel = (iso: string, period: LoadingPeriod) =>
   period === "month" ? `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(2, 4)}` : `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(2, 4)}`;
-const money = (n: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
-const compact = (n: number) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+export const money = (n: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
+export const compact = (n: number) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const errorText = (e: unknown) => (e instanceof Error ? e.message : "Could not load the data");
 
-function Toggle<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+export function Toggle<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
     <div className="inline-flex rounded-md border border-border p-0.5">
       {options.map((o) => (
@@ -48,11 +48,11 @@ function Toggle<T extends string>({ value, options, onChange }: { value: T; opti
   );
 }
 
-const PERIODS: { value: LoadingPeriod; label: string }[] = [{ value: "week", label: "Week" }, { value: "month", label: "Month" }];
-const BASES: { value: LoadingBasis; label: string }[] = [{ value: "current", label: "Current" }, { value: "baseline", label: "Baseline" }];
+export const PERIODS: { value: LoadingPeriod; label: string }[] = [{ value: "week", label: "Week" }, { value: "month", label: "Month" }];
+export const BASES: { value: LoadingBasis; label: string }[] = [{ value: "current", label: "Current" }, { value: "baseline", label: "Baseline" }];
 
 /** Loads `fetcher` whenever `key` changes; state is only set in the async callbacks. */
-function useRpc<T>(key: string | null, fetcher: () => Promise<T>) {
+export function useRpc<T>(key: string | null, fetcher: () => Promise<T>) {
   const [state, setState] = useState<{ key: string | null; data: T | null; error: string | null }>({ key: null, data: null, error: null });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -153,10 +153,12 @@ const GROUPS: { value: HistogramGroup; label: string }[] = [
 ];
 const MEASURES: { value: "headcount" | "hours"; label: string }[] = [{ value: "headcount", label: "Headcount" }, { value: "hours", label: "Hours" }];
 
-export function BoqManpowerHistogramCard({ projectId, className, defaultPeriod = "week" }: { projectId: string | null; className?: string; defaultPeriod?: LoadingPeriod }) {
+export function BoqManpowerHistogramCard({ projectId, className, defaultPeriod = "week", defaultKind = "labor" }: {
+  projectId: string | null; className?: string; defaultPeriod?: LoadingPeriod; defaultKind?: ResourceKind;
+}) {
   const [period, setPeriod] = useState<LoadingPeriod>(defaultPeriod);
   const [group, setGroup] = useState<HistogramGroup>("trade");
-  const [kind, setKind] = useState<ResourceKind>("labor");
+  const [kind, setKind] = useState<ResourceKind>(defaultKind);
   const [measure, setMeasure] = useState<"headcount" | "hours">("headcount");
   const { data, error, loading, retry } = useRpc<ManpowerHistogram>(
     projectId ? `${projectId}|${period}|${group}` : null,
@@ -169,7 +171,7 @@ export function BoqManpowerHistogramCard({ projectId, className, defaultPeriod =
 
   return (
     <ChartWrapper
-      title="Manpower Histogram (BOQ)"
+      title={kind === "labor" ? "Manpower Histogram (BOQ)" : "Equipment Histogram (BOQ)"}
       description={
         hasAny
           ? `Average ${unit} per ${period} by ${group}, from BOQ man-hours spread over working days · ${money(kindHours)} ${kind === "labor" ? "man" : "machine"}-hours · peak ${shaped!.peak} ${unit}`

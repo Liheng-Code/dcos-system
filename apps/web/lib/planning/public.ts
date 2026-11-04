@@ -39,15 +39,3 @@ export {
   type RequirementKind,
   type RequirementState,
 } from "./activity-library/requirement-status";
-
-// Library pickers for Design schedules (MEP commissioning, material submittals, coordination log)
-export {
-  getChipOptionsByIds,
-  searchCoordinationItems,
-  searchMaterials,
-  searchTcItems,
-  type CoordinationItem,
-  type MaterialOption,
-  type TcItem,
-} from "./activity-library/activity-chips-service";
-export { TC_TYPE_LABEL } from "./activity-library/activity-chips-rules";

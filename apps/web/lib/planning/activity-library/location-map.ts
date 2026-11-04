@@ -81,7 +81,12 @@ export interface SavedLocation {
   wbs_node_id: string | null;
   status: "confirmed" | "ignored";
   split_rule: SplitRule;
+  /** split the level's share over its zone child nodes (doc 35 B5); missing = none */
+  zone_split?: ZoneSplit;
 }
+
+/** none: the level node takes the quantity; equal / gfa: shared over the level's zone nodes. */
+export type ZoneSplit = "none" | "equal" | "gfa";
 
 /**
  * none: not per level; equal / gfa: share a project-wide line over the building's levels;
@@ -170,9 +175,37 @@ export function allocateLine(
   saved: SavedLocation[],
   levels: WbsLevel[],
   gfaByNode: Map<string, number>,
+  /** zone child nodes per level node, in order (doc 35 B5); only used when the location has a zone split */
+  zonesByLevel?: ReadonlyMap<string, readonly string[]>,
 ): LevelShare[] {
   const s = saved.find((x) => locationKey(x.building_code, x.qs_level_label) === locationKey(line.building_code, line.level));
   if (!s || s.status === "ignored") return [];
+  const shares = levelShares(s, line, levels, gfaByNode);
+  const rule = s.zone_split ?? "none";
+  if (rule === "none" || !zonesByLevel) return shares;
+  return shares.flatMap((ls) => splitOverZones(ls, zonesByLevel.get(ls.wbs_node_id) ?? [], rule, gfaByNode));
+}
+
+/** A level's share over its zones: equal, or by zone GFA (equal when no zone has GFA). No zones: the level keeps it. */
+export function splitOverZones(
+  level: LevelShare, zones: readonly string[], rule: Exclude<ZoneSplit, "none">, gfaByNode: ReadonlyMap<string, number>,
+): LevelShare[] {
+  if (zones.length === 0) return [level];
+  if (rule === "gfa") {
+    const total = zones.reduce((sum, z) => sum + (gfaByNode.get(z) ?? 0), 0);
+    if (total > 0) {
+      return zones.filter((z) => (gfaByNode.get(z) ?? 0) > 0).map((z) => ({ wbs_node_id: z, share: level.share * (gfaByNode.get(z) ?? 0) / total }));
+    }
+  }
+  return zones.map((z) => ({ wbs_node_id: z, share: level.share / zones.length }));
+}
+
+function levelShares(
+  s: SavedLocation,
+  line: { building_code: string | null; level: string | null },
+  levels: WbsLevel[],
+  gfaByNode: Map<string, number>,
+): LevelShare[] {
   if (s.wbs_node_id) return [{ wbs_node_id: s.wbs_node_id, share: 1 }];
   if (s.split_rule === "none") return [];
 

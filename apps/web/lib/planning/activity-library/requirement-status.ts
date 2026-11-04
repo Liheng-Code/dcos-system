@@ -1,4 +1,4 @@
-// Pure rules for the Requirements Tracker: what a project's activities need (Activity Database catalogues) against
+// Pure rules for the Requirements Tracker: what a project's activities need (Construction Work Library catalogues) against
 // the records that fulfil it (submittals in Document Control, ITP lines in QA/QC, Design MEP commissioning records and
 // coordination log entries).
 // Links: submittal_packages.shop_drawing_type_id / method_statement_id, itp_items.tc_item_id (20261030161500);

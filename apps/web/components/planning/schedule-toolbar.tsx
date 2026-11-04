@@ -23,11 +23,13 @@ import {
   MoveHorizontal,
   PanelRightClose,
   PanelRightOpen,
+  Redo2,
   Plus,
   Printer,
   RotateCcw,
   TrendingUp,
   TriangleAlert,
+  Undo2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -101,6 +103,13 @@ interface ScheduleToolbarProps {
   hideCompleted: boolean;
   onAddTask: () => void;
   onAddSummary: () => void;
+  /** Undo / redo (doc 35 U2); labels name the action, e.g. "Duration". */
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
   onIndent: () => void;
   onOutdent: () => void;
   onExpandAll: () => void;
@@ -207,6 +216,12 @@ export function ScheduleToolbar({
   hideCompleted,
   onAddTask,
   onAddSummary,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
   onIndent,
   onOutdent,
   onExpandAll,
@@ -281,6 +296,29 @@ export function ScheduleToolbar({
           disabled={readOnlyView}
         >
           <FolderPlus className="h-3.5 w-3.5" /> Summary row
+        </Button>
+
+        <span className="mx-1 h-4 w-px bg-border" />
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1 text-[11px]"
+          onClick={onUndo}
+          disabled={!canUndo || readOnlyView}
+          title={undoLabel ? `Undo: ${undoLabel} (Ctrl+Z)` : "Nothing to undo"}
+        >
+          <Undo2 className="h-3.5 w-3.5" /> Undo
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1 text-[11px]"
+          onClick={onRedo}
+          disabled={!canRedo || readOnlyView}
+          title={redoLabel ? `Redo: ${redoLabel} (Ctrl+Y)` : "Nothing to redo"}
+        >
+          <Redo2 className="h-3.5 w-3.5" /> Redo
         </Button>
 
         <span className="mx-1 h-4 w-px bg-border" />

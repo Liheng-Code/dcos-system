@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Flag, GitBranch, AlertTriangle, Trash2, Loader2, Plus, Pencil, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { getStatusLabel, getDependencyLabel, wouldCreateCycle } from "./gantt-ut
 import { cn } from "@/lib/utils";
 import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
 import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
+import { PlanTaskQuantityPanel } from "./plan-task-quantity-panel";
 import {
   addAssignment,
   findOrCreateResourceForProfile,
@@ -93,6 +94,9 @@ export function GanttTaskDetailDrawer({
   const [notes, setNotes] = useState(() => task?.field_observation_notes ?? "");
   const [savingProgress, setSavingProgress] = useState(false);
   const [hasActivitySteps, setHasActivitySteps] = useState(false);
+  // doc 35 P3: under the quantity method progress comes from installed quantity, never typed
+  const [progressFromQuantity, setProgressFromQuantity] = useState(false);
+  const onMethodChange = useCallback((m: string) => setProgressFromQuantity(m === "quantity"), []);
 
   // ---- Resources tab ----
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -677,17 +681,24 @@ export function GanttTaskDetailDrawer({
                   type="number"
                   min={0}
                   max={100}
-                  disabled={hasActivitySteps}
-                  className={cn(inputCls, hasActivitySteps && "opacity-50 cursor-not-allowed")}
+                  disabled={hasActivitySteps || progressFromQuantity}
+                  className={cn(inputCls, (hasActivitySteps || progressFromQuantity) && "opacity-50 cursor-not-allowed")}
                   value={newProgress}
                   onChange={(e) => setNewProgress(e.target.value)}
                 />
               </Field>
-              {hasActivitySteps && (
+              {hasActivitySteps && !progressFromQuantity && (
                 <p className="-mt-2 text-[10px] text-muted-foreground">
                   Calculated automatically from this activity&apos;s steps below — edit step % complete to change it.
                 </p>
               )}
+              {progressFromQuantity && (
+                <p className="-mt-2 text-[10px] text-muted-foreground">
+                  Calculated from the installed quantity below — record quantity to change it.
+                </p>
+              )}
+
+              <PlanTaskQuantityPanel taskId={task.id} onMethodChange={onMethodChange} onChanged={onRefresh} />
 
               <WbsActivityStepsPanel
                 taskId={task.id}

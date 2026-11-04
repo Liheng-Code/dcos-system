@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CALENDAR } from "../../work-calendar";
-import { analyseRecovery, changeListText, type MethodAlternative, type RecoverySettings, type RecoveryTask } from "../recovery-engine";
+import { analyseRecovery, calendarScenario, changeListText, extraWorkingDays, scenarioDates, type MethodAlternative, type RecoverySettings, type RecoveryTask } from "../recovery-engine";
 
 const START = "2026-10-05"; // Monday
 const cal = DEFAULT_CALENDAR;
@@ -146,3 +146,50 @@ function shiftWd(iso: string, n: number): string {
   while (left > 0) { d.setUTCDate(d.getUTCDate() + step); if (d.getUTCDay() !== 0) left--; }
   return d.toISOString().slice(0, 10);
 }
+
+describe("calendarScenario (doc 35 F4)", () => {
+  it("brings the finish forward by working Sundays", () => {
+    const live = analyseRecovery(chain(), cal, START, null).liveFinish!;
+    const s = calendarScenario(chain(), cal, START, null, { from: START, to: "2026-12-31", extraWeekdays: [0], overtimePct: 0 })!;
+    const lever = s.levers[0];
+    expect(lever.kind).toBe("calendar");
+    // 30 wd Mon-Sat from 5 Oct ends 7 Nov; with Sundays it is 5 working days earlier (4 Oct is before the window)
+    expect(lever.dates!.every((d) => new Date(d + "T00:00:00Z").getUTCDay() === 0)).toBe(true);
+    expect(s.finish < live).toBe(true);
+    expect(s.recoveredWd).toBe(lever.gainWd);
+    expect(s.recoveredWd).toBeGreaterThanOrEqual(4);
+  });
+
+  it("never turns a holiday into a working day", () => {
+    const withHoliday = { ...cal, exceptions: new Map([["2026-10-11", false]]) };
+    expect(extraWorkingDays(withHoliday, { from: "2026-10-05", to: "2026-10-25", extraWeekdays: [0] })).toEqual(["2026-10-18", "2026-10-25"]);
+  });
+
+  it("shortens labour-driven activities that start in the window with overtime", () => {
+    const s = calendarScenario(chain(), cal, START, null, { from: START, to: "2026-10-20", extraWeekdays: [], overtimePct: 25 })!;
+    // A starts 5 Oct, B 16 Oct: both in the window; C starts 28 Oct; D starts in it but is not critical
+    expect(s.levers.map((l) => [l.kind, l.taskId, l.toWd])).toEqual([["overtime", "A", 8], ["overtime", "B", 8]]);
+    expect(s.recoveredWd).toBe(4);
+    expect(s.risk).toBe("medium");
+  });
+
+  it("returns null when nothing changes", () => {
+    expect(calendarScenario(chain(), cal, START, null, { from: START, to: "2026-12-31", extraWeekdays: [], overtimePct: 0 })).toBeNull();
+  });
+});
+
+describe("scenarioDates (doc 35 F2)", () => {
+  it("lays out the programme with the scenario's changes", () => {
+    const tasks = chain();
+    const before = analyseRecovery(tasks, cal, START, null).liveFinish!;
+    const d = scenarioDates(tasks, cal, START, [
+      { kind: "crew", taskId: "A", toWd: 8 },
+      { kind: "fasttrack", taskId: "C", predId: "B", toWd: 10, lag: 5 },
+    ])!;
+    expect(d.get("A")!.finish < d.get("B")!.start).toBe(true);
+    // C starts 5 wd after B starts instead of after B finishes
+    expect(d.get("C")!.start < d.get("B")!.finish).toBe(true);
+    const finish = [...d.values()].map((x) => x.finish).sort().at(-1)!;
+    expect(finish < before).toBe(true);
+  });
+});

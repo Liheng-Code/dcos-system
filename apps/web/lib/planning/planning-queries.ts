@@ -395,6 +395,11 @@ export function getVPlanClientProgrammeByProjectId(projectId: string | number | 
 
 // ── wbs_nodes ─────────────────────────────────────────────────────────────────
 
+// What blocks deleting a WBS node and everything under it (doc 35 I8): [{ label, count }].
+export function checkWbsNodeDelete(nodeId: string) {
+  return db().rpc("wbs_node_delete_check", { p_node_id: nodeId });
+}
+
 // @table wbs_nodes
 export function deleteWbsNodeByIdReturning(id: string | number | boolean) {
   return db().from("wbs_nodes").delete().eq("id", id).select("id").maybeSingle();

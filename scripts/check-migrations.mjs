@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "migrations");
 
 // Named before the 14-digit convention was adopted; already applied everywhere.
-const LEGACY_NAMES = new Set(["20260526_0001_create_profiles.sql"]);
+const LEGACY_NAMES = new Set(["202410210001_create_cost_libraries.sql", "20260526_0001_create_profiles.sql"]);
 
 const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
 const errors = [];

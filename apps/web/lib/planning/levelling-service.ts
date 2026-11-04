@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { depsFromArrays, engineDuration, scheduleProject, type EngineTask } from "./schedule-engine";
 import { buildWorkCalendar, todayISO, type PlanCalendarExceptionRow, type PlanCalendarRow, type WorkCalendar } from "./work-calendar";
-import { levelResources, type LevelTask, type ResourceLevellingResult } from "./resource-levelling";
+import { levelResources, type CapacityPeriod, type LevelTask, type ResourceLevellingResult } from "./resource-levelling";
 import { recomputeProjectWork } from "./productivity-service";
 import { dedupe } from "@/lib/request-dedup";
 
@@ -9,6 +9,8 @@ export interface LevellingContext {
   levelTasks: LevelTask[];
   cal: WorkCalendar;
   capacities: Record<string, number>;
+  /** Capacity periods (units) per resource, overriding capacities on their dates (doc 35 C1). */
+  capacityPeriods: Record<string, CapacityPeriod[]>;
   resourceNames: Record<string, string>;
   taskNamesById: Record<string, string>;
 }
@@ -76,7 +78,7 @@ export function loadLevellingContext(projectId: string): Promise<LevellingContex
 
 async function fetchLevellingContext(projectId: string): Promise<LevellingContext> {
   const supabase = createClient();
-  const [taskRes, calRes, assignRes] = await Promise.all([
+  const [taskRes, calRes, assignRes, capRes] = await Promise.all([
     supabase
       .from("wbs_tasks")
       .select(
@@ -95,6 +97,8 @@ async function fetchLevellingContext(projectId: string): Promise<LevellingContex
       .from("plan_task_assignments")
       .select("task_id, resource_id, allocation_percent, plan_resources!inner(id, name, max_units, project_id)")
       .eq("plan_resources.project_id", projectId),
+    // capacity that changes by date (doc 35 C1); absent before the migration, so a failure means none
+    supabase.from("plan_resource_capacity").select("resource_id, from_date, to_date, max_units").eq("project_id", projectId),
   ]);
   if (taskRes.error) throw new Error(taskRes.error.message);
   if (assignRes.error) throw new Error(assignRes.error.message);
@@ -124,6 +128,12 @@ async function fetchLevellingContext(projectId: string): Promise<LevellingContex
     // The engine works in units (1 crew = 1); the DB stores percent (100 = 1).
     capacities[a.resource_id] = Number(a.plan_resources.max_units ?? 100) / 100;
     resourceNames[a.resource_id] = a.plan_resources.name;
+  }
+
+  // The engine works in units (100% = 1), like capacities.
+  const capacityPeriods: Record<string, CapacityPeriod[]> = {};
+  for (const c of (capRes.error ? [] : capRes.data ?? []) as { resource_id: string; from_date: string; to_date: string | null; max_units: number }[]) {
+    (capacityPeriods[c.resource_id] ??= []).push({ from: c.from_date, to: c.to_date, units: Number(c.max_units) / 100 });
   }
 
   const result = tasks.length > 0 ? scheduleProject(tasks.map((t) => toEngineTask(t, cal)), cal, dataDate, { critical: 0, nearCritical: 5 }) : null;
@@ -160,11 +170,11 @@ async function fetchLevellingContext(projectId: string): Promise<LevellingContex
     });
   }
 
-  return { levelTasks, cal, capacities, resourceNames, taskNamesById };
+  return { levelTasks, cal, capacities, capacityPeriods, resourceNames, taskNamesById };
 }
 
 export function runLevelling(ctx: LevellingContext): ResourceLevellingResult {
-  return levelResources(ctx.levelTasks, ctx.cal, ctx.capacities);
+  return levelResources(ctx.levelTasks, ctx.cal, ctx.capacities, ctx.capacityPeriods);
 }
 
 /** Serializes a ResourceLevellingResult for jsonb storage — Map isn't valid JSON. */

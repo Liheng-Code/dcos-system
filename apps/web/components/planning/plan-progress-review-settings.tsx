@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getPlanScheduleSettingByProjectId, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 import { useProject } from "@/components/dashboard/project-context";
 import { createClient } from "@/lib/supabase/client";
+import { PROGRESS_METHOD_LABEL, setProjectDefaultProgressMethod, type ProgressMethod } from "@/lib/planning/progress-quantity-service";
 
 /**
  * Completion Plan 2.2 — per-project toggle for the progress review flow.
@@ -20,6 +21,8 @@ export function PlanProgressReviewSettings() {
   const [explicit, setExplicit] = useState(false);
   const [lockOnComplete, setLockOnComplete] = useState(true);
   const [saving, setSaving] = useState(false);
+  /** doc 35 P3: the progress method activities use unless they set their own; null = steps when there are steps, else percent. */
+  const [defaultMethod, setDefaultMethod] = useState<ProgressMethod | null>(null);
 
   const projectDefault = async (projectId: string) =>
     Boolean((await createClient().rpc("progress_review_required", { p_project_id: projectId })).data);
@@ -31,13 +34,14 @@ export function PlanProgressReviewSettings() {
       return;
     }
     setLoading(true);
-    getPlanScheduleSettingByProjectId(selectedProjectId, "progress_review_enabled, lock_on_complete")
+    getPlanScheduleSettingByProjectId(selectedProjectId, "progress_review_enabled, lock_on_complete, progress_method_default")
       .then(async ({ data }) => {
         // Not set = the project-type default (doc 35 R4): on for awarded projects, off for tenders.
         const stored = data?.progress_review_enabled as boolean | null | undefined;
         setExplicit(stored != null);
         setEnabled(stored ?? (await projectDefault(selectedProjectId)));
         setLockOnComplete(data?.lock_on_complete ?? true);
+        setDefaultMethod(((data as { progress_method_default?: ProgressMethod | null } | null)?.progress_method_default) ?? null);
         setLoading(false);
       });
   }, [selectedProjectId]);
@@ -102,6 +106,28 @@ export function PlanProgressReviewSettings() {
               Once an activity reaches 100%, only an admin can change its progress further without a planner unlocking it first.
             </span>
           </span>
+        </label>
+        <label className="block">
+          <span className="block font-medium text-foreground">Default progress method</span>
+          <span className="block text-muted-foreground">Used by activities that do not set their own method (task drawer › Progress).</span>
+          <select
+            value={defaultMethod ?? ""}
+            onChange={async (e) => {
+              const next = (e.target.value || null) as ProgressMethod | null;
+              setDefaultMethod(next);
+              try {
+                await setProjectDefaultProgressMethod(selectedProjectId, next);
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : String(err));
+              }
+            }}
+            className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5"
+          >
+            <option value="">Automatic (steps when an activity has steps, otherwise percent)</option>
+            {(Object.keys(PROGRESS_METHOD_LABEL) as ProgressMethod[]).map((m) => (
+              <option key={m} value={m}>{PROGRESS_METHOD_LABEL[m]}</option>
+            ))}
+          </select>
         </label>
       </div>
     </div>

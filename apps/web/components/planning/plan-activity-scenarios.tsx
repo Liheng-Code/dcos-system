@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Bookmark, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,13 +13,17 @@ import {
   BASE_VARIANT, delta, variantIsBase, type ScenarioOutcome, type ScenarioVariant,
 } from "@/lib/planning/activity-library/scenario-compare";
 import type { MasterContext } from "@/lib/planning/activity-library/generation-planner";
+import { cleanVariant, deleteWhatIf, listWhatIfs, saveWhatIf, type SavedWhatIf } from "@/lib/planning/activity-library/whatif-service";
 
 interface Scenario { name: string; variant: ScenarioVariant }
 
 const LETTERS = ["A", "B", "C", "D"];
 const sel = "h-8 rounded-md border border-input bg-background px-1.5 text-xs";
 
-/** Side-by-side what-if: nothing is written. "Use this scenario" hands the variant back to the Generate page. */
+/**
+ * Side-by-side what-if: nothing is written to the programme. "Use this scenario" hands the variant back to the Generate
+ * page; "Save" keeps a variant with its figures so it can be loaded and measured again later (doc 35 F1).
+ */
 export function PlanActivityScenarios({
   request, onUse, onClose,
 }: {
@@ -37,6 +41,40 @@ export function PlanActivityScenarios({
   const [outcomes, setOutcomes] = useState<ScenarioOutcome[] | null>(null);
   const [start, setStart] = useState<string>("");
   const [busy, setBusy] = useState(true);
+  const [saved, setSaved] = useState<SavedWhatIf[]>([]);
+  const [savedIdx, setSavedIdx] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    let live = true;
+    listWhatIfs(db, request.projectId, request.templateId).then((r) => { if (live) setSaved(r); }).catch(() => { /* optional */ });
+    return () => { live = false; };
+  }, [db, request.projectId, request.templateId]);
+
+  async function saveColumn(i: number) {
+    const o = outcomes?.[i];
+    const ref = outcomes?.[0];
+    if (!o || !ref) return;
+    try {
+      await saveWhatIf(db, {
+        projectId: request.projectId, templateId: request.templateId, nodeIds: request.nodeIds,
+        name: scenarios[i].name, variant: scenarios[i].variant, metrics: o.metrics, reference: ref.metrics,
+      });
+      setSavedIdx((x) => new Set(x).add(i));
+      setSaved(await listWhatIfs(db, request.projectId, request.templateId));
+      toast.success("What-if saved");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Could not save"); }
+  }
+
+  function load(w: SavedWhatIf) {
+    if (scenarios.length >= 4) { toast.error("Up to 4 scenarios: remove one first"); return; }
+    setScenarios([...scenarios, { name: w.name, variant: cleanVariant(w.variant) }]);
+    setOutcomes(null);
+  }
+
+  async function remove(w: SavedWhatIf) {
+    try { await deleteWhatIf(db, w.id); setSaved(saved.filter((x) => x.id !== w.id)); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not delete"); }
+  }
 
   // one dry load to learn which activities offer a choice of method
   useEffect(() => {
@@ -58,6 +96,7 @@ export function PlanActivityScenarios({
   const patch = (i: number, p: Partial<ScenarioVariant>) => {
     setScenarios((s) => s.map((x, k) => (k === i ? { ...x, variant: { ...x.variant, ...p } } : x)));
     setOutcomes(null);
+    setSavedIdx(new Set());
   };
 
   async function run() {
@@ -89,6 +128,25 @@ export function PlanActivityScenarios({
           What-if on the levels you selected. Nothing is written. Fixed durations from the template are not affected by method or productivity changes.
           Programme length is laid out from {start || "the project start"} on the project calendar.
         </p>
+
+        {saved.length > 0 && (
+          <div className="rounded-lg border border-border bg-muted/30 p-2">
+            <p className="mb-1 flex items-center gap-1 text-xs font-semibold"><Bookmark className="h-3.5 w-3.5" /> Saved what-ifs for this template</p>
+            <ul className="flex flex-wrap gap-2">
+              {saved.map((w) => (
+                <li key={w.id} className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs">
+                  <span className="font-medium">{w.name}</span>
+                  <span className="text-muted-foreground" title={`Saved ${w.created_at.slice(0, 10)}`}>
+                    {w.metrics.spanDays != null ? `${w.metrics.spanDays} wd` : "—"}
+                    {w.metrics.spanDays != null && w.reference_metrics.spanDays != null ? ` (${w.metrics.spanDays - w.reference_metrics.spanDays >= 0 ? "+" : ""}${w.metrics.spanDays - w.reference_metrics.spanDays} then)` : ""}
+                  </span>
+                  <button type="button" className="ml-1 text-primary hover:underline" onClick={() => load(w)}>Load</button>
+                  <button type="button" aria-label="Delete saved what-if" className="text-muted-foreground hover:text-destructive" onClick={() => void remove(w)}><Trash2 className="h-3 w-3" /></button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${scenarios.length}, minmax(0, 1fr))` }}>
           {scenarios.map((s, i) => (
@@ -172,7 +230,12 @@ export function PlanActivityScenarios({
                   {outcomes.map((o, i) => (
                     <td key={i} className="px-3 py-1.5">
                       {i > 0 && !o.metrics.loop && (
-                        <Button size="sm" variant="outline" onClick={() => { onUse(scenarios[i].variant, scenarios[i].name); onClose(); }}>Use this scenario</Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button size="sm" variant="outline" onClick={() => { onUse(scenarios[i].variant, scenarios[i].name); onClose(); }}>Use this scenario</Button>
+                          <Button size="sm" variant="ghost" disabled={savedIdx.has(i)} onClick={() => void saveColumn(i)}>
+                            <Save className="mr-1 h-3.5 w-3.5" />{savedIdx.has(i) ? "Saved" : "Save"}
+                          </Button>
+                        </div>
                       )}
                       {o.metrics.loop && <span className="text-xs text-red-500">Circular links: {o.metrics.loop.join(" → ")}</span>}
                     </td>

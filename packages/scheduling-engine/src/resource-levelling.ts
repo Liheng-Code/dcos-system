@@ -93,6 +93,19 @@ export interface ResourceLevellingResult {
   peaks: { resourceId: string; before: number; after: number }[];
 }
 
+/** A resource's capacity over a date range (inclusive; to null = open-ended), in the same units as `capacities`. */
+export interface CapacityPeriod {
+  from: string;
+  to: string | null;
+  units: number;
+}
+
+/** Capacity on `date`: the period covering it, else `base`. Periods of one resource do not overlap. */
+export function capacityOn(base: number, periods: readonly CapacityPeriod[] | undefined, date: string): number {
+  if (periods) for (const p of periods) if (date >= p.from && (p.to == null || date <= p.to)) return p.units;
+  return base;
+}
+
 /** One pass = one task pushed one working day. Generous: a big programme needs thousands. */
 const MAX_PASSES = 50_000;
 
@@ -135,6 +148,8 @@ export function levelResources(
   tasks: LevelTask[],
   cal: WorkCalendar,
   capacities: Record<string, number> = {},
+  /** Capacity that changes by date (doc 35 C1), overriding `capacities` inside each period. */
+  capacityPeriods: Record<string, readonly CapacityPeriod[]> = {},
 ): ResourceLevellingResult {
   const pool: Active0[] = tasks
     .filter((t) => t.resources.some((r) => r.units > 0) && t.durationWd > 0 && !!t.earliestStart)
@@ -150,7 +165,8 @@ export function levelResources(
   const initialStarts = new Map<string, string>();
   for (const a of pool) initialStarts.set(a.level.id, a.start);
 
-  const capacityOf = (resource: string) => Math.max(0, capacities[resource] ?? 1);
+  const capacityOf = (resource: string, date: string) =>
+    Math.max(0, capacityOn(capacities[resource] ?? 1, capacityPeriods[resource], date));
   const byId = new Map(pool.map((a) => [a.level.id, a]));
 
   /** A task's own demanded units of ONE resource (0 if it doesn't demand that resource at all). */
@@ -170,10 +186,11 @@ export function levelResources(
 
   const refresh = (key: string, resource: string) => {
     stuck.delete(key);
+    const date = key.slice(key.indexOf(KEY_SEP) + 1);
     const ids = occupants.get(key);
     // Compare summed UNITS to capacity. (A task-count shortcut would hide conflicts whenever a task
     // demands more than one unit, e.g. 12 workers of a 50-worker trade.)
-    if (ids && ids.size > 0 && unitsOf(ids, resource) > capacityOf(resource)) over.add(key);
+    if (ids && ids.size > 0 && unitsOf(ids, resource) > capacityOf(resource, date)) over.add(key);
     else over.delete(key);
   };
 
@@ -213,7 +230,7 @@ export function levelResources(
       const sep = key.indexOf(KEY_SEP);
       const resource = key.slice(0, sep);
       const date = key.slice(sep + 1);
-      const excess = unitsOf(occupants.get(key)!, resource) - capacityOf(resource);
+      const excess = unitsOf(occupants.get(key)!, resource) - capacityOf(resource, date);
       if (
         !best ||
         excess > best.excess ||
@@ -288,12 +305,13 @@ export function levelResources(
   for (const key of over) {
     const sep = key.indexOf(KEY_SEP);
     const resource = key.slice(0, sep);
+    const date = key.slice(sep + 1);
     const active = [...occupants.get(key)!].map((id) => byId.get(id)!);
     residual.push({
       resource,
-      date: key.slice(sep + 1),
+      date,
       demand: unitsOf(occupants.get(key)!, resource),
-      capacity: capacityOf(resource),
+      capacity: capacityOf(resource, date),
       committers: active
         .map((p) => ({ taskId: p.level.id, task_code: p.level.task_code, priority: p.level.priority }))
         .sort((a, b) => a.task_code.localeCompare(b.task_code)),

@@ -6,7 +6,7 @@
 // and the engine can never disagree.
 
 import { addWorkingDays, nextWorkingDay, parseISO, workingDaysBetween, type WorkCalendar } from "./work-calendar";
-import type { LevelTask, ResourceLevellingResult } from "./resource-levelling";
+import { capacityOn, type CapacityPeriod, type LevelTask, type ResourceLevellingResult } from "./resource-levelling";
 
 export interface LevellingDay {
   date: string;
@@ -42,6 +42,7 @@ export function buildLevellingProfile(
   cal: WorkCalendar,
   capacities: Record<string, number>,
   result: ResourceLevellingResult,
+  capacityPeriods: Record<string, readonly CapacityPeriod[]> = {},
 ): LevellingProfile {
   // "Total concurrent units" sums a task's demand ACROSS every resource it holds at once (crew + crane both
   // count), same convention `peaks` uses per resource in the engine itself — this chart shows one combined
@@ -82,8 +83,9 @@ export function buildLevellingProfile(
   const overDays = (perRes: Map<string, number>) => {
     let n = 0;
     for (const [key, demand] of perRes) {
-      const resource = key.slice(0, key.indexOf("\u0000"));
-      if (demand > Math.max(0, capacities[resource] ?? 1)) n++;
+      const sep = key.indexOf("\u0000");
+      const resource = key.slice(0, sep);
+      if (demand > Math.max(0, capacityOn(capacities[resource] ?? 1, capacityPeriods[resource], key.slice(sep + 1)))) n++;
     }
     return n;
   };

@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { PlanDelayRegister } from "@/components/planning/plan-delay-register";
+import { PlanAiAssistPanel } from "@/components/planning/plan-ai-assist-panel";
 import { PlanTiaAnalysis } from "@/components/planning/plan-tia-analysis";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
 import { AlertTriangle } from "lucide-react";
@@ -35,7 +36,18 @@ function PlanDelaysPageContent() {
           </a>
         ))}
       </div>
-      {tab === "register" && <PlanDelayRegister />}
+      {tab === "register" && (
+        <div className="space-y-6">
+          <PlanDelayRegister />
+          {/* doc 35 A2 */}
+          <PlanAiAssistPanel
+            title="Delay summary"
+            description="Where the time is going, who is responsible, what is still open and what to watch, worded from the register and its totals."
+            kind="delay_summary" buttonLabel="Summarise with AI" show={3}
+            request={(projectId) => ({ tool: "summarise_delays", projectId })}
+          />
+        </div>
+      )}
       {tab === "tia" && <PlanTiaAnalysis />}
     </PlanPageShell>
   );

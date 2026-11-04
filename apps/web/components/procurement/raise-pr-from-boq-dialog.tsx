@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { getProjectById, insertPr, insertPrItems, listBoqRequisitionStatusByBoqItemIds } from "@/lib/procurement/procurement-queries";
@@ -21,6 +21,10 @@ import {
 } from "@/components/ui/dialog";
 import type { BoqItemForPr } from "@/lib/qs/public";
 import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
+import { createClient } from "@/lib/supabase/client";
+import { commonPackage } from "@/lib/work-library/activity-chips-rules";
+import { packagesForBoqItems } from "@/lib/work-library/activity-chips-service";
+import { ProcurementPackageSelect } from "@/components/work-library/procurement-package-select";
 
 interface Props {
   projectId: string;
@@ -55,7 +59,27 @@ export function RaisePrFromBoqDialog({
     ship_to: "",
     priority: "normal",
     purpose: "",
+    // Construction Work Library procurement package (procurement_prs.package_id).
+    package_id: "",
   });
+  const db = useMemo(() => createClient(), []);
+  const [suggestedPackages, setSuggestedPackages] = useState<ReadonlySet<string>>(new Set());
+
+  // Packages the selected BOQ lines lead to (cost item -> activities -> packages); one shared package is preselected.
+  useEffect(() => {
+    if (!open || boqItemIds.length === 0) return;
+    let live = true;
+    packagesForBoqItems(db, boqItemIds)
+      .then((byLine) => {
+        if (!live) return;
+        const lists = [...byLine.values()];
+        setSuggestedPackages(new Set(lists.flat()));
+        const only = commonPackage(lists);
+        if (only) setForm((prev) => (prev.package_id ? prev : { ...prev, package_id: only }));
+      })
+      .catch(() => { /* suggestions are optional */ });
+    return () => { live = false; };
+  }, [open, boqItemIds, db]);
 
   const [lineItems, setLineItems] = useState<{
     boq_item_id: string;
@@ -143,6 +167,7 @@ export function RaisePrFromBoqDialog({
           ship_to: form.ship_to || null,
           priority: form.priority,
           notes: form.purpose || null,
+          package_id: form.package_id || null,
         });
 
     if (prError) {
@@ -252,6 +277,14 @@ export function RaisePrFromBoqDialog({
                 value={form.ship_to}
                 onChange={(e) => setForm((p) => ({ ...p, ship_to: e.target.value }))}
                 placeholder="Project location"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Procurement Package</Label>
+              <ProcurementPackageSelect
+                db={db} value={form.package_id} onChange={(id) => setForm((p) => ({ ...p, package_id: id }))} suggestedIds={suggestedPackages}
+                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
               />
             </div>
 

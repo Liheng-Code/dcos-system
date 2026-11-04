@@ -143,6 +143,9 @@ export const PUBLIC_API = {
     "lib/planning/project-schedule.ts",
     // BOQ-driven programme (doc 24): preview + commit, run by the award dialog before the contract baseline.
     "lib/planning/boq-programme/boq-programme-service.ts",
+    // Activity Library services, types and editors the core Construction Work Library builds on.
+    "lib/planning/library-public.ts",
+    "components/planning/library-public.tsx",
   ],
   procurement: [
     "lib/procurement/procurement-nav.ts",

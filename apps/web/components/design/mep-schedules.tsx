@@ -1,7 +1,8 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { getChipOptionsByIds, searchMaterials, searchTcItems, TC_TYPE_LABEL } from "@/lib/planning/public";
+import { getChipOptionsByIds, searchMaterials, searchTcItems } from "@/lib/work-library/activity-chips-service";
+import { TC_TYPE_LABEL } from "@/lib/work-library/activity-chips-rules";
 import { GenericSchedule, type ScheduleLink } from "./generic-schedule";
 import {
   COMMISSIONING_STATUS, EQUIPMENT_STATUS, LOAD_TYPES, MATERIAL_STATUS, SERVICE_TYPES, SLEEVE_STATUS, SUB_DISCIPLINES, TEST_RESULT,
@@ -28,7 +29,7 @@ const MATERIAL_LINK: ScheduleLink = {
 const TC_LINK: ScheduleLink = {
   key: "tc_item_id",
   label: "Planning T&C Item",
-  source: "From the Planning Activity Database (Testing & Commissioning). Its test then counts in the Requirements Tracker.",
+  source: "From the Construction Work Library (Testing & Commissioning). Its test then counts in the Requirements Tracker.",
   search: async (q) => (await searchTcItems(createClient(), q, null, 30)).map((t) => ({
     id: t.id, label: label(t), detail: TC_TYPE_LABEL[t.tc_type], fill: { system_name: t.name, test_type: TC_TYPE_LABEL[t.tc_type] },
   })),

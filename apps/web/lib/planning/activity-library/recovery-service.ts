@@ -1,12 +1,15 @@
-// Recovery scenarios - data access (Phase 3.6). Works with any client (browser or server): it only reads the live programme,
-// the calendar and the library standards, and stores scenarios the planner chooses to keep. It never edits a task.
+// Recovery scenarios - data access (Phase 3.6). Works with any client (browser or server): it reads the live programme,
+// the calendar and the library standards, and stores scenarios the planner chooses to keep. It never edits a task itself:
+// an adopted scenario becomes a draft programme revision (plan_adopt_recovery) and its changes reach the live programme
+// only through plan_apply_recovery, once that revision is approved (doc 35 F2).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addWorkingDays, buildWorkCalendar, type PlanCalendarExceptionRow, type PlanCalendarRow, type WorkCalendar } from "../work-calendar";
 import { listProductivityStandards } from "./library-service";
 import { adjustedProductivity, baseOutputPerDay, calculateDuration } from "./productivity-engine";
 import {
-  analyseRecovery, DEFAULT_RECOVERY_SETTINGS, type MethodAlternative, type RecoveryAnalysis, type RecoverySettings, type RecoveryTask, type Scenario,
+  analyseRecovery, calendarScenario, DEFAULT_RECOVERY_SETTINGS, scenarioDates,
+  type CalendarOptions, type LeverKind, type MethodAlternative, type RecoveryAnalysis, type RecoverySettings, type RecoveryTask, type Scenario,
 } from "./recovery-engine";
 
 type Db = SupabaseClient;
@@ -157,22 +160,45 @@ export async function loadOpenDelays(db: Db, projectId: string): Promise<OpenDel
 export interface RecoveryRun { inputs: RecoveryInputs; analysis: RecoveryAnalysis; settings: RecoverySettings; targetFinish: string | null; delays: OpenDelay[] }
 
 /** Load, resolve the target and analyse. The same call runs in the browser and in the AI route, so both see identical scenarios. */
-export async function runRecovery(db: Db, projectId: string, spec: TargetSpec, settings: RecoverySettings = DEFAULT_RECOVERY_SETTINGS): Promise<RecoveryRun> {
+export async function runRecovery(
+  db: Db, projectId: string, spec: TargetSpec, settings: RecoverySettings = DEFAULT_RECOVERY_SETTINGS, calendar?: CalendarOptions | null,
+): Promise<RecoveryRun> {
   const inputs = await loadRecoveryInputs(db, projectId);
   // first pass without a target gives the live forecast, needed to resolve "N days earlier"
   const probe = analyseRecovery(inputs.tasks, inputs.cal, inputs.projectStart, null, inputs.alternatives, settings);
   const targetFinish = resolveTarget(spec, probe.liveFinish, inputs.baselineFinish, inputs.cal);
   const analysis = targetFinish ? analyseRecovery(inputs.tasks, inputs.cal, inputs.projectStart, targetFinish, inputs.alternatives, settings) : probe;
+  // calendar what-if (doc 35 F4): one more scenario, measured the same way
+  if (calendar && analysis.ok && analysis.gapWd > 0) {
+    const cs = calendarScenario(inputs.tasks, inputs.cal, inputs.projectStart, analysis.targetFinish, calendar, settings);
+    if (cs) analysis.scenarios.push(cs);
+  }
   return { inputs, analysis, settings, targetFinish, delays: await loadOpenDelays(db, projectId).catch(() => []) };
 }
 
 // ── saved scenarios ──────────────────────────────────────────────────────
 
+export interface SavedLever {
+  kind: LeverKind; taskId: string; code: string; name: string; label: string; fromWd: number; toWd: number; gainWd: number;
+  risk: "low" | "medium" | "high"; predId?: string; lag?: number; dates?: string[];
+}
+
+export interface RecoveryApplyResult {
+  applied: { kind: LeverKind; code?: string; label?: string; from?: number; to?: number; lag?: number; days?: number }[];
+  skipped: { kind: LeverKind; code?: string; label?: string; reason: string }[];
+}
+
 export interface SavedScenario {
   id: string; name: string; family_key: string; target_finish: string | null; forecast_finish: string | null; scenario_finish: string | null;
   recovered_wd: number; remaining_gap_wd: number; meets_target: boolean; risk: "low" | "medium" | "high";
-  resource_note: string | null; status: "proposed" | "adopted" | "dismissed"; decision_note: string | null; created_at: string;
-  levers: { code: string; name: string; label: string; gainWd: number }[];
+  resource_note: string | null; status: "proposed" | "adopted" | "dismissed"; decision_note: string | null; created_at: string; decided_at: string | null;
+  levers: SavedLever[];
+  /** draft revision created on adoption (doc 35 F2) and where it stands */
+  revision_id: string | null;
+  revision: { status: string; revision_number: number } | null;
+  applied_at: string | null;
+  applied_forecast_finish: string | null;
+  applied_result: RecoveryApplyResult | null;
 }
 
 export async function saveRecoveryScenario(
@@ -181,7 +207,12 @@ export async function saveRecoveryScenario(
   const { data, error } = await db.from("plan_act_recovery_scenarios").insert({
     project_id: projectId, name: `${s.key} · ${s.name}`, family_key: s.key, target_finish: ctx.targetFinish, forecast_finish: ctx.forecastFinish,
     scenario_finish: s.finish, recovered_wd: s.recoveredWd, remaining_gap_wd: s.remainingGapWd, meets_target: s.meetsTarget, risk: s.risk,
-    settings: ctx.settings, levers: s.levers.map((l) => ({ kind: l.kind, taskId: l.taskId, code: l.code, name: l.name, label: l.label, fromWd: l.fromWd, toWd: l.toWd, gainWd: l.gainWd, risk: l.risk })),
+    settings: ctx.settings,
+    levers: s.levers.map((l) => ({
+      kind: l.kind, taskId: l.taskId, code: l.code, name: l.name, label: l.label, fromWd: l.fromWd, toWd: l.toWd, gainWd: l.gainWd, risk: l.risk,
+      // what plan_apply_recovery needs to make the change exactly as measured
+      ...(l.predId ? { predId: l.predId } : {}), ...(l.lag != null ? { lag: l.lag } : {}), ...(l.dates ? { dates: l.dates } : {}),
+    })),
     resource_note: s.resourceNote, ai_suggestion_id: ctx.aiSuggestionId ?? null,
   }).select("id").single();
   if (error) throw new Error(/row-level security/i.test(error.message) ? "Saving a recovery scenario requires planning/schedule edit permission." : error.message);
@@ -189,9 +220,40 @@ export async function saveRecoveryScenario(
 }
 
 export async function listRecoveryScenarios(db: Db, projectId: string): Promise<SavedScenario[]> {
-  const { data, error } = await db.from("plan_act_recovery_scenarios").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
+  const { data, error } = await db.from("plan_act_recovery_scenarios")
+    .select("*, revision:plan_schedule_revisions(status, revision_number)")
+    .eq("project_id", projectId).order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as SavedScenario[];
+}
+
+/** Revision statuses after which the scenario's changes may be written into the live programme. */
+export const APPLY_READY = new Set(["approved_internal", "submitted_client", "approved_client"]);
+
+/**
+ * Adopt (doc 35 F2): lay the programme out with the scenario's changes and store those dates as a draft revision of the
+ * internal stream, for the normal submit / approve chain. The live programme is not changed.
+ */
+export async function adoptRecoveryScenario(db: Db, projectId: string, s: SavedScenario, note?: string): Promise<{ revision_number: number }> {
+  const inputs = await loadRecoveryInputs(db, projectId);
+  const dates = scenarioDates(inputs.tasks, inputs.cal, inputs.projectStart, s.levers);
+  if (!dates) throw new Error("The programme has circular links, so the scenario cannot be laid out. Fix the links first.");
+  const tasks = [...dates].map(([id, d]) => ({ id, start_date: d.start, end_date: d.finish })).sort((a, b) => a.id.localeCompare(b.id));
+  const { data, error } = await db.rpc("plan_adopt_recovery", { p_scenario_id: s.id, p_snapshot: { tasks }, p_note: note?.trim() || null });
+  if (error) throw new Error(error.message);
+  return data as { revision_number: number };
+}
+
+/**
+ * Apply (doc 35 F2/F3): once the revision is approved internally, write the changes into the live programme. Records the
+ * live forecast finish first, so the achieved recovery can be measured. The caller recalculates the dates afterwards.
+ */
+export async function applyRecoveryScenario(db: Db, projectId: string, s: SavedScenario): Promise<RecoveryApplyResult> {
+  const { data: last } = await db.from("wbs_tasks").select("end_date").eq("project_id", projectId)
+    .not("end_date", "is", null).order("end_date", { ascending: false }).limit(1).maybeSingle();
+  const { data, error } = await db.rpc("plan_apply_recovery", { p_scenario_id: s.id, p_forecast_finish: (last as { end_date: string } | null)?.end_date ?? null });
+  if (error) throw new Error(error.message);
+  return data as RecoveryApplyResult;
 }
 
 export async function setScenarioStatus(db: Db, id: string, status: "adopted" | "dismissed" | "proposed", note?: string): Promise<void> {

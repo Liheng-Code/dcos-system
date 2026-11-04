@@ -9,14 +9,15 @@
 - **Schedule:** Overview, Dashboard, Gantt, Sheet (grid editor), Look-ahead (`/dashboard/wbs/lookahead`, with the Weekly Plans, S-Curve & EVM and Progress Reviews tabs), Calendars, Comparison, MS Project Sync (`/sync`).
 - **Resources & Reports:** Resources (loading), Members, Delay Register (+ TIA), Reports.
 - **Productivity:** Norm Library, Task Work, BOQ Mapping, Cost Rollup, Site Records.
-- **Activity Database** (own sidebar group, `/dashboard/planning/activity-database`, doc 23).
+- **BOQ & Requirements** group (navKey `group:planning:activity_database`): Generate from BOQ, BOQ Mapping Check, Requirements Tracker, plus a shortcut to the core **Construction Work Library** (`/dashboard/administration/work-library`; the old `/dashboard/planning/activity-database` redirects there). Moved to core 2026-11-04.
+- **Activity Library list** (`plan-activity-library.tsx`): left pane toggles CSI Division -> Section (default, rules in `activity-library/csi-grouping.ts`) or Domain -> Category -> Family (remembered per browser); columns visible code, CSI section, trade, link badges BOQ / MS / T&C / PD (`link-counts-service.ts`); bulk Activate steps drafts through under_review -> approved -> active (`activateMaster`).
 - **Activity Library:** Activities, Templates, Kits, Step Templates (`/activity-step-templates`), Generate (+ `runs/[id]`), QS Bridge, Quantity Links, BIM Quantities, Recovery, AI Assistant.
 - **Not in the nav:** `/dashboard/planning/scurve`, and the client programme portal `app/portal/programme/[projectId]`.
 
 ## 2. Data model
 - **Schedule data lives on the core `wbs_tasks` table.** Planning added `duration_unit` ('wd'/'cd', `20261003000005`), `manually_scheduled`, and the link arrays `dependency_task_ids` / `dependency_types` / `dependency_lag_days` (`20260903000001`).
 - **Calendars, codes, timescale:** `plan_calendars`, `plan_calendar_exceptions` (`20260531000045`), `plan_wbs_code_mask` (`20260904000003`), `plan_timescale` (`…04`).
-- **Resources:** `plan_resources`, `plan_task_assignments` (`20260905000004`). `plan_resources.dwl_resource_id` (`20261030155000`) links a project resource to its QS `dwl_resources` row; rate = `cost_per_unit` override if set, else QS `dwl_v_resource_costing_rates.costing_rate` (pure rule `lib/planning/resource-rate.ts`; picker in `plan-resource-dialog.tsx`, badge in `plan-resource-loading.tsx`). Nothing computes cost from it yet.
+- **Resources:** `plan_resources`, `plan_task_assignments` (`20260905000004`). `plan_resources.dwl_resource_id` (`20261030155000`) links a project resource to its QS `dwl_resources` row; rate = `cost_per_unit` override if set, else QS `dwl_v_resource_costing_rates.costing_rate` (pure rule `lib/planning/resource-rate.ts`; picker in `plan-resource-dialog.tsx`, badge in `plan-resource-loading.tsx`). `plan_resource_capacity` (`20261103080455`, doc 35 C1): capacity % by date range per resource, no overlaps (trigger `plan_resource_capacity_guard`), RLS like `plan_resources`.
 - **Schedule governance:** `plan_schedule_streams`, `plan_schedule_revisions` (`20260905100449`), `plan_schedule_settings` (`20260917000002`), `plan_schedule_state` (`20260919000005`), `plan_revision_approvals`, `plan_report_jobs`, `plan_tia_scenarios`, `plan_levelling_runs` (`20260919…`).
 - **Progress and baselines:** `progress_snapshots` (`20260531000003`), `weekly_plans` + `weekly_plan_tasks` (`20260531000008`), `wbs_baselines` (`20260527000016`), `delay_register` (`20260609000002`) + `delay_register_tasks` (`20260919000011`).
 - **Steps:** `activity_step_template_master`, `activity_step_template_item` (weight, duration_basis, duration_share_pct), `wbs_task_steps` (weight, progress 0–100, est_duration_days) (`20260918000001`); `activity_step_template_match` (`20261020000002`).
@@ -29,6 +30,11 @@
   - Knowledge: `…02`. Templates, items and dependencies: `…03`.
   - Generation runs, items and overrides: `…04`. Node quantities: `…05`. Quantity links: `…08`.
   - BIM maps, AI and recovery: `20261013000001–3`.
+- **Construction Work Library tables (core since 2026-11-04; data stays `plan_act_*`, Planning reads them).** Doc 23 history below.
+- **BOQ tab facts (`20261104104400`):** view `wl_v_work_item_facts` (security_invoker) gives each cost item its net rate (`dwl_v_work_item_rates`), build-up lines, current activity links and project + tender BOQ uses; the BOQ tab lists, counts and filters gaps (No division / No rate / No activity, `boq-item-rules.ts` `GAP_FILTER`) on it, hides inactive items by default and exports the list. The BOQ item dialog adds Cost Build-up (`dwl_v_work_item_explosion`) and Used in BOQs tabs and a Reactivate button.
+- **Gaps:** No division / No rate / No activity are the compliance gaps (`WORK_ITEM_GAPS`); items no project uses yet are not a gap (BOQ uses column only, no chip); the tab shows Compliant when all gaps are 0. Migration `20261104132414` linked the last 63 unlinked active items (80 reviewed links) and added draft D09-020 Gypsum Drywall Partition (09 21 16). **Invariant:** links were added to the current active versions, not new versions, because `createNewVersion` does not move productivity norms (`plan_productivity_norms.activity_master_id`) or template lines (`plan_act_template_items.master_id`), and Generate / the BOQ programme skip superseded masters. Fixed by `20261104132926`: trigger `plan_act_master_repoint_on_activate` (on status → active) moves norms (+ method), planning template lines (+ method), draft QS WBS template lines and `wbs_tasks.activity_master_id` / `activity_method_id` from the code's other versions to the new one; methods map by code. It passes the template freeze and WBS lock guards through `dcos.master_repoint` (reference columns only). History (`plan_act_generation_items`) stays on the old version; `createNewVersion` now also copies duration_basis, default_work_group, default_step_template_id, applicable_project_types, division_id.
+- **Activity expansion (`20261104101110`, 2026-11-04):** 106 DRAFT masters (source `Company Standard (expansion seed 2026-11)`) for the thin divisions 01, 02, 04-06, 08, 10-14, 21-23, 25-28; new domain PRE (Preliminaries & Site) and categories STR/MET, ARC/SPC, MEP/CONV, MEP/ELV; 67 new CSI sections (Division 02 had none); 9 method statements, 10 T&C items, 25 PD packages; links to MS / T&C / packages, BOQ cost items of the same section (only 9: most sections have no QS items yet) and 81 DRAFT norms (ASSUMPTION rates). Activated through the Activity Library bulk Activate.
+- **Procurement packages (`20261104083534`):** `plan_act_procurement_packages` (code unique, package_type material/subcontract/equipment/service, csi_division_code, trade_category, default_lead_time_days, is_long_lead; RLS read all, write `can_manage_master_libraries()`); `plan_act_master_procurement_packages` (master, package; audited by `plan_act_master_chip_audit`); `plan_act_master_chips` returns `procurement_packages`; `procurement_prs.package_id`. Backfilled 4 `PKG-STR-*` codes from `qs_wbs_template_items`.
 - **Activity Database (doc 23, `20261023091500`):**
   - `plan_act_divisions` (16 rows; `code` unique).
   - `plan_act_masters` gained `division_id`, `visible_code`, `trade`, `activity_type`, `min_duration_pct`, `max_duration_pct`, `image_path`.
@@ -42,7 +48,7 @@
   - New RPCs `plan_act_csi_division_counts()` and `plan_act_bank_search(q text, p_division_code text)`. The uuid overloads stay as wrappers until cleanup.
   - **Frozen:** `plan_act_divisions` (writes rejected) and `plan_act_masters.division_id` (unused). Dropped in a later cleanup migration, only when no lanes are active.
 - **QS bridge and generation inputs:**
-  - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`).
+  - `plan_work_groups`, `plan_act_qs_bridge` (`20261020000003`), `plan_location_map` (`…04`; `zone_split` from `20261102135540`).
   - `plan_act_kits` / `plan_act_kit_items` (`20261021000022`), `plan_act_attributes` (`…23`), `plan_act_generation_profiles` (project_id PK, `…25`).
 - **Triggers:**
   - `trg_wbs_tasks_sync_duration`
@@ -79,6 +85,44 @@
     - App service: `lib/planning/schedule-qaqc-service.ts`. Page: `/dashboard/planning/schedule-check`.
     - Tables: `plan_schedule_qaqc_runs` and `plan_schedule_qaqc_findings`, written only through the RPCs `record_schedule_qaqc_run` and `accept_schedule_qaqc_finding`.
     - Gate: `plan_schedule_settings.qaqc_gate` (warn / block), enforced by triggers on `wbs_baselines` insert and on revision submit through `schedule_qaqc_gate_check`.
+  - **Progress integrity (doc 35 P):**
+    - Installed quantity: `plan_task_quantity_progress`, written only via `record_task_quantity` and the daily-report sync. The internal `add_task_quantity_entry` enforces the scope cap.
+    - Status: `task_quantity_status`. Method: `task_effective_progress_method` (task `progress_method`, else the project `progress_method_default`, else steps / percentage).
+    - Quantity-method progress: `apply_task_quantity_progress`, plus a guard that blocks typed progress.
+    - History: `v_plan_progress_history`.
+    - Service and UI: `lib/planning/progress-quantity-service.ts` and `components/planning/plan-task-quantity-panel.tsx`.
+    - The roll-up triggers `collect_dirty_wbs_project` / `flush_dirty_wbs_progress` are security definer.
+  - **Planner experience (doc 35 U):**
+    - Readiness checklist: `components/planning/readiness/` on the Overview page; `plan_programme_readiness(project)` (`20261102143702`) + `lib/planning/readiness/programme-readiness.ts` (the 11 steps, pure).
+    - Undo / redo: `lib/planning/edit-history.ts` (pure stack); `useSheetData().history`. `applySchedule` now returns `true` / `false` and records one step unless `history: true`; progress, Calculate and data-date moves are never recorded.
+    - Views: `lib/planning/sheet-view.ts` (filterTree, groupTree; group rows `node:group:*` are read-only, structure actions stubbed in `plan-schedule-view.tsx`), `schedule-view-bar.tsx`, table `plan_saved_views` (`20261102144653`, owner writes, shared read by members with Schedule view), `bulkUpdate` in the hook.
+  - **AI assist (doc 35 A, `20261103161545`):** `lib/planning/activity-library/ai/ai-assist.ts` (pure contexts, schemas, validators) + four cases in `ai-run.ts` (`explain_qaqc_findings`, `summarise_delays`, `draft_report_commentary`, `ask_schedule`; suggestion kinds `qaqc_explanation`, `delay_summary`, `report_draft`, `schedule_answer`). UI `components/planning/plan-ai-assist-panel.tsx` on Schedule Check, Delay Register and Overview; commentary editor in `reports/plan-report-documents.tsx`. Reports take `commentary` (`withCommentary` in report-builders; generate route checks an AI draft belongs to the project).
+  - **Setup and outbound integrations (doc 35 I, `20261103091800`):**
+    - Contract milestones: `plan_contract_milestones` (+ `plan_contract_milestone_history`, trigger `plan_contract_milestone_guard`: activity in project, agreed dates need Baseline approve). Pure `lib/planning/milestones/contract-milestones.ts`, service `contract-milestone-service.ts`, page `/dashboard/planning/milestones`.
+    - Calendar change: `lib/planning/calendar-change.ts` (pure: edit → calendars, calculate as the Sheet but with stored durations, compare), `calendar-change-service.ts` (preview, save + recalculate via `apply_schedule_dates`, calculation log source `other`); `components/planning/plan-calendar-impact-dialog.tsx` used by the calendar list and exceptions.
+    - Outbound feeds: internal `plan_feed_rows(project, feed)` (materials, manpower, inspections, submissions, cost), `plan_feed_preview` (Schedule view), `plan_publish_feed` (Programme approve; immutable `plan_feed_publications`), `plan_latest_feed` + `plan_feed_reader` (Planning view or the receiver's permission). Settings `plan_schedule_settings.feed_*`. `lib/planning/feeds/`, page `/dashboard/planning/feeds`.
+    - WBS: `wbs_nodes.responsible_id` (`plan-wbs-responsibility.tsx` on Members), delete guard `wbs_node_delete_guard` / `wbs_node_dependents` / `wbs_node_delete_check`, Excel export `lib/planning/wbs-excel-export.ts` + `sync/wbs-excel-export-button.tsx`.
+  - **Reporting (doc 35 M, `20261103085210`):**
+    - `lib/planning/reports/`: `report-model.ts` (ReportDoc, basis lines, RENDERER_VERSION), `report-data.ts` (loads with the caller's client, recalculates float from the data date), `report-builders.ts` (master_programme, weekly, monthly, recovery), `report-html.ts`, `report-pdf.ts` (pdf-lib), `report-filing.ts` (server: files, Document Control revision, snapshot), `report-snapshots-service.ts` (browser).
+    - Routes: `POST /api/planning/reports/generate/[projectId]` (Schedule export), `GET /api/planning/reports/file/[snapshotId]?format=pdf|html` (signed URL after RLS read), `POST /api/planning/reports/monthly/[projectId]` (job wrapper). `monthly-report-html.ts` is removed.
+    - DB: `plan_report_basis(project)`; `plan_report_snapshots` (select: member + Schedule view; written by the route's service client only; trigger `plan_report_snapshot_immutable`).
+    - UI: `components/planning/reports/plan-report-documents.tsx`, `report-basis-strip.tsx` on Reports and S-curve.
+  - **Forecast and recovery (doc 35 F, `20261103082915`):**
+    - Recovery: `recovery-engine.ts` adds `calendarScenario` (key F: extra working days, overtime on critical work), `scenarioDates`, `finishDrivers` on the analysis; levers store `predId` / `lag` / `dates`. `plan_act_recovery_scenarios` gains `revision_id`, `applied_*`; guard trigger `plan_recovery_scenario_guard` (writes only through the RPCs, flag `dcos.recovery_rpc`).
+    - RPCs: `plan_adopt_recovery(scenario, snapshot, note)` → draft `plan_schedule_revisions` row (snapshot_data.source = 'recovery'); `plan_apply_recovery(scenario, forecast_finish)` once the revision is approved_internal or later. Service: `adoptRecoveryScenario`, `applyRecoveryScenario` (then `runProjectSchedule`). Effectiveness: `recovery-effectiveness.ts`.
+    - What-ifs: `plan_whatif_scenarios`, `whatif-service.ts`, Save / Load in `plan-activity-scenarios.tsx`.
+    - Forecast: `plan_forecast_snapshots` (immutable) + `plan_capture_forecast(project, assumptions, label)`; `lib/planning/forecast/` (service, `forecast-trend.ts`); page Planning › Forecast (`components/planning/forecast/plan-forecast.tsx`).
+  - **Resources and cost (doc 35 C, `20261103080455`):**
+    - Capacity by date: `get_resource_loading` returns each day's capacity in `max_units`; engine `levelResources(tasks, cal, capacities, capacityPeriods)` + `capacityOn`; `aggregateByType` / `aggregateByTrade` take the periods; editor `components/planning/plan-resource-capacity.tsx` in the resource dialog.
+    - Cost RPCs (security definer, member + Schedule view, jsonb): `plan_cost_components(project, period, basis)`, `plan_material_histogram(project, period, basis)`, `plan_budget_reconciliation(project)`. Internal, not callable: `plan_cost_component_rows` (every resource line per activity: hours from `plan_task_resource_hours`, the rest from `plan_task_boq_lines` x `dwl_work_item_resources`; lines over 100 % count once), `plan_task_day_shares` (each activity's share per working day).
+    - Cash flow is pure: `lib/planning/cost-plan/cash-flow.ts`; payment terms `plan_schedule_settings.cashflow_*`. Budget rules: `lib/planning/cost-plan/budget-reconciliation.ts`. I/O: `cost-plan-service.ts`.
+    - Screens: Planning › Cost & Cash Flow (`app/dashboard/planning/cost`, `components/planning/cost-plan/`); material histogram on Resources.
+  - **BOQ mapping integrity (doc 35 B, `20261102135540`):**
+    - Page `/dashboard/planning/boq-check` (`components/planning/boq-mapping/`); service and pure rules in `lib/planning/boq-mapping/` (`reconcile.ts`).
+    - `plan_boq_mapping_facts(project)`: per BOQ line (contract main works + the programme's tender + any other mapped line), what Generate from BOQ (`plan_task_boq_lines`), library links (`plan_act_quantity_links`) and Task Work direct links map. Security definer with an explicit member + Schedule view check; returns one jsonb (no max_rows cap).
+    - `plan_boq_mapping_history`: trigger-written history of `plan_task_boq_lines` and `plan_act_quantity_links`; a delete + re-insert in one transaction folds into one row.
+    - `plan_boq_change_reviews`: opened by `plan_boq_change_capture` (BEFORE UPDATE OF quantity OR DELETE on `qs_boq_items` / `tender_boq_items`; errors become warnings). Decided through `plan_decide_boq_change` (apply / keep).
+    - Zones: `allocateLine(…, zonesByLevel)` and `listZonesByLevel`; only Generate from BOQ passes zones.
 - **Pure engines (`lib/planning/`):**
   - `schedule-engine.ts`: re-export of the package (see above).
   - `work-calendar.ts`: re-export of the package.
@@ -93,7 +137,7 @@
   - Pure: `generation-planner`, `kit-plan`, `qs-bridge`, `bridge-calc`, `location-map`, `recovery-engine`, `scenario-compare`.
   - Each has an I/O `*-service.ts`. `generation-service.ts` commits runs atomically.
   - `ai/` is advisory only: the model picks among engine-produced options.
-- **Activity Database:** services `activity-database-service.ts` (divisions, masters, links, bank search, duplicate/delete), `activity-import-service.ts` + `activity-database-import.ts` (workbook import to drafts), pure `logic-network-layout.ts`, `visible-code.ts`. UI `components/planning/activity-database/*`; page `app/dashboard/planning/activity-database/page.tsx`; nav item "Activity Database" (`development`). Library tabs (BOQ, Method Statement, Material, Coordination, Shop Drawing, Resource, T&C) are two-pane: `division-filter-pane.tsx` (CSI divisions; disciplines for Coordination) left, table right. Divisions: BOQ, MS, SD, T&C own `csi_division_code`; Material from its QS material category; Resource (M/E) from the BOQ items that use it. BOQ/Material/Resource tabs are QS read-only windows (`qs-source-note.tsx`). The "Methods" tab (`plan_act_methods`) is labelled "Construction Approaches" so it is not confused with Method Statements. Requirements Tracker (`/dashboard/planning/requirements-tracker`, `development`): `requirement-status-service.ts` lists each project task's required shop drawing types / method statements / T&C items (via `wbs_tasks.activity_master_id`) against submittals and ITP lines that name them (`20261030161500`); exported to Document Control and QA/QC through `lib/planning/public.ts`.
+- **Construction Work Library (core, moved 2026-11-04):** code is in `lib/work-library/` (`work-library-service.ts` = former activity-database-service, plus activity-import, activity-database-import, activity-chips-*, catalogue-rules, boq-item-*, link-sugg*, visible-code, logic-network-layout) and `components/work-library/` (view, tabs incl. Procurement Package, dialogs, `procurement-package-select.tsx`); page `app/dashboard/administration/work-library` (nav item `development` in the administration manifest; Planning and QS list shortcuts). It reaches Planning only through `lib/planning/library-public.ts` and `components/planning/library-public.tsx` (PUBLIC_API). `in-chunks` moved to `lib/supabase/in-chunks.ts` (Planning keeps a re-export). Requirements Tracker stays in Planning (`components/planning/requirements-tracker-view.tsx`, `requirement-status*.ts`, exported via `lib/planning/public.ts`); Design imports the chip pickers from `lib/work-library` directly.
 - **Big components:** `components/planning/plan-schedule-view.tsx`, `gantt-view.tsx`, `sheet-grid.tsx` + `use-sheet-data.ts`, `plan-resource-loading.tsx`, `plan-delay-analysis.tsx`, `sync/sync-dashboard.tsx`.
 - **Planning-owned files under `components/project/wbs/`:** `wbs-lookahead-view`, `wbs-lookahead-timeline`, `wbs-scurve-chart`, `wbs-gantt-view`.
 - **Public API (`PUBLIC_API.planning`):**
@@ -118,6 +162,12 @@
   - **`trg_wbs_tasks_schedule_guard`:** dates and links need planning schedule edit. Progress needs schedule edit, or Tasks update-progress when `progress_review_required(project)` is false (awarded projects default to true). `task_transition`, `review_task` and `dr_sync_version_to_planning` are trusted through PG_CONTEXT.
   - **`wbs_task_steps`** has real RLS. A started step locks its weight and basis.
   - **Daily reports, the sheet and Tasks progress** create pending reviews when approval is required.
+- **Wave 1 gate (doc 22, 2026-11-03):**
+  - **Steps are project-scoped** (`20261103172251`): insert / update / delete need project membership as well as the permission; a user without Planning schedule edit changes only a step's progress, dates and notes (`trg_wbs_task_steps_field_guard`). Reading: a member, or Planning schedule view.
+  - **Direct progress through Tasks update-progress needs project membership** (schedule guard, same migration).
+  - **Actual dates follow progress** (`trg_wbs_tasks_actual_dates`, `20261103171941`): above 0 fills the actual start, 100 the actual finish (planned date, or the data date if that is earlier); dates entered by hand are kept.
+  - **No Planning function is executable by anon** (`20261103171832`).
+  - **Release checks:** `supabase/tests/planning/planning_release_checks.sql` (50 self-checking SQL tests, rolled back) and `lib/planning/__tests__/release-services.test.ts`.
 - **Approved or active masters, templates, kits and norms are immutable:** change them through a new version (guard triggers). Approving norms needs the planning norms approve permission.
 - **`visible_code` is unique on root masters;** new versions inherit it (`trg_plan_act_master_visible_code`). It must match `csi_division_code` (`D26-…` for division 26); a division change on a root master regenerates it.
 - **Master guard (doc 23):** `csi_division_code`, `csi_section_code`, `visible_code`, `trade` and `image_path` may change on active masters; `activity_type` and min/max duration % are versioned.
@@ -128,6 +178,7 @@
 See `integration-map.md`, rows tagged **Planning**.
 - **Reads and writes core WBS:** `wbs_tasks`, `wbs_nodes`, `wbs_audit_log`, `wbs_node_quantities`, `projects`.
 - **Reads QS:** `qs_boq_items` and `tender_boq_items` (bridge, BOQ mapping, productivity). It serves IPC progress through `get_node_progress_asof` (`20260919000013`).
+- **Triggers on QS tables (doc 35 B4):** `trg_qs_boq_items_plan_boq_change` and `trg_tender_boq_items_plan_boq_change` write only Planning's `plan_boq_change_reviews`, and never fail the QS write.
 - **Reads BIM:** `bim_models`, `bim_element_takeoff`.
 - **Reads cost libraries:** `dwl_*`, `overtime_rates`.
 - **HR:** timesheet → productivity-log trigger; resources map to `profiles`.
@@ -141,6 +192,7 @@ See `integration-map.md`, rows tagged **Planning**.
 
 ## 6. Status and gaps
 - Feature-complete across schedule, resources, productivity and the Activity Library (A–E plus Generate G1–G6), but **nothing is released**.
+- **Doc 35 phases R, E, Q, P, B, U, C, F, M, I and A are built** (I and A local, not committed). (B–M committed in 4fa6d65; I local, not committed; all their migrations need /dbpush). Gap: no receiving module reads the feeds in its own screens yet; they call `plan_latest_feed` when they do.
 - **Gap register against the ICPS PRD (doc 34):** `docs/04-Business-Modules/06-Planning-Scheduling/35-ICPS-Gap-Register-and-Roadmap.md` (2026-11-02). It holds the phased to-do list (R release, E engine, Q QA/QC, P progress, B BOQ, U planner UX, C cost, F forecast, M reports, I integrations, A AI). Main engine gaps: actuals and data date, a single calendar, no negative float, critical path by threshold only, no calculation-run record. The engine is moving to `packages/scheduling-engine` (E1).
 - **Tests:** 41 files.
   - `lib/planning/__tests__`: schedule engine, work engine, levelling, TIA, delay governance, duration rules, step spread and matching, look-ahead filters, calendar, cost.

@@ -25,6 +25,14 @@ const body = z.discriminatedUnion("tool", [
       z.object({ mode: z.literal("date"), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
     ]),
   }),
+  // doc 35 Phase A: explanations, summaries, report drafts and answers (information only)
+  z.object({ tool: z.literal("explain_qaqc_findings"), projectId: id }),
+  z.object({ tool: z.literal("summarise_delays"), projectId: id }),
+  z.object({
+    tool: z.literal("draft_report_commentary"), projectId: id, reportType: z.enum(["weekly", "monthly"]),
+    weekEnding: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
+  z.object({ tool: z.literal("ask_schedule"), projectId: id, question: z.string().min(1).max(500) }),
 ]);
 
 export async function POST(request: NextRequest) {

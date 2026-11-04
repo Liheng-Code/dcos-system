@@ -14,6 +14,9 @@ import {
   addAssignment,
   aggregateByTrade,
   aggregateByType,
+  capacityPeriodsByResource,
+  listCapacityPeriods,
+  type ResourceCapacityRow,
   flagShortageWeeks,
   getQsResources,
   getResourceAllocation,
@@ -29,6 +32,7 @@ import { effectiveRate, rateLabel, type QsResourceOption } from "@/lib/planning/
 import { PlanResourceDialog } from "./plan-resource-dialog";
 import { PlanLevellingPanel } from "./plan-levelling-panel";
 import { BoqManpowerHistogramCard, useHasBoqHours } from "./boq-programme/loading-charts";
+import { MaterialHistogramCard } from "./cost-plan/material-histogram-card";
 
 interface ResourceTask {
   id: string; task_code: string; task_name: string; owner_name: string | null;
@@ -61,6 +65,7 @@ export function PlanResourceLoading() {
   const [resources, setResources] = useState<PlanResource[]>([]);
   const [assignments, setAssignments] = useState<ProjectAssignmentRow[]>([]);
   const [allocation, setAllocation] = useState<AllocationRow[]>([]);
+  const [capacityRows, setCapacityRows] = useState<ResourceCapacityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [dialogResource, setDialogResource] = useState<PlanResource | null | undefined>(undefined);
@@ -73,7 +78,7 @@ export function PlanResourceLoading() {
       // Deferred to a microtask so this reset (used directly as an effect
       // callback below) never calls setState synchronously within the effect body.
       Promise.resolve().then(() => {
-        setTasks([]); setResources([]); setAssignments([]); setAllocation([]); setLoading(false);
+        setTasks([]); setResources([]); setAssignments([]); setAllocation([]); setCapacityRows([]); setLoading(false);
       });
       return;
     }
@@ -84,12 +89,14 @@ export function PlanResourceLoading() {
       listResources(selectedProjectId),
       listProjectAssignments(selectedProjectId),
       getResourceAllocation(selectedProjectId),
-    ]).then(([taskRes, resourceRows, assignmentRows, allocationRows]) => {
+      listCapacityPeriods(selectedProjectId).catch(() => [] as ResourceCapacityRow[]),
+    ]).then(([taskRes, resourceRows, assignmentRows, allocationRows, capacity]) => {
       if (taskRes.error) throw new Error(taskRes.error.message);
       setTasks((taskRes.data || []) as unknown as ResourceTask[]);
       setResources(resourceRows);
       setAssignments(assignmentRows);
       setAllocation(allocationRows);
+      setCapacityRows(capacity);
     }).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }
@@ -148,22 +155,29 @@ export function PlanResourceLoading() {
     return map;
   }, [allocation]);
 
+  const capacityPeriods = useMemo(() => capacityPeriodsByResource(capacityRows), [capacityRows]);
+  const periodCount = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const r of capacityRows) n.set(r.resource_id, (n.get(r.resource_id) ?? 0) + 1);
+    return n;
+  }, [capacityRows]);
+
   // Resource histogram by type (Completion Plan 1.7) — demand vs capacity
   // aggregated across every resource of a type, independent of the
   // per-resource allocation strips above.
   const histogramByType = useMemo(() => {
     const map = new Map<string, Map<string, { demand: number; capacity: number }>>();
-    for (const p of aggregateByType(allocation, resources)) {
+    for (const p of aggregateByType(allocation, resources, capacityPeriods)) {
       if (!map.has(p.resource_type)) map.set(p.resource_type, new Map());
       map.get(p.resource_type)!.set(p.work_date, { demand: p.demand, capacity: p.capacity });
     }
     return map;
-  }, [allocation, resources]);
+  }, [allocation, resources, capacityPeriods]);
   const histogramTypes = useMemo(() => [...histogramByType.keys()].sort(), [histogramByType]);
 
   // Manpower required vs available BY TRADE (Phase 3) — a finer grouping than resource_type, driven by
   // plan_resources.trade (set by "Generate from Norms"; a manual resource falls back to its own name).
-  const tradePoints = useMemo(() => aggregateByTrade(allocation, resources), [allocation, resources]);
+  const tradePoints = useMemo(() => aggregateByTrade(allocation, resources, capacityPeriods), [allocation, resources, capacityPeriods]);
   const histogramByTrade = useMemo(() => {
     const map = new Map<string, Map<string, { demand: number; capacity: number }>>();
     for (const p of tradePoints) {
@@ -331,7 +345,7 @@ export function PlanResourceLoading() {
                 key={i}
                 className={cn("h-4 shrink-0 border-r border-background", color)}
                 style={{ width: BAR_W }}
-                title={row ? `${key}: ${row.total_allocation}% of ${maxUnits}% max${row.is_overallocated ? " — OVER-ALLOCATED" : ""}` : undefined}
+                title={row ? `${key}: ${row.total_allocation}% of ${row.max_units ?? maxUnits}% available${row.is_overallocated ? " — OVER-ALLOCATED" : ""}` : undefined}
               />
             );
           })}
@@ -421,6 +435,7 @@ export function PlanResourceLoading() {
   return (
     <div className="space-y-6">
       {hasBoqHours && <BoqManpowerHistogramCard projectId={selectedProjectId} />}
+      {hasBoqHours && <MaterialHistogramCard projectId={selectedProjectId} />}
       <div className="flex items-center justify-between">
         <div className="grid flex-1 grid-cols-3 gap-4 sm:max-w-2xl">
           <Card><CardContent className="p-4 text-center">
@@ -536,7 +551,9 @@ export function PlanResourceLoading() {
                   </>
                 )}
                 <Badge variant="outline" className="text-xs">{resourceTasks.length} tasks</Badge>
-                <Badge variant="outline" className="text-xs">Max {resource.max_units}%</Badge>
+                <Badge variant="outline" className="text-xs" title={periodCount.get(resource.id) ? "Capacity changes by period: edit the resource to see the periods" : undefined}>
+                  Max {resource.max_units}%{periodCount.get(resource.id) ? ` · ${periodCount.get(resource.id)} period${periodCount.get(resource.id) === 1 ? "" : "s"}` : ""}
+                </Badge>
                 {(() => {
                   const qs = resource.dwl_resource_id ? qsById?.get(resource.dwl_resource_id) ?? null : null;
                   if (resource.dwl_resource_id && !qsById) return null; // QS rate still loading
@@ -620,8 +637,9 @@ export function PlanResourceLoading() {
         <PlanResourceDialog
           projectId={selectedProjectId}
           resource={dialogResource}
-          onClose={() => setDialogResource(undefined)}
-          onSaved={load}
+          // capacity periods save inside the dialog, so reload on close too
+          onClose={() => { setDialogResource(undefined); load(); }}
+          onSaved={() => undefined /* the dialog closes after saving */}
         />
       )}
     </div>

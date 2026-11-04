@@ -2,10 +2,15 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { eachDayOfInterval, format, isBefore, parseISO } from "date-fns";
 import { resolveApprovalChain } from "@/lib/hr/approval-chain";
 import {
+  buildOccupiedDayPortions,
   computeLeaveDays,
+  findLeaveDayConflicts,
+  formatLeaveDayConflict,
   getDefaultDaySelections,
   getSelectedDates,
+  requestedDaySelections,
   type DaySelection,
+  type OccupiedLeaveRequest,
 } from "@/lib/hr/leave-day-calculation";
 
 export interface LeaveEmployeeProfile {
@@ -528,10 +533,8 @@ export async function getLeaveEmploymentPolicies(
   return (data ?? []) as unknown as LeaveEmploymentPolicy[];
 }
 
-export interface LeaveDateRange {
-  start_date: string;
-  end_date: string;
-}
+/** An active request's dates and per-day choices (see OccupiedLeaveRequest). */
+export type LeaveDateRange = OccupiedLeaveRequest;
 
 // Blocking statuses mirror leave-request-form.tsx line 236 exactly — a
 // leave request only frees up its dates once it leaves this set (rejected,
@@ -544,22 +547,11 @@ export async function getOccupiedLeaveRanges(
 ): Promise<LeaveDateRange[]> {
   const { data } = await admin
     .from("leave_requests")
-    .select("start_date, end_date")
+    .select("start_date, end_date, day_selections, is_half_day, half_day_period")
     .eq("employee_id", employeeId)
     .in("status", BLOCKING_LEAVE_STATUSES);
 
   return (data ?? []) as LeaveDateRange[];
-}
-
-async function getOccupiedLeaveDateSet(admin: SupabaseClient, employeeId: string): Promise<Set<string>> {
-  const ranges = await getOccupiedLeaveRanges(admin, employeeId);
-  const occupied = new Set<string>();
-  for (const range of ranges) {
-    for (const day of getSelectedDates(range.start_date, range.end_date)) {
-      occupied.add(format(day, "yyyy-MM-dd"));
-    }
-  }
-  return occupied;
 }
 
 export async function getActivePublicHolidayDates(
@@ -788,20 +780,16 @@ export async function createLeaveRequest(
     return { ok: false, error: "validation_error", message: "Please provide a reason for your leave request." };
   }
 
-  // BR: leave-request-form.tsx lines 338-347 — date conflict against the
-  // employee's own active leave requests, only for days actually being
-  // requested (skip-marked days never conflict).
-  const occupied = await getOccupiedLeaveDateSet(admin, employeeId);
-  const conflictKeys = calc.requestableDateKeys.filter((key) => {
-    const selection = effectiveDaySelections[key] ?? "full";
-    return selection !== "skip" && occupied.has(key);
-  });
-  if (conflictKeys.length > 0) {
-    const formatted = conflictKeys.map((key) => format(parseISO(key), "dd MMM yyyy"));
+  // Date conflict against the employee's own active leave requests of any
+  // type (half-day aware; skipped days never conflict). The database trigger
+  // leave_requests_prevent_overlap enforces the same rule on insert.
+  const occupied = buildOccupiedDayPortions(await getOccupiedLeaveRanges(admin, employeeId));
+  const conflicts = findLeaveDayConflicts(effectiveDaySelections, occupied);
+  if (conflicts.length > 0) {
     return {
       ok: false,
       error: "date_conflict",
-      message: `You already have a leave request on: ${formatted.join(", ")}. Please select different dates.`,
+      message: `You already have a leave request on: ${conflicts.map(formatLeaveDayConflict).join(", ")}. Please select different dates.`,
     };
   }
 
@@ -823,6 +811,7 @@ export async function createLeaveRequest(
       days_requested: calc.daysRequested,
       is_half_day: calc.isSingleHalfDayRequest,
       half_day_period: calc.isSingleHalfDayRequest ? calc.halfDayPeriod : null,
+      day_selections: requestedDaySelections(effectiveDaySelections),
       reason,
       status: "submitted",
       submission_date: new Date().toISOString(),
@@ -834,6 +823,11 @@ export async function createLeaveRequest(
     .select("id")
     .single();
 
+  // 23P01: the overlap trigger caught a clash this check missed (e.g. a
+  // request submitted from another tab a moment earlier).
+  if (insertError?.code === "23P01") {
+    return { ok: false, error: "date_conflict", message: insertError.message };
+  }
   if (insertError || !request) {
     throw new Error(insertError?.message ?? "Failed to create leave request");
   }

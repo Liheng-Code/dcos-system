@@ -39,6 +39,10 @@ import {
 } from "./gantt-progress-line";
 import { DEFAULT_BAR_STYLE, type GanttBarStyleSettings } from "@/lib/planning/gantt-bar-style";
 import { parsePredecessors } from "@/lib/planning/predecessor-syntax";
+import {
+  captureChange, emptyHistory, patchesFor, pushEntry, restoreAfterFailure, takeRedo, takeUndo,
+  type FieldChange, type HistoryEntry, type HistoryState,
+} from "@/lib/planning/edit-history";
 import { addAssignment, findOrCreateResourceForProfile } from "@/lib/planning/resource-service";
 import {
   computeWbsCode,
@@ -69,7 +73,7 @@ import {
   todayISO,
   uniqueSiblingCode,
 } from "./sheet-utils";
-import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, deleteWbsNodeByIdReturning, deleteWbsTaskByIdReturning, getPlanCalendarByProjectId, getPlanScheduleSettingByProjectId, getPlanWbsCodeMaskByProjectId, getProjectById, getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS, getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS, getWeeklyPlanByProjectIdWithStatusApproved, insertWbsNodeReturning, insertWbsTasksReturning, listPlanCalendarExceptionsByCalendarIdLimited, listWbsNodesByProjectIdOrderedBySortOrder, listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId, listWbsTasksByProjectIdOfTaskCode, listWbsTasksByProjectIdOrderedBySortOrder, submitProgress, updateWbsNodeById, updateWbsTaskById, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
+import { advanceDataDateRpc, applyScheduleDates, applyWbsCodes, checkWbsNodeDelete, deleteWbsNodeByIdReturning, deleteWbsTaskByIdReturning, getPlanCalendarByProjectId, getPlanScheduleSettingByProjectId, getPlanWbsCodeMaskByProjectId, getProjectById, getWbsNodeByProjectIdWithParentIdAndNodeTypeTaskGroupAndWbsCodeTASKS, getWbsNodeByProjectIdWithParentIdAndWbsCodeTASKS, getWeeklyPlanByProjectIdWithStatusApproved, insertWbsNodeReturning, insertWbsTasksReturning, listPlanCalendarExceptionsByCalendarIdLimited, listWbsNodesByProjectIdOrderedBySortOrder, listWbsTaskProgressReviewsByProjectIdWithStatusPendingOfWbsTaskId, listWbsTasksByProjectIdOfTaskCode, listWbsTasksByProjectIdOrderedBySortOrder, submitProgress, updateWbsNodeById, updateWbsTaskById, upsertPlanScheduleSetting } from "@/lib/planning/planning-queries";
 
 const TASK_COLS =
   "id, project_id, wbs_node_id, task_code, task_name, start_date, end_date, progress, status, " +
@@ -165,6 +169,51 @@ export interface SheetActions {
   renumberWbsCodes: (mask?: WbsCodeMask) => Promise<void>;
   /** Hand-edit one row's WBS code (`wbs_outline_code` override). */
   setWbsCode: (rowId: string, raw: string) => Promise<void>;
+  /** Set one field on several activities as one action (doc 35 U3); locked activities are skipped. */
+  bulkUpdate: (taskIds: string[], field: BulkField, raw: string) => Promise<void>;
+}
+
+/** Fields the bulk edit can set (doc 35 U3). */
+export type BulkField = "status" | "priority" | "progress" | "duration";
+
+export interface SheetHistory {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+}
+
+/** Task fields whose change goes through the scheduler (undo writes them back through it too). */
+const SCHEDULE_KEYS = new Set([
+  "start_date", "end_date", "duration_days", "duration_unit", "dependency_task_ids", "dependency_types",
+  "dependency_lag_days", "constraint_type", "constraint_date", "is_milestone", "manually_scheduled",
+]);
+
+const BULK_LABEL: Record<BulkField, string> = { status: "Status", priority: "Priority", progress: "% complete", duration: "Duration" };
+
+/** A dependency patch without predecessors that no longer exist (deleted since the change was recorded). */
+function liveDeps(patch: Partial<SheetTask>, live: ReadonlySet<string>): Partial<SheetTask> {
+  const ids = patch.dependency_task_ids;
+  if (!ids) return patch;
+  const keepIdx = ids.map((id, i) => (live.has(id) ? i : -1)).filter((i) => i >= 0);
+  if (keepIdx.length === ids.length) return patch;
+  const pick = <V,>(xs: V[] | null | undefined) => (xs ? keepIdx.map((i) => xs[i]) : xs);
+  return { ...patch, dependency_task_ids: pick(ids) as string[], dependency_types: pick(patch.dependency_types) as SheetTask["dependency_types"], dependency_lag_days: pick(patch.dependency_lag_days) as SheetTask["dependency_lag_days"] };
+}
+
+/** Undo label of a scheduling action, from the fields it set. */
+function scheduleLabel(patches: Array<{ id: string; patch: Partial<SheetTask> }>): string {
+  const keys = new Set(patches.flatMap((p) => Object.keys(p.patch)));
+  const what = keys.has("dependency_task_ids") ? "Links"
+    : keys.has("constraint_type") ? "Constraint"
+    : keys.has("duration_days") ? "Duration"
+    : keys.has("start_date") || keys.has("end_date") ? "Dates"
+    : keys.has("is_milestone") ? "Milestone"
+    : keys.has("manually_scheduled") ? "Task mode"
+    : patches.length ? "Schedule change" : "Calculate";
+  return patches.length > 1 ? `${what} (${patches.length} activities)` : what;
 }
 
 export interface UseSheetData {
@@ -212,6 +261,8 @@ export interface UseSheetData {
   updateBarStyle: (next: GanttBarStyleSettings) => Promise<void>;
   reload: () => Promise<void>;
   actions: SheetActions;
+  /** Undo / redo of field, date, duration and link edits, in this session (doc 35 U2). */
+  history: SheetHistory;
 }
 
 export function useSheetData(
@@ -263,6 +314,23 @@ export function useSheetData(
   const warnedNoCalendar = useRef<string | null>(null);
   // Latest state for use inside async callbacks without stale closures.
   const tasksRef = useRef(tasks);
+  // doc 35 U2: undo / redo stack (per project, this session). The ref is read by the handlers; the toolbar
+  // renders from historyView, which syncHistory() refreshes after every change to the stack.
+  const historyRef = useRef<HistoryState<SheetTask>>(emptyHistory());
+  const [historyView, setHistoryView] = useState<{ undo: string | null; redo: string | null }>({ undo: null, redo: null });
+  const syncHistory = useCallback(() => {
+    const h = historyRef.current;
+    setHistoryView({ undo: h.past[h.past.length - 1]?.label ?? null, redo: h.future[0]?.label ?? null });
+  }, []);
+  const recordHistory = useCallback((entry: HistoryEntry<SheetTask>) => {
+    historyRef.current = pushEntry(historyRef.current, entry);
+    syncHistory();
+  }, [syncHistory]);
+  useEffect(() => {
+    historyRef.current = emptyHistory();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new project starts with an empty undo stack
+    syncHistory();
+  }, [projectId, syncHistory]);
   const nodesRef = useRef(nodes);
   const calendarRef = useRef(calendar);
   const autoScheduleRef = useRef(autoSchedule);
@@ -407,7 +475,7 @@ export function useSheetData(
       exceptions = (exRes.data ?? []) as PlanCalendarExceptionRow[];
     } else if (warnedNoCalendar.current !== projectId) {
       warnedNoCalendar.current = projectId;
-      toast.message("No work calendar for this project — scheduling on Mon–Fri", {
+      toast.message("No work calendar for this project — scheduling on Mon–Sat", {
         description: "Set one up under Planning ▸ Calendars.",
       });
     }
@@ -676,8 +744,8 @@ export function useSheetData(
   const applySchedule = useCallback(
     async (
       patches: Array<{ id: string; patch: Partial<SheetTask> }>,
-      opts: { note?: string; silent?: boolean; force?: boolean } = {},
-    ) => {
+      opts: { note?: string; silent?: boolean; force?: boolean; history?: boolean; label?: string } = {},
+    ): Promise<boolean> => {
       const snapshot = tasksRef.current;
       const patchById = new Map(patches.map((p) => [p.id, p.patch]));
       let next = snapshot.map((t) =>
@@ -704,7 +772,7 @@ export function useSheetData(
             .map((id) => next.find((t) => t.id === id)?.task_code ?? id.slice(0, 8))
             .join(" → ");
           toast.error(`That would create a circular dependency (${names})`);
-          return;
+          return false;
         }
         // A locked task feeds the engine as a fixed input but its own dates are
         // never written — filter it out of the ripple entirely.
@@ -739,7 +807,7 @@ export function useSheetData(
         if (error) {
           setTasks(snapshot);
           toast.error("Failed to save: " + error.message);
-          return;
+          return false;
         }
       }
 
@@ -753,7 +821,7 @@ export function useSheetData(
         if (error) {
           setTasks(snapshot);
           toast.error("Failed to reschedule: " + error.message);
-          return;
+          return false;
         }
       }
       // Calculation log (doc 35 E6): only when the engine moved something.
@@ -808,6 +876,21 @@ export function useSheetData(
       if (engineRan) setCalcNeeded(false);
       else if (patches.length > 0) setCalcNeeded(true);
 
+      // doc 35 U2: one undo step per action (undo / redo themselves are not recorded)
+      if (!opts.history) {
+        recordHistory({
+          label: opts.label ?? scheduleLabel(patches),
+          changes: patches.flatMap(({ id, patch }) => {
+            const b = before.get(id);
+            return b ? [captureChange(b, patch)] : [];
+          }),
+          ripple: ripplePayload.flatMap((r) => {
+            const b = before.get(r.id);
+            return b ? [{ id: r.id, before: { start_date: b.start_date, end_date: b.end_date }, after: { start_date: r.start_date, end_date: r.end_date } }] : [];
+          }),
+        });
+      }
+
       if (opts.note) toast.message(opts.note);
       if (!opts.silent && ripplePayload.length > 0) {
         toast.message(
@@ -824,8 +907,9 @@ export function useSheetData(
           fetch(`/api/planning/alerts/${projectId}/evaluate`, { method: "POST" }).catch(() => {});
         }, 2000);
       }
+      return true;
     },
-    [dataDate, projectId, supabase],
+    [dataDate, projectId, recordHistory, supabase],
   );
 
   /** Rewrites all three dependency arrays together so they can never drift. */
@@ -1049,6 +1133,8 @@ export function useSheetData(
         toast.error("Failed to save: " + error.message);
         return;
       }
+      // progress is excluded: it follows progress review (submit_progress), which an undo must not bypass
+      if (field !== "progress") recordHistory({ label: field[0].toUpperCase() + field.slice(1), changes: [captureChange(snapshot, patch)], ripple: [] });
       if (field === "progress") {
         void logScheduleAudit(supabase, {
           projectId,
@@ -1064,7 +1150,7 @@ export function useSheetData(
       if (note) toast.message(note);
       if (field === "progress") reload();
     },
-    [applySchedule, dataDate, guardLocked, projectId, reload, setPredecessors, supabase, taskLocked],
+    [applySchedule, dataDate, guardLocked, projectId, recordHistory, reload, setPredecessors, supabase, taskLocked],
   );
 
   const deleteTask = useCallback(
@@ -1338,9 +1424,151 @@ export function useSheetData(
     [guardLocked, projectId, reload, taskLocked],
   );
 
+  // doc 35 U2: write an entry's values back (undo) or again (redo). Deleted or locked activities are left alone.
+  const writeHistory = useCallback(
+    async (entry: HistoryEntry<SheetTask>, direction: "undo" | "redo"): Promise<boolean> => {
+      const live = new Set(tasksRef.current.map((t) => t.id));
+      const keep = (cs: FieldChange<SheetTask>[]) => cs.filter((c) => live.has(c.id) && !taskLocked(c.id));
+      const changes = keep(entry.changes).map((c) => ({ ...c, before: liveDeps(c.before, live), after: liveDeps(c.after, live) }));
+      const ripple = keep(entry.ripple);
+      if (changes.length + ripple.length < entry.changes.length + entry.ripple.length) {
+        toast.message("Some activities were deleted or are locked: they are left as they are");
+      }
+      let engineRan = false;
+      const scheduling = changes.some((c) => Object.keys(c.after).some((k) => SCHEDULE_KEYS.has(k)));
+      if (changes.length > 0 && scheduling) {
+        engineRan = autoScheduleRef.current;
+        if (!(await applySchedule(patchesFor(changes, direction), { history: true, silent: true }))) return false;
+      } else if (changes.length > 0) {
+        const patches = patchesFor(changes, direction);
+        const snapshot = tasksRef.current;
+        const byId = new Map(patches.map((x) => [x.id, x.patch]));
+        setTasks((p) => p.map((t) => (byId.has(t.id) ? { ...t, ...byId.get(t.id) } : t)));
+        for (const { id, patch } of patches) {
+          const { error } = await updateWbsTaskById(patch, id);
+          if (error) {
+            setTasks(snapshot);
+            toast.error(`Failed to ${direction}: ${error.message}`);
+            return false;
+          }
+        }
+      }
+      // the engine recalculates the ripple itself; without it the dates are written back as they were
+      if (ripple.length > 0 && !engineRan) {
+        const rows = patchesFor(ripple, direction).map(({ id, patch }) => ({ id, start_date: patch.start_date as string, end_date: patch.end_date as string }));
+        const { error } = await applyScheduleDates({ p_project_id: projectId, p_rows: rows });
+        if (error) {
+          toast.error(`Failed to ${direction}: ${error.message}`);
+          return false;
+        }
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        setTasks((p) => p.map((t) => {
+          const r = byId.get(t.id);
+          return r ? { ...t, start_date: r.start_date, end_date: r.end_date } : t;
+        }));
+      }
+      return true;
+    },
+    [applySchedule, projectId, taskLocked],
+  );
+
+  const historyBusyRef = useRef(false);
+  const stepHistory = useCallback(
+    async (direction: "undo" | "redo") => {
+      if (readOnly || historyBusyRef.current) return;
+      const step = direction === "undo" ? takeUndo(historyRef.current) : takeRedo(historyRef.current);
+      if (!step) return;
+      historyBusyRef.current = true;
+      try {
+        historyRef.current = step.state;
+        syncHistory();
+        if (!(await writeHistory(step.entry, direction))) {
+          historyRef.current = restoreAfterFailure(historyRef.current, step.entry, direction);
+          syncHistory();
+          return;
+        }
+        toast.message(`${direction === "undo" ? "Undone" : "Redone"}: ${step.entry.label}`);
+      } finally {
+        historyBusyRef.current = false;
+      }
+    },
+    [readOnly, syncHistory, writeHistory],
+  );
+
+  const bulkUpdate = useCallback(
+    async (taskIds: string[], field: BulkField, raw: string) => {
+      const ids = new Set(taskIds);
+      const targets = tasksRef.current.filter((t) => ids.has(t.id));
+      const editable = targets.filter((t) => !taskLocked(t.id));
+      const skipped = targets.length - editable.length;
+      if (editable.length === 0) {
+        toast.error("The selected activities are under a locked WBS node");
+        return;
+      }
+      const label = `${BULK_LABEL[field]} (${editable.length} ${editable.length === 1 ? "activity" : "activities"})`;
+      if (field === "duration") {
+        const cal = calendarRef.current;
+        const patches: Array<{ id: string; patch: Partial<SheetTask> }> = [];
+        for (const t of editable) {
+          const r = recalcOnDuration(t, raw, dataDate ?? todayISO(), cal);
+          if (!r) {
+            toast.error("Duration must be whole days, e.g. 5 (working days) or 7cd (calendar days); 0 = milestone");
+            return;
+          }
+          patches.push({ id: t.id, patch: r.patch });
+        }
+        if (!(await applySchedule(patches, { label }))) return;
+      } else {
+        if (field === "progress") {
+          const n = Math.round(Number(raw));
+          if (raw.trim() === "" || !Number.isFinite(n) || n < 0 || n > 100) {
+            toast.error("% Complete must be between 0 and 100");
+            return;
+          }
+          // the same path as a typed % complete: submit_progress applies the review flow and the 100 % lock
+          let direct = 0, pending = 0, failed = 0;
+          for (const t of editable.filter((x) => x.progress !== n)) {
+            const { data, error } = await submitProgress({ p_task_id: t.id, p_progress: n });
+            if (error) { failed++; continue; }
+            if ((data as { mode?: string } | null)?.mode === "pending") pending++;
+            else {
+              direct++;
+              void logScheduleAudit(supabase, {
+                projectId, taskId: t.id, nodeId: t.wbs_node_id, userId: currentUserIdRef.current,
+                action: "Progress Updated", fieldName: "progress", oldValue: String(t.progress), newValue: String(n),
+              });
+            }
+          }
+          await reload();
+          const parts = [direct && `${direct} updated`, pending && `${pending} sent for progress review`, failed && `${failed} refused`, skipped && `${skipped} locked left as they are`].filter(Boolean);
+          toast[failed ? "warning" : "success"](`% complete: ${parts.join(", ") || "nothing to change"}`);
+          return;
+        }
+        const patch: Partial<SheetTask> = field === "status" ? { status: raw } : { priority: raw };
+        const changing = editable.filter((t) => (Object.keys(patch) as (keyof SheetTask)[]).some((k) => t[k] !== patch[k]));
+        if (changing.length === 0) return;
+        const snapshot = tasksRef.current;
+        const changingIds = new Set(changing.map((t) => t.id));
+        setTasks((p) => p.map((t) => (changingIds.has(t.id) ? { ...t, ...patch } : t)));
+        const results = await Promise.all(changing.map((t) => updateWbsTaskById(patch, t.id)));
+        const failed = results.find((r) => r.error);
+        if (failed?.error) {
+          setTasks(snapshot);
+          toast.error("Failed to save: " + failed.error.message);
+          // some rows may have saved before the failure: show what the database holds
+          await reload();
+          return;
+        }
+        recordHistory({ label, changes: changing.map((t) => captureChange(t, patch)), ripple: [] });
+      }
+      toast.success(`${label} updated${skipped ? `; ${skipped} locked left as they are` : ""}`);
+    },
+    [applySchedule, dataDate, projectId, recordHistory, reload, supabase, taskLocked],
+  );
+
   const runAutoSchedule = useCallback(async () => {
     if (tasksRef.current.length === 0) return;
-    await applySchedule([], { force: true, note: "Schedule is up to date" });
+    await applySchedule([], { force: true, note: "Schedule is up to date", history: true });
   }, [applySchedule]);
 
   // -------------------------------------------------------------------------
@@ -1474,6 +1702,13 @@ export function useSheetData(
       const descIds = getDescendantNodeIds(nodesRef.current, nodeId);
       const subtree = new Set([nodeId, ...descIds]);
       const taskCount = tasksRef.current.filter((t) => subtree.has(t.wbs_node_id)).length;
+      // records elsewhere that point at it block the delete (doc 35 I8; the database enforces it too)
+      const check = await checkWbsNodeDelete(nodeId);
+      const blockers = (check.data ?? []) as { label: string; count: number }[];
+      if (blockers.length) {
+        toast.error(`"${node.wbs_name}" cannot be deleted. Records point at it: ${blockers.map((b) => `${b.label} (${b.count})`).join(", ")}. Move them to another WBS item or close them first.`, { duration: 10000 });
+        return;
+      }
       const parts = [`Delete "${node.wbs_name}"`];
       if (descIds.length) parts.push(`its ${descIds.length} sub-group${descIds.length > 1 ? "s" : ""}`);
       if (taskCount) parts.push(`${taskCount} task${taskCount > 1 ? "s" : ""}`);
@@ -1659,6 +1894,7 @@ export function useSheetData(
         runAutoSchedule: blocked,
         renumberWbsCodes: blocked,
         setWbsCode: blocked,
+        bulkUpdate: blocked,
       };
     }
     return {
@@ -1684,6 +1920,7 @@ export function useSheetData(
       runAutoSchedule,
       renumberWbsCodes,
       setWbsCode,
+      bulkUpdate,
     };
   },
     [
@@ -1710,6 +1947,7 @@ export function useSheetData(
       runAutoSchedule,
       renumberWbsCodes,
       setWbsCode,
+      bulkUpdate,
     ],
   );
 
@@ -1745,7 +1983,7 @@ export function useSheetData(
       });
       if (error) throw new Error(error.message);
       setDataDate(newDate);
-      await applySchedule([], { force: true, silent: true });
+      await applySchedule([], { force: true, silent: true, history: true });
       const reportJobId = (data as { report_job_id?: string } | null)?.report_job_id;
       if (reportJobId) {
         // Fire-and-forget — the monthly report is a background job; its
@@ -1798,6 +2036,15 @@ export function useSheetData(
     [projectId, supabase],
   );
 
+  const history = useMemo<SheetHistory>(() => ({
+    canUndo: !readOnly && historyView.undo != null,
+    canRedo: !readOnly && historyView.redo != null,
+    undoLabel: historyView.undo,
+    redoLabel: historyView.redo,
+    undo: () => stepHistory("undo"),
+    redo: () => stepHistory("redo"),
+  }), [historyView, readOnly, stepHistory]);
+
   return {
     loading,
     tree,
@@ -1832,5 +2079,6 @@ export function useSheetData(
     updateBarStyle,
     reload,
     actions,
+    history,
   };
 }

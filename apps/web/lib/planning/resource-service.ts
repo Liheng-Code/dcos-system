@@ -2,8 +2,9 @@ import { createClient } from "@/lib/supabase/client";
 import { assignTaskToProfile, type AssignableTask } from "@/lib/project/tasks/assign-task";
 import { dedupe } from "@/lib/request-dedup";
 import { inChunks } from "@/lib/planning/activity-library/in-chunks";
-import { safeTerm } from "@/lib/planning/activity-library/catalogue-rules";
+import { safeTerm } from "@/lib/work-library/catalogue-rules";
 import { QS_CATEGORY, type QsResourceOption } from "./resource-rate";
+import { capacityOn, type CapacityPeriod } from "./resource-levelling";
 
 export type ResourceType = "labor" | "equipment" | "material" | "subcontractor";
 
@@ -126,6 +127,56 @@ export async function findOrCreateResourceForProfile(
 export async function updateResource(id: string, patch: Partial<CreateResourceInput>): Promise<void> {
   const { error } = await createClient().from("plan_resources").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------- capacity by date (doc 35 C1)
+
+/** plan_resource_capacity: capacity (%, like max_units) over a date range, overriding max_units on those days. */
+export interface ResourceCapacityRow {
+  id: string;
+  resource_id: string;
+  from_date: string;
+  to_date: string | null;
+  max_units: number;
+  note: string | null;
+}
+
+export async function listCapacityPeriods(projectId: string): Promise<ResourceCapacityRow[]> {
+  const { data, error } = await createClient()
+    .from("plan_resource_capacity")
+    .select("id, resource_id, from_date, to_date, max_units, note")
+    .eq("project_id", projectId)
+    .order("from_date");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as ResourceCapacityRow[]).map((r) => ({ ...r, max_units: Number(r.max_units) }));
+}
+
+/** Insert (no id) or update. project_id is set by the database from the resource. Overlaps are rejected there. */
+export async function saveCapacityPeriod(
+  projectId: string,
+  row: { id?: string; resource_id: string; from_date: string; to_date: string | null; max_units: number; note?: string | null },
+): Promise<void> {
+  const values = { resource_id: row.resource_id, from_date: row.from_date, to_date: row.to_date, max_units: row.max_units, note: row.note ?? null };
+  const { error } = row.id
+    ? await createClient().from("plan_resource_capacity").update(values).eq("id", row.id)
+    : await createClient().from("plan_resource_capacity").insert({ ...values, project_id: projectId });
+  if (error) throw new Error(error.code === "23P01" ? "This period overlaps another capacity period of the resource" : error.message);
+}
+
+export async function deleteCapacityPeriod(id: string): Promise<void> {
+  const { error } = await createClient().from("plan_resource_capacity").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** resource id → its capacity periods (percent), for capacityOn / levelResources. */
+export function capacityPeriodsByResource(rows: ResourceCapacityRow[]): Map<string, CapacityPeriod[]> {
+  const map = new Map<string, CapacityPeriod[]>();
+  for (const r of rows) {
+    const list = map.get(r.resource_id) ?? [];
+    list.push({ from: r.from_date, to: r.to_date, units: r.max_units });
+    map.set(r.resource_id, list);
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------- QS cost-library rates
@@ -325,7 +376,7 @@ export interface TypeHistogramPoint {
   resource_type: ResourceType;
   /** Sum of total_allocation (%) across every resource of this type on this date. */
   demand: number;
-  /** Sum of max_units (%) across every active resource of this type — constant across dates. */
+  /** Sum of the capacity (%) on this date across every active resource of this type. */
   capacity: number;
 }
 
@@ -337,13 +388,10 @@ export interface TypeHistogramPoint {
 export function aggregateByType(
   allocation: AllocationRow[],
   resources: PlanResource[],
+  capacity: Map<string, CapacityPeriod[]> = new Map(),
 ): TypeHistogramPoint[] {
   const typeByResource = new Map(resources.map((r) => [r.id, r.resource_type]));
-  const capacityByType = new Map<ResourceType, number>();
-  for (const r of resources) {
-    if (!r.is_active) continue;
-    capacityByType.set(r.resource_type, (capacityByType.get(r.resource_type) ?? 0) + r.max_units);
-  }
+  const capacityOf = groupCapacity(resources, (r) => r.resource_type, capacity);
 
   const demandByKey = new Map<string, number>();
   for (const row of allocation) {
@@ -358,9 +406,23 @@ export function aggregateByType(
     const sep = key.indexOf("|");
     const work_date = key.slice(0, sep);
     const resource_type = key.slice(sep + 1) as ResourceType;
-    points.push({ work_date, resource_type, demand, capacity: capacityByType.get(resource_type) ?? 0 });
+    points.push({ work_date, resource_type, demand, capacity: capacityOf(resource_type, work_date) });
   }
   return points.sort((a, b) => a.work_date.localeCompare(b.work_date) || a.resource_type.localeCompare(b.resource_type));
+}
+
+/** (group, date) → summed capacity (%) of the group's active resources on that date, honouring capacity periods. */
+function groupCapacity<K>(resources: PlanResource[], keyOf: (r: PlanResource) => K, periods: Map<string, CapacityPeriod[]>) {
+  const members = new Map<K, PlanResource[]>();
+  for (const r of resources) {
+    if (!r.is_active) continue;
+    const k = keyOf(r);
+    const list = members.get(k) ?? [];
+    list.push(r);
+    members.set(k, list);
+  }
+  return (key: K, date: string) =>
+    (members.get(key) ?? []).reduce((sum, r) => sum + capacityOn(r.max_units, periods.get(r.id), date), 0);
 }
 
 // ── manpower required vs available BY TRADE (Phase 3) ───────────────────────
@@ -384,19 +446,18 @@ export interface TradeHistogramPoint {
   trade: string;
   /** Sum of total_allocation (%) across every resource of this trade on this date — "required". */
   demand: number;
-  /** Sum of max_units (%) across every active resource of this trade — "available", constant across dates. */
+  /** Sum of the capacity (%) on this date across every active resource of this trade — "available". */
   capacity: number;
 }
 
 /** Same shape/purpose as aggregateByType, grouped by trade instead of resource_type. */
-export function aggregateByTrade(allocation: AllocationRow[], resources: PlanResource[]): TradeHistogramPoint[] {
+export function aggregateByTrade(
+  allocation: AllocationRow[],
+  resources: PlanResource[],
+  capacity: Map<string, CapacityPeriod[]> = new Map(),
+): TradeHistogramPoint[] {
   const tradeByResource = new Map(resources.map((r) => [r.id, r.trade ?? r.name]));
-  const capacityByTrade = new Map<string, number>();
-  for (const r of resources) {
-    if (!r.is_active) continue;
-    const trade = r.trade ?? r.name;
-    capacityByTrade.set(trade, (capacityByTrade.get(trade) ?? 0) + r.max_units);
-  }
+  const capacityOf = groupCapacity(resources, (r) => r.trade ?? r.name, capacity);
 
   const demandByKey = new Map<string, number>();
   for (const row of allocation) {
@@ -411,7 +472,7 @@ export function aggregateByTrade(allocation: AllocationRow[], resources: PlanRes
     const sep = key.indexOf("|");
     const work_date = key.slice(0, sep);
     const trade = key.slice(sep + 1);
-    points.push({ work_date, trade, demand, capacity: capacityByTrade.get(trade) ?? 0 });
+    points.push({ work_date, trade, demand, capacity: capacityOf(trade, work_date) });
   }
   return points.sort((a, b) => a.work_date.localeCompare(b.work_date) || a.trade.localeCompare(b.trade));
 }
@@ -419,26 +480,29 @@ export function aggregateByTrade(allocation: AllocationRow[], resources: PlanRes
 export interface TradeShortageWeek {
   trade: string;
   week_start: string;
-  /** The worst single day's demand within the week. */
+  /** The demand on the week's worst day (largest shortfall against that day's capacity). */
   peak_demand: number;
+  /** The capacity on that day. */
   capacity: number;
 }
 
 /**
  * Buckets the daily by-trade histogram into ISO weeks (Monday start) and flags a week where the
- * trade's peak daily demand exceeds its capacity at any point that week — "a shortage week".
+ * trade's daily demand exceeds that day's capacity on any day — "a shortage week". Capacity can
+ * change by date (capacity periods), so each day is compared with its own capacity. A trade with no
+ * capacity that day (0) is not flagged.
  */
 export function flagShortageWeeks(points: TradeHistogramPoint[]): TradeShortageWeek[] {
-  const peakByKey = new Map<string, { trade: string; week_start: string; peak: number; capacity: number }>();
+  const worstByKey = new Map<string, { trade: string; week_start: string; peak: number; capacity: number; excess: number }>();
   for (const p of points) {
+    if (p.capacity <= 0 || p.demand <= p.capacity) continue;
     const week_start = weekStartOf(p.work_date);
     const key = `${p.trade}|${week_start}`;
-    const cur = peakByKey.get(key);
-    if (!cur) peakByKey.set(key, { trade: p.trade, week_start, peak: p.demand, capacity: p.capacity });
-    else cur.peak = Math.max(cur.peak, p.demand);
+    const excess = p.demand - p.capacity;
+    const cur = worstByKey.get(key);
+    if (!cur || excess > cur.excess) worstByKey.set(key, { trade: p.trade, week_start, peak: p.demand, capacity: p.capacity, excess });
   }
-  return [...peakByKey.values()]
-    .filter((w) => w.capacity > 0 && w.peak > w.capacity)
+  return [...worstByKey.values()]
     .map((w) => ({ trade: w.trade, week_start: w.week_start, peak_demand: w.peak, capacity: w.capacity }))
     .sort((a, b) => a.trade.localeCompare(b.trade) || a.week_start.localeCompare(b.week_start));
 }

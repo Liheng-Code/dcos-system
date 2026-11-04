@@ -698,7 +698,7 @@ export function listLeaveRequestsByEmployeeIdWithStatusSubmitted(employeeId: str
 export function listLeaveRequestsByEmployeeIdWithStatusSubmittedApprovedPendingCancellation(employeeId: string | number | boolean) {
   return db()
     .from("leave_requests")
-    .select("start_date, end_date")
+    .select("start_date, end_date, day_selections, is_half_day, half_day_period")
     .eq("employee_id", employeeId)
     .in("status", ["submitted", "approved", "pending_cancellation"]);
 }

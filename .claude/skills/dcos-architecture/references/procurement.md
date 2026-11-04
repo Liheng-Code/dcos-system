@@ -17,7 +17,7 @@
 ## 2. Data model
 - **Core flow (`20260531000005`):**
   - `procurement_suppliers`: status active/inactive/blacklisted/suspended. Has `tenant_id` and `supplier_name`; **no `company_name`**.
-  - `procurement_prs`: project_id, wbs_node_id, task_id; approval_status draft/submitted/under_budget_review/approved/returned/rejected/closed/cancelled.
+  - `procurement_prs`: project_id, wbs_node_id, task_id; `package_id` → `plan_act_procurement_packages` (core Construction Work Library, `20261104083534`, optional); approval_status draft/submitted/under_budget_review/approved/returned/rejected/closed/cancelled.
   - `procurement_pr_items`.
   - `procurement_pos`: status draft/submitted/approved/issued/partially_delivered/delivered/closed/on_hold/cancelled (+ under_invoice_match). **No `tenant_id`.**
   - `procurement_po_items`, `procurement_delivery_notes`, `procurement_goods_receipts`.
@@ -110,6 +110,7 @@ See `integration-map.md`, rows tagged **Procurement**.
   - `inv_grns.po_id` / `inv_grn_lines.po_item_id`. `lib/inventory/inv-service.ts` requires the PO to be approved, issued or partially delivered, and blocks over-receipt.
   - Procurement's own `goods-receipt-form` writes separate delivery notes and goods receipts. That's a second receipt path.
 - **Account AP:** `ap_invoices` references supplier, `po_id` and `gr_id` (`20260531000028`).
+- **Construction Work Library (core):** PR form / Raise PR from BOQ pick a procurement package; suggestions follow BOQ line → cost item → activity → package (`packagesForBoqItems`). Not yet used by RFQs or POs.
 - **Planning:** PR/PO status → `task_constraints` (`lib/planning/constraint-feed-mapping.ts`). PRs carry `task_id`.
 - **Inventory → Procurement:** auto-reorder creates draft PRs.
 - **Suppliers:** `procurement_suppliers` has no link to `stakeholders`, and is separate from QS `dwl_suppliers`. Subcontract `vendor_id` references `procurement_suppliers`.

@@ -12,6 +12,7 @@ import type { AiRequest } from "@/lib/planning/activity-library/ai/ai-run";
 
 const KIND_LABEL: Record<AiSuggestionRow["kind"], string> = {
   match_master: "Activity match", quantity_mapping: "BOQ link", productivity: "Productivity", conflict: "Check", explanation: "Explanation", recovery: "Recovery",
+  qaqc_explanation: "Schedule check", delay_summary: "Delay summary", report_draft: "Report draft", schedule_answer: "Answer",
 };
 
 /** One card per suggestion: what is recommended, why, from what, how sure, what it touches, who must approve. */

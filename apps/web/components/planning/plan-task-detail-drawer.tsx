@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { WbsActivityStepsPanel } from "@/components/project/wbs/wbs-activity-steps-panel";
 import { PlanActivitySiteDiaryPanel } from "./plan-activity-site-diary-panel";
+import { PlanTaskQuantityPanel } from "./plan-task-quantity-panel";
+import { getTaskQuantityStatus, type ProgressMethod } from "@/lib/planning/progress-quantity-service";
 import { cn } from "@/lib/utils";
 import type { SheetTask } from "./sheet-types";
 
@@ -20,7 +22,15 @@ interface Props {
  * links, resources) stays on Planning ▸ Sheet's docked detail panel.
  */
 export function PlanTaskDetailDrawer({ task, formatDate, onClose, onSyncProgress }: Props) {
-  const [tab, setTab] = useState<"steps" | "site_diary">("steps");
+  const [tab, setTab] = useState<"steps" | "quantity" | "site_diary">("steps");
+  // doc 35 P3: steps drive progress only under the steps / weighted-milestone methods
+  const [method, setMethod] = useState<ProgressMethod | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getTaskQuantityStatus(task.id).then((s) => !cancelled && setMethod(s?.method ?? null)).catch(() => {});
+    return () => { cancelled = true; };
+  }, [task.id]);
+  const stepsDriveProgress = method === null || method === "deliverable" || method === "milestone";
 
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
@@ -71,6 +81,18 @@ export function PlanTaskDetailDrawer({ task, formatDate, onClose, onSyncProgress
             </button>
             <button
               type="button"
+              onClick={() => setTab("quantity")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
+                tab === "quantity"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Quantity & Method
+            </button>
+            <button
+              type="button"
               onClick={() => setTab("site_diary")}
               className={cn(
                 "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors",
@@ -90,11 +112,13 @@ export function PlanTaskDetailDrawer({ task, formatDate, onClose, onSyncProgress
               taskEnd={task.end_date}
               canEdit={true}
               onStepsChange={(hasSteps, computed) => {
-                if (hasSteps && computed != null && computed !== task.progress) {
+                if (stepsDriveProgress && hasSteps && computed != null && computed !== task.progress) {
                   onSyncProgress(task.id, computed);
                 }
               }}
             />
+          ) : tab === "quantity" ? (
+            <PlanTaskQuantityPanel taskId={task.id} onMethodChange={setMethod} />
           ) : (
             <PlanActivitySiteDiaryPanel
               taskId={task.id}

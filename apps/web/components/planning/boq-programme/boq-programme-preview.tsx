@@ -22,7 +22,7 @@ import {
   cleanResourceName, CONFIDENCE_LABEL, filterTasks, groupPreview, groupWarnings, NO_FILTERS, ROW_KIND_LABEL, rowKind, SKIP_REASON, valueMatches,
   WARNING_LABEL, type PreviewFilters, type RowKind,
 } from "@/lib/planning/boq-programme/preview-view";
-import { SELECT_CLS } from "@/components/planning/activity-database/activity-database-shared";
+import { SELECT_CLS } from "@/components/work-library/work-library-shared";
 import { cn } from "@/lib/utils";
 
 const KIND_CLS: Record<RowKind, string> = {

@@ -20,13 +20,16 @@ import {
   type SavedLocation,
   type SplitRule,
   type WbsLevel,
+  type ZoneSplit,
 } from "@/lib/planning/activity-library/location-map";
 import {
   clearLocation,
   listLevelGfa,
   listSavedLocations,
   listWbsLevels,
+  listZonesByLevel,
   saveLocations,
+  setZoneSplit,
   type LocationDecision,
 } from "@/lib/planning/activity-library/location-map-service";
 import { EmptyNote } from "./plan-act-shared";
@@ -53,6 +56,12 @@ const SPLIT_LABEL: Record<SplitRule, string> = {
 const PROJECT_WIDE_RULES: SplitRule[] = ["none", "equal", "gfa", "length"];
 const CHAINAGE_RULES: SplitRule[] = ["chainage", "none"];
 
+const ZONE_LABEL: Record<ZoneSplit, string> = {
+  none: "Whole level",
+  equal: "Equally over its zones",
+  gfa: "By zone GFA",
+};
+
 /** BOQ location (building + level label) -> WBS level node, per project. Doc 21 Phase 2. */
 export function PlanLocationMap({ projectId, lines }: { projectId: string; lines: BridgeBoqLine[] }) {
   const db = useMemo(() => createClient(), []);
@@ -60,14 +69,18 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
   const [levels, setLevels] = useState<WbsLevel[] | null>(null);
   const [saved, setSaved] = useState<SavedLocation[]>([]);
   const [gfa, setGfa] = useState<Map<string, number>>(new Map());
+  const [zones, setZones] = useState<Map<string, string[]>>(new Map());
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [l, s, g] = await Promise.all([listWbsLevels(db, projectId), listSavedLocations(db, projectId), listLevelGfa(db, projectId)]);
+      const [l, s, g, z] = await Promise.all([
+        listWbsLevels(db, projectId), listSavedLocations(db, projectId), listLevelGfa(db, projectId), listZonesByLevel(db, projectId),
+      ]);
       setLevels(l);
       setSaved(s);
       setGfa(g);
+      setZones(z);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load the location map");
       setLevels([]);
@@ -114,6 +127,18 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
     }
   }
 
+  async function changeZones(r: LocationRow, value: ZoneSplit) {
+    setBusy(true);
+    try {
+      await setZoneSplit(db, projectId, r.building_code, r.qs_level_label, value);
+      setSaved(await listSavedLocations(db, projectId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reset(r: LocationRow) {
     setBusy(true);
     try {
@@ -140,6 +165,9 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
   if (levels.length === 0) return <EmptyNote>This project has no WBS level nodes yet. Build the WBS (levels under a building) first.</EmptyNote>;
 
   const readOnly = !canEditSchedule;
+  // doc 35 B5: only offered when some level has zone (or area) nodes under it
+  const hasZones = (levels ?? []).some((l) => (zones.get(l.id) ?? []).length > 0);
+  const savedByKey = new Map(saved.map((s) => [locationKey(s.building_code, s.qs_level_label), s]));
 
   return (
     <div className="space-y-3">
@@ -166,7 +194,9 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
         <thead>
           <tr className="bg-muted/50 text-left text-[11px] font-semibold uppercase text-muted-foreground">
             <th className="px-3 py-2">BOQ location</th><th className="px-3 py-2">Reads as</th><th className="px-3 py-2 text-right">Lines</th>
-            <th className="px-3 py-2">WBS level</th><th className="px-3 py-2">Status</th><th className="px-3 py-2" />
+            <th className="px-3 py-2">WBS level</th>
+            {hasZones && <th className="px-3 py-2" title="Generate from BOQ: share the level's quantity over its zone nodes">Zones</th>}
+            <th className="px-3 py-2">Status</th><th className="px-3 py-2" />
           </tr>
         </thead>
         <tbody>
@@ -218,6 +248,20 @@ export function PlanLocationMap({ projectId, lines }: { projectId: string; lines
                     </select>
                   )}
                 </td>
+                {hasZones && (
+                  <td className="px-3 py-1.5">
+                    {r.status === "confirmed" || r.status === "split" ? (
+                      <select
+                        disabled={readOnly || busy}
+                        value={savedByKey.get(r.key)?.zone_split ?? "none"}
+                        onChange={(e) => void changeZones(r, e.target.value as ZoneSplit)}
+                        className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary disabled:opacity-60"
+                      >
+                        {(Object.keys(ZONE_LABEL) as ZoneSplit[]).map((z) => <option key={z} value={z}>{ZONE_LABEL[z]}</option>)}
+                      </select>
+                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                  </td>
+                )}
                 <td className="px-3 py-1.5">
                   <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold", STATUS[r.status].cls)}>{STATUS[r.status].label}</span>
                   {r.status === "confirmed" && r.wbs_node_id && levelById.get(r.wbs_node_id) && r.canonical && wbsLevelCanonical(levelById.get(r.wbs_node_id)!)?.code !== r.canonical && (

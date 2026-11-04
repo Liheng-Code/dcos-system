@@ -5,6 +5,7 @@ import { LevelTemplateEditor } from "./level-template-editor";
 import { WbsTemplateEditor } from "./wbs-template-editor";
 import { QsWbsPlanningLinkEditor } from "./qs-wbs-planning-link-editor";
 import { CsiDivisionsEditor } from "./csi-divisions-editor";
+import Link from "next/link";
 import { BookTemplate, Download, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -241,6 +242,9 @@ export function MasterLibrariesPage() {
             <h1 className="text-lg font-semibold tracking-tight text-slate-900">Master Libraries</h1>
             <p className="text-xs text-slate-500">PMO-maintained project generation libraries</p>
           </div>
+          <Link href="/dashboard/administration/work-library" className="ml-4 text-xs font-medium text-primary underline-offset-2 hover:underline">
+            Construction Work Library →
+          </Link>
         </div>
         <div className={cn("flex items-center gap-2", templateTab && "hidden")}>
           <input

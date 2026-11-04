@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,13 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
 import { changeListText, DEFAULT_RECOVERY_SETTINGS, type RecoveryAnalysis, type RecoverySettings, type Scenario } from "@/lib/planning/activity-library/recovery-engine";
-import { listRecoveryScenarios, saveRecoveryScenario, setScenarioStatus, type OpenDelay, type SavedScenario, type TargetSpec } from "@/lib/planning/activity-library/recovery-service";
+import {
+  adoptRecoveryScenario, applyRecoveryScenario, APPLY_READY, listRecoveryScenarios, loadRecoveryInputs, saveRecoveryScenario, setScenarioStatus,
+  type OpenDelay, type RecoveryInputs, type SavedScenario, type TargetSpec,
+} from "@/lib/planning/activity-library/recovery-service";
+import { recoveryEffectiveness } from "@/lib/planning/activity-library/recovery-effectiveness";
+import { getProjectStartDate, runProjectSchedule } from "@/lib/planning/project-schedule";
+import { usePlanningPermissions } from "@/hooks/use-planning-permissions";
 import { PlanAiSuggestionList, useAskAi } from "./plan-ai-suggestions";
 import { EmptyNote } from "./plan-act-shared";
 
@@ -22,10 +29,17 @@ const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
 const fmt = (d: string | null) => d ?? "—";
 
+const REVISION_LABEL: Record<string, string> = {
+  draft: "draft revision", submitted_internal: "submitted for approval", approved_internal: "approved internally",
+  submitted_client: "submitted to the client", approved_client: "approved by the client", rejected: "revision rejected",
+};
+const LEVER_STATE = { held: "text-emerald-500", slipped: "text-amber-500", removed: "text-red-500", missing: "text-muted-foreground" } as const;
+
 /**
  * Recovery scenarios: what is the smallest set of changes that brings the forecast back to a target, per family of levers
  * (crews, method changes, expediting, overlapping). Every figure is measured with the CPM engine on the live programme.
- * Advisory: nothing here changes the programme. A planner compares, saves what is worth discussing and decides.
+ * Nothing here changes the programme directly: a saved scenario is adopted as a draft programme revision, and its changes
+ * reach the live programme only after that revision is approved (doc 35 F2).
  */
 export function PlanActivityRecovery() {
   const db = useMemo(() => createClient(), []);
@@ -37,6 +51,16 @@ export function PlanActivityRecovery() {
   const [expPct, setExpPct] = useState(String(DEFAULT_RECOVERY_SETTINGS.expediteCompression * 100));
   const [minDur, setMinDur] = useState(String(DEFAULT_RECOVERY_SETTINGS.minDurationWd));
   const [fastTrack, setFastTrack] = useState(true);
+  // calendar what-if (doc 35 F4)
+  const [calOn, setCalOn] = useState(false);
+  const [calSat, setCalSat] = useState(false);
+  const [calSun, setCalSun] = useState(true);
+  const [calFrom, setCalFrom] = useState("");
+  const [calTo, setCalTo] = useState("");
+  const [otPct, setOtPct] = useState("0");
+  const [acting, setActing] = useState<string | null>(null);
+  const [now, setNow] = useState<RecoveryInputs | null>(null);
+  const { canEditSchedule } = usePlanningPermissions();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [saved, setSaved] = useState<SavedScenario[]>([]);
@@ -44,8 +68,36 @@ export function PlanActivityRecovery() {
 
   const loadSaved = useCallback(async () => {
     if (!selectedProjectId) return;
-    try { setSaved(await listRecoveryScenarios(db, selectedProjectId)); } catch { /* optional list */ }
+    try {
+      const list = await listRecoveryScenarios(db, selectedProjectId);
+      setSaved(list);
+      // effectiveness of applied scenarios needs the programme as it is now (doc 35 F3)
+      if (list.some((x) => x.applied_at)) setNow(await loadRecoveryInputs(db, selectedProjectId));
+    } catch { /* optional list */ }
   }, [db, selectedProjectId]);
+
+  async function adopt(s: SavedScenario) {
+    if (!selectedProjectId) return;
+    setActing(s.id);
+    try {
+      const r = await adoptRecoveryScenario(db, selectedProjectId, s);
+      toast.success(`Draft revision R${r.revision_number} created. Submit it for approval in Comparison › Manage Schedules; the programme changes only after approval.`);
+      await loadSaved();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Could not adopt"); } finally { setActing(null); }
+  }
+
+  async function applyNow(s: SavedScenario) {
+    if (!selectedProjectId) return;
+    if (!window.confirm(`Write the ${s.levers.length} change(s) of "${s.name}" into the live programme and recalculate the dates?`)) return;
+    setActing(s.id);
+    try {
+      const r = await applyRecoveryScenario(db, selectedProjectId, s);
+      const start = await getProjectStartDate(selectedProjectId);
+      if (start) await runProjectSchedule(selectedProjectId, start);
+      toast.success(`Applied ${r.applied.length} change(s)${r.skipped.length ? `, skipped ${r.skipped.length} (${r.skipped.map((x) => `${x.code ?? x.kind}: ${x.reason}`).join("; ")})` : ""}. ${start ? "Dates recalculated." : "The project has no start date: run Calculate in the Gantt."}`);
+      await loadSaved();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Could not apply"); } finally { setActing(null); }
+  }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loadSaved() sets state after awaiting
   useEffect(() => { void loadSaved(); setResult(null); }, [loadSaved]);
 
@@ -54,6 +106,7 @@ export function PlanActivityRecovery() {
   async function analyse() {
     if (!selectedProjectId) return;
     if (mode === "date" && !date) { toast.error("Choose a target date"); return; }
+    if (calOn && (!calFrom || !calTo || calTo < calFrom)) { toast.error("Choose the calendar window (from and to)"); return; }
     setBusy(true); setResult(null); ai.clear();
     try {
       const res = await fetch("/api/planning/recovery", {
@@ -61,6 +114,9 @@ export function PlanActivityRecovery() {
         body: JSON.stringify({
           projectId: selectedProjectId, target: spec(),
           settings: { maxCompression: Number(crewPct) / 100, expediteCompression: Number(expPct) / 100, minDurationWd: Number(minDur) || 3, allowFastTrack: fastTrack },
+          calendar: calOn && calFrom && calTo
+            ? { from: calFrom, to: calTo, extraWeekdays: [...(calSun ? [0] : []), ...(calSat ? [6] : [])], overtimePct: Math.min(50, Math.max(0, Number(otPct) || 0)) }
+            : null,
         }),
       });
       const json = await res.json();
@@ -94,7 +150,7 @@ export function PlanActivityRecovery() {
       <section className="rounded-lg border border-border bg-card p-4">
         <p className="mb-3 max-w-3xl text-xs text-muted-foreground">
           Finds the smallest set of changes that brings the forecast finish back to a target, for each kind of lever. Every figure is measured by re-running the programme logic, not estimated.
-          This is advice for comparison: nothing here changes the programme.
+          Nothing here changes the programme until a scenario is adopted, approved as a programme revision and applied.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs"><span className="mb-1 block text-muted-foreground">Recover to</span>
@@ -108,6 +164,19 @@ export function PlanActivityRecovery() {
           <label className="text-xs"><span className="mb-1 block text-muted-foreground">Ignore shorter than (wd)</span><Input className="w-24" type="number" value={minDur} onChange={(e) => setMinDur(e.target.value)} /></label>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={fastTrack} onChange={(e) => setFastTrack(e.target.checked)} /> Allow overlapping</label>
           <Button onClick={analyse} disabled={busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Find recovery options</Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-border pt-3">
+          <label className="flex items-center gap-2 pb-2 text-sm font-medium"><input type="checkbox" checked={calOn} onChange={(e) => setCalOn(e.target.checked)} /> Also try a calendar change</label>
+          {calOn && (
+            <>
+              <label className="text-xs"><span className="mb-1 block text-muted-foreground">From</span><Input className="w-40" type="date" value={calFrom} onChange={(e) => setCalFrom(e.target.value)} /></label>
+              <label className="text-xs"><span className="mb-1 block text-muted-foreground">To</span><Input className="w-40" type="date" value={calTo} min={calFrom || undefined} onChange={(e) => setCalTo(e.target.value)} /></label>
+              <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={calSun} onChange={(e) => setCalSun(e.target.checked)} /> Work Sundays</label>
+              <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={calSat} onChange={(e) => setCalSat(e.target.checked)} /> Work Saturdays</label>
+              <label className="text-xs"><span className="mb-1 block text-muted-foreground">Overtime on critical work (%)</span><Input className="w-24" type="number" min={0} max={50} value={otPct} onChange={(e) => setOtPct(e.target.value)} /></label>
+              <span className="pb-2 text-xs text-muted-foreground">Only days the calendar does not already work; holidays stay off.</span>
+            </>
+          )}
         </div>
         {busy && <p className="mt-3 text-sm text-muted-foreground">Measuring every option against the programme. On a large programme this can take up to a minute.</p>}
       </section>
@@ -141,6 +210,33 @@ export function PlanActivityRecovery() {
             )}
           </section>
 
+          {a.gapWd > 0 && (a.finishDrivers ?? []).length > 0 && (
+            <section className="rounded-lg border border-border bg-card p-3 text-sm">
+              <h3 className="text-sm font-semibold">What sets the finish</h3>
+              <ul className="mt-1 space-y-0.5 text-xs">
+                {a.finishDrivers.map((d) => (
+                  <li key={d.id}>
+                    <span className="font-mono text-primary">{d.code}</span> {d.name}
+                    <span className="text-muted-foreground">
+                      {" · "}
+                      {[
+                        d.constraintType ? `${d.constraintType.replaceAll("_", " ")}${d.constraintDate ? ` ${d.constraintDate}` : ""}` : null,
+                        d.predecessors === 0 ? "no predecessors" : `${d.predecessors} predecessor${d.predecessors === 1 ? "" : "s"}`,
+                        d.anchored ? "started or manually scheduled" : null,
+                      ].filter(Boolean).join(" · ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {a.finishDrivers.some((d) => d.constraintType || d.predecessors === 0 || d.anchored) && (
+                <p className="mt-1 text-xs text-amber-500">
+                  A date held by a constraint, an activity without predecessors, or fixed (started / manual) work cannot be recovered by crews, methods or calendars.
+                  Link these activities to the work they follow, or review the constraint, then analyse again.
+                </p>
+              )}
+            </section>
+          )}
+
           {a.gapWd <= 0 ? (
             <EmptyNote>The forecast already meets the target ({fmt(a.targetFinish)}), so there is nothing to recover. Try a nearer target.</EmptyNote>
           ) : a.scenarios.length === 0 ? (
@@ -162,10 +258,13 @@ export function PlanActivityRecovery() {
                         : <span className="inline-flex items-center gap-1 text-sm text-amber-500"><X className="h-4 w-4" /> {s.remainingGapWd} wd still missing</span>}
                       <div className="ml-auto flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => void copy(s)}><Copy className="mr-1 h-4 w-4" /> Copy change list</Button>
-                        <Button size="sm" onClick={() => void save(s)}>Save for discussion</Button>
+                        <Button size="sm" disabled={s.recoveredWd <= 0} title={s.recoveredWd <= 0 ? "It does not bring the finish forward" : undefined} onClick={() => void save(s)}>Save for discussion</Button>
                       </div>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{s.description}</p>
+                    {s.recoveredWd <= 0 && (
+                      <p className="mt-1 text-xs text-amber-500">This change does not bring the finish forward: the finish is set by work it cannot move (see “What sets the finish” below).</p>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-6 text-sm">
                       <span>Finish <b className="font-mono">{s.finish}</b></span><span>Recovers <b className="font-mono">{s.recoveredWd} wd</b></span><span>{s.levers.length} change{s.levers.length === 1 ? "" : "s"}</span>
                     </div>
@@ -178,7 +277,7 @@ export function PlanActivityRecovery() {
                             <td className="py-1.5 pr-2 text-muted-foreground">{i + 1}</td>
                             <td className="pr-3"><span className="font-mono text-xs text-primary">{l.code}</span> {l.name}</td>
                             <td className="pr-3">{l.label}{delayedTasks.has(l.taskId) && <span className="ml-2 rounded bg-amber-500/15 px-1.5 text-[10px] font-semibold text-amber-500" title={delayedTasks.get(l.taskId)?.cause ?? ""}>delay logged: {delayedTasks.get(l.taskId)?.cause ?? delayedTasks.get(l.taskId)?.code ?? "see register"}</span>}</td>
-                            <td className="text-right font-mono">+{l.gainWd} wd</td>
+                            <td className="text-right font-mono">{l.gainWd > 0 ? `+${l.gainWd} wd` : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -219,13 +318,23 @@ export function PlanActivityRecovery() {
                   <td className="px-3 py-1.5">{fmt(s.target_finish)}</td><td className="px-3 py-1.5">{fmt(s.scenario_finish)}{!s.meets_target && <span className="ml-1 text-xs text-amber-500">+{s.remaining_gap_wd} wd short</span>}</td>
                   <td className="px-3 py-1.5">{s.recovered_wd} wd</td>
                   <td className="px-3 py-1.5"><span className={cn("rounded px-2 py-0.5 text-[11px] font-semibold uppercase", RISK_STYLE[s.risk])}>{s.risk}</span></td>
-                  <td className="px-3 py-1.5 text-xs font-semibold uppercase">{s.status}</td>
+                  <td className="px-3 py-1.5 text-xs">
+                    <span className="font-semibold uppercase">{s.applied_at ? "applied" : s.status}</span>
+                    {s.revision && <div className="text-muted-foreground">R{s.revision.revision_number} · {REVISION_LABEL[s.revision.status] ?? s.revision.status}</div>}
+                    {s.status === "adopted" && !s.revision_id && <div className="text-muted-foreground">marked by hand (before revisions)</div>}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-right">
-                    {s.status === "proposed" && (
+                    {acting === s.id && <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />}
+                    {canEditSchedule && s.status === "proposed" && (
                       <>
-                        <Button size="sm" variant="outline" onClick={async () => { try { await setScenarioStatus(db, s.id, "adopted", "Applied to the programme by the planner"); await loadSaved(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } }}>Mark adopted</Button>
-                        <Button size="sm" variant="ghost" onClick={async () => { try { await setScenarioStatus(db, s.id, "dismissed"); await loadSaved(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } }}>Dismiss</Button>
+                        <Button size="sm" variant="outline" disabled={!!acting} onClick={() => void adopt(s)} title="Creates a draft programme revision with this scenario's dates, for approval">Adopt</Button>
+                        <Button size="sm" variant="ghost" disabled={!!acting} onClick={async () => { try { await setScenarioStatus(db, s.id, "dismissed"); await loadSaved(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } }}>Dismiss</Button>
                       </>
+                    )}
+                    {s.status === "adopted" && s.revision && !s.applied_at && (
+                      APPLY_READY.has(s.revision.status)
+                        ? canEditSchedule && <Button size="sm" disabled={!!acting} onClick={() => void applyNow(s)}>Apply to programme</Button>
+                        : <Link href="/dashboard/planning/comparison" className="text-xs text-primary hover:underline">{s.revision.status === "rejected" ? "Revision rejected" : "Approve in Comparison"}</Link>
                     )}
                   </td>
                 </tr>
@@ -233,7 +342,40 @@ export function PlanActivityRecovery() {
             </tbody>
           </table>
         )}
-        <p className="mt-2 text-xs text-muted-foreground">“Mark adopted” only records that you applied the change in the programme yourself; it does not edit any activity.</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Adopt creates a draft programme revision with the scenario&apos;s dates; submit and approve it in Comparison › Manage Schedules. Only then can the changes be applied to the live programme, which recalculates the dates. Started activities are skipped.
+        </p>
+        {now && saved.some((x) => x.applied_at) && (
+          <div className="mt-4 space-y-3">
+            <h3 className="text-sm font-semibold">Did the recovery work?</h3>
+            {saved.filter((x) => x.applied_at).map((x) => {
+              const e = recoveryEffectiveness(x, now.tasks, now.cal);
+              return (
+                <section key={x.id} className="rounded-lg border border-border bg-card p-3 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-4">
+                    <b>{x.name}</b>
+                    <span>Planned <b className="font-mono">{e.plannedWd} wd</b></span>
+                    <span>Achieved <b className={cn("font-mono", e.achievedWd != null && e.achievedWd < e.plannedWd ? "text-amber-500" : "text-emerald-500")}>{e.achievedWd ?? "—"} wd</b>{e.achievedPct != null && <span className="text-muted-foreground"> ({e.achievedPct}%)</span>}</span>
+                    <span className="text-xs text-muted-foreground">forecast {fmt(e.forecastBefore)} when applied → {fmt(e.forecastNow)} now</span>
+                    <span className="text-xs text-muted-foreground">{e.held} change(s) still in the programme, {e.slipped} not</span>
+                  </div>
+                  <ul className="mt-2 grid gap-0.5 text-xs md:grid-cols-2">
+                    {e.levers.map((l, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className={cn("w-16 shrink-0 font-semibold uppercase", LEVER_STATE[l.state])}>{l.state}</span>
+                        <span className="truncate"><span className="font-mono text-primary">{l.code}</span> {l.label}
+                          {l.nowWd != null && l.plannedWd != null && l.state !== "held" && <span className="text-muted-foreground"> · now {l.nowWd} wd</span>}
+                          {l.daysPlanned != null && <span className="text-muted-foreground"> · {l.daysHeld} of {l.daysPlanned} days in the calendar</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Achieved counts everything that moved the forecast since the change was applied (progress, delays, other edits), not only this recovery.</p>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );

@@ -40,6 +40,9 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
         ],
       },
       { label: "Comparison", href: "/dashboard/planning/comparison" },
+      { label: "Forecast", href: "/dashboard/planning/forecast" },
+      // doc 35 I1: contractual dates, extensions and damages exposure
+      { label: "Contract Milestones", href: "/dashboard/planning/milestones" },
       // doc 35 Q3: DCMA 14-point checks and the submission gate
       { label: "Schedule Check", href: "/dashboard/planning/schedule-check" },
       { label: "MS Project Sync", href: "/dashboard/planning/sync" },
@@ -53,6 +56,9 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     items: [
       { label: "Resources", href: "/dashboard/planning/resource-loading" },
       { label: "Members", href: "/dashboard/planning/members" },
+      { label: "Cost & Cash Flow", href: "/dashboard/planning/cost" },
+      // doc 35 I3-I7: published feeds to Procurement, HR, QA/QC, Document Control and Finance
+      { label: "Outbound Feeds", href: "/dashboard/planning/feeds" },
       {
         label: "Delay Register",
         href: "/dashboard/planning/delays",
@@ -109,16 +115,20 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     ],
   },
   {
-    // Activity Database (doc 23): CSI divisions, activities, BOQs and resources in one screen,
-    // built on the Activity Library masters. Hidden until switched on.
+    // BOQ-driven programme and the project checks built on the Construction Work Library (core,
+    // Administration; formerly the Activity Database here). navKey keeps its historical slug so
+    // nav_item_settings rows survive the relabel. Hidden until switched on.
     key: "activity_database",
     navKey: "group:planning:activity_database",
-    label: "Activity Database",
-    href: "/dashboard/planning/activity-database",
+    label: "BOQ & Requirements",
+    href: "/dashboard/planning/boq-programme",
     items: [
-      { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
+      // Shortcut: the page lives in Administration, the same route listed under two modules.
+      { label: "Work Library", href: "/dashboard/administration/work-library", status: "development" },
       // Doc 24 phase 1: BOQ readiness report (programme generation follows in phase 2)
       { label: "Generate from BOQ", href: "/dashboard/planning/boq-programme", status: "development" },
+      // doc 35 Phase B: mapped vs BOQ quantity, double counting, BOQ change reviews, mapping history
+      { label: "BOQ Mapping Check", href: "/dashboard/planning/boq-check", status: "development" },
       // Phase 4: what the project's activities need (shop drawings, method statements, T&C) vs submittals and ITPs
       { label: "Requirements Tracker", href: "/dashboard/planning/requirements-tracker", status: "development" },
     ],
