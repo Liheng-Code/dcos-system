@@ -13,7 +13,7 @@ import type { ActivityType } from "./activity-database-import";
 import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
 import { copyMasterChips, resourceDivisions } from "./activity-chips-service";
 import { countByDivision, NO_DIVISION } from "./activity-chips-rules";
-import { GAP_FILTER, WORK_ITEM_GAPS, type WorkItemGap } from "./boq-item-rules";
+import { GAP_FILTER, PRICE_FLAGS, WORK_ITEM_GAPS, type WorkItemFlag } from "./boq-item-rules";
 import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
@@ -88,7 +88,11 @@ export interface MasterRow {
   discipline: string | null;
   work_type: string | null;
 }
-export interface MasterListRow extends MasterRow { workItemCount: number }
+export interface MasterListRow extends MasterRow {
+  workItemCount: number;
+  /** Quantity-based activity without a library productivity norm: Generate cannot give it a duration. */
+  noNorm: boolean;
+}
 
 export interface MasterDetail {
   master: MasterRow;
@@ -150,6 +154,9 @@ export interface WorkItemListRow extends WorkItemRef {
   buildupLines?: number;
   /** Project and tender BOQ lines that reference the item (rows the viewer can read). */
   boqUses?: number;
+  /** Build-up lines whose current price is an estimate / an expired quotation (price basis chips). */
+  estimatePriceLines?: number;
+  expiredPriceLines?: number;
 }
 export interface Page<T> { items: T[]; total: number }
 
@@ -221,8 +228,15 @@ export async function listMastersForDivision(db: Db, divisionCode: string | null
   });
   // one row per activity: the latest non-superseded version (see pickLatestPerCode)
   const rows = pickLatestPerCode(all as (Record<string, unknown> & { code: string; version: number })[]);
-  const counts = await linkCounts(db, rows.map((r) => r.id as string));
-  return rows.map((r) => ({ ...toMasterRow(r), workItemCount: counts.get(r.id as string) ?? 0 }));
+  const [counts, noNorm] = await Promise.all([linkCounts(db, rows.map((r) => r.id as string)), mastersMissingNorm(db)]);
+  return rows.map((r) => ({ ...toMasterRow(r), workItemCount: counts.get(r.id as string) ?? 0, noNorm: noNorm.has(r.id as string) }));
+}
+
+/** Ids of current quantity-based activities with no library norm (wl_masters_missing_norm, same for every viewer). */
+async function mastersMissingNorm(db: Db): Promise<Set<string>> {
+  const { data, error } = await db.rpc("wl_masters_missing_norm");
+  must(error);
+  return new Set(((data ?? []) as (string | { wl_masters_missing_norm: string })[]).map((r) => (typeof r === "string" ? r : r.wl_masters_missing_norm)));
 }
 
 export async function getMasterDetail(db: Db, id: string): Promise<MasterDetail | null> {
@@ -397,18 +411,18 @@ export async function listWorkItemsForDivision(db: Db, divisionCode: string | nu
   return { total: items.length, items: items.slice(offset, offset + limit).map((i) => ({ ...i, usedBy: uses.get(i.id) ?? 0 })) };
 }
 
-/** BOQ tab filters over wl_v_work_item_facts: search, active only (default), one gap. */
-export interface WorkItemFilter { q?: string; showInactive?: boolean; gap?: WorkItemGap | null }
+/** BOQ tab filters over wl_v_work_item_facts: search, active only (default), one gap or price basis flag. */
+export interface WorkItemFilter { q?: string; showInactive?: boolean; gap?: WorkItemFlag | null }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST filter builder of the facts view
-function applyWorkItemFilter<T extends { eq: any; or: any; is: any }>(qb: T, f: WorkItemFilter, skipGap?: boolean): T {
+function applyWorkItemFilter<T extends { eq: any; or: any; is: any; gt: any }>(qb: T, f: WorkItemFilter, skipGap?: boolean): T {
   let out = qb;
   const s = safeTerm(f.q ?? "");
   if (!f.showInactive) out = out.eq("is_active", true);
   if (s) out = out.or(`code.ilike.%${s}%,name.ilike.%${s}%,description.ilike.%${s}%`);
   if (!skipGap && f.gap) {
     const g = GAP_FILTER[f.gap];
-    out = g.op === "is" ? out.is(g.column, null) : out.eq(g.column, 0);
+    out = g.op === "is" ? out.is(g.column, null) : g.op === "zero" ? out.eq(g.column, 0) : out.gt(g.column, 0);
   }
   return out;
 }
@@ -420,10 +434,10 @@ export async function workItemDivisionCounts(db: Db, q?: string, f: Omit<WorkIte
   return countByDivision(rows, (r) => [r.csi_division_code]);
 }
 
-/** Number of items per gap for the current search / division (the gap chips). */
-export async function workItemGapCounts(db: Db, f: WorkItemFilter & { division?: string | null }): Promise<Record<WorkItemGap, number>> {
-  const out = {} as Record<WorkItemGap, number>;
-  await Promise.all(WORK_ITEM_GAPS.map(async (gap) => {
+/** Number of items per gap and price basis flag for the current search / division (the filter chips). */
+export async function workItemGapCounts(db: Db, f: WorkItemFilter & { division?: string | null }): Promise<Record<WorkItemFlag, number>> {
+  const out = {} as Record<WorkItemFlag, number>;
+  await Promise.all([...WORK_ITEM_GAPS, ...PRICE_FLAGS].map(async (gap) => {
     let qb = applyWorkItemFilter(db.from("wl_v_work_item_facts").select("id", { count: "exact", head: true }), { ...f, gap });
     if (f.division === NO_DIVISION) qb = qb.is("csi_division_code", null);
     else if (f.division) qb = qb.eq("csi_division_code", f.division);
@@ -437,11 +451,14 @@ export async function workItemGapCounts(db: Db, f: WorkItemFilter & { division?:
 type FactRow = {
   id: string; code: string; name: string | null; description: string; unit: string; boq_section: string; csi_section_code: string | null;
   is_active: boolean; net_rate: number | null; buildup_lines: number; activity_links: number; boq_uses: number;
+  estimate_price_lines: number; expired_price_lines: number;
 };
-const FACT_COLS = "id, code, name, description, unit, boq_section, csi_section_code, is_active, net_rate, buildup_lines, activity_links, boq_uses";
+const FACT_COLS =
+  "id, code, name, description, unit, boq_section, csi_section_code, is_active, net_rate, buildup_lines, activity_links, boq_uses, estimate_price_lines, expired_price_lines";
 const toListRow = (r: FactRow): WorkItemListRow => ({
   id: r.id, code: r.code, name: r.name, description: r.description, unit: r.unit, boqSection: r.boq_section, usedBy: r.activity_links,
   sectionCode: r.csi_section_code, isActive: r.is_active, rate: r.net_rate === null ? null : Number(r.net_rate), buildupLines: r.buildup_lines, boqUses: r.boq_uses,
+  estimatePriceLines: r.estimate_price_lines, expiredPriceLines: r.expired_price_lines,
 });
 
 /** BOQ tab: the cost library's work items (optionally of one CSI division, or NO_DIVISION) with rate, build-up, activity and BOQ use. */
@@ -465,6 +482,44 @@ export async function listAllWorkItems(db: Db, f: WorkItemFilter & { division?: 
   });
   return rows.map((r) => ({ ...toListRow(r), divisionCode: r.csi_division_code }))
     .sort((a, b) => (b.boqUses ?? 0) - (a.boqUses ?? 0) || b.usedBy - a.usedBy || a.code.localeCompare(b.code));
+}
+
+export interface RepriceResource {
+  code: string; name: string; category: string; unit: string; price: number | null; currency: string | null;
+  source: string | null; validUntil: string | null; supplier: string | null; expired: boolean;
+  /** Listed BOQ items whose build-up uses the resource, and their project / tender BOQ lines. */
+  items: number; boqUses: number;
+}
+
+/**
+ * Resources QS should re-price for the given BOQ items: build-up resources whose current price is an estimate or an
+ * expired quotation (the export's second sheet), most-used first.
+ */
+export async function listRepriceResources(db: Db, items: Pick<WorkItemListRow, "id" | "boqUses">[]): Promise<RepriceResource[]> {
+  const uses = new Map(items.map((i) => [i.id, i.boqUses ?? 0]));
+  const lines = await inChunks<{ work_item_id: string; resource_id: string }>([...uses.keys()], (p) =>
+    db.from("dwl_work_item_resources").select("work_item_id, resource_id").in("work_item_id", p));
+  const byResource = new Map<string, Set<string>>();
+  for (const l of lines) byResource.set(l.resource_id, (byResource.get(l.resource_id) ?? new Set()).add(l.work_item_id));
+  const prices = await inChunks<{
+    resource_id: string; code: string; description: string; unit: string; unit_price: number | null; currency: string | null;
+    source_type: string | null; quote_valid_until: string | null; supplier_name: string | null; is_expired: boolean;
+  }>([...byResource.keys()], (p) =>
+    db.from("dwl_v_current_prices").select("resource_id, code, description, unit, unit_price, currency, source_type, quote_valid_until, supplier_name, is_expired").in("resource_id", p));
+  const cats = new Map((await inChunks<{ id: string; category: string }>([...byResource.keys()], (p) =>
+    db.from("dwl_resources").select("id, category").in("id", p))).map((r) => [r.id, r.category]));
+  return prices
+    .filter((p) => p.source_type === "estimate" || p.is_expired)
+    .map((p) => {
+      const ws = [...(byResource.get(p.resource_id) ?? [])];
+      return {
+        code: p.code, name: p.description, category: cats.get(p.resource_id) ?? "", unit: p.unit,
+        price: p.unit_price === null ? null : Number(p.unit_price), currency: p.currency, source: p.source_type,
+        validUntil: p.quote_valid_until, supplier: p.supplier_name, expired: p.is_expired,
+        items: ws.length, boqUses: ws.reduce((a, id) => a + (uses.get(id) ?? 0), 0),
+      };
+    })
+    .sort((a, b) => b.boqUses - a.boqUses || b.items - a.items || a.code.localeCompare(b.code));
 }
 
 export interface CostBreakdownLine { category: string; resourceCode: string; resourceName: string; unit: string; consumption: number; unitPrice: number | null; lineCost: number | null; expired: boolean }

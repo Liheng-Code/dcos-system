@@ -37,9 +37,16 @@ describe("isFeatureActive", () => {
         "/dashboard/planning/sheet", "/dashboard/wbs/lookahead", "/dashboard/planning/calendars", "/dashboard/planning/comparison",
       ].sort(),
     );
-    // Administration ships released, except the Construction Work Library (development until switched on).
+    // Administration ships fully released, the Construction Work Library included (released 2026-11-04).
     const administration = MODULE_FEATURES.filter((f) => f.moduleKey === "administration");
-    expect(administration.filter((f) => f.status !== "released").map((f) => f.navKey)).toEqual(["/dashboard/administration/work-library"]);
+    expect(administration.filter((f) => f.status !== "released").map((f) => f.navKey)).toEqual([]);
+  });
+
+  it("opens the Work Library from Administration while its Planning shortcut group stays hidden", () => {
+    expect(isFeatureRouteBlocked("/dashboard/administration/work-library", [], false)).toBe(false);
+    expect(getFeatureForPath("/dashboard/administration/work-library")?.moduleKey).toBe("administration");
+    expect(isFeatureActive("group:planning:activity_database", [], false)).toBe(false);
+    expect(isFeatureActive("/dashboard/administration/work-library", off("/dashboard/administration/work-library"), false)).toBe(false);
   });
 
   it("hides an unreleased page unless a row or the local override switches it on", () => {

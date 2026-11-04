@@ -33,8 +33,10 @@ export const administrationModule: ModuleManifest = {
     { href: "/dashboard/administration/license", label: "License", icon: KeyRound },
     { href: "/dashboard/administration/stakeholder-templates", label: "Stakeholder Templates", icon: FileText },
     { href: "/dashboard/administration/master-libraries", label: "Master Libraries", icon: BookTemplate },
-    // Construction Work Library (core, formerly the Planning Activity Database): hidden until switched on.
-    { href: "/dashboard/administration/work-library", label: "Work Library", icon: Network, status: "development" },
+    // Construction Work Library (core, formerly the Planning Activity Database). Released 2026-11-04 with Administration
+    // ("all" in release.ts); the Planning and QS shortcuts share its nav key, so they count as released too, but stay
+    // hidden while their own groups are in development.
+    { href: "/dashboard/administration/work-library", label: "Work Library", icon: Network },
     { href: "/dashboard/administration/mdm", label: "Master Data Governance", icon: Database },
   ],
   hub: {

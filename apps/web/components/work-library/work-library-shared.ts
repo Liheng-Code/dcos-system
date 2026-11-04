@@ -3,7 +3,11 @@
 import type { MasterRow } from "@/lib/work-library/work-library-service";
 
 /** One row in the activity list (division list or search result). */
-export type ActivityListItem = Pick<MasterRow, "id" | "visible_code" | "code" | "name"> & { default_unit: string | null };
+export type ActivityListItem = Pick<MasterRow, "id" | "visible_code" | "code" | "name"> & {
+  default_unit: string | null;
+  /** Set on division lists (not search results): quantity-based with no library norm. */
+  noNorm?: boolean;
+};
 
 export const SELECT_CLS =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60";

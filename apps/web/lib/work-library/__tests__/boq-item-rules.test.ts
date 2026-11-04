@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  countLabel, divisionText, GAP_FILTER, mergeUnits, parseConsumption, rateText, resourceColumnLabel, usageBlockers, WORK_ITEM_GAPS, workItemGaps, workItemLabel,
+  countLabel, divisionText, FLAG_LABEL, GAP_FILTER, mergeUnits, parseConsumption, PRICE_FLAGS, priceFlags, rateText, resourceColumnLabel, usageBlockers,
+  WORK_ITEM_GAPS, workItemGaps, workItemLabel,
 } from "../boq-item-rules";
 
 describe("boq item rules", () => {
@@ -50,6 +51,17 @@ describe("BOQ item gaps", () => {
     expect(WORK_ITEM_GAPS).toEqual(["division", "rate", "activity"]);
     for (const g of WORK_ITEM_GAPS) expect(GAP_FILTER[g].column).toBeTruthy();
     expect(GAP_FILTER.rate).toEqual({ column: "net_rate", op: "is" });
+  });
+
+  it("flags the price basis separately from the gaps", () => {
+    expect(priceFlags({ estimatePriceLines: 2, expiredPriceLines: 1 })).toEqual(["estimate", "expired"]);
+    expect(priceFlags({ estimatePriceLines: 0, expiredPriceLines: 0 })).toEqual([]);
+    expect(priceFlags({})).toEqual([]);
+    for (const f of PRICE_FLAGS) {
+      expect(GAP_FILTER[f].op).toBe("positive");
+      expect(WORK_ITEM_GAPS).not.toContain(f);
+    }
+    expect(FLAG_LABEL.expired).toBe("Expired quote");
   });
 
   it("puts counts in the right number", () => {

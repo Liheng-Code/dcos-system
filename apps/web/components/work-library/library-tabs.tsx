@@ -10,11 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  listActivitiesUsingWorkItem, listAllWorkItems, listResourcesLibrary, listWorkItemsLibrary, workItemDivisionCounts, workItemGapCounts, type Division, type MasterRow, type ResourceListRow, type WorkItemListRow,
+  listActivitiesUsingWorkItem, listAllWorkItems, listRepriceResources, listResourcesLibrary, listWorkItemsLibrary, workItemDivisionCounts, workItemGapCounts,
+  type Division, type MasterRow, type ResourceListRow, type WorkItemListRow,
 } from "@/lib/work-library/work-library-service";
 import { countByDivision, inDivision, NO_DIVISION } from "@/lib/work-library/activity-chips-rules";
 import {
-  countLabel, GAP_HINT, GAP_LABEL, rateText, WORK_ITEM_GAPS, workItemGaps, workItemLabel, type WorkItemGap,
+  countLabel, FLAG_LABEL, GAP_HINT, GAP_LABEL, PRICE_FLAGS, PRICE_HINT, PRICE_LABEL, priceFlags, rateText, WORK_ITEM_GAPS, workItemGaps, workItemLabel,
+  type WorkItemFlag,
 } from "@/lib/work-library/boq-item-rules";
 import { errorMessage, PAGE_SIZE, SELECT_CLS } from "./work-library-shared";
 import { DivisionSplit, selectedDivisionLabel } from "./division-filter-pane";
@@ -72,14 +74,14 @@ export function BoqLibraryTab({
   onSuggest: (division: string | null) => void;
 }) {
   const [division, setDivision] = useState<string | null>(null);
-  const [gap, setGap] = useState<WorkItemGap | null>(null);
+  const [gap, setGap] = useState<WorkItemFlag | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [exporting, setExporting] = useState(false);
   const key = `${query}|${division}|${gap}|${showInactive}|${refreshKey}`;
   const countKey = `${query}|${gap}|${showInactive}|${refreshKey}`;
   const gapKey = `${query}|${division}|${showInactive}|${refreshKey}`;
   const [counts, setCounts] = useState<{ key: string; map: Map<string, number> } | null>(null);
-  const [gapCounts, setGapCounts] = useState<{ key: string; counts: Record<WorkItemGap, number> } | null>(null);
+  const [gapCounts, setGapCounts] = useState<{ key: string; counts: Record<WorkItemFlag, number> } | null>(null);
   useEffect(() => {
     let live = true;
     // On failure the pane shows no counts; the table reports its own error.
@@ -129,20 +131,32 @@ export function BoqLibraryTab({
     } finally { setMore(false); }
   }
 
-  /** The current list (all pages) as a spreadsheet; with the "No rate" gap it is the QS to-do list. */
+  /**
+   * The current list (all pages) as a spreadsheet; with the "No rate" gap it is the QS to-do list. A price basis
+   * filter adds a "Resources to re-price" sheet: the estimated / expired prices behind those items, most-used first.
+   */
   async function exportList() {
     setExporting(true);
     try {
       const rows = await listAllWorkItems(db, { q: query, division, gap, showInactive });
+      const reprice = gap === "estimate" || gap === "expired" ? await listRepriceResources(db, rows) : null;
       const XLSX = await import("xlsx");
       const name = (c: string | null) => (c ? `${c} ${divisions.find((d) => d.code === c)?.name ?? ""}`.trim() : "");
       const sheet = XLSX.utils.json_to_sheet(rows.map((w) => ({
         Code: w.code, Description: workItemLabel(w), Unit: w.unit, Division: name(w.divisionCode), Section: w.sectionCode ?? "",
         "Net rate": w.rate ?? "", "Build-up lines": w.buildupLines ?? 0, Activities: w.usedBy, "BOQ uses": w.boqUses ?? 0,
-        Gaps: workItemGaps(w).map((g) => GAP_LABEL[g]).join(", "), Active: w.isActive === false ? "N" : "Y",
+        Gaps: workItemGaps(w).map((g) => GAP_LABEL[g]).join(", "), "Price basis": priceFlags(w).map((f) => PRICE_LABEL[f]).join(", "),
+        Active: w.isActive === false ? "N" : "Y",
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, sheet, "BOQ items");
+      if (reprice) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reprice.filter((r) => (gap === "expired" ? r.expired : r.source === "estimate")).map((r) => ({
+          Code: r.code, Resource: r.name, Category: r.category, Unit: r.unit, "Current price": r.price ?? "", Currency: r.currency ?? "",
+          Source: r.source ?? "", "Quote valid until": r.validUntil ?? "", Supplier: r.supplier ?? "", "BOQ items using it": r.items, "BOQ uses": r.boqUses,
+          "New price": "", "Quotation ref": "",
+        }))), "Resources to re-price");
+      }
       XLSX.writeFile(wb, `work-library-boq-items${gap ? `-${gap}` : ""}.xlsx`);
     } catch (e) { toast.error(errorMessage(e, "Could not export")); } finally { setExporting(false); }
   }
@@ -173,6 +187,20 @@ export function BoqLibraryTab({
             <CheckCircle2 className="h-3.5 w-3.5" /> Compliant
           </span>
         )}
+        <span className="ml-2 text-xs font-medium text-muted-foreground">Price basis:</span>
+        {PRICE_FLAGS.map((f) => {
+          const n = gapCount?.[f];
+          return (
+            <button
+              key={f} type="button" title={PRICE_HINT[f]} aria-pressed={gap === f} onClick={() => setGap(gap === f ? null : f)}
+              className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs",
+                gap === f ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary hover:text-primary")}
+            >
+              {PRICE_LABEL[f]}
+              {n !== undefined && <span className={cn("rounded-full px-1.5 tabular-nums", gap === f ? "bg-primary-foreground/20" : "bg-muted")}>{n}</span>}
+            </button>
+          );
+        })}
         <label className="ml-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <input type="checkbox" className="h-3.5 w-3.5" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show inactive
         </label>
@@ -187,7 +215,7 @@ export function BoqLibraryTab({
         <TableError message={state.error} onRetry={() => { setState(null); setRetry((n) => n + 1); }} />
       ) : state.items.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          {gap ? `No BOQ items with "${GAP_LABEL[gap]}" here.` : division !== null ? "No BOQ items in this division." : query ? "No BOQ items match your search." : "The cost library has no BOQ items yet."}
+          {gap ? `No BOQ items with "${FLAG_LABEL[gap]}" here.` : division !== null ? "No BOQ items in this division." : query ? "No BOQ items match your search." : "The cost library has no BOQ items yet."}
         </p>
       ) : (
         <BoqTable
@@ -242,7 +270,12 @@ function BoqTable({
                     </TableCell>
                     <TableCell>{w.unit}</TableCell>
                     <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">{w.sectionCode ?? "-"}</TableCell>
-                    <TableCell className={cn("whitespace-nowrap text-right tabular-nums", noRate && "text-amber-600")}>{noRate ? "No rate" : rateText(w.rate)}</TableCell>
+                    <TableCell className={cn("whitespace-nowrap text-right tabular-nums", noRate && "text-amber-600")}>
+                      {noRate ? "No rate" : rateText(w.rate)}
+                      {!noRate && priceFlags(w).map((f) => (
+                        <span key={f} title={PRICE_HINT[f]} className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground">{f === "estimate" ? "est." : "expired"}</span>
+                      ))}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">{w.buildupLines ? `${w.buildupLines} line${w.buildupLines === 1 ? "" : "s"}` : "none"}</TableCell>
                     <TableCell className="text-right">{countBadge(w.usedBy, "activity", "activities")}</TableCell>
                     <TableCell className="text-right">{countBadge(w.boqUses, "line", "lines")}</TableCell>
