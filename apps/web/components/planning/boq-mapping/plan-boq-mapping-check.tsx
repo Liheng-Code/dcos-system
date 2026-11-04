@@ -223,7 +223,7 @@ export function PlanBoqMappingCheck() {
             </table>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Fix over-mapping at its source: the BOQ item&apos;s activity shares (Activity Database), the location map, or the library links in the Generate run; then generate again.
+            Fix over-mapping at its source: the BOQ item&apos;s activity shares (Construction Work Library), the location map, or the library links in the Generate run; then generate again.
           </p>
         </div>
       )}

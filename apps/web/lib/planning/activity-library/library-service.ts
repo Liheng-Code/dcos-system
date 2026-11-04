@@ -4,7 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inChunks } from "./in-chunks";
-import { copyMasterChips } from "./activity-chips-service";
+import { copyMasterChips } from "@/lib/work-library/activity-chips-service";
 import type {
   ActCategory, ActDomain, ActFamily, ActLogicRule, ActMaster, ActMethod, ActQuantityRule,
   ActRequirement, ActTemplate, ActTemplateDependency, ActTemplateItem, ActProductivityStandard,
@@ -83,7 +83,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
     code: src.code, name: src.name, description: src.description, domain_id: src.domain_id, category_id: src.category_id,
     family_id: src.family_id, discipline: src.discipline, work_type: src.work_type, default_unit: src.default_unit,
     owner: src.owner, source: src.source, sectors: src.sectors, building_types: src.building_types,
-    // Activity Database catalogue fields (visible_code is inherited from the predecessor by trigger)
+    // Construction Work Library catalogue fields (visible_code is inherited from the predecessor by trigger)
     csi_division_code: srcCat.csi_division_code ?? null, csi_section_code: srcCat.csi_section_code ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
     min_duration_pct: srcCat.min_duration_pct ?? null, max_duration_pct: srcCat.max_duration_pct ?? null, image_path: srcCat.image_path ?? null,
     crew_size: srcCat.crew_size ?? null, hours_per_day: srcCat.hours_per_day ?? null,

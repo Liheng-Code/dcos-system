@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { assignTaskToProfile, type AssignableTask } from "@/lib/project/tasks/assign-task";
 import { dedupe } from "@/lib/request-dedup";
 import { inChunks } from "@/lib/planning/activity-library/in-chunks";
-import { safeTerm } from "@/lib/planning/activity-library/catalogue-rules";
+import { safeTerm } from "@/lib/work-library/catalogue-rules";
 import { QS_CATEGORY, type QsResourceOption } from "./resource-rate";
 import { capacityOn, type CapacityPeriod } from "./resource-levelling";
 

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { getProjectById, insertSubmittalPackages, listSubmittalPackagesByProjectId, listWbsNodesByProjectIdOrderedByFullPath } from "@/lib/documents/documents-queries";
 import { listCatalogueOptions, listProjectRequirements, type CatalogueOption } from "@/lib/planning/public";
 
-/** Submittal categories that fulfil a Planning requirement catalogue (Activity Database). */
+/** Submittal categories that fulfil a Planning requirement catalogue (Construction Work Library). */
 const CATALOGUE_KIND = { shop_drawing: "shop_drawing", method_statement: "method_statement" } as const;
 type CatalogueKind = (typeof CATALOGUE_KIND)[keyof typeof CATALOGUE_KIND];
 
@@ -68,7 +68,7 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
     catalogue_item_id: "",
   });
 
-  // Planning requirement this submittal fulfils: shop drawing type or method statement (Activity Database catalogue).
+  // Planning requirement this submittal fulfils: shop drawing type or method statement (Construction Work Library catalogue).
   const catalogueKind: CatalogueKind | null = CATALOGUE_KIND[form.submittal_type as keyof typeof CATALOGUE_KIND] ?? null;
   const [catalogue, setCatalogue] = useState<{ kind: CatalogueKind; options: CatalogueOption[]; required: Set<string> } | null>(null);
   useEffect(() => {
@@ -307,7 +307,7 @@ export function SubmittalCreateDialog({ projectId, onClose, onCreated }: Submitt
                     {catalogueOptions.other.map((o) => <option key={o.id} value={o.id}>{o.code} — {o.name}</option>)}
                   </optgroup>
                 </select>
-                <p className="text-xs text-muted-foreground">Links this submittal to the Activity Database, so the Planning Requirements Tracker can show it as submitted.</p>
+                <p className="text-xs text-muted-foreground">Links this submittal to the Construction Work Library, so the Planning Requirements Tracker can show it as submitted.</p>
               </div>
             )}
 

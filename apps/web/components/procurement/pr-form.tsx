@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deletePrItemsByPrId, getPrById, getProjectById, insertPr, insertPrItems, listBudgetCodeGroups, listPrItemsByPrId, updatePrById } from "@/lib/procurement/procurement-queries";
 import { Loader2, Save, Plus, Trash2, ArrowLeft, Building2, Hash } from "lucide-react";
@@ -13,6 +13,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { BoqItemPickerDialog } from "@/components/procurement/boq-item-picker-dialog";
 import { useProject } from "@/components/dashboard/project-context";
 import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
+import { createClient } from "@/lib/supabase/client";
+import { commonPackage } from "@/lib/work-library/activity-chips-rules";
+import { packagesForBoqItems } from "@/lib/work-library/activity-chips-service";
+import { ProcurementPackageSelect } from "@/components/work-library/procurement-package-select";
 
 interface PRItem {
   key: string;
@@ -42,7 +46,11 @@ export function PRForm({ prId }: { prId?: string }) {
     priority: "normal",
     budget_code: "",
     purpose: "",
+    // Construction Work Library procurement package (procurement_prs.package_id).
+    package_id: "",
   });
+  const db = useMemo(() => createClient(), []);
+  const [suggestedPackages, setSuggestedPackages] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: "", ids: new Set() });
   const [items, setItems] = useState<PRItem[]>([
     { key: crypto.randomUUID(), boq_item_id: null, item_code: "", item_description: "", unit: "pcs", quantity: 1, estimated_unit_price: 0, estimated_total: 0, budget_code: "", notes: "" },
   ]);
@@ -64,7 +72,10 @@ export function PRForm({ prId }: { prId?: string }) {
         listPrItemsByPrId(prId, "*"),
       ]).then(([prRes, itemsRes]) => {
         if (prRes.data) {
-          const record = prRes.data as { pr_number: string; preparation_date: string | null; required_date: string | null; ship_to: string | null; priority: string; budget_code: string | null; notes: string | null };
+          const record = prRes.data as {
+            pr_number: string; preparation_date: string | null; required_date: string | null; ship_to: string | null; priority: string; budget_code: string | null;
+            notes: string | null; package_id: string | null;
+          };
           setPrNumber(record.pr_number);
           setForm({
             preparation_date: record.preparation_date ?? new Date().toISOString().slice(0, 10),
@@ -73,6 +84,7 @@ export function PRForm({ prId }: { prId?: string }) {
             priority: record.priority ?? "normal",
             budget_code: record.budget_code ?? "",
             purpose: record.notes ?? "",
+            package_id: record.package_id ?? "",
           });
           if (itemsRes.data) {
             setItems((itemsRes.data as { boq_item_id: string | null; item_code: string | null; item_description: string; unit: string; quantity: number; estimated_unit_price: number | null; estimated_total: number | null; budget_code: string | null; notes: string | null }[]).map(i => ({
@@ -99,6 +111,24 @@ export function PRForm({ prId }: { prId?: string }) {
       });
     }
   }, [selectedProjectId, selectedProject, isEditing, prId]);
+
+  // Packages the BOQ-linked lines lead to (cost item -> activities -> packages); one shared package fills an empty choice.
+  const boqKey = items.map((i) => i.boq_item_id ?? "").filter(Boolean).sort().join(",");
+  useEffect(() => {
+    if (!boqKey) return;
+    let live = true;
+    packagesForBoqItems(db, boqKey.split(","))
+      .then((byLine) => {
+        if (!live) return;
+        const lists = [...byLine.values()];
+        setSuggestedPackages({ key: boqKey, ids: new Set(lists.flat()) });
+        const only = commonPackage(lists);
+        if (only) setForm((prev) => (prev.package_id ? prev : { ...prev, package_id: only }));
+      })
+      .catch(() => { if (live) setSuggestedPackages({ key: boqKey, ids: new Set() }); });
+    return () => { live = false; };
+  }, [db, boqKey]);
+  const suggestedIds = useMemo(() => (suggestedPackages.key === boqKey ? suggestedPackages.ids : new Set<string>()), [suggestedPackages, boqKey]);
 
   function updateForm(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -168,6 +198,7 @@ export function PRForm({ prId }: { prId?: string }) {
       priority: form.priority,
       budget_code: form.budget_code || null,
       notes: form.purpose || null,
+      package_id: form.package_id || null,
       total_estimated_cost: totalEstimated(),
     };
 
@@ -296,6 +327,14 @@ export function PRForm({ prId }: { prId?: string }) {
                   <option key={g.code_letter} value={g.code_letter}>{g.code_letter} — {g.name}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Procurement Package</Label>
+              <ProcurementPackageSelect
+                db={db} value={form.package_id} onChange={(id) => updateForm("package_id", id)} suggestedIds={suggestedIds}
+                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              />
             </div>
 
             <div className="space-y-1.5">

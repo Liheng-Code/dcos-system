@@ -115,14 +115,16 @@ export const PLANNING_GROUPS: ModuleNavGroup[] = [
     ],
   },
   {
-    // Activity Database (doc 23): CSI divisions, activities, BOQs and resources in one screen,
-    // built on the Activity Library masters. Hidden until switched on.
+    // BOQ-driven programme and the project checks built on the Construction Work Library (core,
+    // Administration; formerly the Activity Database here). navKey keeps its historical slug so
+    // nav_item_settings rows survive the relabel. Hidden until switched on.
     key: "activity_database",
     navKey: "group:planning:activity_database",
-    label: "Activity Database",
-    href: "/dashboard/planning/activity-database",
+    label: "BOQ & Requirements",
+    href: "/dashboard/planning/boq-programme",
     items: [
-      { label: "Activity Database", href: "/dashboard/planning/activity-database", status: "development" },
+      // Shortcut: the page lives in Administration, the same route listed under two modules.
+      { label: "Work Library", href: "/dashboard/administration/work-library", status: "development" },
       // Doc 24 phase 1: BOQ readiness report (programme generation follows in phase 2)
       { label: "Generate from BOQ", href: "/dashboard/planning/boq-programme", status: "development" },
       // doc 35 Phase B: mapped vs BOQ quantity, double counting, BOQ change reviews, mapping history

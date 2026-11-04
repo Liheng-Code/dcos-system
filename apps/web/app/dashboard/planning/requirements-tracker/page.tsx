@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import { ClipboardCheck, Loader2 } from "lucide-react";
 import { PlanPageShell } from "@/components/planning/plan-page-shell";
-import { RequirementsTrackerView } from "@/components/planning/activity-database/requirements-tracker-view";
+import { RequirementsTrackerView } from "@/components/planning/requirements-tracker-view";
 
 export default function RequirementsTrackerPage() {
   return (

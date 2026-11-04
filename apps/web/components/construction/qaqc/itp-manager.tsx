@@ -24,7 +24,7 @@ type ItemForm = {
 };
 const EMPTY_ITEM: ItemForm = { activity: "", inspection_type: "review", responsible_party: "", acceptance_criteria: "", document_reference: "", tc_item_id: "" };
 
-/** ITP line fields from a Planning T&C item (Activity Database). */
+/** ITP line fields from a Planning T&C item (Construction Work Library). */
 function itemFromTc(tc: CatalogueOption): Omit<ItemForm, "responsible_party"> {
   return {
     activity: tc.name, inspection_type: itpInspectionType(tc.tc_type ?? "test"),
@@ -63,7 +63,7 @@ export function ItpManager({ projectId }: Props) {
   // New item form (per ITP)
   const [itemForm, setItemForm] = useState<Record<string, ItemForm>>({});
 
-  // Planning T&C catalogue and the T&C items this project's activities require (Activity Database).
+  // Planning T&C catalogue and the T&C items this project's activities require (Construction Work Library).
   const db = useMemo(() => createClient(), []);
   const [tcOptions, setTcOptions] = useState<CatalogueOption[]>([]);
   const [tcRequired, setTcRequired] = useState<Requirement[] | null>(null);
@@ -334,7 +334,7 @@ export function ItpManager({ projectId }: Props) {
                       </table>
                     )}
 
-                    {/* T&C required by the project's activities (Planning Activity Database) */}
+                    {/* T&C required by the project's activities (Construction Work Library) */}
                     {tcRequired && open.length > 0 && (
                       <div className="border-b border-slate-100 bg-violet-50/50 p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2">

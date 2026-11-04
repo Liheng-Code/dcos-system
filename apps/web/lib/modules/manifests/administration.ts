@@ -7,6 +7,7 @@ import {
   Database,
   Settings,
   KeyRound,
+  Network,
   ShieldAlert,
   ShieldCheck,
   Users,
@@ -32,6 +33,8 @@ export const administrationModule: ModuleManifest = {
     { href: "/dashboard/administration/license", label: "License", icon: KeyRound },
     { href: "/dashboard/administration/stakeholder-templates", label: "Stakeholder Templates", icon: FileText },
     { href: "/dashboard/administration/master-libraries", label: "Master Libraries", icon: BookTemplate },
+    // Construction Work Library (core, formerly the Planning Activity Database): hidden until switched on.
+    { href: "/dashboard/administration/work-library", label: "Work Library", icon: Network, status: "development" },
     { href: "/dashboard/administration/mdm", label: "Master Data Governance", icon: Database },
   ],
   hub: {

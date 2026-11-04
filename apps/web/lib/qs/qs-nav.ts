@@ -65,6 +65,8 @@ export const QS_GROUPS: ModuleNavGroup[] = [
       { label: "Budget Codes", href: "/dashboard/tenders/budget-codes" },
       { label: "Element Library", href: "/dashboard/qs/element-library" },
       { label: "Prelim Cost Library", href: "/dashboard/tenders/cost-library" },
+      // Shortcut to the core Construction Work Library (Administration): activities linked to these cost items.
+      { label: "Work Library", href: "/dashboard/administration/work-library", status: "development" },
     ],
   },
   {

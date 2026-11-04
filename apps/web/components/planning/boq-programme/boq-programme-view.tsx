@@ -27,8 +27,8 @@ import { Label } from "@/components/ui/label";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BoqItemDetailDialog } from "@/components/planning/activity-database/boq-item-detail-dialog";
-import { SELECT_CLS } from "@/components/planning/activity-database/activity-database-shared";
+import { BoqItemDetailDialog } from "@/components/work-library/boq-item-detail-dialog";
+import { SELECT_CLS } from "@/components/work-library/work-library-shared";
 import { cn } from "@/lib/utils";
 
 const QS_BRIDGE_HREF = "/dashboard/planning/activity-library/qs-bridge";

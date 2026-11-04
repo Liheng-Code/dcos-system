@@ -37,8 +37,9 @@ describe("isFeatureActive", () => {
         "/dashboard/planning/sheet", "/dashboard/wbs/lookahead", "/dashboard/planning/calendars", "/dashboard/planning/comparison",
       ].sort(),
     );
+    // Administration ships released, except the Construction Work Library (development until switched on).
     const administration = MODULE_FEATURES.filter((f) => f.moduleKey === "administration");
-    expect(administration.every((f) => f.status === "released")).toBe(true);
+    expect(administration.filter((f) => f.status !== "released").map((f) => f.navKey)).toEqual(["/dashboard/administration/work-library"]);
   });
 
   it("hides an unreleased page unless a row or the local override switches it on", () => {

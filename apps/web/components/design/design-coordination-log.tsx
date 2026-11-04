@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { insertDesignCoordinationLog, listDesignCoordinationLog, updateDesignCoordinationLog } from "@/lib/design/design-queries";
-import { getChipOptionsByIds, searchCoordinationItems } from "@/lib/planning/public";
+import { getChipOptionsByIds, searchCoordinationItems } from "@/lib/work-library/activity-chips-service";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/components/dashboard/project-context";
 import { Search, Plus, Loader2, ArrowLeft, Pencil } from "lucide-react";
@@ -27,11 +27,11 @@ const SELECT_CLS = "flex h-10 w-full rounded-md border border-input bg-transpare
 /** Planning coordination disciplines that map onto this log's arc / str / mep. */
 const DISCIPLINE_CODE: Record<string, string> = { Architectural: "arc", Structural: "str", MEP: "mep" };
 
-/** Planning coordination item (Activity Database) a log entry addresses. */
+/** Planning coordination item (Construction Work Library) a log entry addresses. */
 const COORDINATION_LINK: ScheduleLink = {
   key: "coordination_item_id",
   label: "Planning Coordination Item",
-  source: "From the Planning Activity Database (Coordination). Picking one fills an empty subject.",
+  source: "From the Construction Work Library (Coordination). Picking one fills an empty subject.",
   search: async (q) => (await searchCoordinationItems(createClient(), q, 30)).map((c) => ({
     id: c.id, label: `${c.code} — ${c.name}`, detail: c.discipline ?? undefined,
     fill: { subject: c.name, ...(c.discipline && DISCIPLINE_CODE[c.discipline] ? { discipline_to: DISCIPLINE_CODE[c.discipline] } : {}) },

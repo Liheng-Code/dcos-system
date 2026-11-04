@@ -12,6 +12,7 @@ import { useProcurementPermissions } from "@/components/procurement/use-procurem
 import { ReasonDialog } from "@/components/procurement/reason-dialog";
 import { transitionClass, transitionIcon, transitionKey } from "@/components/procurement/transition-style";
 import { availableTransitions, procErrorMessage, type ProcTransition } from "@/lib/procurement/procurement-transitions";
+import { packageLabel } from "@/lib/work-library/activity-chips-rules";
 import { transitionPr, getBudgetCodeGroupByCodeLetter, getBudgetConfirmationById, getPrById, getProjectById, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 
 interface PRRecord {
@@ -27,6 +28,8 @@ interface PRRecord {
   delivery_location: string | null;
   priority: string;
   budget_code: string | null;
+  // Construction Work Library procurement package (procurement_prs.package_id).
+  package: { code: string; name: string } | null;
   budget_checked: boolean;
   budget_checked_by: string | null;
   budget_check_notes: string | null;
@@ -92,7 +95,7 @@ export function PRDetail({ id }: PRDetailProps) {
 
   const fetchDetail = useCallback(() => {
     Promise.all([
-      getPrById(id, "*"),
+      getPrById(id, "*, package:plan_act_procurement_packages(code, name)"),
       listPrItemsByPrId(id, "*, qs_boq_items(item_no, item_code, description)"),
     ]).then(([prRes, itemsRes]) => {
       if (prRes.data) {
@@ -232,6 +235,7 @@ export function PRDetail({ id }: PRDetailProps) {
               <div><span className="text-muted-foreground">Required Date</span><p className="font-medium">{pr.required_date ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Ship To</span><p className="font-medium">{pr.ship_to ?? pr.delivery_location ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Budget Group</span><p className="font-medium">{pr.budget_code ? `${pr.budget_code} — ${budgetGroupName ?? "..."}` : "—"}</p></div>
+              <div><span className="text-muted-foreground">Procurement Package</span><p className="font-medium">{pr.package ? packageLabel(pr.package) : "—"}</p></div>
               <div><span className="text-muted-foreground">Budget Check</span><p className="font-medium">{pr.budget_checked ? "Checked ✓" : "Not checked"}</p></div>
               {pr.budget_checked && pr.budget_check_notes && <div className="col-span-2"><span className="text-muted-foreground">Budget Notes</span><p className="font-medium">{pr.budget_check_notes}</p></div>}
               <div><span className="text-muted-foreground">Est. Total</span><p className="font-bold">${pr.total_estimated_cost?.toLocaleString() ?? "—"}</p></div>

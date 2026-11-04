@@ -23,7 +23,7 @@ export interface ItpItem {
   responsible_party: string | null;
   acceptance_criteria: string | null;
   document_reference: string | null;
-  /** Planning T&C item (Activity Database) this line comes from; null for a line typed by hand. */
+  /** Planning T&C item (Construction Work Library) this line comes from; null for a line typed by hand. */
   tc_item_id: string | null;
 }
 
