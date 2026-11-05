@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
+import { listMasterTemplateUsage,
   deleteMaster, duplicateMaster, getMasterDetail, getMasterImageUrl, updateMasterDetails, uploadMasterImage,
   type Division, type MasterDetail, type MasterDetailsPatch,
 } from "@/lib/work-library/work-library-service";
@@ -26,6 +26,7 @@ import { loadLibraryTree, setMasterStatus, type LibraryTree } from "@/lib/planni
 import { ActStatusPill } from "@/components/planning/library-public";
 import { PlanActMasterForm } from "@/components/planning/library-public";
 import { ActivityBoqsTab } from "./activity-boqs-tab";
+import { ActivityChangesTab } from "./activity-changes-tab";
 import { ActivityDetailsTab, detailsSchema, type DetailsValues } from "./activity-details-tab";
 import { ActivityLogicTab } from "./activity-logic-tab";
 import { errorMessage, type ActivityListItem } from "./work-library-shared";
@@ -53,6 +54,7 @@ function toValues(d: MasterDetail): DetailsValues {
     name: m.name, description: m.description ?? "", default_unit: m.default_unit ?? "", activity_type: m.activity_type ?? "",
     visible_code: m.visible_code ?? "", trade: m.trade ?? "", csi_division_code: m.csi_division_code ?? "", csi_section_code: m.csi_section_code ?? "",
     min_pct: str(m.min_duration_pct), max_pct: str(m.max_duration_pct), crew_size: str(m.crew_size), hours_per_day: str(m.hours_per_day),
+    self_performed: m.self_performed ?? false,
   };
 }
 
@@ -105,6 +107,16 @@ function DetailBody({
 }) {
   const router = useRouter();
   const [detail, setDetail] = useState<MasterDetail | null>(null);
+  // WBS templates that use this activity (by code, so every version)
+  const [usage, setUsage] = useState<{ code: string; rows: { template_name: string; tasks: number }[] } | null>(null);
+  const usageCode = detail?.master.code ?? null;
+  useEffect(() => {
+    if (!usageCode) return;
+    let live = true;
+    listMasterTemplateUsage(db, usageCode).then((rows) => { if (live) setUsage({ code: usageCode, rows }); }).catch(() => { if (live) setUsage({ code: usageCode, rows: [] }); });
+    return () => { live = false; };
+  }, [db, usageCode]);
+  const templateUse = usage && usage.code === usageCode ? usage.rows : null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
@@ -116,7 +128,7 @@ function DetailBody({
 
   const form = useForm<DetailsValues>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", csi_division_code: "", csi_section_code: "", min_pct: "", max_pct: "", crew_size: "", hours_per_day: "8" },
+    defaultValues: { name: "", description: "", default_unit: "", activity_type: "", visible_code: "", trade: "", csi_division_code: "", csi_section_code: "", min_pct: "", max_pct: "", crew_size: "", hours_per_day: "8", self_performed: false },
   });
   const isDirty = form.formState.isDirty;
   useEffect(() => { setDirty(isDirty); }, [isDirty, setDirty]);
@@ -148,6 +160,8 @@ function DetailBody({
       // crew and working hours are planning inputs, editable at any status
       crew_size: num(v.crew_size),
       hours_per_day: num(v.hours_per_day),
+      // procurement: self-performed work needs no package (not versioned)
+      self_performed: v.self_performed,
     };
     if (editable) {
       patch.name = v.name;
@@ -246,6 +260,13 @@ function DetailBody({
                 <span className="font-mono">{header.code}</span><span>·</span>
                 <ActStatusPill status={header.status} /><span>·</span><span>v{header.version}</span>
                 {header.csi && <><span>·</span><span title="CSI MasterFormat">{header.csi}</span></>}
+                {templateUse && (
+                  <><span>·</span>
+                    <span title={templateUse.length ? templateUse.map((u) => `${u.template_name}: ${u.tasks} task${u.tasks === 1 ? "" : "s"}`).join("\n") : "No WBS template task points at this activity"}>
+                      {templateUse.length ? `Used in ${templateUse.length} WBS template${templateUse.length === 1 ? "" : "s"} (${templateUse.reduce((a, u) => a + u.tasks, 0)} tasks)` : "Not in any WBS template"}
+                    </span>
+                  </>
+                )}
               </>
             ) : "Loading..."}
             {position && <span className="text-muted-foreground">({position})</span>}
@@ -274,6 +295,7 @@ function DetailBody({
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="boqs">BOQs ({detail.workItemCount})</TabsTrigger>
               <TabsTrigger value="logic">Predecessors &amp; Successors</TabsTrigger>
+              {detail.master.version > 1 && <TabsTrigger value="changes">Changes vs v{detail.master.version - 1}</TabsTrigger>}
             </TabsList>
             <TabsContent value="details" className="pt-2">
               <form id="activity-details-form" onSubmit={form.handleSubmit(save)} noValidate>
@@ -301,6 +323,11 @@ function DetailBody({
             <TabsContent value="logic" className="pt-2">
               <ActivityLogicTab db={db} masterId={detail.master.id} visibleCode={detail.master.visible_code} onSelectActivity={onJump} />
             </TabsContent>
+            {detail.master.version > 1 && (
+              <TabsContent value="changes" className="pt-2">
+                <ActivityChangesTab db={db} masterId={detail.master.id} />
+              </TabsContent>
+            )}
           </Tabs>
         )}
       </div>

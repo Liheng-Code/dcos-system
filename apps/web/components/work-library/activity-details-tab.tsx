@@ -31,8 +31,9 @@ export const detailsSchema = z
     csi_section_code: z.string(),
     min_pct: pct,
     max_pct: pct,
-    crew_size: z.string().refine((s) => s.trim() === "" || (/^d+$/.test(s.trim()) && Number(s) > 0), "Whole number above 0"),
+    crew_size: z.string().refine((s) => s.trim() === "" || (/^\d+$/.test(s.trim()) && Number(s) > 0), "Whole number above 0"),
     hours_per_day: z.string().refine((s) => s.trim() === "" || (Number.isFinite(Number(s)) && Number(s) > 0 && Number(s) <= 24), "More than 0, at most 24"),
+    self_performed: z.boolean(),
   })
   .refine((v) => v.min_pct.trim() === "" || v.max_pct.trim() === "" || Number(v.min_pct) <= Number(v.max_pct), {
     message: "Min must not exceed max",
@@ -40,6 +41,8 @@ export const detailsSchema = z
   });
 
 export type DetailsValues = z.infer<typeof detailsSchema>;
+
+const SELF_PERFORMED_HINT = "Work the main contractor does itself: it needs no procurement package and is never flagged \"No package\".";
 
 const TYPE_LABEL: Record<(typeof ACTIVITY_TYPES)[number], string> = {
   construction: "Construction", procurement: "Procurement", design: "Design", submittal: "Submittal", testing: "Testing", milestone: "Milestone",
@@ -230,6 +233,11 @@ export function ActivityDetailsTab({
             <Field label="Hours / day" error={errors.hours_per_day?.message}>
               <Input type="number" step="any" min={0} max={24} {...register("hours_per_day")} placeholder="8" aria-invalid={!!errors.hours_per_day} />
             </Field>
+            <Field label="Procurement">
+              <label className="flex h-9 items-center gap-2 text-sm" title={SELF_PERFORMED_HINT}>
+                <input type="checkbox" className="h-4 w-4" {...register("self_performed")} /> Self-performed (no package)
+              </label>
+            </Field>
           </div>
         ) : (
           <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -243,6 +251,7 @@ export function ActivityDetailsTab({
             <ValueCell label="Unit" value={v.default_unit ?? ""} />
             <ValueCell label="Crew size (workers)" value={v.crew_size ?? ""} />
             <ValueCell label="Hours / day" value={v.hours_per_day ?? ""} />
+            <ValueCell label="Procurement" value={v.self_performed ? "Self-performed (no package)" : "By package"} />
           </div>
         )}
         {edit && !versionedEditable && (

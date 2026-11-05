@@ -51,3 +51,6 @@ Mechanism key:
 | Core → Planning | Dashboards, EVM, control room | public | `lib/evm-service.ts`, `lib/control-room-service.ts`, `components/dashboard/*` → `schedule-service.ts` | |
 | Core → Procurement | Dashboard and control room counts | **direct** | `lib/dashboard/dashboard-queries.ts`, `lib/control-room-service.ts` | Reads tables directly. Since the hardening, users without procurement view permission get 0 (open decision: gate the widgets by permission). |
 | Licensing → QS | A tender counts toward the licence only once awarded | db | `20261019000001_licensing.sql` | |
+| Procurement → Work Library / Planning | Package Plan: packages of the project's unfinished tasks with order-by dates | db | `proc_project_package_plan` (`20261104171124`) reads `wbs_tasks`, `plan_act_master_procurement_packages`, `plan_act_procurement_packages`, `plan_schedule_settings` | Gated like the materials feed (`plan_feed_reader`). |
+| Procurement → Work Library | RFQ bidder trade match from the PR package | direct | `lib/procurement/rfq-trade-service.ts` reads `plan_act_procurement_packages` (core) | |
+| WBS Templates (core) → Work Library | Template tasks name their activity | jsonb | `wbs_templates.content` tasks `master_code`; `apply_wbs_template` sets `wbs_tasks.activity_master_id`; `wl_master_template_usage` shows usage | Version-agnostic code, no repoint needed. |

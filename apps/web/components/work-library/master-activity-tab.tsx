@@ -101,7 +101,12 @@ export function DivisionPane({
 
 // ---------------------------------------------------------------- activities
 
-const NO_NORM_HINT = "Duration comes from quantity but there is no productivity norm, so Generate cannot schedule it. Add one in Planning > Productivity > Norm Library.";
+/** Activity gap badges: flag key on the list item, badge text, hint. */
+const ACTIVITY_FLAGS = [
+  ["noNorm", "No norm", "Duration comes from quantity but there is no productivity norm, so Generate cannot schedule it. Add one in Planning > Productivity > Norm Library."],
+  ["noPackage", "No package", "No procurement package: add one on the activity (PD Package), or tick Self-performed if the main contractor does this work."],
+] as const;
+const FLAG_CLS = "bg-amber-500/15 text-amber-700 dark:text-amber-400";
 
 export function ActivityPane({
   activities, loading, error, onRetry, searching, selectedId, onOpen, onFocus,
@@ -109,13 +114,17 @@ export function ActivityPane({
   activities: ActivityListItem[]; loading: boolean; error: string | null; onRetry: () => void; searching: boolean;
   selectedId: string | null; onOpen: (id: string) => void; onFocus: (id: string | null) => void;
 }) {
-  const noNorm = activities.filter((a) => a.noNorm).length;
+  const flagCounts = ACTIVITY_FLAGS.map(([key, label, hint]) => ({ key, label, hint, n: activities.filter((a) => a[key]).length })).filter((f) => f.n > 0);
   return (
     <PaneShell
       title={searching ? "Activities (search)" : "Activities"} count={loading || error ? null : activities.length}
-      extra={!loading && !error && noNorm > 0 && (
-        <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-normal text-amber-700 tabular-nums dark:text-amber-400" title={NO_NORM_HINT}>
-          {noNorm.toLocaleString()} no norm
+      extra={!loading && !error && flagCounts.length > 0 && (
+        <span className="ml-auto flex gap-1">
+          {flagCounts.map((f) => (
+            <span key={f.key} className={cn("rounded-full px-2 py-0.5 text-xs font-normal tabular-nums", FLAG_CLS)} title={f.hint}>
+              {f.n.toLocaleString()} {f.label.toLowerCase()}
+            </span>
+          ))}
         </span>
       )}
     >
@@ -133,7 +142,9 @@ export function ActivityPane({
                 >
                   <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground">{a.visible_code ?? "-"}</span>
                   <span className="min-w-0 flex-1 truncate">{activityLabel(a)}</span>
-                  {a.noNorm && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-400" title={NO_NORM_HINT}>No norm</span>}
+                  {ACTIVITY_FLAGS.filter(([key]) => a[key]).map(([key, label, hint]) => (
+                    <span key={key} className={cn("shrink-0 rounded px-1.5 py-0.5 text-[11px]", FLAG_CLS)} title={hint}>{label}</span>
+                  ))}
                 </button>
               </li>
             ))}

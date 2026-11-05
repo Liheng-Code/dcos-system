@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseActivityImport, type RawRow } from "../activity-database-import";
+import { parseActivityImport, parseChipKind, parseYesNo, type RawRow } from "../activity-database-import";
 import { layoutLogicNetwork, RELATION_COLORS, edgeLabel } from "../logic-network-layout";
 import { formatVisibleCode, isValidDivisionCode, normalizeDivisionCode, parseVisibleCode } from "../visible-code";
 
@@ -138,5 +138,50 @@ describe("logic network layout", () => {
     expect(l.nodes).toHaveLength(1);
     expect(l.edges).toHaveLength(0);
     expect(Object.keys(RELATION_COLORS).sort()).toEqual(["ff", "fs", "sf", "ss"]);
+  });
+});
+
+describe("chip links and self-performed import", () => {
+  it("recognises chip kinds by label or alias", () => {
+    expect(parseChipKind("Procurement Package")).toBe("procurement_package");
+    expect(parseChipKind("PD Package")).toBe("procurement_package");
+    expect(parseChipKind("T&C")).toBe("tc");
+    expect(parseChipKind("method statement")).toBe("method_statement");
+    expect(parseChipKind("Shop Drawings")).toBe("shop_drawing");
+    expect(parseChipKind("Invoice")).toBeNull();
+  });
+
+  it("reads Y / N cells", () => {
+    expect(parseYesNo("Y")).toBe(true);
+    expect(parseYesNo("no")).toBe(false);
+    expect(parseYesNo(true)).toBe(true);
+    expect(parseYesNo("")).toBeNull();
+    expect(parseYesNo("maybe")).toBe("bad");
+  });
+
+  it("splits several codes in one cell and reports bad rows", () => {
+    const r = parseActivityImport({
+      activities: [act({ "Self-performed": "Y" })],
+      links: [],
+      chips: [
+        { "Activity Code": "d04-001", Kind: "Package", Code: "PKG-ARC-MAS; PKG-PRE-SCAF" },
+        { "Activity Code": "D04-001", Kind: "Material", Code: "MAT-001" },
+        { "Activity Code": "D04-001", Kind: "Invoice", Code: "X" },
+        { "Activity Code": "", Kind: "Material", Code: "MAT-002" },
+        { "Activity Code": "D04-001", Kind: "package", Code: "pkg-arc-mas" },
+      ],
+    });
+    expect(r.activities[0].selfPerformed).toBe(true);
+    expect(r.chips.map((c) => `${c.activityRef} ${c.kind} ${c.code}`)).toEqual([
+      "D04-001 procurement_package PKG-ARC-MAS", "D04-001 procurement_package PKG-PRE-SCAF", "D04-001 material MAT-001",
+    ]);
+    expect(r.errors.map((e) => `${e.sheet} ${e.row}`)).toEqual(["Chip links 4", "Chip links 5", "Chip links 6"]);
+  });
+
+  it("rejects an unreadable Self-performed cell and treats a missing chips sheet as empty", () => {
+    const r = parseActivityImport({ activities: [act({ "Self-performed": "perhaps" })], links: [] });
+    expect(r.activities).toHaveLength(0);
+    expect(r.chips).toEqual([]);
+    expect(r.errors[0].message).toMatch(/Self-performed/);
   });
 });
