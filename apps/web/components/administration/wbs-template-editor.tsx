@@ -40,6 +40,7 @@ import {
   type KitOption, type MasterOption, type WbsTemplate,
 } from "@/lib/project/wbs/wbs-template-queries";
 import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
+import { constructionPhaseKeys, coveragePercent, taskLinkStatus, templateCoverage } from "@/lib/project/wbs/template-activity-rules";
 import { TemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { FloorBlockPicker } from "@/components/project/wbs/templates/floor-block-picker";
 
@@ -129,6 +130,12 @@ export function WbsTemplateEditor() {
 
   async function save(d: Draft) {
     if (!d.template_name.trim()) { toast.error("Template name is required"); return; }
+    const cov = templateCoverage(d.doc);
+    if (cov.missing.length) {
+      toast.warning(`${cov.missing.length} construction activit${cov.missing.length === 1 ? "y has" : "ies have"} no Work Library activity`, {
+        description: "Saved anyway. Linked activities get their norm, BOQ items and package on projects; unlinked ones can be duplicated by Generate.",
+      });
+    }
     setSaving(true);
     try {
       const id = await saveWbsTemplate({
@@ -316,6 +323,11 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
   // Activity masters an activity can be created from (norms, quantity durations, default steps).
   const [masters, setMasters] = useState<MasterOption[]>([]);
   useEffect(() => { listActivityMasterOptions().then(setMasters).catch(() => setMasters([])); }, []);
+  const knownCodes = useMemo(() => (masters.length ? new Set(masters.map((m) => m.code)) : undefined), [masters]);
+  const coverage = useMemo(() => templateCoverage(doc, knownCodes), [doc, knownCodes]);
+  const phaseKeys = useMemo(() => constructionPhaseKeys(doc.sections.nodes), [doc.sections.nodes]);
+  const [showGaps, setShowGaps] = useState(false);
+  const masterLabel = (m: MasterOption) => `${m.visible_code ?? m.code} · ${m.name}${m.default_unit ? ` (${m.default_unit})` : ""}${m.status === "active" ? "" : ` [${m.status.replace("_", " ")}]`}`;
   const activePart: TemplatePartId = partId === "sections" || doc.floor_blocks[partId] ? partId : "sections";
   const part = getPart(doc, activePart) ?? emptyPart();
   const isBlock = activePart !== "sections";
@@ -344,8 +356,43 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
     setSelected("");
   }
 
+  /** Open the package that holds a task (from the coverage list). */
+  function jumpTo(part: TemplatePartId, taskKey: string) {
+    const t = getPart(doc, part)?.tasks.find((x) => x.key === taskKey);
+    setPartId(part);
+    setSelected(t?.node_key ?? "");
+  }
+  const gaps: { part: TemplatePartId; key: string; name: string; code?: string }[] = [...coverage.missing, ...coverage.unknown];
+
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+        <span className="font-medium">Work Library links</span>
+        <span
+          className={cn("rounded-full px-2 py-0.5 tabular-nums", gaps.length ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300")}
+          title="Construction activities (Construction phase and floor blocks) that point at a Work Library activity. Design, procurement, T&C, milestones and non-work disciplines may stay free."
+        >
+          Construction {coveragePercent(coverage)}% linked ({coverage.linked}/{coverage.mustLink})
+        </span>
+        <span className="text-muted-foreground">{coverage.free} free</span>
+        {gaps.length > 0 && (
+          <button type="button" className="ml-auto text-primary hover:underline" onClick={() => setShowGaps((v) => !v)}>
+            {showGaps ? "Hide" : "Show"} {gaps.length} to link
+          </button>
+        )}
+      </div>
+      {showGaps && gaps.length > 0 && (
+        <ul className="max-h-40 overflow-auto rounded-md border border-border p-2 text-xs">
+          {gaps.map((g) => (
+            <li key={`${g.part}:${g.key}`}>
+              <button type="button" className="w-full rounded px-1 py-0.5 text-left hover:bg-muted" onClick={() => jumpTo(g.part, g.key)}>
+                <span className="text-muted-foreground">{g.part === "sections" ? "Fixed sections" : FLOOR_BLOCK_LABELS[g.part]} · {g.key}</span> {g.name}
+                {g.code && <span className="ml-1 text-destructive">(unknown activity {g.code})</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-wrap items-center gap-1 border-b border-border">
         {(["sections", ...FLOOR_BLOCK_TYPES.filter((t) => doc.floor_blocks[t])] as TemplatePartId[]).map((id) => (
           <button
@@ -357,6 +404,7 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
           >
             {id === "sections" ? "Fixed sections" : `${FLOOR_BLOCK_LABELS[id]} block`}
             <span className="ml-1 text-muted-foreground">({getPart(doc, id)?.tasks.length ?? 0})</span>
+            {gaps.some((g) => g.part === id) && <span className="ml-1 text-amber-700 dark:text-amber-300">· {gaps.filter((g) => g.part === id).length} to link</span>}
           </button>
         ))}
         {missingBlocks.length > 0 && (
@@ -459,7 +507,7 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">
                   Activities ({tasks.length})
-                  <span className="ml-2 font-normal text-muted-foreground">{tasks.filter((t) => t.master_code).length} linked to an activity master</span>
+                  <span className="ml-2 font-normal text-muted-foreground">{tasks.filter((t) => t.master_code).length} linked to a Work Library activity</span>
                 </span>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onChange(addTemplateTask(doc, activePart, nodeKey, "New activity"))}>
                   <Plus className="mr-1 h-3 w-3" /> Activity
@@ -473,7 +521,7 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
                       <th className="w-28 px-1 py-1 text-left">Discipline</th>
                       <th className="w-20 px-1 py-1 text-left">Days</th>
                       <th className="w-24 px-1 py-1 text-left">Links</th>
-                      <th className="w-52 px-1 py-1 text-left" title="Activities created from this template get this master: norm, quantity-based duration and standard steps">Activity master</th>
+                      <th className="w-64 px-1 py-1 text-left" title="Work Library activity: projects get its norm, quantity-based duration, BOQ items, package and standard steps">Work Library activity</th>
                       <th className="w-8" />
                     </tr>
                   </thead>
@@ -497,9 +545,16 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
                             aria-label="Activity master"
                           >
                             <option value="">—</option>
-                            {t.master_code && !masters.some((m) => m.code === t.master_code) && <option value={t.master_code}>{t.master_code} (not active)</option>}
-                            {masters.map((m) => <option key={m.code} value={m.code}>{m.code} · {m.name}</option>)}
+                            {t.master_code && !masters.some((m) => m.code === t.master_code) && <option value={t.master_code}>{t.master_code} (not in the library)</option>}
+                            {masters.map((m) => <option key={m.code} value={m.code}>{masterLabel(m)}</option>)}
                           </select>
+                          {(() => {
+                            const st = taskLinkStatus(t, activePart, phaseKeys, knownCodes);
+                            if (st === "missing") return <span className="mt-0.5 block text-[11px] text-amber-700 dark:text-amber-300">Link required (construction)</span>;
+                            if (st === "unknown_activity") return <span className="mt-0.5 block text-[11px] text-destructive">Not in the Work Library</span>;
+                            if (st === "free") return <span className="mt-0.5 block text-[11px] text-muted-foreground">Free (no activity needed)</span>;
+                            return null;
+                          })()}
                         </td>
                         <td className="px-1 py-1">
                           <button type="button" onClick={() => onChange(removeTemplateTask(doc, activePart, t.key))} className="rounded p-1 text-destructive hover:bg-destructive/10" aria-label="Delete activity">

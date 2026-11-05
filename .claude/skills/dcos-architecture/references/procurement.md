@@ -116,6 +116,8 @@ See `integration-map.md`, rows tagged **Procurement**.
 - **Suppliers:** `procurement_suppliers` has no link to `stakeholders`, and is separate from QS `dwl_suppliers`. Subcontract `vendor_id` references `procurement_suppliers`.
 - **Direct table access from outside the module:** `lib/dashboard/dashboard-queries.ts`, `lib/control-room-service.ts`, Inventory, Account.
 
+- **Package Plan (2026-11-04, development).** `/dashboard/procurement/package-plan` (`components/procurement/package-plan.tsx`, `lib/procurement/package-plan-{rules,service}.ts`): `proc_project_package_plan(p_project_id)` (migration `20261104171124`, security definer, gated by `plan_feed_reader(project, 'materials')`) gives one row per Work Library package needed by unfinished tasks (`wbs_tasks.activity_master_id` → `plan_act_master_procurement_packages`): required on site = first start − `feed_site_buffer_days`, order by = that − package `default_lead_time_days` (else `feed_material_lead_days`); PR coverage via `procurement_prs.package_id` (no_pr / pr_late / covered). Urgency overdue / due soon (14 d) / planned / covered; "Long-lead only" = long-lead register; Export xlsx.
+- **RFQ bidders by trade (2026-11-04).** `rfq-form.tsx`: the source PR's package trade (`rfq-trade-service.ts`) vs active, in-date `supplier_approved_trades` (`rfq-trade-rules.ts`, case-insensitive): "Trade match" badge, matches sorted first, optional "Matching trade only". Soft by default: `supplier_approved_trades` is empty locally.
 ## 6. Status and gaps
 - **Built:** the full PR→RFQ→award→PO flow, budget confirmation, goods receipt, invoice match, prequalification, notifications and audit log.
 - **Hardened 2026-10-22: P0–P2 of doc 13 done** (merge `a9a8b6b`).

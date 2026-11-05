@@ -14,6 +14,7 @@ import { pickLatestPerCode, safeTerm } from "./catalogue-rules";
 import { copyMasterChips, resourceDivisions } from "./activity-chips-service";
 import { countByDivision, NO_DIVISION } from "./activity-chips-rules";
 import { GAP_FILTER, PRICE_FLAGS, WORK_ITEM_GAPS, type WorkItemFlag } from "./boq-item-rules";
+import type { DivisionCoverage } from "./coverage-rules";
 import { divisionOfSection, isValidDivisionCode, isValidSectionCode, listCsiDivisions, type CsiDivision } from "@/lib/csi-divisions";
 
 export { canArchive, safeTerm } from "./catalogue-rules";
@@ -81,6 +82,8 @@ export interface MasterRow {
   crew_size: number | null;
   /** Working hours per day for the crew; defaults to 8. */
   hours_per_day: number | null;
+  /** Main contractor's own work: needs no procurement package (never "No package"). */
+  self_performed: boolean;
   image_path: string | null;
   domain_id: string;
   category_id: string;
@@ -92,6 +95,8 @@ export interface MasterListRow extends MasterRow {
   workItemCount: number;
   /** Quantity-based activity without a library productivity norm: Generate cannot give it a duration. */
   noNorm: boolean;
+  /** Needs a procurement package and has none (self-performed activities never do). */
+  noPackage: boolean;
 }
 
 export interface MasterDetail {
@@ -122,6 +127,8 @@ export interface MasterDetailsPatch {
   crew_size?: number | null;
   /** More than 0 and at most 24, or null. Editable on any status. */
   hours_per_day?: number | null;
+  /** Editable on any status. */
+  self_performed?: boolean;
   image_path?: string | null;
 }
 const VERSIONED_KEYS: (keyof MasterDetailsPatch)[] = ["name", "description", "default_unit", "activity_type", "min_duration_pct", "max_duration_pct"];
@@ -182,7 +189,7 @@ export interface DuplicateResult {
 }
 
 const MASTER_COLS =
-  "id, visible_code, code, name, description, default_unit, status, version, csi_division_code, csi_section_code, trade, activity_type, min_duration_pct, max_duration_pct, crew_size, hours_per_day, image_path, domain_id, category_id, family_id, discipline, work_type";
+  "id, visible_code, code, name, description, default_unit, status, version, csi_division_code, csi_section_code, trade, activity_type, min_duration_pct, max_duration_pct, crew_size, hours_per_day, self_performed, image_path, domain_id, category_id, family_id, discipline, work_type";
 
 function toMasterRow(r: Record<string, unknown>): MasterRow {
   const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -204,6 +211,20 @@ export async function listDivisionsWithCounts(db: Db): Promise<DivisionWithCount
     counts.set(r.division_code, { a: Number(r.activity_count), w: Number(r.work_item_count) });
   }
   return divisions.map((x) => ({ ...x, activityCount: counts.get(x.code)?.a ?? 0, workItemCount: counts.get(x.code)?.w ?? 0 }));
+}
+
+/** Coverage tab: per CSI division, current activities and how many carry each kind of library knowledge (wl_division_coverage). */
+export async function listDivisionCoverage(db: Db): Promise<DivisionCoverage[]> {
+  const { data, error } = await db.rpc("wl_division_coverage");
+  must(error);
+  return (data ?? []) as DivisionCoverage[];
+}
+
+/** WBS templates whose tasks point at this activity code (wl_master_template_usage), with their task counts. */
+export async function listMasterTemplateUsage(db: Db, code: string): Promise<{ template_id: string; template_name: string; tasks: number }[]> {
+  const { data, error } = await db.rpc("wl_master_template_usage", { p_code: code });
+  must(error);
+  return (data ?? []) as { template_id: string; template_name: string; tasks: number }[];
 }
 
 // ---------------------------------------------------------------- masters
@@ -228,15 +249,22 @@ export async function listMastersForDivision(db: Db, divisionCode: string | null
   });
   // one row per activity: the latest non-superseded version (see pickLatestPerCode)
   const rows = pickLatestPerCode(all as (Record<string, unknown> & { code: string; version: number })[]);
-  const [counts, noNorm] = await Promise.all([linkCounts(db, rows.map((r) => r.id as string)), mastersMissingNorm(db)]);
-  return rows.map((r) => ({ ...toMasterRow(r), workItemCount: counts.get(r.id as string) ?? 0, noNorm: noNorm.has(r.id as string) }));
+  const [counts, noNorm, noPackage] = await Promise.all([
+    linkCounts(db, rows.map((r) => r.id as string)), idSet(db, "wl_masters_missing_norm"), idSet(db, "wl_masters_missing_package"),
+  ]);
+  return rows.map((r) => ({
+    ...toMasterRow(r), workItemCount: counts.get(r.id as string) ?? 0, noNorm: noNorm.has(r.id as string), noPackage: noPackage.has(r.id as string),
+  }));
 }
 
-/** Ids of current quantity-based activities with no library norm (wl_masters_missing_norm, same for every viewer). */
-async function mastersMissingNorm(db: Db): Promise<Set<string>> {
-  const { data, error } = await db.rpc("wl_masters_missing_norm");
+/**
+ * Ids from a gap function (same for every viewer): wl_masters_missing_norm (quantity-based, no library norm) or
+ * wl_masters_missing_package (no package, not self-performed).
+ */
+async function idSet(db: Db, fn: "wl_masters_missing_norm" | "wl_masters_missing_package"): Promise<Set<string>> {
+  const { data, error } = await db.rpc(fn);
   must(error);
-  return new Set(((data ?? []) as (string | { wl_masters_missing_norm: string })[]).map((r) => (typeof r === "string" ? r : r.wl_masters_missing_norm)));
+  return new Set(((data ?? []) as (string | Record<string, string>)[]).map((r) => (typeof r === "string" ? r : r[fn])));
 }
 
 export async function getMasterDetail(db: Db, id: string): Promise<MasterDetail | null> {
@@ -652,7 +680,7 @@ export async function duplicateMaster(db: Db, id: string): Promise<DuplicateResu
     default_work_group: src.default_work_group, default_step_template_id: src.default_step_template_id,
     csi_division_code: src.csi_division_code, csi_section_code: src.csi_section_code, trade: src.trade, activity_type: src.activity_type,
     min_duration_pct: src.min_duration_pct, max_duration_pct: src.max_duration_pct,
-    crew_size: src.crew_size, hours_per_day: src.hours_per_day, image_path: null,
+    crew_size: src.crew_size, hours_per_day: src.hours_per_day, self_performed: src.self_performed ?? false, image_path: null,
     applicable_project_types: src.applicable_project_types, effective_date: src.effective_date,
     visible_code: null, status: "draft", version: 1,
   }).select(MASTER_COLS).single();

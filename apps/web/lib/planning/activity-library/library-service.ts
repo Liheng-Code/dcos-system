@@ -78,7 +78,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   const srcCat = src as unknown as {
     csi_division_code?: string | null; csi_section_code?: string | null; trade?: string | null; activity_type?: string | null;
     min_duration_pct?: number | null; max_duration_pct?: number | null; image_path?: string | null;
-    crew_size?: number | null; hours_per_day?: number | null;
+    crew_size?: number | null; hours_per_day?: number | null; self_performed?: boolean | null;
     duration_basis?: string | null; default_work_group?: string | null; default_step_template_id?: string | null;
     applicable_project_types?: string[] | null; division_id?: string | null;
   };
@@ -89,7 +89,7 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
     // Construction Work Library catalogue fields (visible_code is inherited from the predecessor by trigger)
     csi_division_code: srcCat.csi_division_code ?? null, csi_section_code: srcCat.csi_section_code ?? null, trade: srcCat.trade ?? null, activity_type: srcCat.activity_type ?? null,
     min_duration_pct: srcCat.min_duration_pct ?? null, max_duration_pct: srcCat.max_duration_pct ?? null, image_path: srcCat.image_path ?? null,
-    crew_size: srcCat.crew_size ?? null, hours_per_day: srcCat.hours_per_day ?? null,
+    crew_size: srcCat.crew_size ?? null, hours_per_day: srcCat.hours_per_day ?? null, self_performed: srcCat.self_performed ?? false,
     duration_basis: srcCat.duration_basis ?? "quantity", default_work_group: srcCat.default_work_group ?? null,
     default_step_template_id: srcCat.default_step_template_id ?? null, applicable_project_types: srcCat.applicable_project_types ?? [],
     division_id: srcCat.division_id ?? null,
@@ -98,7 +98,8 @@ export async function createNewVersion(db: Db, id: string): Promise<ActMaster> {
   if (error) throw new Error(error.message);
   const nm = created as ActMaster;
 
-  const [methods, qrules, reqs, appl, logicOut, logicIn, wiLinks] = await Promise.all([
+  // keep the names in the same order as the queries below
+  const [wiLinks, methods, qrules, reqs, appl, logicOut, logicIn] = await Promise.all([
     db.from("plan_act_master_work_items").select("*").eq("master_id", id),
     db.from("plan_act_methods").select("*").eq("master_id", id),
     db.from("plan_act_quantity_rules").select("*").eq("master_id", id),

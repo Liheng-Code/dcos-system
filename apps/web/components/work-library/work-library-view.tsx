@@ -18,6 +18,7 @@ import { ImportActivitiesDialog } from "./import-activities-dialog";
 import { ChipLibraryTab, MaterialLibraryTab } from "./chip-library-tabs";
 import { BoqLibraryTab, ResourceLibraryTab } from "./library-tabs";
 import { MasterActivityTab } from "./master-activity-tab";
+import { CoverageTab } from "./coverage-tab";
 import { errorMessage, type ActivityListItem } from "./work-library-shared";
 
 const MIN_SEARCH = 2;
@@ -118,6 +119,7 @@ export function WorkLibraryView() {
             <TabsTrigger value="resource">Resource</TabsTrigger>
             <TabsTrigger value="tc" title="Testing &amp; Commissioning">T&amp;C</TabsTrigger>
             <TabsTrigger value="procurement_package" title="Procurement Package">PD Package</TabsTrigger>
+            <TabsTrigger value="coverage" title="Library coverage by CSI division">Coverage</TabsTrigger>
           </TabsList>
           {canManage && (
             <div className="flex gap-2">
@@ -177,6 +179,12 @@ export function WorkLibraryView() {
         </TabsContent>
         <TabsContent value="tc" className="pt-2">
           <ChipLibraryTab kind="tc" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />
+        </TabsContent>
+        <TabsContent value="coverage" className="pt-2">
+          <CoverageTab
+            db={db} divisions={divisionsLoaded?.data ?? []} refreshKey={refreshKey}
+            onOpenDivision={(code) => { setSelectedDivisionCode(code); setSelectedActivityId(null); setInput(""); setTab("master"); }}
+          />
         </TabsContent>
         <TabsContent value="procurement_package" className="pt-2">
           <ChipLibraryTab kind="procurement_package" db={db} canManage={canManage} divisions={divisionsLoaded?.data ?? []} query={query} refreshKey={refreshKey} onOpenActivity={openFromLibrary} />

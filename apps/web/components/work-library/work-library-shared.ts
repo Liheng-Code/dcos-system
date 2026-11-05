@@ -7,6 +7,7 @@ export type ActivityListItem = Pick<MasterRow, "id" | "visible_code" | "code" | 
   default_unit: string | null;
   /** Set on division lists (not search results): quantity-based with no library norm. */
   noNorm?: boolean;
+  noPackage?: boolean;
 };
 
 export const SELECT_CLS =

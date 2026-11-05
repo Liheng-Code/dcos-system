@@ -1,14 +1,17 @@
 // I/O for the Construction Work Library Excel import: read the workbook, preview what would change, commit.
 // Parsing and validation are pure (activity-database-import.ts). New activities land as DRAFT, upserted by visible
 // code (or code). Existing non-draft activities only get catalogue fields (CSI division / section, trade, visible code);
-// BOQ links are only written for drafts because the database freezes them otherwise.
+// BOQ links are only written for drafts because the database freezes them otherwise. Chip links (sheet "Chip links":
+// packages, method statements, materials, shop drawings, coordination, T&C) are added at any status; existing ones stay.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import {
-  ACTIVITIES_SHEET, ACTIVITY_HEADERS, LINKS_SHEET, LINK_HEADERS, isPercentHeader, parseActivityImport, percentCellValue,
-  type ImportActivity, type ImportLink, type ImportValidationOptions, type ParsedImport, type RawRow, type RawSheets,
+  ACTIVITIES_SHEET, ACTIVITY_HEADERS, CHIP_HEADERS, CHIP_KIND_LABEL, CHIPS_SHEET, LINKS_SHEET, LINK_HEADERS, isPercentHeader, parseActivityImport, percentCellValue,
+  type ImportActivity, type ImportChip, type ImportLink, type ImportValidationOptions, type ParsedImport, type RawRow, type RawSheets,
 } from "./activity-database-import";
+import { chipCodesForMasters, chipItemId, existingChipLinks, resolveChipCodes, writeChipLinks } from "./activity-chip-import-service";
+import type { ChipKind } from "./activity-chips-rules";
 import { listCsiDivisions, listCsiSections } from "@/lib/csi-divisions";
 import { allPages, inChunks } from "@/lib/supabase/in-chunks";
 import { dedupeLast } from "./catalogue-rules";
@@ -18,8 +21,9 @@ type Db = SupabaseClient;
 
 // ---------------------------------------------------------------- workbook
 
-function sheetRows(wb: XLSX.WorkBook, name: string, fallbackIndex: number): RawRow[] {
-  const key = wb.SheetNames.find((n) => n.trim().toLowerCase() === name.toLowerCase()) ?? wb.SheetNames[fallbackIndex];
+/** Rows of the sheet named `name`, else of the sheet at `fallbackIndex` (none: the sheet is optional). */
+function sheetRows(wb: XLSX.WorkBook, name: string, fallbackIndex?: number): RawRow[] {
+  const key = wb.SheetNames.find((n) => n.trim().toLowerCase() === name.toLowerCase()) ?? (fallbackIndex === undefined ? undefined : wb.SheetNames[fallbackIndex]);
   if (!key) return [];
   const ws = wb.Sheets[key];
   // Percent-formatted cells hold fractions (50% = 0.5): scale them to plain percents in the % columns before converting.
@@ -37,10 +41,10 @@ function sheetRows(wb: XLSX.WorkBook, name: string, fallbackIndex: number): RawR
   return XLSX.utils.sheet_to_json<RawRow>(ws, { defval: "", raw: true });
 }
 
-/** Reads the two sheets (matched by name, else first / second sheet) into raw rows. */
+/** Reads the sheets (Activities / BOQ links by name, else first / second sheet; Chip links by name only) into raw rows. */
 export async function readWorkbook(file: File): Promise<RawSheets> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellNF: true });
-  return { activities: sheetRows(wb, ACTIVITIES_SHEET, 0), links: sheetRows(wb, LINKS_SHEET, 1) };
+  return { activities: sheetRows(wb, ACTIVITIES_SHEET, 0), links: sheetRows(wb, LINKS_SHEET, 1), chips: sheetRows(wb, CHIPS_SHEET) };
 }
 
 /** Division and section codes of the core CSI library, for import validation ("Unknown CSI division 15"). */
@@ -58,12 +62,9 @@ export async function parseWorkbookFile(file: File, db?: Db): Promise<ParsedImpo
   return parseActivityImport(sheets, db ? await loadCsiValidation(db) : {});
 }
 
-/** Empty xlsx with the two sheets and their headers (plus a short help sheet). */
-export function downloadTemplate(): Blob {
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ACTIVITY_HEADERS]), ACTIVITIES_SHEET);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([LINK_HEADERS]), LINKS_SHEET);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+/** Help sheet rows shared by the template and the library export. */
+function helpRows(): string[][] {
+  return [
     ["Sheet", "Column", "Rule"],
     ["Help", "Standard", "CSI MasterFormat 2016, maintained in Administration > Master Libraries > CSI Divisions"],
     [ACTIVITIES_SHEET, "Division Code", "Two-digit CSI MasterFormat 2016 division that exists in the CSI library, e.g. 03 Concrete, 09 Finishes, 26 Electrical"],
@@ -72,10 +73,23 @@ export function downloadTemplate(): Blob {
     [ACTIVITIES_SHEET, "Code", "Unique activity code. Optional when Visible Code is given"],
     [ACTIVITIES_SHEET, "Type", "construction, procurement, design, submittal, testing or milestone"],
     [ACTIVITIES_SHEET, "Min % / Max %", "0 to 100, min must not exceed max"],
+    [ACTIVITIES_SHEET, "Self-performed", "Y = the main contractor does this work itself (no procurement package needed), N = by package, blank = leave as is"],
     [LINKS_SHEET, "Activity Code", "Visible code or code of an activity in the file or already in the library"],
     [LINKS_SHEET, "Work Item Code", "Code of a cost-library work item (BOQ item)"],
-    [LINKS_SHEET, "Days/Unit, %", "Duration in days per unit; share of the work item (default 100)"],
-  ]), "Help");
+    [LINKS_SHEET, "Days/Unit, %", "Duration in days per unit; share of the work item (default 100). Only written to draft activities"],
+    [CHIPS_SHEET, "Activity Code", "Visible code or code of an activity in the file or already in the library"],
+    [CHIPS_SHEET, "Kind", Object.values(CHIP_KIND_LABEL).join(", ")],
+    [CHIPS_SHEET, "Code", "Library code (e.g. PKG-ARC-WPF, a method statement code, a QS material code); several codes separated by ;. Added at any status, existing links are kept, nothing is removed"],
+  ];
+}
+
+/** Empty xlsx with the three sheets and their headers (plus a short help sheet). */
+export function downloadTemplate(): Blob {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ACTIVITY_HEADERS]), ACTIVITIES_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([LINK_HEADERS]), LINKS_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CHIP_HEADERS]), CHIPS_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(helpRows()), "Help");
   const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
   return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
@@ -98,20 +112,30 @@ export interface ActivityPreview {
   /** Fields in the file that differ from a non-draft activity and will NOT be applied. */
   skippedFields: string[];
 }
-export type LinkAction = "create" | "update" | "skip_not_draft" | "unknown_activity" | "unknown_work_item";
+export type LinkAction = "create" | "update" | "exists" | "skip_not_draft" | "unknown_activity" | "unknown_work_item";
 export interface LinkPreview { row: number; activityRef: string; workItemCode: string; action: LinkAction; note: string | null }
+export type ChipAction = "create" | "exists" | "unknown_activity" | "unknown_code";
+export interface ChipPreview { row: number; activityRef: string; kind: ChipKind; code: string; action: ChipAction; note: string | null }
 
 export interface ImportPreview {
   activities: ActivityPreview[];
   links: LinkPreview[];
+  chips: ChipPreview[];
   unknownWorkItemCodes: string[];
-  counts: { create: number; update: number; updateCatalogue: number; linksCreate: number; linksUpdate: number; linksSkipped: number };
+  /** "Procurement Package PKG-X" for chip codes not found in their library. */
+  unknownChipCodes: string[];
+  counts: {
+    create: number; update: number; updateCatalogue: number; linksCreate: number; linksUpdate: number; linksSkipped: number;
+    chipsCreate: number; chipsExisting: number; chipsSkipped: number;
+  };
 }
 
 interface Plan {
   preview: ImportPreview;
   existingByRow: Map<number, ExistingMaster>;
   workItemIdByCode: Map<string, string>;
+  /** "kind|CODE" -> library item id (chip links). */
+  chipIds: Map<string, string>;
   /** activity ref (upper-case visible code or code) -> {existing master | file row} */
   refToExisting: Map<string, ExistingMaster>;
   refToRow: Map<string, number>;
@@ -187,8 +211,8 @@ async function buildPlan(db: Db, parsed: ParsedImport): Promise<Plan> {
   const wiRows = await inChunks<{ id: string; code: string }>(wiCodes, (p) => db.from("dwl_work_items").select("id, code").in("code", p));
   const workItemIdByCode = new Map(wiRows.map((w) => [w.code.toUpperCase(), w.id]));
 
-  // refs used by links that are not in the file: look them up in the library
-  const extraRefs = [...new Set(parsed.links.map((l) => l.activityRef))].filter((r) => !refToRow.has(r) && !refToExisting.has(r));
+  // refs used by BOQ / chip links that are not in the file: look them up in the library
+  const extraRefs = [...new Set([...parsed.links, ...parsed.chips].map((l) => l.activityRef))].filter((r) => !refToRow.has(r) && !refToExisting.has(r));
   if (extraRefs.length) {
     const [v, c] = await Promise.all([
       inChunks<ExistingMaster>(extraRefs, (p) => db.from("plan_act_masters").select(EXISTING_COLS).in("visible_code", p)),
@@ -210,21 +234,39 @@ async function buildPlan(db: Db, parsed: ParsedImport): Promise<Plan> {
     const ex = refToExisting.get(l.activityRef);
     if (!refToRow.has(l.activityRef) && !ex) return { ...base, action: "unknown_activity", note: "Activity not found in the file or the library" };
     if (!wiId) return { ...base, action: "unknown_work_item", note: "Work item code not in the cost library" };
-    if (ex && ex.status !== "draft") return { ...base, action: "skip_not_draft", note: `Activity is ${ex.status}; links are frozen` };
+    // a frozen (non-draft) activity: an unchanged existing link is fine (e.g. re-importing an export), a new one is skipped
+    if (ex && ex.status !== "draft") {
+      return existingLinks.has(`${ex.id}|${wiId}`)
+        ? { ...base, action: "exists", note: null }
+        : { ...base, action: "skip_not_draft", note: `Activity is ${ex.status}; links are frozen` };
+    }
     return { ...base, action: ex && existingLinks.has(`${ex.id}|${wiId}`) ? "update" : "create", note: null };
+  });
+
+  // Chip links: any status; a link that already exists is left alone
+  const [chipIds, existingChips] = await Promise.all([resolveChipCodes(db, parsed.chips), existingChipLinks(db, existingIds)]);
+  const chips: ChipPreview[] = parsed.chips.map((c) => {
+    const base = { row: c.row, activityRef: c.activityRef, kind: c.kind, code: c.code };
+    const itemId = chipItemId(chipIds, c);
+    const ex = refToExisting.get(c.activityRef);
+    if (!refToRow.has(c.activityRef) && !ex) return { ...base, action: "unknown_activity", note: "Activity not found in the file or the library" };
+    if (!itemId) return { ...base, action: "unknown_code", note: `${CHIP_KIND_LABEL[c.kind]} code not in its library` };
+    return { ...base, action: ex && existingChips.has(`${c.kind}|${ex.id}|${itemId}`) ? "exists" : "create", note: null };
   });
 
   const n = (list: { action: string }[], a: string) => list.filter((x) => x.action === a).length;
   const preview: ImportPreview = {
-    activities, links,
+    activities, links, chips,
     unknownWorkItemCodes: [...new Set(links.filter((l) => l.action === "unknown_work_item").map((l) => l.workItemCode))],
+    unknownChipCodes: [...new Set(chips.filter((c) => c.action === "unknown_code").map((c) => `${CHIP_KIND_LABEL[c.kind]} ${c.code}`))],
     counts: {
       create: n(activities, "create"), update: n(activities, "update"), updateCatalogue: n(activities, "update_catalogue"),
       linksCreate: n(links, "create"), linksUpdate: n(links, "update"),
-      linksSkipped: links.length - n(links, "create") - n(links, "update"),
+      linksSkipped: links.length - n(links, "create") - n(links, "update") - n(links, "exists"),
+      chipsCreate: n(chips, "create"), chipsExisting: n(chips, "exists"), chipsSkipped: chips.length - n(chips, "create") - n(chips, "exists"),
     },
   };
-  return { preview, existingByRow, workItemIdByCode, refToExisting, refToRow, existingLinks, hierarchyByDivision, knownDivisions, knownSections };
+  return { preview, existingByRow, workItemIdByCode, chipIds, refToExisting, refToRow, existingLinks, hierarchyByDivision, knownDivisions, knownSections };
 }
 
 /** Which rows would be created / updated / skipped, and which work item codes are unknown. Writes nothing. */
@@ -237,6 +279,7 @@ export async function previewImport(db: Db, parsed: ParsedImport): Promise<Impor
 export interface ImportResult {
   created: number; updated: number; cataloguedOnly: number;
   linksWritten: number; linksSkipped: number;
+  chipsWritten: number; chipsSkipped: number;
   errors: { sheet: string; row: number; message: string }[];
 }
 
@@ -266,7 +309,7 @@ async function defaultHierarchy(db: Db, divisionCode: string): Promise<Hierarchy
 /** Writes the import. Row-level problems are collected in `errors`; the rest of the file still goes through. */
 export async function commitImport(db: Db, parsed: ParsedImport): Promise<ImportResult> {
   const plan = await buildPlan(db, parsed);
-  const result: ImportResult = { created: 0, updated: 0, cataloguedOnly: 0, linksWritten: 0, linksSkipped: 0, errors: [] };
+  const result: ImportResult = { created: 0, updated: 0, cataloguedOnly: 0, linksWritten: 0, linksSkipped: 0, chipsWritten: 0, chipsSkipped: 0, errors: [] };
 
   /** ref -> master id and whether it is a draft (links allowed) */
   const target = new Map<string, { id: string; draft: boolean }>();
@@ -286,7 +329,7 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
         const { data, error } = await db.from("plan_act_masters").insert({
           domain_id: h.domain_id, category_id: h.category_id, family_id: h.family_id, code: a.code ?? a.visibleCode, name: a.name, description: a.description, default_unit: a.unit,
           csi_division_code: a.divisionCode, csi_section_code: a.sectionCode, visible_code: a.visibleCode, trade: a.trade, activity_type: a.activityType,
-          min_duration_pct: a.minPct, max_duration_pct: a.maxPct, status: "draft", version: 1,
+          min_duration_pct: a.minPct, max_duration_pct: a.maxPct, self_performed: a.selfPerformed ?? false, status: "draft", version: 1,
         }).select("id").single();
         if (error) { fail(friendlyDbError(error).message); continue; }
         result.created++;
@@ -297,6 +340,7 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
       if (a.sectionCode) catalogue.csi_section_code = a.sectionCode;
       if (a.trade) catalogue.trade = a.trade;
       if (!ex.visible_code && a.visibleCode) catalogue.visible_code = a.visibleCode;
+      if (a.selfPerformed !== null) catalogue.self_performed = a.selfPerformed;
       const patch: Record<string, unknown> = { ...catalogue };
       const draft = ex.status === "draft";
       if (draft) {
@@ -329,7 +373,10 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
     const wi = plan.workItemIdByCode.get(l.workItemCode.toUpperCase());
     if (!t) { skip(l, `Activity ${l.activityRef} was not found or not imported`); continue; }
     if (!wi) { skip(l, `Work item ${l.workItemCode} is not in the cost library`); continue; }
-    if (!t.draft) { skip(l, `Activity ${l.activityRef} is not a draft; BOQ links are frozen`); continue; }
+    if (!t.draft) {
+      if (!plan.existingLinks.has(`${t.id}|${wi}`)) skip(l, `Activity ${l.activityRef} is not a draft; BOQ links are frozen`);
+      continue;
+    }
     rows.push({ master_id: t.id, work_item_id: wi, duration_days_per_unit: l.daysPerUnit, share_pct: l.sharePct, row: l.row });
   }
   // Two file rows can resolve to the same master + work item (visible code on one, code on the other): last row wins.
@@ -369,5 +416,76 @@ export async function commitImport(db: Db, parsed: ParsedImport): Promise<Import
       } else result.linksWritten += part.length;
     }
   }
+
+  // chip links (any status; existing links are kept)
+  const chipRows: { kind: ChipKind; masterId: string; itemId: string }[] = [];
+  const seenChip = new Set<string>();
+  const skipChip = (c: ImportChip, message: string) => { result.chipsSkipped++; result.errors.push({ sheet: CHIPS_SHEET, row: c.row, message }); };
+  for (const c of parsed.chips) {
+    const masterId = target.get(c.activityRef)?.id ?? plan.refToExisting.get(c.activityRef)?.id;
+    const itemId = chipItemId(plan.chipIds, c);
+    if (!masterId) { skipChip(c, `Activity ${c.activityRef} was not found or not imported`); continue; }
+    if (!itemId) { skipChip(c, `${CHIP_KIND_LABEL[c.kind]} ${c.code} is not in its library`); continue; }
+    const k = `${c.kind}|${masterId}|${itemId}`;
+    if (seenChip.has(k)) continue; // visible code on one row, code on another: same link
+    seenChip.add(k);
+    chipRows.push({ kind: c.kind, masterId, itemId });
+  }
+  const existing = await existingChipLinks(db, [...new Set(chipRows.map((r) => r.masterId))]);
+  const fresh = chipRows.filter((r) => !existing.has(`${r.kind}|${r.masterId}|${r.itemId}`));
+  const written = await writeChipLinks(db, fresh);
+  result.chipsWritten = written.written;
+  for (const f of written.failed) {
+    result.chipsSkipped += f.count;
+    result.errors.push({ sheet: CHIPS_SHEET, row: 0, message: `${CHIP_KIND_LABEL[f.kind]}: ${friendlyDbError({ message: f.message }).message}` });
+  }
   return result;
+}
+
+// ---------------------------------------------------------------- export (same layout as the import)
+
+/**
+ * The current library (every activity not superseded / archived) as an import workbook: Activities, BOQ links and
+ * Chip links, plus the Help sheet. Edit it and import it back; links are only ever added by an import.
+ */
+export async function exportLibraryWorkbook(db: Db): Promise<Blob> {
+  type Row = {
+    id: string; code: string; visible_code: string | null; name: string; description: string | null; default_unit: string | null; trade: string | null;
+    activity_type: string | null; min_duration_pct: number | null; max_duration_pct: number | null; csi_division_code: string | null;
+    csi_section_code: string | null; self_performed: boolean;
+  };
+  const masters = await allPages<Row>((from, to) =>
+    db.from("plan_act_masters")
+      .select("id, code, visible_code, name, description, default_unit, trade, activity_type, min_duration_pct, max_duration_pct, csi_division_code, csi_section_code, self_performed")
+      .not("status", "in", "(superseded,archived)").order("visible_code", { nullsFirst: false }).order("code").order("id").range(from, to));
+  const ids = masters.map((m) => m.id);
+  const refOf = new Map(masters.map((m) => [m.id, m.visible_code ?? m.code]));
+  const [links, chips] = await Promise.all([
+    inChunks<{ master_id: string; work_item_id: string; duration_days_per_unit: number | null; share_pct: number; sort_order: number }>(ids, (p) =>
+      db.from("plan_act_master_work_items").select("master_id, work_item_id, duration_days_per_unit, share_pct, sort_order").in("master_id", p)),
+    chipCodesForMasters(db, ids),
+  ]);
+  const wiCode = new Map((await inChunks<{ id: string; code: string }>([...new Set(links.map((l) => l.work_item_id))], (p) =>
+    db.from("dwl_work_items").select("id, code").in("id", p))).map((w) => [w.id, w.code]));
+  const order = new Map(ids.map((id, i) => [id, i]));
+  const byMaster = <T extends { master_id?: string; masterId?: string }>(a: T, b: T) =>
+    (order.get(a.master_id ?? a.masterId ?? "") ?? 0) - (order.get(b.master_id ?? b.masterId ?? "") ?? 0);
+
+  const n = (v: number | null) => (v === null ? "" : Number(v));
+  const activityRows = masters.map((m) => [
+    m.csi_division_code ?? "", m.csi_section_code ?? "", m.visible_code ?? "", m.code, m.name, m.default_unit ?? "", m.trade ?? "", m.activity_type ?? "",
+    n(m.min_duration_pct), n(m.max_duration_pct), m.description ?? "", m.self_performed ? "Y" : "N",
+  ]);
+  const linkRows = [...links].sort((a, b) => byMaster(a, b) || a.sort_order - b.sort_order).map((l) => [
+    refOf.get(l.master_id) ?? "", wiCode.get(l.work_item_id) ?? "", n(l.duration_days_per_unit), Number(l.share_pct),
+  ]);
+  const chipRowsOut = [...chips].sort((a, b) => byMaster(a, b)).map((c) => [refOf.get(c.masterId) ?? "", CHIP_KIND_LABEL[c.kind], c.code]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ACTIVITY_HEADERS, ...activityRows]), ACTIVITIES_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([LINK_HEADERS, ...linkRows]), LINKS_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CHIP_HEADERS, ...chipRowsOut]), CHIPS_SHEET);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(helpRows()), "Help");
+  const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+  return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }

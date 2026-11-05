@@ -1,20 +1,53 @@
 // Pure parse + validate for the Construction Work Library Excel import (no I/O).
 // Sheet "Activities": CSI division (MasterFormat 2016, two digits), optional CSI section, visible code, code, name, unit, trade, type, min %, max %, description.
 // Sheet "BOQ links": activity visible code or code, work item code, days per unit, share %.
+// Sheet "Chip links" (optional): activity visible code or code, chip kind, one or more library codes (";" or "," between).
 
 import { divisionOfSection, formatSectionCode, isValidSectionCode } from "@/lib/csi-divisions";
 import { isValidDivisionCode, normalizeDivisionCode, parseVisibleCode } from "./visible-code";
+import type { ChipKind } from "./activity-chips-rules";
 
 export const ACTIVITY_TYPES = ["construction", "procurement", "design", "submittal", "testing", "milestone"] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
 export const ACTIVITIES_SHEET = "Activities";
 export const LINKS_SHEET = "BOQ links";
-export const ACTIVITY_HEADERS = ["Division Code", "CSI Section", "Visible Code", "Code", "Name", "Unit", "Trade", "Type", "Min %", "Max %", "Description"];
+export const CHIPS_SHEET = "Chip links";
+export const ACTIVITY_HEADERS = [
+  "Division Code", "CSI Section", "Visible Code", "Code", "Name", "Unit", "Trade", "Type", "Min %", "Max %", "Description", "Self-performed",
+];
 export const LINK_HEADERS = ["Activity Code", "Work Item Code", "Days/Unit", "%"];
+export const CHIP_HEADERS = ["Activity Code", "Kind", "Code"];
+
+/** Kind column of the Chip links sheet: the label written by the export, plus accepted aliases (normalized). */
+export const CHIP_KIND_LABEL: Record<ChipKind, string> = {
+  procurement_package: "Procurement Package", method_statement: "Method Statement", material: "Material",
+  shop_drawing: "Shop Drawing", coordination: "Coordination", tc: "T&C",
+};
+const CHIP_KIND_ALIASES: Record<string, ChipKind> = {
+  procurementpackage: "procurement_package", package: "procurement_package", pdpackage: "procurement_package", pkg: "procurement_package",
+  methodstatement: "method_statement", ms: "method_statement", material: "material", materials: "material",
+  shopdrawing: "shop_drawing", shopdrawings: "shop_drawing", coordination: "coordination",
+  tc: "tc", testingcommissioning: "tc", testingandcommissioning: "tc",
+};
+
+/** "PD Package" -> procurement_package, "T&C" -> tc; null when the kind is not recognised. */
+export function parseChipKind(v: string): ChipKind | null {
+  return CHIP_KIND_ALIASES[v.toLowerCase().replace(/&/g, "").replace(/[^a-z]/g, "")] ?? null;
+}
+
+/** "Y", "yes", "true", "1", "x" -> true; "N", "no", "false", "0" -> false; blank -> null (leave as is); else "bad". */
+export function parseYesNo(v: unknown): boolean | null | "bad" {
+  if (typeof v === "boolean") return v;
+  const s = v === undefined || v === null ? "" : String(v).trim().toLowerCase();
+  if (s === "") return null;
+  if (["y", "yes", "true", "1", "x"].includes(s)) return true;
+  if (["n", "no", "false", "0"].includes(s)) return false;
+  return "bad";
+}
 
 export type RawRow = Record<string, unknown>;
-export interface RawSheets { activities: RawRow[]; links: RawRow[] }
+export interface RawSheets { activities: RawRow[]; links: RawRow[]; chips?: RawRow[] }
 
 export interface ImportActivity {
   /** Spreadsheet row number (header = row 1). */
@@ -32,6 +65,8 @@ export interface ImportActivity {
   minPct: number | null;
   maxPct: number | null;
   description: string | null;
+  /** Self-performed column: true / false, or null to leave the activity as it is. */
+  selfPerformed: boolean | null;
 }
 
 export interface ImportLink {
@@ -43,13 +78,22 @@ export interface ImportLink {
   sharePct: number;
 }
 
+export interface ImportChip {
+  row: number;
+  /** Activity visible code or code, upper-cased. */
+  activityRef: string;
+  kind: ChipKind;
+  /** Library item code as written (matched case-insensitively). */
+  code: string;
+}
+
 export interface ImportError { sheet: string; row: number; message: string }
 /** Codes loaded from the core CSI library, used to reject unknown divisions / sections. Omit to check formats only. */
 export interface ImportValidationOptions {
   knownDivisions?: ReadonlySet<string>;
   knownSections?: ReadonlySet<string>;
 }
-export interface ParsedImport { activities: ImportActivity[]; links: ImportLink[]; errors: ImportError[] }
+export interface ParsedImport { activities: ImportActivity[]; links: ImportLink[]; chips: ImportChip[]; errors: ImportError[] }
 
 /** "Min %" -> "minpct", "Work Item Code" -> "workitemcode". */
 export function normalizeHeader(h: string): string {
@@ -101,6 +145,7 @@ export function parseActivityImport(sheets: RawSheets, opts: ImportValidationOpt
   const errors: ImportError[] = [];
   const activities: ImportActivity[] = [];
   const links: ImportLink[] = [];
+  const chips: ImportChip[] = [];
   const seenCodes = new Map<string, number>();
   const seenVisible = new Map<string, number>();
 
@@ -158,6 +203,9 @@ export function parseActivityImport(sheets: RawSheets, opts: ImportValidationOpt
     if (maxPct !== null && (maxPct < 0 || maxPct > 100)) err("Max % must be between 0 and 100");
     if (minPct !== null && maxPct !== null && minPct > maxPct) err(`Min % (${minPct}) must not exceed Max % (${maxPct})`);
 
+    const self = parseYesNo(pick(raw, "Self-performed", "Self performed", "Self"));
+    if (self === "bad") err("Self-performed must be Y or N (or blank)");
+
     if (code) {
       const prev = seenCodes.get(code);
       if (prev !== undefined) err(`Duplicate code ${code} (also on row ${prev})`);
@@ -172,7 +220,7 @@ export function parseActivityImport(sheets: RawSheets, opts: ImportValidationOpt
     if (errors.length === before && divisionCode && name) {
       activities.push({
         row, divisionCode, sectionCode, visibleCode, code, name, unit: text(pick(raw, "Unit", "Default Unit")), trade: text(pick(raw, "Trade")),
-        activityType, minPct, maxPct, description: text(pick(raw, "Description")),
+        activityType, minPct, maxPct, description: text(pick(raw, "Description")), selfPerformed: self === "bad" ? null : self,
       });
     }
   });
@@ -211,5 +259,27 @@ export function parseActivityImport(sheets: RawSheets, opts: ImportValidationOpt
     }
   });
 
-  return { activities, links, errors };
+  const seenChips = new Set<string>();
+  (sheets.chips ?? []).forEach((raw, i) => {
+    if (isBlank(raw)) return;
+    const row = i + 2;
+    const err = (message: string) => errors.push({ sheet: CHIPS_SHEET, row, message });
+    const ref = text(pick(raw, "Activity Code", "Activity Visible Code", "Visible Code", "Activity"));
+    const kindRaw = text(pick(raw, "Kind", "Type", "Chip"));
+    const codesRaw = text(pick(raw, "Code", "Codes", "Item Code"));
+    if (!ref) err("Activity code is required");
+    const kind = kindRaw ? parseChipKind(kindRaw) : null;
+    if (!kindRaw) err("Kind is required");
+    else if (!kind) err(`Kind "${kindRaw}" must be one of ${Object.values(CHIP_KIND_LABEL).join(", ")}`);
+    if (!codesRaw) err("Code is required");
+    if (!ref || !kind || !codesRaw) return;
+    for (const code of codesRaw.split(/[;,\n]/).map((c) => c.trim()).filter(Boolean)) {
+      const key = `${ref.toUpperCase()}|${kind}|${code.toUpperCase()}`;
+      if (seenChips.has(key)) { err(`Duplicate ${CHIP_KIND_LABEL[kind]} ${code} for ${ref}`); continue; }
+      seenChips.add(key);
+      chips.push({ row, activityRef: ref.toUpperCase(), kind, code });
+    }
+  });
+
+  return { activities, links, chips, errors };
 }

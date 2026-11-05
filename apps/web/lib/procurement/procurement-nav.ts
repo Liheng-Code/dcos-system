@@ -50,6 +50,8 @@ export const PROCUREMENT_GROUPS: ModuleNavGroup[] = [
     label: "Sourcing & Receiving",
     href: "/dashboard/procurement/pr",
     items: [
+      // Packages the programme needs, with order-by dates and PR coverage; "Long-lead only" is the long-lead register.
+      { label: "Package Plan", href: "/dashboard/procurement/package-plan", status: "development" },
       { label: "Purchase Requisitions", href: "/dashboard/procurement/pr" },
       { label: "RFQs", href: "/dashboard/procurement/rfq" },
       { label: "Purchase Orders", href: "/dashboard/procurement/po" },
