@@ -10,7 +10,8 @@
 --   - kit part without a recipe: a new draft recipe TPL-<kit>-<PART>-001 with the block's activities, chained.
 -- Fixed-duration activities keep the template's duration as duration_days_override; quantity-based ones use their norm.
 -- 609 activities over 46 kit / level combinations. Re-runnable: an existing copy is reused and an activity already in
--- the recipe is skipped. Kits are draft; the migration role passes the kit-items guard.
+-- the recipe is skipped. Only draft kits are changed (a kit that is under review, approved or active is skipped:
+-- it changes through a new kit version); the migration role passes the kit-items guard.
 
 create temp table _gap (kit_code text, part text, ord int, master_code text, dur numeric) on commit drop;
 insert into _gap values
@@ -672,7 +673,7 @@ declare
 begin
   for g in select distinct kit_code, part from _gap order by 1, 2 loop
     select * into k from public.plan_act_kits where code = g.kit_code and status not in ('superseded', 'archived') order by version desc limit 1;
-    if k.id is null then continue; end if;
+    if k.id is null or k.status <> 'draft' then continue; end if;   -- a released kit changes only through a new version
     v_short := regexp_replace(k.code, '^KIT-', '');
 
     if exists (select 1 from public.plan_act_kit_items where kit_id = k.id and part = g.part) then
