@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, FileSpreadsheet, Loader2, Network, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FileSpreadsheet, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -40,12 +40,33 @@ import {
   type KitOption, type MasterOption, type WbsTemplate,
 } from "@/lib/project/wbs/wbs-template-queries";
 import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
+import { TemplateEditorHeader, type HeaderChip } from "@/components/administration/template-editor-header";
+import { buildingTypeLabel, sectorLabel } from "@/lib/project-categories";
 import { constructionPhaseKeys, coveragePercent, taskLinkStatus, templateCoverage } from "@/lib/project/wbs/template-activity-rules";
 import { TemplateOptions } from "@/components/project/wbs/templates/wbs-template-options";
 import { FloorBlockPicker } from "@/components/project/wbs/templates/floor-block-picker";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden focus:border-primary";
 const cell = "h-8 w-full rounded-md border border-border bg-background px-2 text-sm outline-hidden focus:border-primary";
+
+/** Header summary of a WBS template: where it applies, its kit and levels, size, Work Library coverage. */
+function wbsHeaderChips(d: Draft, kits: KitOption[], levelTemplates: LevelTemplate[]): HeaderChip[] {
+  const out: HeaderChip[] = [];
+  const types = d.building_types.map(buildingTypeLabel);
+  if (d.template_category) out.push({ key: "sector", label: [sectorLabel(d.template_category), ...types.slice(0, 3)].join(" · ") + (types.length > 3 ? ` +${types.length - 3}` : ""), title: types.join(", ") || "Any building type in the sector" });
+  const kit = kits.find((k) => k.code === d.kit_code);
+  if (d.kit_code) out.push({ key: "kit", label: `Kit ${d.kit_code}`, title: kit?.name });
+  const lt = levelTemplates.find((t) => t.id === d.default_level_template_id);
+  if (lt) out.push({ key: "levels", label: `Levels: ${lt.template_name}` });
+  const blocks = Object.keys(d.doc.floor_blocks).length;
+  const tasks = d.doc.sections.tasks.length + Object.values(d.doc.floor_blocks).reduce((a, b) => a + (b?.tasks.length ?? 0), 0);
+  out.push({ key: "size", label: `${tasks} activities · ${blocks} floor block${blocks === 1 ? "" : "s"}` });
+  const cov = templateCoverage(d.doc);
+  out.push(cov.missing.length
+    ? { key: "cov", label: `${cov.missing.length} to link to the Work Library`, tone: "warn", title: "Construction activities without a Work Library activity" }
+    : { key: "cov", label: `Work Library ${coveragePercent(cov)}% linked`, tone: "good", title: `${cov.linked} of ${cov.mustLink} construction activities linked; ${cov.free} free` });
+  return out;
+}
 
 interface Draft {
   id: string | null;
@@ -249,31 +270,18 @@ export function WbsTemplateEditor() {
         </section>
       ) : draft && (
         <section className="min-w-0 flex-1 space-y-4 rounded-xl border border-border bg-card p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Network className="h-4 w-4 text-muted-foreground" /> {draft.id ? "Edit WBS template" : "New WBS template"}
-              {draft.id && <span className="text-xs font-normal text-muted-foreground">version {templates.find((t) => t.id === draft.id)?.version}</span>}
-            </h2>
-            <div className="flex items-center gap-2">
-              {draft.id && (
-                <>
-                  <Button size="sm" variant="ghost" onClick={() => select({ ...draft, id: null, template_name: `${draft.template_name} (copy)` })}>
-                    <Copy className="mr-1.5 h-3.5 w-3.5" /> Duplicate
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={remove}><Trash2 className="mr-1.5 h-3.5 w-3.5 text-destructive" /> Delete</Button>
-                </>
-              )}
-              <Button size="sm" onClick={() => save(draft)} disabled={saving || (!dirty && !!draft.id)}>
-                {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />} Save
-              </Button>
-            </div>
-          </div>
-
+          <TemplateEditorHeader
+            key={draft.id ?? "new"}
+            name={draft.template_name} onNameChange={(template_name) => patch({ template_name })} namePlaceholder="WBS template name"
+            version={draft.id ? templates.find((t) => t.id === draft.id)?.version : null} isNew={!draft.id}
+            active={draft.is_active} onActiveChange={(is_active) => patch({ is_active })} activeHint="Active templates are offered in Apply WBS template"
+            chips={wbsHeaderChips(draft, kits, levelTemplates)}
+            onDuplicate={draft.id ? () => select({ ...draft, id: null, template_name: `${draft.template_name} (copy)` }) : undefined}
+            onDelete={draft.id ? remove : undefined}
+            onSave={() => save(draft)} saving={saving} canSave={dirty || !draft.id}
+            note="Projects get a copy when the template is applied. Saving creates a new version for future use; projects that already used it are not changed."
+            settings={
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-xs font-medium">
-              Template name *
-              <input value={draft.template_name} onChange={(e) => patch({ template_name: e.target.value })} className={field} />
-            </label>
             <label className="space-y-1 text-xs font-medium">
               Default level template
               <select value={draft.default_level_template_id} onChange={(e) => patch({ default_level_template_id: e.target.value })} className={field}>
@@ -294,21 +302,15 @@ export function WbsTemplateEditor() {
               buildingTypes={draft.building_types}
               onChange={(v) => patch({ template_category: v.sector, building_types: v.buildingTypes })}
             />
-            <label className="space-y-1 text-xs font-medium">
+            <label className="space-y-1 text-xs font-medium sm:col-span-2">
               Description
               <input value={draft.template_desc} onChange={(e) => patch({ template_desc: e.target.value })} className={field} />
             </label>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" checked={draft.is_active} onChange={(e) => patch({ is_active: e.target.checked })} />
-              Active (offered in Apply WBS template)
-            </label>
           </div>
+            }
+          />
 
           <TemplateDocEditor doc={draft.doc} onChange={(doc) => patch({ doc })} />
-
-          <p className="text-xs text-muted-foreground">
-            Projects get a copy when the template is applied. Saving creates a new version for future use; projects that already used it are not changed.
-          </p>
         </section>
       )}
     </div>
@@ -366,7 +368,7 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+      {gaps.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
         <span className="font-medium">Work Library links</span>
         <span
           className={cn("rounded-full px-2 py-0.5 tabular-nums", gaps.length ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300")}
@@ -380,7 +382,7 @@ function TemplateDocEditor({ doc, onChange }: { doc: WbsTemplateDoc; onChange: (
             {showGaps ? "Hide" : "Show"} {gaps.length} to link
           </button>
         )}
-      </div>
+      </div>}
       {showGaps && gaps.length > 0 && (
         <ul className="max-h-40 overflow-auto rounded-md border border-border p-2 text-xs">
           {gaps.map((g) => (

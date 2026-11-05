@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Layers, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,21 @@ import { validateLevelItems, type LevelItem, type LevelTemplate } from "@/lib/le
 import { deleteLevelTemplate, listLevelTemplates, saveLevelTemplate } from "@/lib/level-library-queries";
 import { groupTemplates } from "@/lib/template-fit";
 import { TemplateSectorFields } from "@/components/administration/template-sector-fields";
+import { TemplateEditorHeader, type HeaderChip } from "@/components/administration/template-editor-header";
+import { buildingTypeLabel, sectorLabel } from "@/lib/project-categories";
 import { LevelItemsEditor } from "@/components/project/wbs/levels/level-items-editor";
+
+/** Header summary of a level template: where it applies and its levels by type (e.g. 2 basement + ground + 20 typical + roof). */
+function levelHeaderChips(d: Draft): HeaderChip[] {
+  const out: HeaderChip[] = [];
+  const types = d.building_types.map(buildingTypeLabel);
+  if (d.template_category) out.push({ key: "sector", label: [sectorLabel(d.template_category), ...types.slice(0, 3)].join(" · ") + (types.length > 3 ? ` +${types.length - 3}` : ""), title: types.join(", ") || "Any building type in the sector" });
+  const byType = new Map<string, number>();
+  for (const i of d.items) byType.set(i.level_type, (byType.get(i.level_type) ?? 0) + 1);
+  const parts = [...byType].map(([t, n]) => (n === 1 ? t : `${n} ${t}`));
+  out.push({ key: "levels", label: d.items.length ? `${d.items.length} level${d.items.length === 1 ? "" : "s"} · ${parts.join(" + ")}` : "No levels yet", tone: d.items.length ? "default" : "warn" });
+  return out;
+}
 
 interface Draft {
   id: string | null;
@@ -155,34 +169,18 @@ export function LevelTemplateEditor() {
 
       {draft && (
         <section className="min-w-0 flex-1 space-y-4 rounded-xl border border-border bg-card p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">{draft.id ? "Edit level template" : "New level template"}</h2>
-              {current && <span className="text-xs text-muted-foreground">version {current.version}</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              {draft.id && (
-                <>
-                  <Button size="sm" variant="ghost" onClick={() => select({ ...draft, id: null, template_name: `${draft.template_name} (copy)` })}>
-                    <Copy className="mr-1.5 h-3.5 w-3.5" /> Duplicate
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={remove}>
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5 text-destructive" /> Delete
-                  </Button>
-                </>
-              )}
-              <Button size="sm" onClick={save} disabled={saving || (!dirty && !!draft.id)}>
-                {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />} Save
-              </Button>
-            </div>
-          </div>
-
+          <TemplateEditorHeader
+            key={draft.id ?? "new"}
+            name={draft.template_name} onNameChange={(template_name) => patch({ template_name })} namePlaceholder="Level template name, e.g. Typical Condo 20F"
+            version={current?.version ?? null} isNew={!draft.id}
+            active={draft.is_active} onActiveChange={(is_active) => patch({ is_active })} activeHint="Active templates are offered when applying levels to a building"
+            chips={levelHeaderChips(draft)}
+            onDuplicate={draft.id ? () => select({ ...draft, id: null, template_name: `${draft.template_name} (copy)` }) : undefined}
+            onDelete={draft.id ? remove : undefined}
+            onSave={save} saving={saving} canSave={dirty || !draft.id}
+            note="Projects get a copy of this list when it is applied to a building. Saving creates a new version for future use; levels already copied into projects are not changed."
+            settings={
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-xs font-medium">
-              Template name *
-              <input value={draft.template_name} onChange={(e) => patch({ template_name: e.target.value })} placeholder="e.g. Typical Condo 20F" className={field} />
-            </label>
             <TemplateSectorFields
               sector={draft.template_category}
               buildingTypes={draft.building_types}
@@ -192,18 +190,11 @@ export function LevelTemplateEditor() {
               Description
               <input value={draft.description} onChange={(e) => patch({ description: e.target.value })} className={field} />
             </label>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" checked={draft.is_active} onChange={(e) => patch({ is_active: e.target.checked })} />
-              Active (offered when applying levels to a building)
-            </label>
           </div>
+            }
+          />
 
           <LevelItemsEditor items={draft.items} onChange={(items) => patch({ items })} />
-
-          <p className="text-xs text-muted-foreground">
-            Projects get a copy of this list when it is applied to a building. Saving here creates a new version for future use;
-            levels already copied into projects are not changed.
-          </p>
         </section>
       )}
     </div>
