@@ -131,18 +131,22 @@ export interface ApplyResult {
   linked_task_ids?: string[];
 }
 
-export interface MasterOption { code: string; name: string; default_unit: string | null }
+export interface MasterOption { code: string; name: string; default_unit: string | null; visible_code: string | null; status: string }
 
-/** Active activity masters (newest version per code), for linking template activities. */
+/**
+ * Current Work Library activities (newest version per code, drafts included: apply_wbs_template falls back to the
+ * newest version when none is active), for linking template activities. Sorted by visible code (D03-025...).
+ */
 // @table plan_act_masters
 export async function listActivityMasterOptions(): Promise<MasterOption[]> {
-  const { data, error } = await db().from("plan_act_masters").select("code, name, default_unit, status, version")
-    .in("status", ["active", "approved"]).order("code").order("version", { ascending: false });
+  const { data, error } = await db().from("plan_act_masters").select("code, name, default_unit, visible_code, status, version")
+    .in("status", ["active", "approved", "under_review", "draft"]).order("code").order("version", { ascending: false });
   if (error) throw new Error(error.message);
   const seen = new Set<string>();
-  return ((data ?? []) as (MasterOption & { status: string; version: number })[])
+  return ((data ?? []) as (MasterOption & { version: number })[])
     .filter((m) => (seen.has(m.code) ? false : (seen.add(m.code), true)))
-    .map(({ code, name, default_unit }) => ({ code, name, default_unit }));
+    .map(({ code, name, default_unit, visible_code, status }) => ({ code, name, default_unit, visible_code, status }))
+    .sort((a, b) => (a.visible_code ?? a.code).localeCompare(b.visible_code ?? b.code));
 }
 
 /** Copies an expanded template into the project (merge: anything already there is skipped). */
