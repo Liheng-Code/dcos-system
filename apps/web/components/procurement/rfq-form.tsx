@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { insertRfq, insertRfqSuppliers, listActiveSuppliers, listApprovedPrs, listPrItemsByPrId } from "@/lib/procurement/procurement-queries";
 import { AlertTriangle, ArrowLeft, Loader2, Save } from "lucide-react";
@@ -11,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { procErrorMessage } from "@/lib/procurement/procurement-transitions";
+import { createClient } from "@/lib/supabase/client";
+import { suppliersMatchingTrade, type ApprovedTrade } from "@/lib/procurement/rfq-trade-rules";
+import { getPrPackage, listActiveApprovedTrades, type PrPackage } from "@/lib/procurement/rfq-trade-service";
 
 interface PRSummary {
   id: string;
@@ -46,6 +49,17 @@ export function RFQForm() {
     notes: "",
   });
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  // Bidders by trade: the source PR's package trade against the suppliers' active approved trades (soft filter)
+  const db = useMemo(() => createClient(), []);
+  const [prPackage, setPrPackage] = useState<PrPackage | null>(null);
+  const [trades, setTrades] = useState<ApprovedTrade[]>([]);
+  const [tradeOnly, setTradeOnly] = useState(false);
+  useEffect(() => { listActiveApprovedTrades(db).then(setTrades).catch(() => setTrades([])); }, [db]);
+  const matching = useMemo(() => suppliersMatchingTrade(trades, prPackage?.trade_category, bangkokToday()), [trades, prPackage]);
+  const shownSuppliers = useMemo(() => {
+    const list = tradeOnly && prPackage?.trade_category ? suppliers.filter((x) => matching.has(x.id)) : suppliers;
+    return [...list].sort((a, b) => Number(matching.has(b.id)) - Number(matching.has(a.id)));
+  }, [suppliers, matching, tradeOnly, prPackage]);
 
   useEffect(() => {
     Promise.all([
@@ -69,6 +83,8 @@ export function RFQForm() {
   function handlePRSelect(prId: string) {
     setForm(prev => ({ ...prev, pr_id: prId }));
     if (prId) loadPRItems(prId);
+    setPrPackage(null);
+    if (prId) getPrPackage(db, prId).then(setPrPackage).catch(() => setPrPackage(null));
     else setPrItems([]);
   }
 
@@ -167,16 +183,33 @@ export function RFQForm() {
         <Card>
           <CardContent className="pt-5 space-y-4">
             <h3 className="font-semibold text-sm">Suppliers to Invite *</h3>
+            {prPackage && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+                <span>
+                  Package <span className="font-mono">{prPackage.code}</span> {prPackage.name}
+                  {prPackage.trade_category
+                    ? <>: trade <span className="font-medium">{prPackage.trade_category}</span>, {matching.size} supplier{matching.size === 1 ? "" : "s"} approved for it</>
+                    : <>: no trade set on the package</>}
+                </span>
+                {prPackage.trade_category && (
+                  <label className="ml-auto flex items-center gap-1.5">
+                    <input type="checkbox" className="h-3.5 w-3.5" checked={tradeOnly} onChange={(e) => setTradeOnly(e.target.checked)} /> Matching trade only
+                  </label>
+                )}
+              </div>
+            )}
             {suppliers.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">No active suppliers found.</p>
             ) : (
               <div className="max-h-64 overflow-y-auto space-y-2">
-                {suppliers.map(s => {
+                {shownSuppliers.length === 0 && <p className="py-4 text-center text-sm text-muted-foreground">No supplier holds an active approved trade for this package. Add trades in Pre-Qualification, or clear the filter.</p>}
+                {shownSuppliers.map(s => {
                   const selectable = isSupplierSelectable(s);
                   return (
                   <label key={s.id} className={`flex items-center gap-3 rounded-lg border p-3 text-sm ${selectable ? "cursor-pointer hover:bg-muted/30" : "cursor-not-allowed bg-muted/40 text-muted-foreground"}`}>
                     <input type="checkbox" className="h-4 w-4" disabled={!selectable} checked={selectedSuppliers.includes(s.id)} onChange={() => toggleSupplier(s.id)} />
                     <span className="flex-1">{s.supplier_name}</span>
+                    {matching.has(s.id) && <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Trade match</span>}
                     <SupplierPqHint supplier={s} />
                   </label>
                   );
